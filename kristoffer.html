@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>CGV-WEB | Optimized</title>
+    <title>CGV-WEB | Interactive</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -24,12 +24,9 @@
         #canvas-container {
             width: 100vw;
             height: 100vh;
-            /* Triggers GPU Compositing */
             transform: translateZ(0); 
             -webkit-transform: translateZ(0);
-            /* Hints browser of upcoming changes */
             will-change: transform; 
-            /* Hides backface rendering */
             backface-visibility: hidden;
             -webkit-backface-visibility: hidden;
         }
@@ -112,17 +109,6 @@
             box-shadow: 0 3px 12px rgba(100, 200, 255, 0.6);
         }
         
-        #slice-slider::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #64c8ff 0%, #4a9eff 100%);
-            cursor: pointer;
-            border: none;
-            box-shadow: 0 2px 8px rgba(100, 200, 255, 0.4);
-            transition: all 0.2s ease;
-        }
-        
         #cube-count {
             color: #64c8ff;
             font-weight: 600;
@@ -143,6 +129,45 @@
             z-index: 1000;
             box-shadow: 0 4px 12px rgba(100, 200, 255, 0.3);
             letter-spacing: 0.5px;
+        }
+
+        /* Color Palette Styles */
+        #color-palette {
+            position: absolute;
+            background: rgba(16, 20, 31, 0.95);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(100, 200, 255, 0.2);
+            padding: 10px;
+            border-radius: 12px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.95);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            z-index: 2000;
+        }
+
+        #color-palette.active {
+            opacity: 1;
+            pointer-events: all;
+            transform: scale(1);
+        }
+
+        .color-swatch {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.1s ease, border 0.1s ease;
+            border: 2px solid transparent;
+        }
+
+        .color-swatch:hover {
+            transform: scale(1.1);
+            border-color: #fff;
         }
         
         #instructions {
@@ -193,13 +218,25 @@
     </div>
     
     <div id="tooltip"></div>
+
+    <div id="color-palette">
+        <div class="color-swatch" style="background: #ff5e57;" data-color="0xff5e57"></div>
+        <div class="color-swatch" style="background: #ffc048;" data-color="0xffc048"></div>
+        <div class="color-swatch" style="background: #0be881;" data-color="0x0be881"></div>
+        <div class="color-swatch" style="background: #4bcffa;" data-color="0x4bcffa"></div>
+        <div class="color-swatch" style="background: #575fcf;" data-color="0x575fcf"></div>
+        <div class="color-swatch" style="background: #ef5777;" data-color="0xef5777"></div>
+        <div class="color-swatch" style="background: #808e9b;" data-color="0x808e9b"></div>
+        <div class="color-swatch" style="background: #d2dae2;" data-color="0xd2dae2"></div>
+        <div class="color-swatch" style="background: #1e272e;" data-color="0x1e272e"></div>
+    </div>
     
     <div id="instructions">
         <div><strong>Navigation</strong></div>
         <div>• Left Mouse — Rotate</div>
         <div>• Right Mouse — Pan</div>
         <div>• Scroll — Zoom (Slow/Deep)</div>
-        <div>• Slider — Adjust Resolution</div>
+        <div>• Click — Change Cube Color</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -223,7 +260,7 @@
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.getElementById('canvas-container').appendChild(renderer.domElement);
         
-        // Lighting - professional setup
+        // Lighting
         const ambientLight = new THREE.AmbientLight(0x404870, 0.4);
         scene.add(ambientLight);
         
@@ -247,11 +284,10 @@
         const MAX_CUBES = 200000;
         const GAP_FACTOR = 0.82;
         
-        // Pivot point for all rotations (Center of Mass)
         const pivotGroup = new THREE.Group();
         scene.add(pivotGroup);
         
-        // Create hollow cylinder
+        // Hollow cylinder base
         const hollowCylinderGroup = new THREE.Group();
         const outerGeo = new THREE.CylinderGeometry(OUTER_RADIUS, OUTER_RADIUS, CYLINDER_LENGTH, 64, 1, true);
         const innerGeo = new THREE.CylinderGeometry(INNER_RADIUS, INNER_RADIUS, CYLINDER_LENGTH, 64, 1, true);
@@ -266,11 +302,9 @@
         
         const outerCyl = new THREE.Mesh(outerGeo, material);
         const innerCyl = new THREE.Mesh(innerGeo, material);
-        
         outerCyl.rotation.z = Math.PI / 2;
         innerCyl.rotation.z = Math.PI / 2;
         
-        // End caps
         const capShape = new THREE.Shape();
         capShape.absarc(0, 0, OUTER_RADIUS, 0, Math.PI * 2, false);
         const holePath = new THREE.Path();
@@ -288,20 +322,31 @@
         hollowCylinderGroup.add(outerCyl, innerCyl, capLeft, capRight);
         pivotGroup.add(hollowCylinderGroup);
         
+        // --- HIGHLIGHT SYSTEM ---
+        // Helper mesh for the outline effect
+        const highlightGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+        const highlightMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
+        const highlightMesh = new THREE.LineSegments(highlightGeo, highlightMat);
+        highlightMesh.visible = false;
+        highlightMesh.matrixAutoUpdate = false; // We will copy matrix from instance
+        pivotGroup.add(highlightMesh);
+
         // Cube system
         let cubesGroup = null;
         let instancedMesh = null;
         let currentCubeCount = 0;
-        let cubePositions = [];
         
+        // Use White for base material so we can tint instances correctly
         const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
         const cubeMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x5a9fd4,
+            color: 0xffffff, // White to allow tinting
             shininess: 90,
             specular: 0x888888
         });
+
+        // Default cube color
+        const DEFAULT_COLOR = new THREE.Color(0x5a9fd4);
         
-        // Calculate grid dimensions
         function calculateGridDimensions(totalCubes) {
             const volume = Math.PI * (OUTER_RADIUS * OUTER_RADIUS - INNER_RADIUS * INNER_RADIUS) * CYLINDER_LENGTH;
             const volumePerCube = volume / totalCubes;
@@ -316,45 +361,8 @@
             return { radialDivs, angularDivs, axialDivs, cubeSize };
         }
         
-        // Generate cube positions
-        function generateCubePositions(count) {
-            if (count === 0) return [];
-            
-            const { radialDivs, angularDivs, axialDivs, cubeSize } = calculateGridDimensions(count);
-            const positions = [];
-            const actualCubeSize = cubeSize * GAP_FACTOR;
-            
-            for (let x = 0; x < axialDivs; x++) {
-                const xPos = (x / axialDivs - 0.5) * CYLINDER_LENGTH;
-                
-                for (let r = 0; r < radialDivs; r++) {
-                    const radius = INNER_RADIUS + (r + 0.5) * (OUTER_RADIUS - INNER_RADIUS) / radialDivs;
-                    
-                    for (let a = 0; a < angularDivs; a++) {
-                        if (positions.length >= count) break;
-                        
-                        const angle = (a / angularDivs) * Math.PI * 2;
-                        const y = Math.cos(angle) * radius;
-                        const z = Math.sin(angle) * radius;
-                        
-                        positions.push({
-                            x: xPos,
-                            y: y,
-                            z: z,
-                            size: actualCubeSize,
-                            id: positions.length
-                        });
-                    }
-                    if (positions.length >= count) break;
-                }
-                if (positions.length >= count) break;
-            }
-            
-            return positions.slice(0, count);
-        }
-        
-        // Create cubes
         function createCubes(count) {
+            // Cleanup
             if (cubesGroup) {
                 pivotGroup.remove(cubesGroup);
                 if (instancedMesh) {
@@ -363,62 +371,93 @@
                 }
             }
             
+            // Hide highlight when regenerating
+            highlightMesh.visible = false;
+
             if (count === 0) {
                 cubesGroup = null;
-                cubePositions = [];
                 currentCubeCount = 0;
                 hollowCylinderGroup.visible = true;
                 return;
             }
             
             hollowCylinderGroup.visible = false;
-            cubePositions = generateCubePositions(count);
-            currentCubeCount = count;
             
+            // Generate Positions
+            const { radialDivs, angularDivs, axialDivs, cubeSize } = calculateGridDimensions(count);
+            const positions = [];
+            const actualCubeSize = cubeSize * GAP_FACTOR;
+            
+            for (let x = 0; x < axialDivs; x++) {
+                const xPos = (x / axialDivs - 0.5) * CYLINDER_LENGTH;
+                for (let r = 0; r < radialDivs; r++) {
+                    const radius = INNER_RADIUS + (r + 0.5) * (OUTER_RADIUS - INNER_RADIUS) / radialDivs;
+                    for (let a = 0; a < angularDivs; a++) {
+                        if (positions.length >= count) break;
+                        const angle = (a / angularDivs) * Math.PI * 2;
+                        positions.push({
+                            x: xPos,
+                            y: Math.cos(angle) * radius,
+                            z: Math.sin(angle) * radius,
+                            size: actualCubeSize
+                        });
+                    }
+                    if (positions.length >= count) break;
+                }
+                if (positions.length >= count) break;
+            }
+            
+            currentCubeCount = positions.length;
+            
+            // Create Mesh
             cubesGroup = new THREE.Group();
-            instancedMesh = new THREE.InstancedMesh(cubeGeometry, cubeMaterial, count);
+            instancedMesh = new THREE.InstancedMesh(cubeGeometry, cubeMaterial, currentCubeCount);
             instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             
             const matrix = new THREE.Matrix4();
-            cubePositions.forEach((cube, i) => {
+            
+            // Initialize positions and default colors
+            for (let i = 0; i < currentCubeCount; i++) {
+                const cube = positions[i];
                 matrix.makeScale(cube.size, cube.size, cube.size);
                 matrix.setPosition(cube.x, cube.y, cube.z);
                 instancedMesh.setMatrixAt(i, matrix);
-            });
+                instancedMesh.setColorAt(i, DEFAULT_COLOR);
+            }
             
             instancedMesh.instanceMatrix.needsUpdate = true;
+            instancedMesh.instanceColor.needsUpdate = true;
             cubesGroup.add(instancedMesh);
             pivotGroup.add(cubesGroup);
         }
         
-        // Improved Camera Controls
+        // Camera Controls
         const controls = {
-            target: new THREE.Vector3(0, 0, 0), // Focus on center of mass
+            target: new THREE.Vector3(0, 0, 0),
             spherical: {
-                radius: Math.sqrt(camera.position.x ** 2 + camera.position.y ** 2 + camera.position.z ** 2),
-                theta: Math.atan2(camera.position.x, camera.position.z),
-                phi: Math.acos(camera.position.y / Math.sqrt(camera.position.x ** 2 + camera.position.y ** 2 + camera.position.z ** 2))
+                radius: 7,
+                theta: Math.atan2(5, 7),
+                phi: Math.acos(3 / Math.sqrt(5*5 + 3*3 + 7*7))
             },
-            velocity: {
-                theta: 0,
-                phi: 0,
-                pan: new THREE.Vector2(0, 0),
-                zoom: 0
-            },
-            damping: 0.92, // Heavier feel
+            velocity: { theta: 0, phi: 0, pan: new THREE.Vector2(0, 0), zoom: 0 },
+            damping: 0.92,
             rotationSpeed: 0.003,
             panSpeed: 0.003,
-            zoomSpeed: 0.002 // Much slower for fine control
+            zoomSpeed: 0.002
         };
         
         let isDragging = false;
         let isPanning = false;
         let previousMousePosition = { x: 0, y: 0 };
         
+        // Input Handling
         renderer.domElement.addEventListener('mousedown', (e) => {
+            if(e.button !== 0 && e.button !== 2) return;
             isDragging = true;
             isPanning = e.button === 2;
             previousMousePosition = { x: e.clientX, y: e.clientY };
+            // Close palette on interaction
+            closePalette();
         });
         
         renderer.domElement.addEventListener('mousemove', (e) => {
@@ -430,11 +469,9 @@
                     controls.velocity.pan.x = deltaX * controls.panSpeed;
                     controls.velocity.pan.y = deltaY * controls.panSpeed;
                 } else {
-                    // Inverted controls for natural rotation feel
                     controls.velocity.theta = -deltaX * controls.rotationSpeed;
                     controls.velocity.phi = -deltaY * controls.rotationSpeed;
                 }
-                
                 previousMousePosition = { x: e.clientX, y: e.clientY };
             }
             
@@ -450,29 +487,33 @@
         
         renderer.domElement.addEventListener('wheel', (e) => {
             e.preventDefault();
-            // Smoother Zoom
             controls.velocity.zoom = e.deltaY * controls.zoomSpeed;
+            closePalette();
         });
-        
-        // Update camera position
+
+        // Click Handler for Palette
+        renderer.domElement.addEventListener('click', (e) => {
+            // Only handle left click and if not dragging
+            if (e.button !== 0) return;
+            // Simple check to differentiate click vs drag
+            // (In a full app, measure distance/time)
+            
+            handleMouseClick(e);
+        });
+
         function updateCamera() {
-            // Apply damping
             controls.velocity.theta *= controls.damping;
             controls.velocity.phi *= controls.damping;
             controls.velocity.pan.multiplyScalar(controls.damping);
             controls.velocity.zoom *= controls.damping;
             
-            // Update rotation
             controls.spherical.theta += controls.velocity.theta;
             controls.spherical.phi += controls.velocity.phi;
             controls.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, controls.spherical.phi));
             
-            // Update zoom with limits allowing interior view
             controls.spherical.radius += controls.velocity.zoom;
-            // Min 0.1 allows entering the cylinder (Inner Radius is 0.8)
             controls.spherical.radius = Math.max(0.1, Math.min(40, controls.spherical.radius));
             
-            // Update pan
             const right = new THREE.Vector3();
             const up = new THREE.Vector3();
             camera.getWorldDirection(right);
@@ -482,7 +523,6 @@
             controls.target.add(right.multiplyScalar(-controls.velocity.pan.x));
             controls.target.add(up.multiplyScalar(controls.velocity.pan.y));
             
-            // Convert spherical to cartesian
             const sinPhiRadius = Math.sin(controls.spherical.phi) * controls.spherical.radius;
             camera.position.x = sinPhiRadius * Math.sin(controls.spherical.theta) + controls.target.x;
             camera.position.y = Math.cos(controls.spherical.phi) * controls.spherical.radius + controls.target.y;
@@ -491,14 +531,20 @@
             camera.lookAt(controls.target);
         }
         
-        // Raycasting for hover
+        // Raycasting and UI
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         const tooltip = document.getElementById('tooltip');
+        const palette = document.getElementById('color-palette');
         
+        let hoveredInstanceId = -1;
+        let selectedInstanceId = -1;
+
         function handleMouseMove(event) {
             if (!instancedMesh || currentCubeCount === 0) {
                 tooltip.style.display = 'none';
+                highlightMesh.visible = false;
+                hoveredInstanceId = -1;
                 return;
             }
             
@@ -510,39 +556,96 @@
             
             if (intersects.length > 0) {
                 const instanceId = intersects[0].instanceId;
+                hoveredInstanceId = instanceId;
+
+                // Tooltip
                 tooltip.textContent = `CUBE #${instanceId}`;
                 tooltip.style.display = 'block';
                 tooltip.style.left = event.clientX + 15 + 'px';
                 tooltip.style.top = event.clientY + 15 + 'px';
+
+                // Highlight Outline
+                const matrix = new THREE.Matrix4();
+                instancedMesh.getMatrixAt(instanceId, matrix);
+                highlightMesh.visible = true;
+                highlightMesh.matrix.copy(matrix); // Copy transform exactly
+                
             } else {
+                hoveredInstanceId = -1;
                 tooltip.style.display = 'none';
+                highlightMesh.visible = false;
             }
         }
-        
-        // Slider Logic - Stepped for Performance
+
+        function handleMouseClick(event) {
+            if (hoveredInstanceId !== -1) {
+                selectedInstanceId = hoveredInstanceId;
+                openPalette(event.clientX, event.clientY);
+            } else {
+                closePalette();
+            }
+        }
+
+        // Palette Logic
+        function openPalette(x, y) {
+            // Keep palette within bounds
+            const width = 140; // approx width
+            const height = 140; 
+            
+            let posX = x + 10;
+            let posY = y + 10;
+
+            if (posX + width > window.innerWidth) posX = x - width - 10;
+            if (posY + height > window.innerHeight) posY = y - height - 10;
+
+            palette.style.left = `${posX}px`;
+            palette.style.top = `${posY}px`;
+            palette.classList.add('active');
+        }
+
+        function closePalette() {
+            palette.classList.remove('active');
+            selectedInstanceId = -1;
+        }
+
+        // Color Swatch Selection
+        document.querySelectorAll('.color-swatch').forEach(swatch => {
+            swatch.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent closing immediately
+                if (selectedInstanceId !== -1 && instancedMesh) {
+                    const hexStr = swatch.getAttribute('data-color');
+                    const color = new THREE.Color(parseInt(hexStr));
+                    
+                    instancedMesh.setColorAt(selectedInstanceId, color);
+                    instancedMesh.instanceColor.needsUpdate = true;
+                    
+                    closePalette();
+                }
+            });
+        });
+
+        // Slider Logic
         const slider = document.getElementById('slice-slider');
         const cubeCountLabel = document.getElementById('cube-count');
         
         slider.addEventListener('input', (e) => {
             const value = parseFloat(e.target.value);
-            // Direct update - no frame interpolation to save performance
-            // Snap to steps of 10,000 (approx) based on step="5"
             const newTarget = Math.floor((value / 100) * MAX_CUBES);
             
             if (newTarget !== currentCubeCount) {
                 cubeCountLabel.textContent = newTarget.toLocaleString();
+                closePalette(); // Close if open
                 createCubes(newTarget);
             }
         });
         
-        // Animation loop
+        // Animation
         function animate() {
             requestAnimationFrame(animate);
             updateCamera();
             renderer.render(scene, camera);
         }
         
-        // Handle resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
