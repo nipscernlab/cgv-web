@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>CGV-WEB | Interactive</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,14 +18,17 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             overflow: hidden;
             background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
-            /* Prevents pull-to-refresh on mobile */
             overscroll-behavior: none;
+            /* Prevent text selection during interaction */
+            -webkit-user-select: none;
+            user-select: none;
         }
         
-        /* Hardware Acceleration Codes */
         #canvas-container {
             width: 100vw;
             height: 100vh;
+            /* Critical for mobile gestures */
+            touch-action: none; 
             transform: translateZ(0); 
             -webkit-transform: translateZ(0);
             will-change: transform; 
@@ -58,7 +61,6 @@
             min-width: 280px;
             backdrop-filter: blur(20px);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            user-select: none;
         }
         
         .control-group {
@@ -81,34 +83,30 @@
         
         #slice-slider {
             width: 100%;
-            height: 4px;
+            height: 30px; /* Taller touch target */
             border-radius: 2px;
-            background: rgba(100, 200, 255, 0.1);
+            background: transparent;
             outline: none;
             -webkit-appearance: none;
             cursor: pointer;
-            transition: background 0.3s ease;
         }
         
-        #slice-slider:hover {
-            background: rgba(100, 200, 255, 0.15);
+        #slice-slider::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: rgba(100, 200, 255, 0.1);
+            border-radius: 2px;
         }
-        
+
         #slice-slider::-webkit-slider-thumb {
             -webkit-appearance: none;
-            appearance: none;
+            margin-top: -6px;
             width: 16px;
             height: 16px;
             border-radius: 50%;
             background: linear-gradient(135deg, #64c8ff 0%, #4a9eff 100%);
             cursor: pointer;
             box-shadow: 0 2px 8px rgba(100, 200, 255, 0.4);
-            transition: all 0.2s ease;
-        }
-        
-        #slice-slider::-webkit-slider-thumb:hover {
-            transform: scale(1.15);
-            box-shadow: 0 3px 12px rgba(100, 200, 255, 0.6);
         }
         
         #cube-count {
@@ -130,7 +128,6 @@
             display: none;
             z-index: 1000;
             box-shadow: 0 4px 12px rgba(100, 200, 255, 0.3);
-            letter-spacing: 0.5px;
         }
 
         /* Color Palette Styles */
@@ -143,7 +140,7 @@
             border-radius: 12px;
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
+            gap: 12px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.5);
             opacity: 0;
             pointer-events: none;
@@ -159,17 +156,16 @@
         }
 
         .color-swatch {
-            width: 32px;
-            height: 32px;
+            width: 40px; /* Larger for touch */
+            height: 40px;
             border-radius: 8px;
             cursor: pointer;
             transition: transform 0.1s ease, border 0.1s ease;
             border: 2px solid transparent;
         }
 
-        .color-swatch:hover {
-            transform: scale(1.1);
-            border-color: #fff;
+        .color-swatch:active {
+            transform: scale(0.9);
         }
         
         #instructions {
@@ -188,19 +184,8 @@
             pointer-events: none;
         }
         
-        #instructions div {
-            margin-bottom: 6px;
-        }
-        
-        #instructions div:last-child {
-            margin-bottom: 0;
-        }
-        
-        #instructions strong {
-            color: #e0e0e0;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
+        #instructions div { margin-bottom: 6px; }
+        #instructions strong { color: #e0e0e0; }
     </style>
 </head>
 <body>
@@ -235,10 +220,10 @@
     
     <div id="instructions">
         <div><strong>Navigation</strong></div>
-        <div>• Left/1-Finger — Rotate</div>
-        <div>• Right/2-Fingers — Pan</div>
-        <div>• Scroll/Pinch — Zoom</div>
-        <div>• Click/Tap — Change Cube Color</div>
+        <div>• Left / 1-Finger — Rotate</div>
+        <div>• Right / 2-Fingers — Pan</div>
+        <div>• Scroll / Pinch — Zoom</div>
+        <div>• Click / Tap — Select</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -307,6 +292,7 @@
         outerCyl.rotation.z = Math.PI / 2;
         innerCyl.rotation.z = Math.PI / 2;
         
+        // Caps (End Caps) - Preserved
         const capShape = new THREE.Shape();
         capShape.absarc(0, 0, OUTER_RADIUS, 0, Math.PI * 2, false);
         const holePath = new THREE.Path();
@@ -324,7 +310,7 @@
         hollowCylinderGroup.add(outerCyl, innerCyl, capLeft, capRight);
         pivotGroup.add(hollowCylinderGroup);
         
-        // --- HIGHLIGHT SYSTEM ---
+        // Highlight System
         const highlightGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
         const highlightMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
         const highlightMesh = new THREE.LineSegments(highlightGeo, highlightMat);
@@ -353,9 +339,7 @@
             
             const radialDivs = Math.max(1, Math.round((OUTER_RADIUS - INNER_RADIUS) / cubeSize));
             const axialDivs = Math.max(1, Math.round(CYLINDER_LENGTH / cubeSize));
-            const avgRadius = (OUTER_RADIUS + INNER_RADIUS) / 2;
-            const circumference = 2 * Math.PI * avgRadius;
-            const angularDivs = Math.max(3, Math.round(circumference / cubeSize));
+            const angularDivs = Math.max(3, Math.round((2 * Math.PI * ((OUTER_RADIUS+INNER_RADIUS)/2)) / cubeSize));
             
             return { radialDivs, angularDivs, axialDivs, cubeSize };
         }
@@ -368,7 +352,6 @@
                     instancedMesh.material.dispose();
                 }
             }
-            
             highlightMesh.visible = false;
 
             if (count === 0) {
@@ -410,7 +393,6 @@
             instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             
             const matrix = new THREE.Matrix4();
-            
             for (let i = 0; i < currentCubeCount; i++) {
                 const cube = positions[i];
                 matrix.makeScale(cube.size, cube.size, cube.size);
@@ -425,7 +407,7 @@
             pivotGroup.add(cubesGroup);
         }
         
-        // --- CAMERA CONTROLS (MOUSE & TOUCH) ---
+        // --- UNIFIED CONTROLS ---
         const controls = {
             target: new THREE.Vector3(0, 0, 0),
             spherical: {
@@ -437,31 +419,31 @@
             damping: 0.92,
             rotationSpeed: 0.003,
             panSpeed: 0.003,
-            zoomSpeed: 0.002
+            zoomSpeed: 0.002,
+            mobileZoomMult: 0.05 // Mobile zoom sensitivity
         };
         
-        let isDragging = false;
-        let isPanning = false;
+        let isInteraction = false;
         let previousMousePosition = { x: 0, y: 0 };
-        
-        // MOUSE Events
-        renderer.domElement.addEventListener('mousedown', (e) => {
+        const canvas = renderer.domElement;
+
+        // --- MOUSE EVENTS ---
+        canvas.addEventListener('mousedown', (e) => {
             if(e.button !== 0 && e.button !== 2) return;
-            isDragging = true;
-            isPanning = e.button === 2;
+            isInteraction = true;
             previousMousePosition = { x: e.clientX, y: e.clientY };
             closePalette();
         });
         
-        renderer.domElement.addEventListener('mousemove', (e) => {
-            if (isDragging) {
+        canvas.addEventListener('mousemove', (e) => {
+            if (isInteraction) {
                 const deltaX = e.clientX - previousMousePosition.x;
                 const deltaY = e.clientY - previousMousePosition.y;
                 
-                if (isPanning) {
+                if (e.buttons === 2) { // Right Click Pan
                     controls.velocity.pan.x = deltaX * controls.panSpeed;
                     controls.velocity.pan.y = deltaY * controls.panSpeed;
-                } else {
+                } else { // Left Click Rotate
                     controls.velocity.theta = -deltaX * controls.rotationSpeed;
                     controls.velocity.phi = -deltaY * controls.rotationSpeed;
                 }
@@ -470,86 +452,101 @@
             handleMouseMove(e);
         });
         
-        renderer.domElement.addEventListener('mouseup', () => { isDragging = false; isPanning = false; });
-        renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-        renderer.domElement.addEventListener('wheel', (e) => {
+        canvas.addEventListener('mouseup', () => { isInteraction = false; });
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
             controls.velocity.zoom = e.deltaY * controls.zoomSpeed;
             closePalette();
         }, { passive: false });
 
-        // --- TOUCH EVENTS IMPLEMENTATION ---
-        let prevTouchPosition = { x: 0, y: 0 };
-        let prevTouchDistance = 0;
+        canvas.addEventListener('click', (e) => {
+            if (e.button !== 0) return;
+            handleClick(e.clientX, e.clientY);
+        });
 
-        renderer.domElement.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // Prevent default mobile scrolling/refresh
+        // --- TOUCH EVENTS (Robust Implementation) ---
+        let lastTouchTime = 0;
+        let startTouchPos = { x: 0, y: 0 };
+        let prevDist = 0;
+        let prevTouchPointer = { x: 0, y: 0 };
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent scrolling
             closePalette();
+            isInteraction = true;
+            lastTouchTime = Date.now();
 
             if (e.touches.length === 1) {
-                // Single touch - Rotate
-                prevTouchPosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-                isDragging = true; 
+                startTouchPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                prevTouchPointer = { ...startTouchPos };
             } else if (e.touches.length === 2) {
-                // Double touch - Pan & Zoom
+                // Initial distance and midpoint for 2-finger gestures
                 const dx = e.touches[0].clientX - e.touches[1].clientX;
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
-                prevTouchDistance = Math.sqrt(dx * dx + dy * dy);
+                prevDist = Math.sqrt(dx * dx + dy * dy);
                 
-                prevTouchPosition = {
+                prevTouchPointer = {
                     x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
                     y: (e.touches[0].clientY + e.touches[1].clientY) / 2
                 };
             }
         }, { passive: false });
 
-        renderer.domElement.addEventListener('touchmove', (e) => {
+        canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             
             if (e.touches.length === 1) {
-                // Rotate Logic (1 Finger)
-                const deltaX = e.touches[0].clientX - prevTouchPosition.x;
-                const deltaY = e.touches[0].clientY - prevTouchPosition.y;
+                // 1 Finger: Rotate
+                const dx = e.touches[0].clientX - prevTouchPointer.x;
+                const dy = e.touches[0].clientY - prevTouchPointer.y;
                 
-                controls.velocity.theta = -deltaX * controls.rotationSpeed;
-                controls.velocity.phi = -deltaY * controls.rotationSpeed;
+                controls.velocity.theta = -dx * controls.rotationSpeed;
+                controls.velocity.phi = -dy * controls.rotationSpeed;
                 
-                prevTouchPosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                prevTouchPointer = { x: e.touches[0].clientX, y: e.touches[0].clientY };
                 
             } else if (e.touches.length === 2) {
-                // Pan & Zoom Logic (2 Fingers)
+                // 2 Fingers: Pinch Zoom & Pan
                 const dx = e.touches[0].clientX - e.touches[1].clientX;
                 const dy = e.touches[0].clientY - e.touches[1].clientY;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 
-                // Zoom (Pinch)
-                const deltaDist = dist - prevTouchDistance;
-                // Multiplier 5 adjusts sensitivity for pinch vs scroll
-                controls.velocity.zoom = -deltaDist * controls.zoomSpeed * 5; 
+                // Zoom
+                const deltaDist = dist - prevDist;
+                controls.velocity.zoom = -deltaDist * controls.mobileZoomMult;
                 
-                // Pan (Move Center)
+                // Pan
                 const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
                 const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
                 
-                const deltaX = midX - prevTouchPosition.x;
-                const deltaY = midY - prevTouchPosition.y;
+                controls.velocity.pan.x = (midX - prevTouchPointer.x) * controls.panSpeed;
+                controls.velocity.pan.y = (midY - prevTouchPointer.y) * controls.panSpeed;
                 
-                controls.velocity.pan.x = deltaX * controls.panSpeed;
-                controls.velocity.pan.y = deltaY * controls.panSpeed;
-                
-                prevTouchDistance = dist;
-                prevTouchPosition = { x: midX, y: midY };
+                prevDist = dist;
+                prevTouchPointer = { x: midX, y: midY };
             }
         }, { passive: false });
 
-        renderer.domElement.addEventListener('touchend', () => {
-            isDragging = false;
-        });
-
-        // Click Handler (Works for Mouse and Tap)
-        renderer.domElement.addEventListener('click', (e) => {
-            if (e.button !== 0) return;
-            handleMouseClick(e);
+        canvas.addEventListener('touchend', (e) => {
+            isInteraction = false;
+            
+            // Manual Tap Detection
+            if (e.touches.length === 0) {
+                const now = Date.now();
+                if (now - lastTouchTime < 300) {
+                    const t = e.changedTouches[0];
+                    // Check if finger moved significantly
+                    const distMoved = Math.sqrt(
+                        Math.pow(t.clientX - startTouchPos.x, 2) + 
+                        Math.pow(t.clientY - startTouchPos.y, 2)
+                    );
+                    
+                    if (distMoved < 10) {
+                        handleClick(t.clientX, t.clientY);
+                    }
+                }
+            }
         });
 
         function updateCamera() {
@@ -591,22 +588,23 @@
         let hoveredInstanceId = -1;
         let selectedInstanceId = -1;
 
-        function handleMouseMove(event) {
-            if (!instancedMesh || currentCubeCount === 0) {
-                tooltip.style.display = 'none';
-                highlightMesh.visible = false;
-                hoveredInstanceId = -1;
-                return;
-            }
-            
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            
+        function getIntersect(x, y) {
+            if (!instancedMesh || currentCubeCount === 0) return null;
+            mouse.x = (x / window.innerWidth) * 2 - 1;
+            mouse.y = -(y / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObject(instancedMesh);
+            return intersects.length > 0 ? intersects[0] : null;
+        }
+
+        function handleMouseMove(event) {
+            // Hover effect only for mouse (touch doesn't really hover)
+            if (!instancedMesh) return;
             
-            if (intersects.length > 0) {
-                const instanceId = intersects[0].instanceId;
+            const intersect = getIntersect(event.clientX, event.clientY);
+            
+            if (intersect) {
+                const instanceId = intersect.instanceId;
                 hoveredInstanceId = instanceId;
 
                 tooltip.textContent = `CUBE #${instanceId}`;
@@ -618,7 +616,6 @@
                 instancedMesh.getMatrixAt(instanceId, matrix);
                 highlightMesh.visible = true;
                 highlightMesh.matrix.copy(matrix);
-                
             } else {
                 hoveredInstanceId = -1;
                 tooltip.style.display = 'none';
@@ -626,16 +623,11 @@
             }
         }
 
-        function handleMouseClick(event) {
-            // Re-check raycast on click for accuracy (especially after touch drag)
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObject(instancedMesh || new THREE.Object3D());
-
-            if (intersects.length > 0) {
-                selectedInstanceId = intersects[0].instanceId;
-                openPalette(event.clientX, event.clientY);
+        function handleClick(clientX, clientY) {
+            const intersect = getIntersect(clientX, clientY);
+            if (intersect) {
+                selectedInstanceId = intersect.instanceId;
+                openPalette(clientX, clientY);
             } else {
                 closePalette();
             }
@@ -661,7 +653,8 @@
         }
 
         document.querySelectorAll('.color-swatch').forEach(swatch => {
-            swatch.addEventListener('click', (e) => {
+            const applyColor = (e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 if (selectedInstanceId !== -1 && instancedMesh) {
                     const hexStr = swatch.getAttribute('data-color');
@@ -671,7 +664,9 @@
                     instancedMesh.instanceColor.needsUpdate = true;
                     closePalette();
                 }
-            });
+            };
+            swatch.addEventListener('click', applyColor);
+            swatch.addEventListener('touchend', applyColor);
         });
 
         // Slider Logic
