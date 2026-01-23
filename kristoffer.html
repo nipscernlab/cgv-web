@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CGV-WEB</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>CGV-WEB | Optimized</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -20,9 +20,18 @@
             background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
         }
         
+        /* Hardware Acceleration Codes */
         #canvas-container {
             width: 100vw;
             height: 100vh;
+            /* Triggers GPU Compositing */
+            transform: translateZ(0); 
+            -webkit-transform: translateZ(0);
+            /* Hints browser of upcoming changes */
+            will-change: transform; 
+            /* Hides backface rendering */
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
         }
         
         #header {
@@ -35,6 +44,7 @@
             letter-spacing: 2px;
             text-transform: uppercase;
             opacity: 0.9;
+            pointer-events: none;
         }
         
         #controls {
@@ -49,6 +59,7 @@
             min-width: 280px;
             backdrop-filter: blur(20px);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            user-select: none;
         }
         
         .control-group {
@@ -112,11 +123,6 @@
             transition: all 0.2s ease;
         }
         
-        #slice-slider::-moz-range-thumb:hover {
-            transform: scale(1.15);
-            box-shadow: 0 3px 12px rgba(100, 200, 255, 0.6);
-        }
-        
         #cube-count {
             color: #64c8ff;
             font-weight: 600;
@@ -152,6 +158,7 @@
             backdrop-filter: blur(20px);
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
             line-height: 1.6;
+            pointer-events: none;
         }
         
         #instructions div {
@@ -176,8 +183,8 @@
     
     <div id="controls">
         <div class="control-group">
-            <label for="slice-slider">Cube Density</label>
-            <input type="range" id="slice-slider" min="0" max="100" value="0" step="0.1">
+            <label for="slice-slider">Cube Density (Step: 10k)</label>
+            <input type="range" id="slice-slider" min="0" max="100" value="0" step="5">
         </div>
         <div class="control-group">
             <label>Active Cubes</label>
@@ -191,7 +198,7 @@
         <div><strong>Navigation</strong></div>
         <div>• Left Mouse — Rotate</div>
         <div>• Right Mouse — Pan</div>
-        <div>• Scroll — Zoom</div>
+        <div>• Scroll — Zoom (Slow/Deep)</div>
         <div>• Slider — Adjust Resolution</div>
     </div>
 
@@ -207,7 +214,8 @@
         
         const renderer = new THREE.WebGLRenderer({ 
             antialias: true,
-            powerPreference: "high-performance"
+            powerPreference: "high-performance",
+            alpha: false
         });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -239,7 +247,7 @@
         const MAX_CUBES = 200000;
         const GAP_FACTOR = 0.82;
         
-        // Pivot point for all rotations
+        // Pivot point for all rotations (Center of Mass)
         const pivotGroup = new THREE.Group();
         scene.add(pivotGroup);
         
@@ -284,7 +292,6 @@
         let cubesGroup = null;
         let instancedMesh = null;
         let currentCubeCount = 0;
-        let targetCubeCount = 0;
         let cubePositions = [];
         
         const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -384,9 +391,9 @@
             pivotGroup.add(cubesGroup);
         }
         
-        // Smooth camera controls with damping
+        // Improved Camera Controls
         const controls = {
-            target: new THREE.Vector3(0, 0, 0),
+            target: new THREE.Vector3(0, 0, 0), // Focus on center of mass
             spherical: {
                 radius: Math.sqrt(camera.position.x ** 2 + camera.position.y ** 2 + camera.position.z ** 2),
                 theta: Math.atan2(camera.position.x, camera.position.z),
@@ -398,10 +405,10 @@
                 pan: new THREE.Vector2(0, 0),
                 zoom: 0
             },
-            damping: 0.88,
+            damping: 0.92, // Heavier feel
             rotationSpeed: 0.003,
             panSpeed: 0.003,
-            zoomSpeed: 0.05
+            zoomSpeed: 0.002 // Much slower for fine control
         };
         
         let isDragging = false;
@@ -423,8 +430,9 @@
                     controls.velocity.pan.x = deltaX * controls.panSpeed;
                     controls.velocity.pan.y = deltaY * controls.panSpeed;
                 } else {
-                    controls.velocity.theta = deltaX * controls.rotationSpeed;
-                    controls.velocity.phi = deltaY * controls.rotationSpeed;
+                    // Inverted controls for natural rotation feel
+                    controls.velocity.theta = -deltaX * controls.rotationSpeed;
+                    controls.velocity.phi = -deltaY * controls.rotationSpeed;
                 }
                 
                 previousMousePosition = { x: e.clientX, y: e.clientY };
@@ -442,6 +450,7 @@
         
         renderer.domElement.addEventListener('wheel', (e) => {
             e.preventDefault();
+            // Smoother Zoom
             controls.velocity.zoom = e.deltaY * controls.zoomSpeed;
         });
         
@@ -458,9 +467,10 @@
             controls.spherical.phi += controls.velocity.phi;
             controls.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, controls.spherical.phi));
             
-            // Update zoom
+            // Update zoom with limits allowing interior view
             controls.spherical.radius += controls.velocity.zoom;
-            controls.spherical.radius = Math.max(3, Math.min(20, controls.spherical.radius));
+            // Min 0.1 allows entering the cylinder (Inner Radius is 0.8)
+            controls.spherical.radius = Math.max(0.1, Math.min(40, controls.spherical.radius));
             
             // Update pan
             const right = new THREE.Vector3();
@@ -509,36 +519,26 @@
             }
         }
         
-        // Slider with smooth interpolation
+        // Slider Logic - Stepped for Performance
         const slider = document.getElementById('slice-slider');
         const cubeCountLabel = document.getElementById('cube-count');
         
         slider.addEventListener('input', (e) => {
             const value = parseFloat(e.target.value);
-            targetCubeCount = Math.floor((value / 100) * MAX_CUBES);
+            // Direct update - no frame interpolation to save performance
+            // Snap to steps of 10,000 (approx) based on step="5"
+            const newTarget = Math.floor((value / 100) * MAX_CUBES);
+            
+            if (newTarget !== currentCubeCount) {
+                cubeCountLabel.textContent = newTarget.toLocaleString();
+                createCubes(newTarget);
+            }
         });
         
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
-            
             updateCamera();
-            
-            // Smooth cube count interpolation
-            if (currentCubeCount !== targetCubeCount) {
-                const diff = targetCubeCount - currentCubeCount;
-                const step = Math.ceil(Math.abs(diff) * 0.08);
-                
-                if (Math.abs(diff) < step) {
-                    currentCubeCount = targetCubeCount;
-                } else {
-                    currentCubeCount += diff > 0 ? step : -step;
-                }
-                
-                cubeCountLabel.textContent = currentCubeCount.toLocaleString();
-                createCubes(currentCubeCount);
-            }
-            
             renderer.render(scene, camera);
         }
         
