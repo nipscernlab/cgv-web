@@ -18,6 +18,8 @@
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             overflow: hidden;
             background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 100%);
+            /* Prevents pull-to-refresh on mobile */
+            overscroll-behavior: none;
         }
         
         /* Hardware Acceleration Codes */
@@ -233,10 +235,10 @@
     
     <div id="instructions">
         <div><strong>Navigation</strong></div>
-        <div>• Left Mouse — Rotate</div>
-        <div>• Right Mouse — Pan</div>
-        <div>• Scroll — Zoom (Slow/Deep)</div>
-        <div>• Click — Change Cube Color</div>
+        <div>• Left/1-Finger — Rotate</div>
+        <div>• Right/2-Fingers — Pan</div>
+        <div>• Scroll/Pinch — Zoom</div>
+        <div>• Click/Tap — Change Cube Color</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -323,12 +325,11 @@
         pivotGroup.add(hollowCylinderGroup);
         
         // --- HIGHLIGHT SYSTEM ---
-        // Helper mesh for the outline effect
         const highlightGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
         const highlightMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
         const highlightMesh = new THREE.LineSegments(highlightGeo, highlightMat);
         highlightMesh.visible = false;
-        highlightMesh.matrixAutoUpdate = false; // We will copy matrix from instance
+        highlightMesh.matrixAutoUpdate = false;
         pivotGroup.add(highlightMesh);
 
         // Cube system
@@ -336,15 +337,13 @@
         let instancedMesh = null;
         let currentCubeCount = 0;
         
-        // Use White for base material so we can tint instances correctly
         const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
         const cubeMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0xffffff, // White to allow tinting
+            color: 0xffffff,
             shininess: 90,
             specular: 0x888888
         });
 
-        // Default cube color
         const DEFAULT_COLOR = new THREE.Color(0x5a9fd4);
         
         function calculateGridDimensions(totalCubes) {
@@ -362,7 +361,6 @@
         }
         
         function createCubes(count) {
-            // Cleanup
             if (cubesGroup) {
                 pivotGroup.remove(cubesGroup);
                 if (instancedMesh) {
@@ -371,7 +369,6 @@
                 }
             }
             
-            // Hide highlight when regenerating
             highlightMesh.visible = false;
 
             if (count === 0) {
@@ -383,7 +380,6 @@
             
             hollowCylinderGroup.visible = false;
             
-            // Generate Positions
             const { radialDivs, angularDivs, axialDivs, cubeSize } = calculateGridDimensions(count);
             const positions = [];
             const actualCubeSize = cubeSize * GAP_FACTOR;
@@ -409,14 +405,12 @@
             
             currentCubeCount = positions.length;
             
-            // Create Mesh
             cubesGroup = new THREE.Group();
             instancedMesh = new THREE.InstancedMesh(cubeGeometry, cubeMaterial, currentCubeCount);
             instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
             
             const matrix = new THREE.Matrix4();
             
-            // Initialize positions and default colors
             for (let i = 0; i < currentCubeCount; i++) {
                 const cube = positions[i];
                 matrix.makeScale(cube.size, cube.size, cube.size);
@@ -431,7 +425,7 @@
             pivotGroup.add(cubesGroup);
         }
         
-        // Camera Controls
+        // --- CAMERA CONTROLS (MOUSE & TOUCH) ---
         const controls = {
             target: new THREE.Vector3(0, 0, 0),
             spherical: {
@@ -450,13 +444,12 @@
         let isPanning = false;
         let previousMousePosition = { x: 0, y: 0 };
         
-        // Input Handling
+        // MOUSE Events
         renderer.domElement.addEventListener('mousedown', (e) => {
             if(e.button !== 0 && e.button !== 2) return;
             isDragging = true;
             isPanning = e.button === 2;
             previousMousePosition = { x: e.clientX, y: e.clientY };
-            // Close palette on interaction
             closePalette();
         });
         
@@ -474,30 +467,88 @@
                 }
                 previousMousePosition = { x: e.clientX, y: e.clientY };
             }
-            
             handleMouseMove(e);
         });
         
-        renderer.domElement.addEventListener('mouseup', () => {
-            isDragging = false;
-            isPanning = false;
-        });
-        
+        renderer.domElement.addEventListener('mouseup', () => { isDragging = false; isPanning = false; });
         renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
-        
         renderer.domElement.addEventListener('wheel', (e) => {
             e.preventDefault();
             controls.velocity.zoom = e.deltaY * controls.zoomSpeed;
             closePalette();
+        }, { passive: false });
+
+        // --- TOUCH EVENTS IMPLEMENTATION ---
+        let prevTouchPosition = { x: 0, y: 0 };
+        let prevTouchDistance = 0;
+
+        renderer.domElement.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent default mobile scrolling/refresh
+            closePalette();
+
+            if (e.touches.length === 1) {
+                // Single touch - Rotate
+                prevTouchPosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                isDragging = true; 
+            } else if (e.touches.length === 2) {
+                // Double touch - Pan & Zoom
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                prevTouchDistance = Math.sqrt(dx * dx + dy * dy);
+                
+                prevTouchPosition = {
+                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+                };
+            }
+        }, { passive: false });
+
+        renderer.domElement.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            
+            if (e.touches.length === 1) {
+                // Rotate Logic (1 Finger)
+                const deltaX = e.touches[0].clientX - prevTouchPosition.x;
+                const deltaY = e.touches[0].clientY - prevTouchPosition.y;
+                
+                controls.velocity.theta = -deltaX * controls.rotationSpeed;
+                controls.velocity.phi = -deltaY * controls.rotationSpeed;
+                
+                prevTouchPosition = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                
+            } else if (e.touches.length === 2) {
+                // Pan & Zoom Logic (2 Fingers)
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                // Zoom (Pinch)
+                const deltaDist = dist - prevTouchDistance;
+                // Multiplier 5 adjusts sensitivity for pinch vs scroll
+                controls.velocity.zoom = -deltaDist * controls.zoomSpeed * 5; 
+                
+                // Pan (Move Center)
+                const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                
+                const deltaX = midX - prevTouchPosition.x;
+                const deltaY = midY - prevTouchPosition.y;
+                
+                controls.velocity.pan.x = deltaX * controls.panSpeed;
+                controls.velocity.pan.y = deltaY * controls.panSpeed;
+                
+                prevTouchDistance = dist;
+                prevTouchPosition = { x: midX, y: midY };
+            }
+        }, { passive: false });
+
+        renderer.domElement.addEventListener('touchend', () => {
+            isDragging = false;
         });
 
-        // Click Handler for Palette
+        // Click Handler (Works for Mouse and Tap)
         renderer.domElement.addEventListener('click', (e) => {
-            // Only handle left click and if not dragging
             if (e.button !== 0) return;
-            // Simple check to differentiate click vs drag
-            // (In a full app, measure distance/time)
-            
             handleMouseClick(e);
         });
 
@@ -558,17 +609,15 @@
                 const instanceId = intersects[0].instanceId;
                 hoveredInstanceId = instanceId;
 
-                // Tooltip
                 tooltip.textContent = `CUBE #${instanceId}`;
                 tooltip.style.display = 'block';
                 tooltip.style.left = event.clientX + 15 + 'px';
                 tooltip.style.top = event.clientY + 15 + 'px';
 
-                // Highlight Outline
                 const matrix = new THREE.Matrix4();
                 instancedMesh.getMatrixAt(instanceId, matrix);
                 highlightMesh.visible = true;
-                highlightMesh.matrix.copy(matrix); // Copy transform exactly
+                highlightMesh.matrix.copy(matrix);
                 
             } else {
                 hoveredInstanceId = -1;
@@ -578,20 +627,23 @@
         }
 
         function handleMouseClick(event) {
-            if (hoveredInstanceId !== -1) {
-                selectedInstanceId = hoveredInstanceId;
+            // Re-check raycast on click for accuracy (especially after touch drag)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(instancedMesh || new THREE.Object3D());
+
+            if (intersects.length > 0) {
+                selectedInstanceId = intersects[0].instanceId;
                 openPalette(event.clientX, event.clientY);
             } else {
                 closePalette();
             }
         }
 
-        // Palette Logic
         function openPalette(x, y) {
-            // Keep palette within bounds
-            const width = 140; // approx width
+            const width = 140; 
             const height = 140; 
-            
             let posX = x + 10;
             let posY = y + 10;
 
@@ -608,17 +660,15 @@
             selectedInstanceId = -1;
         }
 
-        // Color Swatch Selection
         document.querySelectorAll('.color-swatch').forEach(swatch => {
             swatch.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent closing immediately
+                e.stopPropagation();
                 if (selectedInstanceId !== -1 && instancedMesh) {
                     const hexStr = swatch.getAttribute('data-color');
                     const color = new THREE.Color(parseInt(hexStr));
                     
                     instancedMesh.setColorAt(selectedInstanceId, color);
                     instancedMesh.instanceColor.needsUpdate = true;
-                    
                     closePalette();
                 }
             });
@@ -634,12 +684,11 @@
             
             if (newTarget !== currentCubeCount) {
                 cubeCountLabel.textContent = newTarget.toLocaleString();
-                closePalette(); // Close if open
+                closePalette();
                 createCubes(newTarget);
             }
         });
         
-        // Animation
         function animate() {
             requestAnimationFrame(animate);
             updateCamera();
