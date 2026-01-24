@@ -13,7 +13,7 @@ The original CaloGeoView was designed as a **Linux desktop application** capable
 
 This repository represents an effort by **NIPSCERN** to **port and modernize CaloGeoView into an online, platform-independent tool**, making it accessible worldwide through the web at:
 
-**https://nipscern.com/cgv**
+**https://nipscern.com/projects/cgv**
 
 CGV-WEB enables:
 
