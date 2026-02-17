@@ -1,0 +1,7 @@
+{
+  "name": "aol-cli",
+  "type": "module",
+  "dependencies": {
+    "sharp": "^0.32.1"
+  }
+}

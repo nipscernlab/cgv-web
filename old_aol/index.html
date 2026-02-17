@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AOL — Ansikt Over Lyset</title>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;800&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+  <!-- favicon (SVG recommended) -->
+  <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header" role="banner">
+    <div class="brand">
+      <div class="brand-text">
+        <h1 class="brand-title">AOL</h1>
+        <p class="brand-sub">Ansikt Over Lyset — local image compositor</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <h2 id="hero-title" class="hero-title">Drop an image to apply the ATLAS emblem. Processed locally</h2>
+
+      <div id="drop" class="drop" role="button" tabindex="0" aria-label="Drop image here">
+        <i class="fa-solid fa-image drop-icon" aria-hidden="true"></i>
+        <p class="drop-hint">Drop PNG or JPEG here, or click to select</p>
+        <input id="fileInput" type="file" accept="image/png,image/jpeg" aria-label="Choose an image" />
+      </div>
+    </section>
+
+    <section class="previews" aria-live="polite">
+      <figure class="preview-block">
+        <figcaption class="label">Original</figcaption>
+        <div class="frame">
+          <img id="origPreview" class="preview-image" alt="original preview" />
+        </div>
+      </figure>
+
+      <figure class="preview-block">
+        <figcaption class="label">Result</figcaption>
+        <div class="frame">
+          <img id="preview" class="preview-image" alt="processed preview" />
+        </div>
+        <a id="downloadBtn" class="btn" download="aol_result.png" aria-hidden="true" style="display:none"><i class="fa-solid fa-download" aria-hidden="true"></i> Download</a>
+      </figure>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <span>AOL — Ansikt Over Lyset</span>
+      <span class="dot">•</span>
+      <span>Processed locally in your browser</span>
+      <span class="dot">•</span>
+      <span>WebAssembly · Rust</span>
+    </div>
+  </footer>
+
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
