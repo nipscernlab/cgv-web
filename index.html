@@ -6,431 +6,315 @@
 <title>CGV-WEB — ATLAS Calorimeter Geometry Viewer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
-<style>
-/* ===== RESET & ROOT ===== */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-:root {
-  --bg:        #05090f;
-  --bg2:       #080e18;
-  --surface:   rgba(8,20,38,0.88);
-  --border:    rgba(0,210,180,0.18);
-  --cyan:      #00d2b4;
-  --cyan-dim:  rgba(0,210,180,0.45);
-  --amber:     #ffb830;
-  --red:       #ff4455;
-  --green:     #00ff88;
-  --white:     #cce8f0;
-  --muted:     #4a6a7a;
-  --glow:      0 0 12px rgba(0,210,180,0.35), 0 0 30px rgba(0,210,180,0.12);
-  --font-mono: 'IBM Plex Mono', monospace;
-  --font-head: 'Orbitron', monospace;
-}
-
-html, body {
-  width: 100%; height: 100%; overflow: hidden;
-  background: var(--bg);
-  color: var(--white);
-  font-family: var(--font-mono);
-}
-
-/* ===== GRID PATTERN BACKGROUND ===== */
-body::before {
-  content: '';
-  position: fixed; inset: 0;
-  background-image:
-    linear-gradient(rgba(0,210,180,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,210,180,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ===== SCAN-LINE OVERLAY ===== */
-body::after {
-  content: '';
-  position: fixed; inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 3px,
-    rgba(0,0,0,0.07) 3px,
-    rgba(0,0,0,0.07) 4px
-  );
-  pointer-events: none;
-  z-index: 1000;
-}
-
-/* ===== CANVAS ===== */
-#gl-canvas {
-  position: fixed; inset: 0;
-  display: block;
-  width: 100% !important;
-  height: 100% !important;
-  z-index: 1;
-}
-
-/* ===== HEADER CHROME ===== */
-#header {
-  position: fixed; top: 0; left: 0; right: 0;
-  z-index: 10;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 24px;
-  height: 52px;
-  background: linear-gradient(180deg, rgba(5,12,22,0.97) 0%, rgba(5,12,22,0.0) 100%);
-  border-bottom: 1px solid var(--border);
-}
-
-#header-title {
-  display: flex; align-items: baseline; gap: 10px;
-}
-#header-title .acronym {
-  font-family: var(--font-head);
-  font-size: 1.1rem; font-weight: 900;
-  color: var(--cyan);
-  letter-spacing: 0.15em;
-  text-shadow: var(--glow);
-}
-#header-title .full-name {
-  font-size: 0.62rem; color: var(--muted); letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-.dot-sep { color: var(--muted); margin: 0 4px; }
-
-#header-actions {
-  display: flex; align-items: center; gap: 10px;
-}
-
-/* ===== BUTTONS ===== */
-.btn {
-  font-family: var(--font-mono);
-  font-size: 0.7rem; letter-spacing: 0.08em;
-  padding: 5px 14px;
-  border-radius: 3px;
-  cursor: pointer;
-  border: 1px solid;
-  transition: all 0.15s ease;
-  user-select: none;
-}
-.btn-outline {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--muted);
-}
-.btn-outline:hover {
-  border-color: var(--cyan-dim);
-  color: var(--cyan);
-  background: rgba(0,210,180,0.06);
-}
-.btn-primary {
-  background: rgba(0,210,180,0.1);
-  border-color: var(--cyan);
-  color: var(--cyan);
-}
-.btn-primary:hover {
-  background: rgba(0,210,180,0.2);
-  box-shadow: var(--glow);
-}
-
-/* ===== DROP ZONE ===== */
-#drop-zone {
-  position: fixed; inset: 0;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  align-items: center; justify-content: center;
-  cursor: pointer;
-  transition: background 0.25s;
-}
-#drop-zone.drag-over { background: rgba(0,210,180,0.06); }
-#drop-zone.hidden { display: none; }
-
-.dz-inner {
-  display: flex; flex-direction: column; align-items: center;
-  gap: 18px;
-  padding: 56px 72px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  backdrop-filter: blur(16px);
-  text-align: center;
-  position: relative;
-  overflow: hidden;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.dz-inner::before {
-  /* corner accents */
-  content:'';
-  position: absolute; top:-1px; left:-1px; right:-1px; bottom:-1px;
-  border-radius: 6px;
-  background:
-    linear-gradient(90deg,var(--cyan) 0%,transparent 30%) top left / 40px 1px no-repeat,
-    linear-gradient(90deg,transparent 70%,var(--cyan) 100%) top right / 40px 1px no-repeat,
-    linear-gradient(180deg,var(--cyan) 0%,transparent 30%) top left / 1px 40px no-repeat,
-    linear-gradient(180deg,transparent 70%,var(--cyan) 100%) bottom left / 1px 40px no-repeat,
-    linear-gradient(90deg,var(--cyan) 0%,transparent 30%) bottom left / 40px 1px no-repeat,
-    linear-gradient(90deg,transparent 70%,var(--cyan) 100%) bottom right / 40px 1px no-repeat,
-    linear-gradient(180deg,var(--cyan) 0%,transparent 30%) top right / 1px 40px no-repeat,
-    linear-gradient(180deg,transparent 70%,var(--cyan) 100%) bottom right / 1px 40px no-repeat;
-  pointer-events: none;
-}
-#drop-zone:hover .dz-inner,
-#drop-zone.drag-over .dz-inner {
-  border-color: var(--cyan);
-  box-shadow: var(--glow);
-}
-
-.dz-icon {
-  width: 64px; height: 64px;
-  opacity: 0.7;
-}
-
-.dz-title {
-  font-family: var(--font-head);
-  font-size: 1rem; font-weight: 600;
-  color: var(--cyan); letter-spacing: 0.12em;
-}
-
-.dz-subtitle {
-  font-size: 0.72rem; color: var(--muted); line-height: 1.7;
-}
-.dz-format {
-  font-size: 0.63rem; color: var(--muted);
-  background: rgba(0,210,180,0.06);
-  border: 1px solid var(--border);
-  border-radius: 2px;
-  padding: 6px 12px;
-  font-family: var(--font-mono);
-}
-.dz-format code { color: var(--cyan-dim); }
-
-/* ROTATING DETECTOR ICON */
-@keyframes spin-slow { to { transform: rotate(360deg); } }
-.dz-icon circle.orbit { animation: spin-slow 8s linear infinite; transform-origin: 50% 50%; }
-
-/* ===== STATUS OVERLAY (while loading / done) ===== */
-#overlay {
-  position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
-  z-index: 20;
-  display: flex; align-items: center; gap: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 7px 18px;
-  backdrop-filter: blur(12px);
-  white-space: nowrap;
-}
-#overlay.hidden { display: none; }
-
-.status { font-size: 0.72rem; letter-spacing: 0.05em; }
-.status::before { content: '▶ '; }
-.status.loading   { color: var(--amber); }
-.status.processing{ color: var(--cyan); }
-.status.done      { color: var(--green); }
-.status.error     { color: var(--red); }
-
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-.status.loading::before, .status.processing::before { animation: pulse 1s ease-in-out infinite; }
-
-/* ===== INFO PANEL (bottom-left) ===== */
-#info-panel {
-  position: fixed; bottom: 24px; left: 24px;
-  z-index: 10;
-  display: flex; flex-direction: column; gap: 4px;
-  font-size: 0.65rem;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-}
-#cell-count, #energy-range {
-  color: var(--cyan);
-  font-family: var(--font-head);
-  font-size: 0.7rem;
-}
-
-/* ===== LEGEND ===== */
-#legend {
-  position: fixed; bottom: 24px; right: 24px;
-  z-index: 10;
-  display: none;
-  flex-direction: column; gap: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 12px 16px;
-  backdrop-filter: blur(10px);
-  min-width: 160px;
-}
-.legend-title {
-  font-family: var(--font-head);
-  font-size: 0.58rem; font-weight: 600;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-.legend-bar {
-  height: 8px;
-  border-radius: 2px;
-  background: linear-gradient(90deg,
-    #0044ff 0%,
-    #00ccff 25%,
-    #00ff88 50%,
-    #ffcc00 75%,
-    #ff2244 100%);
-  border: 1px solid rgba(255,255,255,0.07);
-}
-.legend-labels {
-  display: flex; justify-content: space-between;
-  font-size: 0.6rem; color: var(--muted);
-}
-
-/* ===== NORTH / SOUTH BADGE ===== */
-#ns-badge {
-  position: fixed; top: 62px; right: 24px;
-  z-index: 10;
-  display: flex; gap: 10px;
-  font-family: var(--font-head);
-  font-size: 0.65rem; letter-spacing: 0.12em;
-}
-.ns-item {
-  display: flex; align-items: center; gap: 6px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 4px 10px;
-  backdrop-filter: blur(8px);
-}
-.ns-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-}
-.ns-north .ns-dot { background: #00ffcc; box-shadow: 0 0 6px #00ffcc; }
-.ns-south .ns-dot { background: #ff6644; box-shadow: 0 0 6px #ff6644; }
-.ns-north { color: #00ffcc; }
-.ns-south { color: #ff6644; }
-
-/* ===== CONTROLS HINT ===== */
-#controls-hint {
-  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  z-index: 10;
-  font-size: 0.58rem;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-  pointer-events: none;
-  opacity: 0.6;
-}
-
-/* ===== CORNER DECORATION ===== */
-.corner-accent {
-  position: fixed; z-index: 9;
-  width: 80px; height: 80px;
-  pointer-events: none;
-}
-.corner-accent.tl { top: 52px; left: 0;
-  border-top: 1px solid var(--border);
-  border-left: 1px solid var(--border); }
-.corner-accent.tr { top: 52px; right: 0;
-  border-top: 1px solid var(--border);
-  border-right: 1px solid var(--border); }
-.corner-accent.bl { bottom: 0; left: 0;
-  border-bottom: 1px solid var(--border);
-  border-left: 1px solid var(--border); }
-.corner-accent.br { bottom: 0; right: 0;
-  border-bottom: 1px solid var(--border);
-  border-right: 1px solid var(--border); }
-
-/* ===== LOADING SHIMMER ===== */
-@keyframes sweep {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-</style>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="./style.css"/>
 </head>
 <body>
 
-<!-- WebGL canvas -->
+<!-- ── WebGL canvas ──────────────────────────────────────── -->
 <canvas id="gl-canvas"></canvas>
 
-<!-- Header -->
+<!-- ── Header ───────────────────────────────────────────── -->
 <header id="header">
-  <div id="header-title">
-    <span class="acronym">CGV-WEB</span>
-    <span class="dot-sep">·</span>
-    <span class="full-name">ATLAS Calorimeter Geometry Viewer — Web Edition</span>
+  <div class="logo-block">
+    <span class="logo-text">CGV<span class="logo-dash">—</span>WEB</span>
+    <span class="logo-sub">ATLAS · Calorimeter Geometry Viewer</span>
   </div>
-  <div id="header-actions">
-    <button id="btn-reset"    class="btn btn-outline">↺ RESET</button>
-    <button id="btn-download" class="btn btn-primary">⬇ SNAPSHOT</button>
-  </div>
+  <nav class="header-nav">
+    <a class="nav-btn" href="https://nipscern.com" target="_blank" rel="noopener">
+      <span class="nav-btn-icon">↗</span>NIPSCERN
+    </a>
+    <a class="nav-btn" href="https://nipscern.com/projects/cgv" target="_blank" rel="noopener">
+      <span class="nav-btn-icon">◎</span>Projects
+    </a>
+  </nav>
 </header>
 
-<!-- North / South labels -->
-<div id="ns-badge">
-  <div class="ns-item ns-north"><div class="ns-dot"></div>NORTH (+Z / Side A)</div>
-  <div class="ns-item ns-south"><div class="ns-dot"></div>SOUTH (−Z / Side C)</div>
-</div>
-
-<!-- Corner accents -->
-<div class="corner-accent tl"></div>
-<div class="corner-accent tr"></div>
-<div class="corner-accent bl"></div>
-<div class="corner-accent br"></div>
-
-<!-- Drop zone -->
+<!-- ── Drop zone ─────────────────────────────────────────── -->
 <div id="drop-zone">
-  <div class="dz-inner">
-    <!-- Animated calorimeter cross-section icon -->
-    <svg class="dz-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="32" cy="32" r="28" stroke="rgba(0,210,180,0.2)" stroke-width="1"/>
-      <circle cx="32" cy="32" r="20" stroke="rgba(0,210,180,0.35)" stroke-width="1"/>
-      <circle cx="32" cy="32" r="12" stroke="rgba(0,210,180,0.55)" stroke-width="1.5"/>
-      <circle cx="32" cy="32" r="5"  stroke="rgba(0,210,180,0.9)" stroke-width="1.5"/>
-      <!-- radial spokes -->
-      <line x1="32" y1="4"  x2="32" y2="60" stroke="rgba(0,210,180,0.15)" stroke-width="0.5"/>
-      <line x1="4"  y1="32" x2="60" y2="32" stroke="rgba(0,210,180,0.15)" stroke-width="0.5"/>
-      <line x1="12" y1="12" x2="52" y2="52" stroke="rgba(0,210,180,0.1)" stroke-width="0.5"/>
-      <line x1="52" y1="12" x2="12" y2="52" stroke="rgba(0,210,180,0.1)" stroke-width="0.5"/>
-      <!-- orbiting dot -->
-      <circle class="orbit" cx="32" cy="4" r="2.5" fill="#00d2b4" opacity="0.9"/>
-    </svg>
-
-    <div class="dz-title">DROP EVENT FILE</div>
-    <div class="dz-subtitle">
-      Drag &amp; drop an ATLAS collision XML file<br/>
-      or click to browse
+  <div class="dz-card">
+    <div class="dz-rings">
+      <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="60" cy="60" r="55" stroke="rgba(255,193,7,0.08)" stroke-width="1"/>
+        <circle cx="60" cy="60" r="42" stroke="rgba(255,193,7,0.13)" stroke-width="1"/>
+        <circle cx="60" cy="60" r="29" stroke="rgba(255,193,7,0.20)" stroke-width="1.2"/>
+        <circle cx="60" cy="60" r="16" stroke="rgba(255,193,7,0.32)" stroke-width="1.5"/>
+        <circle cx="60" cy="60" r="5"  fill="rgba(255,193,7,0.65)"/>
+        <g class="orb-cw">
+          <circle cx="60" cy="5" r="3.5" fill="rgba(255,193,7,0.9)"/>
+        </g>
+        <g class="orb-ccw">
+          <circle cx="115" cy="60" r="2.5" fill="rgba(180,220,255,0.8)"/>
+        </g>
+        <g class="orb-cw2">
+          <circle cx="60" cy="18" r="2" fill="rgba(255,255,255,0.5)"/>
+        </g>
+      </svg>
     </div>
-    <div class="dz-format">
-      <code>&lt;cell l="[layer]" eta="[η_idx]" phi="[φ_idx]" e="[energy]" /&gt;</code>
-    </div>
+    <div class="dz-title">Drop XML Event Data</div>
+    <div class="dz-body">ATLAS collision XML · drag here or click to browse</div>
+    <div class="dz-code"><span class="dz-tag">&lt;cell</span> l="…" eta="…" phi="…" e="…"<span class="dz-tag">/&gt;</span></div>
   </div>
 </div>
-
-<!-- Hidden file input -->
 <input type="file" id="file-input" accept=".xml,text/xml" style="display:none"/>
 
-<!-- Status overlay (shown when processing) -->
-<div id="overlay" class="hidden">
-  <span id="status" class="status loading">Initialising…</span>
+<!-- ── Toast notification ────────────────────────────────── -->
+<div id="toast">
+  <div class="toast-pip" id="toast-pip"></div>
+  <span id="toast-text">Initialising…</span>
 </div>
 
-<!-- Bottom-left info -->
-<div id="info-panel">
-  <div id="cell-count"></div>
-  <div id="energy-range"></div>
+<!-- ── Ghost label ───────────────────────────────────────── -->
+<div id="ghost-lbl">
+  <div class="gl-eyebrow">Ghost Mode</div>
+  <div class="gl-title">ATLAS Full Geometry</div>
+  <div class="gl-sub">Drop XML to illuminate</div>
 </div>
 
-<!-- Energy legend -->
-<div id="legend">
-  <div class="legend-title">Energy Deposit</div>
-  <div class="legend-bar"></div>
-  <div class="legend-labels">
-    <span>LOW</span>
-    <span>HIGH</span>
+<!-- ── Cell hover tooltip (raycasting) ───────────────────── -->
+<div id="cell-tooltip">
+  <div class="ct-row ct-header">
+    <span class="ct-label">Energy</span>
+    <span class="ct-val ct-energy" id="ct-energy">—</span>
+  </div>
+  <div class="ct-divider"></div>
+  <div class="ct-row">
+    <span class="ct-label">Layer</span>
+    <span class="ct-val" id="ct-layer">—</span>
+  </div>
+  <div class="ct-row">
+    <span class="ct-label">η</span>
+    <span class="ct-val" id="ct-eta">—</span>
+  </div>
+  <div class="ct-row">
+    <span class="ct-label">φ</span>
+    <span class="ct-val" id="ct-phi">—</span>
   </div>
 </div>
 
-<!-- Controls hint -->
-<div id="controls-hint">ORBIT · ZOOM · PAN &nbsp;|&nbsp; CLICK TO LOAD EVENT</div>
+<!-- ── Energy panel (right side) ─────────────────────────── -->
+<div id="energy-panel">
+  <div class="ep-label">Energy Filter</div>
+  <div class="ep-num ep-top" id="ep-max">—</div>
+  <div id="track-wrap">
+    <div id="grad-track">
+      <div id="track-dim"></div>
+    </div>
+    <div id="track-handle">
+      <div class="th-grip"></div>
+    </div>
+  </div>
+  <div class="ep-num" id="ep-min">—</div>
+  <div class="ep-thresh" id="threshold-display">All</div>
+</div>
+
+<!-- Floating slider tooltip -->
+<div id="slider-tip">
+  <span id="tip-val">All cells</span>
+  <span id="tip-pct">0%</span>
+</div>
+
+<!-- ── Geometry panel (left side) ────────────────────────── -->
+<div id="geo-panel">
+  <div class="gp-header">
+    <span class="gp-title">Detectors</span>
+    <button class="gp-toggle" id="gp-toggle-btn" aria-label="Toggle panel">‹</button>
+  </div>
+  <div class="gp-body" id="gp-body">
+
+    <div class="gp-section">
+      <div class="gp-sec-label">Sub-detectors</div>
+      <label class="gp-check">
+        <input type="checkbox" class="det-check" data-det="lar"  checked/>
+        <span class="gc-box"></span>
+        <span class="gc-label">LAr EM</span>
+        <span class="gc-badge lar">18–25</span>
+      </label>
+      <label class="gp-check">
+        <input type="checkbox" class="det-check" data-det="tile" checked/>
+        <span class="gc-box"></span>
+        <span class="gc-label">TileCal</span>
+        <span class="gc-badge tile">0–13</span>
+      </label>
+      <label class="gp-check">
+        <input type="checkbox" class="det-check" data-det="hec"  checked/>
+        <span class="gc-box"></span>
+        <span class="gc-label">HEC</span>
+        <span class="gc-badge hec">14–17</span>
+      </label>
+    </div>
+
+    <div class="gp-divider"></div>
+
+    <div class="gp-section">
+      <div class="gp-sec-label">Cross-section</div>
+      <div class="clip-row">
+        <span class="clip-label">−Z</span>
+        <div class="clip-track-wrap">
+          <div class="clip-track" id="clip-track">
+            <div class="clip-fill" id="clip-fill"></div>
+          </div>
+          <input type="range" id="clip-slider"
+                 min="0" max="100" value="100" step="1"
+                 class="clip-range" aria-label="Clipping plane"/>
+        </div>
+        <span class="clip-label">+Z</span>
+      </div>
+      <div class="clip-val-row">
+        <span class="clip-val-label">Clip Z</span>
+        <span class="clip-val-num" id="clip-val-display">OFF</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Info readout (bottom-left) ────────────────────────── -->
+<div id="info-panel">
+  <div class="ir"><span class="ir-k">Cells</span><span class="ir-v" id="cell-count">—</span></div>
+  <div class="ir"><span class="ir-k">Range</span><span class="ir-v" id="energy-range">—</span></div>
+</div>
+
+<!-- ── Control bar (bottom-right) ────────────────────────── -->
+<div id="ctrl-bar">
+  <button class="cb" id="btn-reset" title="Reset view">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M12 7A5 5 0 1 1 9 2.27" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M9 0v3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Reset
+  </button>
+  <div class="cb-sep"></div>
+  <button class="cb" id="btn-snapshot" title="Download 4K PNG">
+    <svg width="12" height="14" viewBox="0 0 12 14" fill="none">
+      <path d="M6 1v9M2 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M1 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    Snapshot
+  </button>
+  <div class="cb-sep"></div>
+  <button class="cb" id="btn-help" title="Help">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.4"/>
+      <path d="M5.2 5.5a1.8 1.8 0 0 1 3.5.6c0 1.2-1.7 1.5-1.7 2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+      <circle cx="7" cy="11" r="0.7" fill="currentColor"/>
+    </svg>
+    Info
+  </button>
+</div>
+
+<!-- ── Focus mode button ──────────────────────────────────── -->
+<button id="btn-focus" title="Focus mode">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+    <path d="M1 5V2h3M12 1h3v3M11 15h3v-3M1 11v3h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+</button>
+
+<!-- ── Exit focus overlay ─────────────────────────────────── -->
+<div id="focus-overlay">
+  <button id="btn-exit-focus">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M4 1H1v3M10 1h3v3M1 10v3h3M10 13h3v-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Exit Focus
+  </button>
+</div>
+
+<!-- ── Footer ─────────────────────────────────────────────── -->
+<footer id="footer">
+  <!-- ATLAS -->
+  <div class="logo-item" title="ATLAS Experiment">
+    <svg class="inst-logo" viewBox="0 0 80 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="22" font-family="'IBM Plex Sans', sans-serif" font-weight="500"
+            font-size="18" letter-spacing="4" fill="currentColor">ATLAS</text>
+    </svg>
+  </div>
+  <!-- CERN -->
+  <div class="logo-item" title="CERN">
+    <svg class="inst-logo" viewBox="0 0 60 28" fill="none">
+      <text x="0" y="22" font-family="'IBM Plex Sans', sans-serif" font-weight="500"
+            font-size="18" letter-spacing="3" fill="currentColor">CERN</text>
+    </svg>
+  </div>
+  <!-- UFJF -->
+  <div class="logo-item" title="Universidade Federal de Juiz de Fora">
+    <svg class="inst-logo" viewBox="0 0 56 28" fill="none">
+      <text x="0" y="22" font-family="'IBM Plex Sans', sans-serif" font-weight="500"
+            font-size="18" letter-spacing="3" fill="currentColor">UFJF</text>
+    </svg>
+  </div>
+  <!-- CNPq -->
+  <div class="logo-item" title="CNPq">
+    <svg class="inst-logo" viewBox="0 0 60 28" fill="none">
+      <text x="0" y="22" font-family="'IBM Plex Sans', sans-serif" font-weight="500"
+            font-size="18" letter-spacing="2" fill="currentColor">CNPq</text>
+    </svg>
+  </div>
+  <!-- FAPEMIG -->
+  <div class="logo-item" title="FAPEMIG">
+    <svg class="inst-logo" viewBox="0 0 100 28" fill="none">
+      <text x="0" y="22" font-family="'IBM Plex Sans', sans-serif" font-weight="500"
+            font-size="18" letter-spacing="2" fill="currentColor">FAPEMIG</text>
+    </svg>
+  </div>
+</footer>
+
+<!-- ── Help modal ─────────────────────────────────────────── -->
+<div id="modal-overlay">
+  <div id="modal">
+
+    <div class="m-hdr">
+      <div>
+        <div class="m-title">Calorimeter Geometry Viewer</div>
+        <div class="m-sub">CGV-WEB · ATLAS Experiment</div>
+      </div>
+      <button class="m-close" id="modal-close-btn" aria-label="Close">✕</button>
+    </div>
+
+    <div class="m-rule"></div>
+
+    <div class="m-sec">
+      <div class="m-sec-title">Loading Event Data</div>
+      <p>Drag and drop an ATLAS collision XML onto the viewport, or click to browse.
+        Each <code>&lt;cell&gt;</code> needs <code>l</code> (layer 0–25),
+        <code>eta</code> (signed integer), <code>phi</code> (index), and
+        <code>e</code> (energy in MeV). Positive eta maps to Side A (+Z),
+        negative to Side C (−Z).</p>
+    </div>
+
+    <div class="m-sec">
+      <div class="m-sec-title">Navigation</div>
+      <div class="ctrl-grid">
+        <span class="ck">Drag</span>         <span class="cd">Orbit the detector</span>
+        <span class="ck">Scroll</span>        <span class="cd">Zoom in / out</span>
+        <span class="ck">Right drag</span>    <span class="cd">Pan the view</span>
+        <span class="ck">Hover cell</span>    <span class="cd">Show energy, layer, η, φ tooltip</span>
+        <span class="ck">Clip slider</span>   <span class="cd">Cross-section through Z-axis</span>
+        <span class="ck">Focus mode</span>    <span class="cd">Cinematic fullscreen rotation</span>
+      </div>
+    </div>
+
+    <div class="m-sec">
+      <div class="m-sec-title">Colour Scale</div>
+      <div class="legend-bar"></div>
+      <div class="legend-ends"><span>Low · Blue</span><span>High · Red–White</span></div>
+      <p style="margin-top:10px">
+        High-energy cells emit a neon bloom effect. Geometry respects the barrel/endcap crack at |η| ≈ 1.5.
+        Up to ~200 000 cells use instanced meshes for real-time performance.
+      </p>
+    </div>
+
+    <div class="m-rule"></div>
+
+    <div class="credits">
+      <div class="cr-item"><span class="cr-name">ATLAS Experiment</span><span class="cr-role">Detector</span></div>
+      <div class="cr-item"><span class="cr-name">CERN</span><span class="cr-role">Host Lab</span></div>
+      <div class="cr-item"><span class="cr-name">UFJF</span><span class="cr-role">Institution</span></div>
+      <div class="cr-item"><span class="cr-name">CNPq · FAPEMIG</span><span class="cr-role">Funding</span></div>
+    </div>
+
+  </div>
+</div>
 
 <script type="module" src="./main.js"></script>
 </body>
