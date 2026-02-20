@@ -1,7 +1,17 @@
 // ============================================================
-//  CGV-WEB v2.1 — main.js  (Elegance & Science Edition)
-//  Three.js · Bloom · Raycasting · Clipping · Focus Mode
-//  + X-Ray wireframe · Sample XML · Loading bar · Wiki hooks
+//  CGV-WEB v3.0 — main.js
+//  NIPSCERN Laboratory × ATLAS / CERN
+//
+//  Key improvements in v3.0:
+//  · Wireframe: merged LineSegments from EdgesGeometry — single
+//    draw call, respects active/threshold filters, no crashing
+//  · Bloom: reduced to artistic, non-aggressive levels
+//  · Focus mode: smooth CSS opacity transition
+//  · Raycaster: disabled when help modal is open; ignores
+//    filtered-out and sub-threshold cells
+//  · Cell Data toggle: ios-switch in Visualization panel
+//  · Metadata: filename display (no .xml extension)
+//  · Z-Axis depth indicator UI sync
 // ============================================================
 import * as THREE from 'three';
 import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
@@ -11,6 +21,8 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass }        from 'three/addons/postprocessing/SMAAPass.js';
 import init, { process_xml_data } from './pkg/cgv_web.js';
+import { createIcons, icons } from 'lucide';
+createIcons({ icons });
 
 await init();
 
@@ -18,9 +30,9 @@ await init();
 //  Layer → Sub-detector mapping
 // ──────────────────────────────────────────────────────────
 const LAYER_DET = new Uint8Array(26);
-for (let i = 0;  i <= 13; i++) LAYER_DET[i] = 0;
-for (let i = 14; i <= 17; i++) LAYER_DET[i] = 1;
-for (let i = 18; i <= 25; i++) LAYER_DET[i] = 2;
+for (let i = 0;  i <= 13; i++) LAYER_DET[i] = 0; // TileCal
+for (let i = 14; i <= 17; i++) LAYER_DET[i] = 1; // HEC
+for (let i = 18; i <= 25; i++) LAYER_DET[i] = 2; // LAr EM
 
 const DET_NAMES = ['TileCal', 'HEC', 'LAr EM'];
 const DET_KEYS  = ['tile', 'hec', 'lar'];
@@ -60,18 +72,18 @@ const ctPhi           = document.getElementById('ct-phi');
 const clipSlider      = document.getElementById('clip-slider');
 const clipFill        = document.getElementById('clip-fill');
 const clipValDisp     = document.getElementById('clip-val-display');
+const zdiBar          = document.getElementById('zdi-bar');
 const gpToggleBtn     = document.getElementById('gp-toggle-btn');
 const gpBody          = document.getElementById('gp-body');
 const btnFocus        = document.getElementById('btn-focus');
 const focusOverlay    = document.getElementById('focus-overlay');
 const btnExitFocus    = document.getElementById('btn-exit-focus');
 const detChecks       = [...document.querySelectorAll('.det-check')];
-// New in v2.1
 const modeSolidBtn    = document.getElementById('mode-solid');
 const modeWireBtn     = document.getElementById('mode-wire');
-let   xrayMesh        = null; // legacy stub — no longer built, kept to avoid reset errors
 const filenameDisplay = document.getElementById('filename-display');
 const filenameText    = document.getElementById('filename-text');
+const metaFilename    = document.getElementById('meta-filename');
 const dzBrowseBtn     = document.getElementById('dz-browse-btn');
 const dzSampleBtn     = document.getElementById('dz-sample-btn');
 const loadingBar      = document.getElementById('loading-bar');
@@ -82,43 +94,73 @@ const xmlDateEl       = document.getElementById('xml-date');
 const wikiToggleBtn   = document.getElementById('wiki-toggle-btn');
 const wikiPanel       = document.getElementById('wiki-panel');
 const wikiCloseBtn    = document.getElementById('wiki-close-btn');
+const cellHoverToggle = document.getElementById('cell-hover-toggle');
+const metaToggleBtn   = document.getElementById('meta-toggle-btn');
+const metaBody        = document.getElementById('meta-body');
+const metaChevron     = document.getElementById('meta-chevron');
+
+// ──────────────────────────────────────────────────────────
+//  Cell hover enabled flag
+// ──────────────────────────────────────────────────────────
+let cellHoverEnabled = true;
+cellHoverToggle?.addEventListener('change', e => {
+  cellHoverEnabled = e.target.checked;
+  if (!cellHoverEnabled) clearTooltip();
+});
+
+// ──────────────────────────────────────────────────────────
+//  Metadata panel collapse
+// ──────────────────────────────────────────────────────────
+let metaCollapsed = false;
+metaToggleBtn?.addEventListener('click', () => {
+  metaCollapsed = !metaCollapsed;
+  metaBody?.classList.toggle('collapsed', metaCollapsed);
+  metaToggleBtn.setAttribute('aria-expanded', String(!metaCollapsed));
+  if (metaChevron) {
+    metaChevron.style.transform = metaCollapsed ? 'rotate(180deg)' : '';
+  }
+});
 
 // ──────────────────────────────────────────────────────────
 //  Renderer
 // ──────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({
   canvas,
-  antialias: false,
+  antialias: true,
   preserveDrawingBuffer: true,
   powerPreference: 'high-performance',
   alpha: false,
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000811);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = 1.08;   // slightly reduced for balanced look
 renderer.localClippingEnabled = true;
 
 // ──────────────────────────────────────────────────────────
 //  Scene & Camera
 // ──────────────────────────────────────────────────────────
 const scene  = new THREE.Scene();
-scene.fog    = new THREE.FogExp2(0x000811, 0.007);
+scene.fog    = new THREE.FogExp2(0x000811, 0.006);
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.01, 300);
 camera.position.set(10, 5, 16);
 camera.lookAt(0, 0, 0);
 
 // ──────────────────────────────────────────────────────────
-//  Post-processing: Bloom + SMAA + Output
+//  Post-processing: Bloom (reduced) + SMAA + Output
 // ──────────────────────────────────────────────────────────
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 
+// ▼ Bloom values significantly reduced for premium scientific look
+// strength: 0.60→0.22, radius: 0.50→0.38, threshold: 0.34→0.52
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.60, 0.50, 0.34,
+  0.22,  // strength  — was 0.60 (too aggressive)
+  0.38,  // radius    — keeps soft halo without bleeding
+  0.52,  // threshold — only bright cells bloom, not geometry
 );
 composer.addPass(bloomPass);
 
@@ -126,6 +168,9 @@ const smaaPass = new SMAAPass(
   window.innerWidth  * renderer.getPixelRatio(),
   window.innerHeight * renderer.getPixelRatio(),
 );
+smaaPass.edgeDetectionThreshold = 0.02;
+smaaPass.maxSearchSteps = 32;
+smaaPass.maxSearchStepsDiagonal = 16;
 composer.addPass(smaaPass);
 composer.addPass(new OutputPass());
 
@@ -141,48 +186,47 @@ controls.autoRotate      = true;
 controls.autoRotateSpeed = 0.22;
 
 // ──────────────────────────────────────────────────────────
-//  Lighting
+//  Lighting — balanced, artistic
 // ──────────────────────────────────────────────────────────
-scene.add(new THREE.AmbientLight(0x001828, 1.25));
+scene.add(new THREE.AmbientLight(0x001828, 1.4));
 
-const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+const sun = new THREE.DirectionalLight(0xffffff, 1.75);
 sun.position.set(8, 18, 10);
 scene.add(sun);
 
-const goldRim = new THREE.DirectionalLight(0xffc107, 0.38);
-goldRim.position.set(-14, -2, 9);
-scene.add(goldRim);
+// Warm fill from below-side for depth
+const warmFill = new THREE.DirectionalLight(0xffc870, 0.28);
+warmFill.position.set(-14, -2, 9);
+scene.add(warmFill);
 
-const fill = new THREE.DirectionalLight(0x1a3050, 0.42);
-fill.position.set(-14, -4, -8);
-scene.add(fill);
+// Cool blue-fill from rear
+const coolFill = new THREE.DirectionalLight(0x1a3050, 0.36);
+coolFill.position.set(-14, -4, -8);
+scene.add(coolFill);
 
 // ──────────────────────────────────────────────────────────
 //  Central beam axis + North marker
 // ──────────────────────────────────────────────────────────
-let axisGroup = null;
+let axisGroup   = null;
 let axisVisible = true;
 
 function buildAxis() {
   if (axisGroup) { scene.remove(axisGroup); axisGroup = null; }
   const g = new THREE.Group();
 
-  // Beam line
-  const lineMat = new THREE.LineBasicMaterial({
-    color: 0x1a4a6a, transparent: true, opacity: 0.55,
-  });
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x1a4a6a, transparent: true, opacity: 0.55 });
   const lineGeo = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, -10),
     new THREE.Vector3(0, 0,  10),
   ]);
   g.add(new THREE.Line(lineGeo, lineMat));
 
-  // North cone (red, +Z end only)
+  // North cone at +Z
   const coneMat = new THREE.MeshBasicMaterial({ color: 0xc84040, transparent: true, opacity: 0.82 });
   const coneGeo = new THREE.ConeGeometry(0.055, 0.26, 8);
   const cone = new THREE.Mesh(coneGeo, coneMat);
   cone.position.z = 9.2;
-  cone.rotation.x = -Math.PI / 2; // point toward +Z
+  cone.rotation.x = -Math.PI / 2;
   g.add(cone);
 
   scene.add(g);
@@ -194,26 +238,32 @@ function setAxisVisible(v) {
   axisVisible = v;
   if (axisGroup) axisGroup.visible = v;
 }
-
-// Axis toggle from settings checkbox
 document.getElementById('axis-toggle')?.addEventListener('change', e => {
   setAxisVisible(e.target.checked);
 });
+
+// ──────────────────────────────────────────────────────────
+//  Z-Axis slice
+// ──────────────────────────────────────────────────────────
+let currentClipZ = Infinity;
 
 clipSlider.addEventListener('input', () => {
   const pct = parseInt(clipSlider.value, 10) / 100;
   clipFill.style.width = `${pct * 100}%`;
 
+  // Update depth indicator bar width (100% = full, 0% = core only)
+  if (zdiBar) zdiBar.style.width = `${pct * 100}%`;
+
   if (pct >= 0.999) {
     currentClipZ = Infinity;
     renderer.clippingPlanes = [];
-    clipValDisp.textContent = 'OFF';
+    if (clipValDisp) clipValDisp.textContent = 'OFF';
   } else {
     const MAX_Z = 8.5;
     const z = pct * MAX_Z;
     currentClipZ = z;
     renderer.clippingPlanes = [];
-    clipValDisp.textContent = `${(z * 1000).toFixed(0)}\u00a0mm`;
+    if (clipValDisp) clipValDisp.textContent = `${(z * 1000).toFixed(0)}\u00a0mm`;
   }
   applyCombinedFilter();
 });
@@ -230,105 +280,66 @@ function buildGhost() {
   const shell = (r, hl, zc, op, col) => {
     const m = new THREE.Mesh(
       new THREE.CylinderGeometry(r, r, hl * 2, 80, 1, true),
-      new THREE.MeshBasicMaterial({
-        color: col, transparent: true, opacity: op,
-        side: THREE.DoubleSide, depthWrite: false,
-      }),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, side: THREE.DoubleSide, depthWrite: false }),
     );
-    m.rotation.x = Math.PI / 2;
-    m.position.z = zc;
+    m.rotation.x = Math.PI / 2; m.position.z = zc;
     g.add(m);
   };
-
   const ring = (rI, rO, z, op, col) => {
     const m = new THREE.Mesh(
       new THREE.RingGeometry(rI, rO, 80),
-      new THREE.MeshBasicMaterial({
-        color: col, transparent: true, opacity: op,
-        side: THREE.DoubleSide, depthWrite: false,
-      }),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, side: THREE.DoubleSide, depthWrite: false }),
     );
-    m.rotation.x = Math.PI / 2;
-    m.position.z = z;
+    m.rotation.x = Math.PI / 2; m.position.z = z;
     g.add(m);
   };
 
   const G = 0.048, E = 0.12;
   const EM = 0x0d3a4a, TI = 0x0a2038, HC = 0x06121c;
 
-  // EM Barrel
-  shell(1.42, 3.17,  0,  G,       EM);
-  shell(1.98, 3.17,  0,  G * 0.6, EM);
+  shell(1.42, 3.17,  0, G,       EM); shell(1.98, 3.17, 0, G * 0.6, EM);
   for (const z of [3.17, -3.17]) ring(1.42, 1.98, z, E * 0.5, EM);
-
-  // Tile Barrel
-  shell(2.30, 3.82, 0, G * 0.85, TI);
-  shell(3.82, 3.82, 0, G * 0.42, TI);
+  shell(2.30, 3.82,  0, G * 0.85, TI); shell(3.82, 3.82, 0, G * 0.42, TI);
   for (const z of [3.82, -3.82]) ring(2.30, 3.82, z, E * 0.28, TI);
 
-  // EM Endcap (±Z)
   for (const s of [1, -1]) {
     const zc = s * 3.745;
-    shell(0.33, 0.065, zc, G * 1.1, EM);
-    shell(2.10, 0.065, zc, G * 1.1, EM);
-    ring(0.33, 2.10, s * 3.68, E * 0.48, EM);
-    ring(0.33, 2.10, s * 3.81, E * 0.36, EM);
+    shell(0.33, 0.065, zc, G * 1.1, EM); shell(2.10, 0.065, zc, G * 1.1, EM);
+    ring(0.33, 2.10, s * 3.68, E * 0.48, EM); ring(0.33, 2.10, s * 3.81, E * 0.36, EM);
   }
-
-  // Tile Extended Barrel (±Z)
   for (const s of [1, -1]) {
-    const z0 = s * 3.20, z1 = s * 5.20;
-    const zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
-    shell(2.30, hl, zc, G,        TI);
-    shell(3.82, hl, zc, G * 0.40, TI);
-    ring(2.30, 3.82, z0, E * 0.26, TI);
-    ring(2.30, 3.82, z1, E * 0.26, TI);
+    const z0 = s * 3.20, z1 = s * 5.20, zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
+    shell(2.30, hl, zc, G, TI); shell(3.82, hl, zc, G * 0.40, TI);
+    ring(2.30, 3.82, z0, E * 0.26, TI); ring(2.30, 3.82, z1, E * 0.26, TI);
   }
-
-  // HEC (±Z)
   for (const s of [1, -1]) {
-    const z0 = s * 4.35, z1 = s * 6.05;
-    const zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
-    shell(0.37, hl, zc, G * 0.62, HC);
-    shell(2.00, hl, zc, G * 0.62, HC);
-    ring(0.37, 2.00, z0, E * 0.22, HC);
-    ring(0.37, 2.00, z1, E * 0.22, HC);
+    const z0 = s * 4.35, z1 = s * 6.05, zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
+    shell(0.37, hl, zc, G * 0.62, HC); shell(2.00, hl, zc, G * 0.62, HC);
+    ring(0.37, 2.00, z0, E * 0.22, HC); ring(0.37, 2.00, z1, E * 0.22, HC);
   }
-
-  // FCal (±Z)
   for (const s of [1, -1]) {
-    const z0 = s * 4.60, z1 = s * 5.60;
-    const zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
-    shell(0.05, hl, zc, G * 0.82, HC);
-    shell(0.45, hl, zc, G * 0.82, HC);
-    ring(0.05, 0.45, z0, E * 0.32, HC);
-    ring(0.05, 0.45, z1, E * 0.32, HC);
+    const z0 = s * 4.60, z1 = s * 5.60, zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
+    shell(0.05, hl, zc, G * 0.82, HC); shell(0.45, hl, zc, G * 0.82, HC);
+    ring(0.05, 0.45, z0, E * 0.32, HC); ring(0.05, 0.45, z1, E * 0.32, HC);
   }
 
-  // Beam axis
   g.add(new THREE.Line(
     new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, -9.5),
-      new THREE.Vector3(0, 0,  9.5),
+      new THREE.Vector3(0, 0, -9.5), new THREE.Vector3(0, 0, 9.5),
     ]),
     new THREE.LineBasicMaterial({ color: 0x0a2030, transparent: true, opacity: 0.45 }),
   ));
 
-  // Equatorial ring
   const eqRing = new THREE.Mesh(
     new THREE.RingGeometry(4.68, 4.72, 96),
-    new THREE.MeshBasicMaterial({
-      color: 0x0a2a3a, side: THREE.DoubleSide,
-      transparent: true, opacity: 0.16, depthWrite: false,
-    }),
+    new THREE.MeshBasicMaterial({ color: 0x0a2a3a, side: THREE.DoubleSide, transparent: true, opacity: 0.16, depthWrite: false }),
   );
   eqRing.rotation.x = Math.PI / 2;
   g.add(eqRing);
 
   const coneGeo = new THREE.ConeGeometry(0.065, 0.28, 8);
   const mk = (col, z, rx) => {
-    const m = new THREE.Mesh(coneGeo,
-      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.65 }));
+    const m = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.65 }));
     m.position.z = z; m.rotation.x = rx; return m;
   };
   g.add(mk(0x70c8b0,  9.0, -Math.PI / 2));
@@ -393,29 +404,32 @@ const fragmentShader = /* glsl */`
   void main() {
     #include <clipping_planes_fragment>
 
-    if (v_active  < 0.5)          discard;
-    if (v_energy  < u_threshold)  discard;
+    if (v_active  < 0.5)         discard;
+    if (v_energy  < u_threshold) discard;
 
     vec3 ld1 = normalize(vec3(0.55, 1.0, 0.50));
     vec3 ld2 = normalize(vec3(-0.8, -0.3, -0.6));
-    float d1 = max(dot(v_normal, ld1), 0.0) * 0.62;
-    float d2 = max(dot(v_normal, ld2), 0.0) * 0.14;
+    float d1 = max(dot(v_normal, ld1), 0.0) * 0.60;
+    float d2 = max(dot(v_normal, ld2), 0.0) * 0.13;
 
     vec3 vd  = normalize(cameraPosition - v_worldPos);
-    float rim = pow(1.0 - max(dot(vd, v_normal), 0.0), 4.0) * 0.14;
+    float rim = pow(1.0 - max(dot(vd, v_normal), 0.0), 4.0) * 0.12;
 
-    vec3 lit = v_col * (0.28 + d1 + d2) + vec3(rim * 0.35);
+    vec3 lit = v_col * (0.30 + d1 + d2) + vec3(rim * 0.30);
 
-    float sp  = pow(max(dot(reflect(-ld1, v_normal), vd), 0.0), 36.0) * 0.08 * v_energy;
-    lit      += vec3(0.90, 0.74, 0.26) * sp;
+    // Subtle specular highlight — gold-toned
+    float sp  = pow(max(dot(reflect(-ld1, v_normal), vd), 0.0), 40.0) * 0.06 * v_energy;
+    lit      += vec3(0.88, 0.72, 0.24) * sp;
 
-    float boost = 1.0 + v_energy * v_energy * 2.0;
+    // Energy-proportional brightness boost
+    float boost = 1.0 + v_energy * v_energy * 1.8;
     lit *= boost;
 
+    // Hover highlight
     float isHot = step(u_highlight - 0.5, v_iid) * step(v_iid, u_highlight + 0.5);
-    lit = mix(lit, lit * 1.5 + vec3(0.08, 0.06, 0.0), isHot * 0.45);
+    lit = mix(lit, lit * 1.45 + vec3(0.06, 0.04, 0.0), isHot * 0.50);
 
-    gl_FragColor = vec4(lit, 0.92);
+    gl_FragColor = vec4(lit, 0.93);
   }
 `;
 
@@ -431,29 +445,99 @@ let activeAttr       = null;
 const detEnabled     = { tile: true, hec: true, lar: true };
 
 // ──────────────────────────────────────────────────────────
-//  Wireframe mode (material swap — no duplicate mesh)
+//  ★ WIREFRAME OPTIMIZATION
+//  Build a single merged LineSegments object from EdgesGeometry
+//  — one draw call regardless of cell count.
+//  Respects: a_active filtering + energy threshold.
+//  Much cheaper and crash-free vs. material.wireframe = true.
 // ──────────────────────────────────────────────────────────
-let wireActive = false;
-let solidMat   = null;   // saved ShaderMaterial ref
-let wireMat    = null;   // reusable MeshBasicMaterial wireframe
+let wireActive   = false;
+let wireLinesObj = null;
+
+// Shared base edge geometry: 12 edges × 2 verts = 24 verts
+const _baseEdgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+const _edgePos     = _baseEdgeGeo.getAttribute('position').array; // 72 floats
+const _edgeVerts   = _edgePos.length / 3; // 24
+
+function buildWireframeOverlay() {
+  // Dispose previous
+  if (wireLinesObj) {
+    scene.remove(wireLinesObj);
+    wireLinesObj.geometry.dispose();
+    wireLinesObj.material.dispose();
+    wireLinesObj = null;
+  }
+  if (!activeMesh) return;
+
+  const n   = activeMesh.count;
+  const thr = shaderUniforms.u_threshold.value;
+
+  // Count visible cells first (avoid over-allocation)
+  let visCount = 0;
+  for (let i = 0; i < n; i++) {
+    if (activeAttr && activeAttr[i] < 0.5) continue;
+    if (cellNormEnergies && cellNormEnergies[i] < thr) continue;
+    visCount++;
+  }
+  if (visCount === 0) return;
+
+  // Allocate exactly what we need
+  const totalFloats = visCount * _edgeVerts * 3;
+  const pos = new Float32Array(totalFloats);
+  let   off = 0;
+
+  const m4  = new THREE.Matrix4();
+  const v   = new THREE.Vector3();
+
+  for (let i = 0; i < n; i++) {
+    if (activeAttr && activeAttr[i] < 0.5) continue;
+    if (cellNormEnergies && cellNormEnergies[i] < thr) continue;
+
+    activeMesh.getMatrixAt(i, m4);
+    for (let j = 0; j < _edgeVerts; j++) {
+      v.set(_edgePos[j * 3], _edgePos[j * 3 + 1], _edgePos[j * 3 + 2]).applyMatrix4(m4);
+      pos[off++] = v.x;
+      pos[off++] = v.y;
+      pos[off++] = v.z;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+
+  const mat = new THREE.LineBasicMaterial({
+    color: 0x1a8fbb,
+    transparent: true,
+    opacity: 0.32,
+  });
+
+  // Inherit same clipping planes
+  if (renderer.clippingPlanes.length) {
+    mat.clippingPlanes = renderer.clippingPlanes.slice();
+  }
+
+  wireLinesObj = new THREE.LineSegments(geo, mat);
+  scene.add(wireLinesObj);
+}
 
 function setWireframe(active) {
   wireActive = active;
   modeSolidBtn?.classList.toggle('active', !active);
-  modeWireBtn?.classList.toggle('active',  active);
-  if (!activeMesh) return;
+  modeWireBtn?.classList.toggle('active',   active);
+
   if (active) {
-    solidMat = activeMesh.material;
-    if (!wireMat) {
-      wireMat = new THREE.MeshBasicMaterial({
-        color: 0x2288bb, wireframe: true,
-        transparent: true, opacity: 0.18,
-      });
-    }
-    activeMesh.material = wireMat;
+    // Hide the solid InstancedMesh, show wireframe lines
+    if (activeMesh) activeMesh.visible = false;
+    buildWireframeOverlay();
   } else {
-    if (solidMat) activeMesh.material = solidMat;
-    wireMat = null; // release so it rebuilds clean next toggle
+    // Show the solid mesh, remove wireframe lines
+    if (activeMesh) activeMesh.visible = true;
+    if (wireLinesObj) {
+      scene.remove(wireLinesObj);
+      wireLinesObj.geometry.dispose();
+      wireLinesObj.material.dispose();
+      wireLinesObj = null;
+    }
   }
 }
 
@@ -463,7 +547,7 @@ modeWireBtn?.addEventListener('click',  () => setWireframe(!wireActive));
 // ──────────────────────────────────────────────────────────
 //  Cell Z-positions (for Z-axis filtering)
 // ──────────────────────────────────────────────────────────
-let cellZPositions = null; // Float32Array of world-space Z for each cell
+let cellZPositions = null;
 
 // ──────────────────────────────────────────────────────────
 //  Build / tear down InstancedMesh
@@ -471,14 +555,19 @@ let cellZPositions = null; // Float32Array of world-space Z for each cell
 let activeMesh = null;
 
 function buildMesh(result) {
+  // Tear down previous
   if (activeMesh) {
     scene.remove(activeMesh);
     activeMesh.geometry.dispose();
     activeMesh.material.dispose();
     activeMesh = null;
   }
-  if (xrayMesh) { scene.remove(xrayMesh); xrayMesh = null; }
-  solidMat = null; wireMat = null;
+  if (wireLinesObj) {
+    scene.remove(wireLinesObj);
+    wireLinesObj.geometry.dispose();
+    wireLinesObj.material.dispose();
+    wireLinesObj = null;
+  }
 
   const n = result.count;
   if (!n) return;
@@ -488,6 +577,7 @@ function buildMesh(result) {
   cellEtaIds       = result.etas     ?? null;
   cellPhiIds       = result.phis     ?? null;
 
+  // Fallback energy reconstruction from colour channels
   if (!cellNormEnergies) {
     cellNormEnergies = new Float32Array(n);
     for (let i = 0; i < n; i++) {
@@ -497,11 +587,10 @@ function buildMesh(result) {
     }
   }
 
-  const geo = new THREE.BoxGeometry(1, 1, 1);
-
+  const geo  = new THREE.BoxGeometry(1, 1, 1);
   const iids = new Float32Array(n);
   for (let i = 0; i < n; i++) iids[i] = i;
-  geo.setAttribute('a_iid', new THREE.InstancedBufferAttribute(iids, 1));
+  geo.setAttribute('a_iid',    new THREE.InstancedBufferAttribute(iids, 1));
   geo.setAttribute('a_energy', new THREE.InstancedBufferAttribute(cellNormEnergies.slice(), 1));
 
   activeAttr = new Float32Array(n).fill(1);
@@ -537,10 +626,10 @@ function buildMesh(result) {
   scene.add(mesh);
   activeMesh = mesh;
 
-  // Restore wireframe if it was active
+  // Restore wireframe if it was active before reload
   if (wireActive) { wireActive = false; setWireframe(true); }
 
-  // Update active blocks count
+  // Active blocks summary for metadata panel
   const detCounts = { tile: 0, hec: 0, lar: 0 };
   if (cellLayerIds) {
     for (let i = 0; i < n; i++) {
@@ -562,8 +651,6 @@ function buildMesh(result) {
 // ──────────────────────────────────────────────────────────
 //  Combined cell filter: detector + Z slice
 // ──────────────────────────────────────────────────────────
-let currentClipZ = Infinity; // max absolute Z to show
-
 function applyCombinedFilter() {
   if (!activeMesh || !cellLayerIds) return;
   const n   = activeMesh.count;
@@ -573,12 +660,15 @@ function applyCombinedFilter() {
     const detIdx = LAYER_DET[Math.min(layer, 25)];
     const key    = DET_KEYS[detIdx];
     const detOk  = detEnabled[key];
-    const zOk    = cellZPositions
-      ? Math.abs(cellZPositions[i]) <= currentClipZ
-      : true;
+    const zOk    = cellZPositions ? Math.abs(cellZPositions[i]) <= currentClipZ : true;
     att.array[i] = (detOk && zOk) ? 1 : 0;
   }
   att.needsUpdate = true;
+
+  // Rebuild wireframe overlay if active, since visibility changed
+  if (wireActive) {
+    setTimeout(buildWireframeOverlay, 0); // defer to next frame
+  }
 }
 
 function applyDetectorFilter() { applyCombinedFilter(); }
@@ -597,7 +687,6 @@ detChecks.forEach(cb => {
 //  Toast
 // ──────────────────────────────────────────────────────────
 let toastTimer = null;
-
 function toast(msg, live = true) {
   clearTimeout(toastTimer);
   toastTextEl.textContent = msg;
@@ -676,6 +765,11 @@ function applyThreshold(f, tipX, tipY) {
     sliderTip.style.left = `${tx}px`;
     sliderTip.style.top  = `${ty}px`;
   }
+
+  // Rebuild wireframe if active, since threshold changed
+  if (wireActive && activeMesh) {
+    setTimeout(buildWireframeOverlay, 0);
+  }
 }
 
 function fracFromY(clientY) {
@@ -688,6 +782,7 @@ trackHandle.addEventListener('mousedown', e => {
   trackHandle.classList.add('dragging');
   energyPanel.classList.add('active');
   sliderTip.classList.add('on');
+  document.getElementById('energy-rail').classList.add('active');
   e.preventDefault();
 });
 document.addEventListener('mousemove', e => {
@@ -700,6 +795,7 @@ document.addEventListener('mouseup', () => {
   trackHandle.classList.remove('dragging');
   energyPanel.classList.remove('active');
   sliderTip.classList.remove('on');
+  document.getElementById('energy-rail').classList.remove('active');
 });
 gradTrack.addEventListener('click', e => { applyThreshold(fracFromY(e.clientY)); });
 
@@ -707,6 +803,7 @@ trackHandle.addEventListener('touchstart', e => {
   dragging = true;
   trackHandle.classList.add('dragging');
   sliderTip.classList.add('on');
+  document.getElementById('energy-rail').classList.add('active');
   e.preventDefault();
 }, { passive: false });
 document.addEventListener('touchmove', e => {
@@ -719,6 +816,7 @@ document.addEventListener('touchend', () => {
   dragging = false;
   trackHandle.classList.remove('dragging');
   sliderTip.classList.remove('on');
+  document.getElementById('energy-rail').classList.remove('active');
 });
 
 // ──────────────────────────────────────────────────────────
@@ -741,12 +839,16 @@ wikiCloseBtn?.addEventListener('click', () => {
   wikiPanel?.classList.remove('open');
 });
 
-// Wiki tabs
+// Wiki tabs with animated pane switch
 document.querySelectorAll('.wiki-tab').forEach(tab => {
   tab.addEventListener('click', () => {
-    document.querySelectorAll('.wiki-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.wiki-tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
     document.querySelectorAll('.wiki-pane').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
     const pane = document.getElementById(`tab-${tab.dataset.tab}`);
     pane?.classList.add('active');
   });
@@ -757,13 +859,18 @@ document.querySelectorAll('.branch-header').forEach(btn => {
   btn.addEventListener('click', () => {
     const expanded = btn.getAttribute('aria-expanded') === 'true';
     btn.setAttribute('aria-expanded', String(!expanded));
-    const body = btn.nextElementSibling;
-    body?.classList.toggle('open', !expanded);
+    btn.nextElementSibling?.classList.toggle('open', !expanded);
   });
 });
 
 // ──────────────────────────────────────────────────────────
-//  Raycasting & Hover Tooltip
+//  ★ RAYCASTER & HOVER TOOLTIP
+//  Constraints:
+//  1. Disabled when Help modal is open
+//  2. Disabled when Cell Data toggle is off
+//  3. Ignores cells with a_active < 0.5 (hidden by filter)
+//  4. Ignores cells below energy threshold
+//  5. Disabled in focus/cinema mode
 // ──────────────────────────────────────────────────────────
 const raycaster  = new THREE.Raycaster();
 const mouseNDC   = new THREE.Vector2();
@@ -771,11 +878,16 @@ let   lastRayMs  = 0;
 const RAY_GAP_MS = 80;
 let   hoveredId  = -1;
 
+function isHelpModalOpen() {
+  return modalOv.classList.contains('open');
+}
+
 function showTooltip(id, screenX, screenY) {
   if (id === hoveredId) { positionTooltip(screenX, screenY); return; }
 
-  // Don't show tooltip for filtered-out or below-threshold cells
+  // Constraint: cell must be active (visible by filter)
   if (activeAttr && activeAttr[id] < 0.5) { clearTooltip(); return; }
+  // Constraint: cell must be above energy threshold
   if (cellNormEnergies && cellNormEnergies[id] < shaderUniforms.u_threshold.value) {
     clearTooltip(); return;
   }
@@ -803,8 +915,8 @@ function showTooltip(id, screenX, screenY) {
 }
 
 function positionTooltip(sx, sy) {
-  const w = cellTooltip.offsetWidth  || 170;
-  const h = cellTooltip.offsetHeight || 112;
+  const w = cellTooltip.offsetWidth  || 196;
+  const h = cellTooltip.offsetHeight || 118;
   let tx = sx + 22, ty = sy - 12;
   if (tx + w > window.innerWidth  - 8) tx = sx - w - 12;
   if (ty + h > window.innerHeight - 8) ty = sy - h - 4;
@@ -820,18 +932,28 @@ function clearTooltip() {
 }
 
 function onMouseMove(e) {
+  // Constraint 1: disabled in focus mode
   if (document.body.classList.contains('focus-mode')) { clearTooltip(); return; }
+  // Constraint 2: disabled when Help modal is open
+  if (isHelpModalOpen()) { clearTooltip(); return; }
+  // Constraint 3: disabled if cell hover toggle is off
+  if (!cellHoverEnabled) { clearTooltip(); return; }
+  // Throttle
   const now = performance.now();
   if (now - lastRayMs < RAY_GAP_MS) return;
   lastRayMs = now;
-  if (!activeMesh) { clearTooltip(); return; }
+
+  if (!activeMesh || !activeMesh.visible) { clearTooltip(); return; }
+
   mouseNDC.x =  (e.clientX / window.innerWidth)  * 2 - 1;
   mouseNDC.y = -(e.clientY / window.innerHeight)  * 2 + 1;
   raycaster.setFromCamera(mouseNDC, camera);
   const hits = raycaster.intersectObject(activeMesh);
   if (hits.length > 0 && hits[0].instanceId !== undefined) {
     showTooltip(hits[0].instanceId, e.clientX, e.clientY);
-  } else { clearTooltip(); }
+  } else {
+    clearTooltip();
+  }
 }
 
 document.addEventListener('mousemove', onMouseMove, { passive: true });
@@ -842,8 +964,7 @@ renderer.domElement.addEventListener('mouseleave', clearTooltip);
 // ──────────────────────────────────────────────────────────
 function extractXmlDate(text) {
   const m = text.match(/date=["']([^"']+)["']/i);
-  if (m) return m[1];
-  return null;
+  return m ? m[1] : null;
 }
 
 // ──────────────────────────────────────────────────────────
@@ -854,7 +975,7 @@ function generateSampleXml() {
   const cells = [];
   const rnd = (min, max) => min + Math.random() * (max - min);
 
-  // Jet-like cluster in TileCal (layers 0-2, barrel)
+  // Hadronic jet in TileCal (layers 0-2)
   const jetEta = Math.floor(rnd(1, 6));
   const jetPhi = Math.floor(rnd(0, 64));
   for (let dl = 0; dl <= 2; dl++) {
@@ -916,16 +1037,21 @@ ${cells.join('\n')}
 //  File loading
 // ──────────────────────────────────────────────────────────
 async function loadFile(file, xmlTextOverride = null) {
-  toast(`Reading ${file?.name ?? 'sample data'}…`);
+  const fname  = file?.name ?? 'sample-event.xml';
+  const fnBase = fname.replace(/\.xml$/i, '');
+
+  toast(`Reading ${fname}…`);
   showLoading('Reading file…', 15);
   dropZone.classList.add('hidden');
   ghostLbl.classList.add('gone');
 
-  // Show filename
+  // Show filename in header pill
   if (filenameDisplay && filenameText) {
     filenameDisplay.classList.remove('hidden');
-    filenameText.textContent = file?.name ?? 'sample-event.xml';
+    filenameText.textContent = fname;
   }
+  // Show in metadata panel (without .xml extension)
+  if (metaFilename) metaFilename.textContent = fnBase;
 
   try {
     let bytes;
@@ -938,7 +1064,6 @@ async function loadFile(file, xmlTextOverride = null) {
       bytes   = new Uint8Array(await file.arrayBuffer());
     }
 
-    // Extract date from XML attributes
     const dateStr = extractXmlDate(xmlText);
     if (xmlDateEl) xmlDateEl.textContent = dateStr ?? '—';
 
@@ -974,6 +1099,7 @@ async function loadFile(file, xmlTextOverride = null) {
     dropZone.classList.remove('hidden');
     ghostLbl.classList.remove('gone');
     filenameDisplay?.classList.add('hidden');
+    if (metaFilename) metaFilename.textContent = '—';
   }
 }
 
@@ -990,25 +1116,26 @@ dropZone.addEventListener('drop', e => {
 dzBrowseBtn?.addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
 fileInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); });
 
-// Sample XML button
 dzSampleBtn?.addEventListener('click', e => {
   e.stopPropagation();
   const xml = generateSampleXml();
-  const fakeFile = { name: 'sample-pp-event.xml' };
-  loadFile(fakeFile, xml);
+  loadFile({ name: 'sample-pp-event.xml' }, xml);
 });
 
 // ──────────────────────────────────────────────────────────
-//  Focus / Cinema Mode
-// ──────────────────────────────────────────────────────────
+//  ★ FOCUS MODE
+//  Uses CSS opacity transition for smooth HUD fade.
+//  body.focus-mode → opacity: 0 on all HUD elements (CSS handles it).
+// ──────────────────────────────────────────────────
 let focusActive = false;
 
 function enterFocus() {
   focusActive = true;
   document.body.classList.add('focus-mode');
+  // Fade in focus overlay (CSS transition handles opacity)
   focusOverlay.classList.add('active');
   controls.autoRotate      = true;
-  controls.autoRotateSpeed = 0.72;
+  controls.autoRotateSpeed = 0.65;
   clearTooltip();
   const el = document.documentElement;
   if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
@@ -1017,8 +1144,12 @@ function enterFocus() {
 
 function exitFocus() {
   focusActive = false;
-  document.body.classList.remove('focus-mode');
+  // Fade out focus overlay — CSS transition handles it
   focusOverlay.classList.remove('active');
+  // Small delay before removing focus-mode so HUD fades back in gracefully
+  requestAnimationFrame(() => {
+    document.body.classList.remove('focus-mode');
+  });
   controls.autoRotate      = !!activeMesh ? false : true;
   controls.autoRotateSpeed = 0.22;
   if (document.exitFullscreen && document.fullscreenElement) {
@@ -1026,16 +1157,27 @@ function exitFocus() {
   }
 }
 
-btnFocus.addEventListener('click', enterFocus);
+btnFocus.addEventListener('click', () => {
+  if (focusActive) {
+    exitFocus();
+  } else {
+    enterFocus();
+  }
+});
+
 btnExitFocus.addEventListener('click', exitFocus);
+
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && focusActive) exitFocus();
   if (e.key === 'Escape' && modalOv.classList.contains('open')) closeModal();
   if ((e.key === 'f' || e.key === 'F') && !focusActive && !modalOv.classList.contains('open')) enterFocus();
+  if ((e.key === 'f' || e.key === 'F') && focusActive) exitFocus();
   if ((e.key === 'w' || e.key === 'W') && !modalOv.classList.contains('open')) setWireframe(!wireActive);
 });
 document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && focusActive) exitFocus();
+  if (!document.fullscreenElement && focusActive) {
+    exitFocus();
+  }
 });
 
 // ──────────────────────────────────────────────────────────
@@ -1065,7 +1207,8 @@ btnSnap.addEventListener('click', async () => {
 
   const oc2 = new EffectComposer(or);
   oc2.addPass(new RenderPass(scene, sc));
-  oc2.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.60, 0.50, 0.34));
+  // Use same reduced bloom for snapshot
+  oc2.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.22, 0.38, 0.52));
   oc2.addPass(new OutputPass());
   oc2.render();
 
@@ -1089,8 +1232,13 @@ btnReset.addEventListener('click', () => {
     activeMesh.material.dispose();
     activeMesh = null;
   }
-  if (xrayMesh) { scene.remove(xrayMesh); xrayMesh = null; }
-  wireActive = false; solidMat = null; wireMat = null;
+  if (wireLinesObj) {
+    scene.remove(wireLinesObj);
+    wireLinesObj.geometry.dispose();
+    wireLinesObj.material.dispose();
+    wireLinesObj = null;
+  }
+  wireActive = false;
   modeSolidBtn?.classList.add('active');
   modeWireBtn?.classList.remove('active');
 
@@ -1106,6 +1254,7 @@ btnReset.addEventListener('click', () => {
   if (energyRangeEl) energyRangeEl.textContent = '—';
   if (xmlDateEl)     xmlDateEl.textContent      = '—';
   if (activeBlocksEl) activeBlocksEl.textContent = '—';
+  if (metaFilename) metaFilename.textContent     = '—';
   threshDisp.textContent    = 'All';
   epMax.textContent         = '—';
   epMin.textContent         = '—';
@@ -1116,7 +1265,8 @@ btnReset.addEventListener('click', () => {
 
   clipSlider.value         = 100;
   clipFill.style.width     = '100%';
-  clipValDisp.textContent  = 'OFF';
+  if (zdiBar) zdiBar.style.width = '100%';
+  if (clipValDisp) clipValDisp.textContent  = 'OFF';
   renderer.clippingPlanes  = [];
 
   dropZone.classList.remove('hidden');
@@ -1124,22 +1274,18 @@ btnReset.addEventListener('click', () => {
   filenameDisplay?.classList.add('hidden');
   fileInput.value = '';
   hideToast();
-  clearTimeout(toastTimer);
-
-  controls.autoRotate      = true;
-  controls.autoRotateSpeed = 0.22;
-  camera.position.set(10, 5, 16);
-  camera.lookAt(0, 0, 0);
-  controls.reset();
-
-  if (focusActive) exitFocus();
 });
 
 // ──────────────────────────────────────────────────────────
-//  Help modal
+//  Help modal — smooth fade via CSS opacity transitions
 // ──────────────────────────────────────────────────────────
-function openModal()  { modalOv.classList.add('open'); }
-function closeModal() { modalOv.classList.remove('open'); }
+function openModal()  {
+  modalOv.classList.add('open');
+  clearTooltip(); // disable hover data while modal is open
+}
+function closeModal() {
+  modalOv.classList.remove('open');
+}
 
 btnHelp.addEventListener('click', openModal);
 modalCloseBtn.addEventListener('click', closeModal);
@@ -1153,7 +1299,7 @@ window.addEventListener('resize', () => {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(window.devicePixelRatio);
   composer.setSize(w, h);
   bloomPass.resolution.set(w, h);
 });
