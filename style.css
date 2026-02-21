@@ -92,7 +92,7 @@ kbd {
   position: fixed;
   bottom: 30px; left: 50%;
   transform: translateX(-50%);
-  z-index: 10;
+  z-index: 100;
   text-align: center;
   pointer-events: none;
   transition: opacity var(--t-mid) ease;

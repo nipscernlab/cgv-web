@@ -1,17 +1,6 @@
 // ============================================================
 //  CGV-WEB v3.0 — main.js
 //  NIPSCERN Laboratory × ATLAS / CERN
-//
-//  Key improvements in v3.0:
-//  · Wireframe: merged LineSegments from EdgesGeometry — single
-//    draw call, respects active/threshold filters, no crashing
-//  · Bloom: reduced to artistic, non-aggressive levels
-//  · Focus mode: smooth CSS opacity transition
-//  · Raycaster: disabled when help modal is open; ignores
-//    filtered-out and sub-threshold cells
-//  · Cell Data toggle: ios-switch in Visualization panel
-//  · Metadata: filename display (no .xml extension)
-//  · Z-Axis depth indicator UI sync
 // ============================================================
 import * as THREE from 'three';
 import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
@@ -1119,7 +1108,7 @@ fileInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) 
 dzSampleBtn?.addEventListener('click', e => {
   e.stopPropagation();
   const xml = generateSampleXml();
-  loadFile({ name: 'sample-pp-event.xml' }, xml);
+  loadFile({ name: 'sample-event.xml' }, xml);
 });
 
 // ──────────────────────────────────────────────────────────
