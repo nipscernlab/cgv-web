@@ -713,6 +713,7 @@ td.td-txt  { font-family: var(--body); font-size: .82rem; }
   <a href="#matrix"   class="sb-link"><span class="material-icons-round">table_chart</span>Matriz 4×4</a>
 
   <div class="sb-group-label">Filtros</div>
+  <a href="#extras"   class="sb-link"><span class="material-icons-round">widgets</span>Funcionalidades extras</a>
   <a href="#filters"  class="sb-link"><span class="material-icons-round">filter_alt</span>Filtros em tempo real</a>
   <a href="#postfx"   class="sb-link"><span class="material-icons-round">blur_on</span>Pós-processamento</a>
 </nav>
@@ -938,13 +939,28 @@ td.td-txt  { font-family: var(--body); font-size: .82rem; }
     <thead><tr><th>ID no HTML</th><th>Elemento</th><th class="td-txt">Propósito</th></tr></thead>
     <tbody>
       <tr><td><code>gl-canvas</code></td><td><code>&lt;canvas&gt;</code></td><td class="td-txt">Surface WebGL onde Three.js renderiza tudo. Posicionado com CSS <code>position:fixed</code> cobrindo toda a janela. É o único elemento de desenho — toda a cena 3D vai aqui.</td></tr>
-      <tr><td><code>drop-zone</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Overlay visível antes de carregar dados. Contém os botões "Browse XML File" e "Load Sample Event".</td></tr>
-      <tr><td><code>file-input</code></td><td><code>&lt;input type="file"&gt;</code></td><td class="td-txt">Input de arquivo oculto. Quando o usuário clica em "Browse", <code>main.js</code> chama <code>fileInput.click()</code> programaticamente para abrir o seletor de arquivos nativo.</td></tr>
-      <tr><td><code>loading-bar</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Barra de progresso com texto que aparece durante o processamento. Atualizada por <code>showLoading(label, pct)</code>.</td></tr>
-      <tr><td><code>hud</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Container de toda a interface sobreposta ao canvas — painel esquerdo, top bar, sliders, toggles.</td></tr>
-      <tr><td><code>cell-tooltip</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Tooltip que aparece ao passar o mouse sobre uma célula 3D. Preenchido pelo raycaster.</td></tr>
-      <tr><td><code>energy-panel</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Slider vertical de threshold de energia. Controla o uniform <code>u_threshold</code> do shader.</td></tr>
-      <tr><td><code>wiki-panel</code></td><td><code>&lt;aside&gt;</code></td><td class="td-txt">Painel lateral de conhecimento com abas (NIPSCERN, CERN/ATLAS, Referências).</td></tr>
+      <tr><td><code>drop-zone</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Overlay visível antes de carregar dados. Contém os botões "Browse XML File" e "Load Sample Event". Hidden via CSS após arquivo carregado.</td></tr>
+      <tr><td><code>file-input</code></td><td><code>&lt;input type="file"&gt;</code></td><td class="td-txt">Input de arquivo oculto (<code>aria-hidden="true"</code>). Quando o usuário clica em "Browse", <code>main.js</code> chama <code>fileInput.click()</code> programaticamente para abrir o seletor de arquivos nativo.</td></tr>
+      <tr><td><code>ghost-lbl</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Label flutuante exibido sobre a ghost geometry antes dos dados serem carregados. Indica ao usuário que aquela geometria translúcida é apenas uma referência visual dos volumes do detector.</td></tr>
+      <tr><td><code>loading-bar</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Barra de progresso com label e fill. <code>loading-label</code> mostra texto ("Computing geometry…") e <code>loading-fill</code> é animado via CSS width para indicar progresso 0–100%.</td></tr>
+      <tr><td><code>toast</code></td><td><code>&lt;div role="alert"&gt;</code></td><td class="td-txt">Notificação breve que aparece e desaparece. Contém <code>toast-pip</code> (indicador colorido) e <code>toast-text</code> (mensagem). Role "assertive" garante que leitores de tela anunciem imediatamente.</td></tr>
+      <tr><td><code>cell-tooltip</code></td><td><code>&lt;div role="tooltip"&gt;</code></td><td class="td-txt">Tooltip que aparece ao passar o mouse sobre uma célula 3D. Contém 4 campos: <code>ct-energy</code>, <code>ct-layer</code>, <code>ct-eta</code>, <code>ct-phi</code>. Preenchido pelo raycaster em <code>showTooltip()</code>.</td></tr>
+      <tr><td><code>slider-tip</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Tooltip flutuante que segue o cursor enquanto o energy threshold slider é arrastado. Mostra <code>tip-val</code> (valor em MeV/GeV) e <code>tip-pct</code> (percentagem 0–100%).</td></tr>
+      <tr><td><code>hud</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Container de toda a interface sobreposta ao canvas — top bar, painel esquerdo, slider de energia, focus overlay e wiki panel.</td></tr>
+      <tr><td><code>top-bar</code></td><td><code>&lt;header&gt;</code></td><td class="td-txt">Barra superior com logo, nome do arquivo carregado, e botões de ação: wiki, help, focus, snapshot, reset.</td></tr>
+      <tr><td><code>filename-display</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Exibe o nome do arquivo XML carregado. Oculto (<code>.hidden</code>) até um arquivo ser carregado. Contém <code>filename-text</code> com o nome.</td></tr>
+      <tr><td><code>meta-card</code> / <code>meta-toggle-btn</code></td><td><code>&lt;div&gt; / &lt;button&gt;</code></td><td class="td-txt">Painel de metadados colapsável. O botão <code>meta-toggle-btn</code> aciona collapse/expand de <code>meta-body</code>. O ícone <code>meta-chevron</code> (seta) rotaciona 180° ao colapsar via CSS transform.</td></tr>
+      <tr><td><code>meta-body</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Corpo do painel de metadados com: <code>meta-filename</code> (nome do XML), <code>cell-count</code> (N de células), <code>xml-date</code> (data do evento), <code>info-energy-range</code> (range de energia) e <code>active-blocks</code> (subdetectores ativos).</td></tr>
+      <tr><td><code>geometry-panel</code> / <code>gp-toggle-btn</code></td><td><code>&lt;div&gt; / &lt;button&gt;</code></td><td class="td-txt">Painel de controles de geometria colapsável. Contém os toggles de subdetector, Z-slice e modo de visualização (solid/wire).</td></tr>
+      <tr><td><code>clip-slider</code></td><td><code>&lt;input type="range"&gt;</code></td><td class="td-txt">Slider do Z-axis slice. Range 0–100, valor 100 = sem corte (OFF). <code>clip-fill</code> é uma barra de preenchimento visual; <code>clip-val-display</code> mostra o valor atual em metros ou "OFF".</td></tr>
+      <tr><td><code>zdi-bar</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Depth Indicator Bar — barra visual dentro do painel de Z-slice que cresce/diminui proporcionalmente ao corte aplicado, dando feedback imediato da extensão do slice.</td></tr>
+      <tr><td><code>mode-solid</code> / <code>mode-wire</code></td><td><code>&lt;button&gt;</code></td><td class="td-txt">Botões de modo de visualização. Solid: renderiza o InstancedMesh normalmente. Wire: troca para o LineSegments overlay construído por <code>buildWireframeOverlay()</code>.</td></tr>
+      <tr><td><code>cell-hover-toggle</code></td><td><code>&lt;input type="checkbox"&gt;</code></td><td class="td-txt">Checkbox que habilita/desabilita o hover sobre células. Quando desligado, <code>cellHoverEnabled = false</code> e o raycaster retorna imediatamente sem processar hits, reduzindo carga de CPU para visualizações estáticas.</td></tr>
+      <tr><td><code>energy-panel</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Slider vertical de threshold de energia. <code>ep-max</code>/<code>ep-min</code> mostram os extremos; <code>grad-track</code> é o trilho arrastável; <code>track-handle</code> é o cursor; <code>threshold-display</code> mostra o valor atual.</td></tr>
+      <tr><td><code>focus-overlay</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Overlay de foco que esconde todo o HUD, deixando apenas o canvas visível. Ativado por <code>btn-focus</code> (atalho F). <code>btn-exit-focus</code> restaura o HUD.</td></tr>
+      <tr><td><code>wiki-panel</code></td><td><code>&lt;aside role="complementary"&gt;</code></td><td class="td-txt">Painel lateral de conhecimento com 4 abas: <em>Start</em> (boas-vindas), <em>NIPSCERN</em> (sobre o laboratório), <em>CERN/ATLAS</em> (física do detector) e <em>Referências</em>. Aberto por <code>wiki-toggle-btn</code>.</td></tr>
+      <tr><td><code>modal-overlay</code></td><td><code>&lt;div role="dialog"&gt;</code></td><td class="td-txt">Modal de help/atalhos. Ativado por <code>btn-help</code>. Contém lista de atalhos de teclado e descrições de funcionalidades. Fechado por <code>modal-close-btn</code> ou tecla Escape.</td></tr>
+      <tr><td><code>tour-overlay</code></td><td><code>&lt;div&gt;</code></td><td class="td-txt">Tour guiado exibido na primeira visita. Apresenta 9 passos com cards e popovers apontando para elementos da interface. Pode ser pulado (<code>tour-skip</code>) ou impedido de reaparecer (<code>tour-no-show</code>).</td></tr>
     </tbody>
   </table>
 
@@ -1053,6 +1069,39 @@ controls.autoRotateSpeed = <span class="n">0.22</span>;</pre>
     Three.js não tem unidade intrínseca. O código usa a convenção "1 unidade = 1 metro", e aplica <code>scale = 0.001</code> ao converter as posições de mm para metros. A câmera em (10, 5, 16) metros fica a ~20m do centro, dando uma visão ampla do detector de ~16m de comprimento.
   </div>
 
+  <div class="info" style="margin-top:8px">
+    <strong>Distância de câmera limitada:</strong> <code>controls.minDistance = 0.5</code> e <code>controls.maxDistance = 90</code> definem os limites de zoom. 0.5m evita que a câmera penetre dentro das células; 90m garante visibilidade completa do detector mesmo em zoom máximo.
+  </div>
+
+  <h3>1.3b — Iluminação da cena</h3>
+  <p style="font-size:.84rem">A cena usa 4 fontes de luz complementares para criar profundidade e aparência científica:</p>
+  <div class="code-wrap">
+    <div class="code-header"><span class="material-icons-round" style="font-size:13px">javascript</span>main.js — iluminação<span class="code-lang lang-js">JS</span></div>
+    <pre><span class="c">// Luz ambiente: azul fria e suave — preenche sombras sem achatar a cena</span>
+scene.<span class="fn">add</span>(<span class="k">new</span> THREE.<span class="fn">AmbientLight</span>(<span class="n">0x001828</span>, <span class="n">1.4</span>));
+
+<span class="c">// Luz direcional principal (sol): branca intensa, vem do canto superior direito</span>
+<span class="k">const</span> sun = <span class="k">new</span> THREE.<span class="fn">DirectionalLight</span>(<span class="n">0xffffff</span>, <span class="n">1.75</span>);
+sun.position.<span class="fn">set</span>(<span class="n">8</span>, <span class="n">18</span>, <span class="n">10</span>);     <span class="c">// direção: de cima-direita-frente</span>
+scene.<span class="fn">add</span>(sun);
+
+<span class="c">// Fill quente: laranja suave de baixo-esquerda — simula reflexo do chão</span>
+<span class="k">const</span> warmFill = <span class="k">new</span> THREE.<span class="fn">DirectionalLight</span>(<span class="n">0xffc870</span>, <span class="n">0.28</span>);
+warmFill.position.<span class="fn">set</span>(<span class="n">-14</span>, <span class="n">-2</span>, <span class="n">9</span>);
+scene.<span class="fn">add</span>(warmFill);
+
+<span class="c">// Fill frio: azul escuro de trás — cria separação entre células e fundo</span>
+<span class="k">const</span> coolFill = <span class="k">new</span> THREE.<span class="fn">DirectionalLight</span>(<span class="n">0x1a3050</span>, <span class="n">0.36</span>);
+coolFill.position.<span class="fn">set</span>(<span class="n">-14</span>, <span class="n">-4</span>, <span class="n">-8</span>);
+scene.<span class="fn">add</span>(coolFill);</pre>
+  </div>
+  <div class="def-list">
+    <div class="def-item"><span class="def-term">AmbientLight(0x001828, 1.4)</span><span class="def-desc">Luz global sem direção. A cor azul fria (#001828 = R:0, G:24, B:40) preenche sombras com tonalidade que combina com o fundo espacial. Intensidade 1.4 é suficiente para evitar sombras totalmente pretas.</span></div>
+    <div class="def-item"><span class="def-term">DirectionalLight branca (1.75)</span><span class="def-desc">Luz principal que simula o sol. Intensidade alta (1.75) cria sombras bem definidas e ilumina a face frontal das células. A posição (8, 18, 10) define a <em>direção</em> — DirectionalLight não tem posição real, só direção.</span></div>
+    <div class="def-item"><span class="def-term">warmFill (0xffc870, 0.28)</span><span class="def-desc">Preenchimento de baixo com tom dourado quente. Suaviza as sombras mais fortes da luz principal. Intensidade baixa (0.28) para não competir com a luz principal.</span></div>
+    <div class="def-item"><span class="def-term">coolFill (0x1a3050, 0.36)</span><span class="def-desc">Preenchimento frio de trás. Ajuda a separar visualmente células que estão na parte traseira do detector do fundo escuro. A cor azul-escura complementa a paleta do tema.</span></div>
+  </div>
+
   <h3>1.4 — Post-processing chain</h3>
   <p>Em vez de renderizar direto para a tela com <code>renderer.render(scene, camera)</code>, o código usa um <strong>EffectComposer</strong> — uma cadeia de passes que processam a imagem em sequência:</p>
   <div class="pipeline">
@@ -1077,7 +1126,7 @@ controls.autoRotateSpeed = <span class="n">0.22</span>;</pre>
 
   <div class="def-list">
     <div class="def-item"><span class="def-term">UnrealBloomPass</span><span class="def-desc">Cria um efeito de "glow" ao redor de pixels brilhantes. Funciona fazendo downsampling da cena em múltiplas resoluções, aplicando blur gaussiano, e misturando de volta. O threshold alto (0.52) garante que apenas células de alta energia brilham.</span></div>
-    <div class="def-item"><span class="def-term">SMAAPass</span><span class="def-desc">Subpixel Morphological Anti-Aliasing. Detecta bordas (edges) nos pixels e aplica mistura suave. Mais eficiente que MSAA em pós-processamento e funciona bem com transparência.</span></div>
+    <div class="def-item"><span class="def-term">SMAAPass — configuração avançada</span><span class="def-desc">Subpixel Morphological Anti-Aliasing. Além de ser construído, o código configura explicitamente: <code>edgeDetectionThreshold = 0.02</code> (sensibilidade para detectar bordas — valor baixo preserva bordas finas das células), <code>maxSearchSteps = 32</code> e <code>maxSearchStepsDiagonal = 16</code> (quanto o algoritmo busca ao longo de bordas antes de parar — valores maiores = anti-aliasing melhor em bordas longas diagonais).</span></div>
     <div class="def-item"><span class="def-term">OutputPass</span><span class="def-desc">Aplica o tone mapping (ACES) e converte o resultado para o espaço de cor do monitor (sRGB). Deve ser sempre o último passe.</span></div>
   </div>
 
@@ -1418,7 +1467,7 @@ loop {
     <pre>SubDet::LarBarrel => {
   <span class="k">let</span> lar = cfg.lar_layer; <span class="c">// = 2</span>
   <span class="c">// laba_ncells(2) = 57, eta_abs=20 &lt; 57 → OK</span>
-  <span class="k">let</span> eta_c = <span class="fn">laba_eta</span>(lar, eta_abs);    <span class="c">// eta_c = 0.025 + 0.025×20 = 0.525</span>
+  <span class="k">let</span> eta_c = <span class="fn">laba_eta</span>(lar, eta_abs);    <span class="c">// eta_c = 0.0125 + 0.025×20 = 0.5125  ← BUG-1 corrigido</span>
   <span class="k">if</span> <span class="fn">in_barrel_crack</span>(eta_c.abs(), <span class="k">true</span>) { <span class="k">return</span> None; } <span class="c">// 0.525 > 1.475? NÃO</span>
 
   <span class="k">let</span> r_mid = (cfg.h1 + cfg.h2) / <span class="n">2.0</span>; <span class="c">// (1581+1840)/2 = 1710.5 mm</span>
@@ -1438,19 +1487,20 @@ loop {
   </div>
 
   <div class="math">
-    <span class="ml">laba_eta(2, 20):</span><span class="mv"> 0.025 + 0.025×20 = 0.525</span><span class="mc"> ← eta físico da célula</span><br>
-    <span class="ml">sinh(0.525) = (e^0.525−e^−0.525)/2:</span><br>
-    <span class="ml">  e^0.525 =</span><span class="mv"> 1.69045</span><span class="ml">  e^−0.525 =</span><span class="mv"> 0.59156</span><br>
-    <span class="ml">  sinh(0.525) =</span><span class="mv"> (1.69045−0.59156)/2 = 0.54945</span><br>
-    <span class="ml">cz = +1×1710.5×0.54945 =</span><span class="mv"> +939.9 mm</span><br>
-    <span class="ml">cx =</span><span class="mv"> −1673.1 mm</span><span class="ml">  cy =</span><span class="mv"> −354.9 mm</span><br>
-    <span class="ml">cosh(0.525) =</span><span class="mv"> 1.1410</span><br>
-    <span class="ml">sz = 1710.5×1.1410×0.025/2 =</span><span class="mv"> 24.4 mm</span><br>
+    <span class="ml">laba_eta(2, 20):</span><span class="mv"> 0.0125 + 0.025×20 = 0.5125</span><span class="mc"> ← eta físico (BUG-1 corrigido: antes 0.025+0.025×20=0.525)</span><br>
+    <span class="ml">Fórmula corrigida: para idx &lt; 56, η = 0.0125 + 0.025×idx (centro da 1ª célula é 0.0125, passo Δη=0.025)</span><br>
+    <span class="ml">sinh(0.5125) = (e^0.5125−e^−0.5125)/2:</span><br>
+    <span class="ml">  e^0.5125 =</span><span class="mv"> 1.66946</span><span class="ml">  e^−0.5125 =</span><span class="mv"> 0.59900</span><br>
+    <span class="ml">  sinh(0.5125) =</span><span class="mv"> (1.66946−0.59900)/2 = 0.53523</span><br>
+    <span class="ml">cz = +1×1710.5×0.53523 =</span><span class="mv"> +915.6 mm</span><span class="mc"> ← era +939.9 mm com bug</span><br>
+    <span class="ml">cx =</span><span class="mv"> −1673.1 mm</span><span class="ml">  cy =</span><span class="mv"> −354.9 mm</span><span class="mc"> ← inalterados (dependem só de φ)</span><br>
+    <span class="ml">cosh(0.5125) =</span><span class="mv"> 1.13423</span><br>
+    <span class="ml">sz = 1710.5×1.13423×0.025/2 =</span><span class="mv"> 24.3 mm</span><span class="mc"> ← era 24.4 mm (diferença mínima)</span><br>
     <span class="ml">sx =</span><span class="mv"> 129.5 mm</span><span class="ml">  sy = 1710.5×0.024544/2 =</span><span class="mv"> 20.99 mm</span>
   </div>
 
   <div class="warn">
-    <strong>Por que sinh e não linear?</strong> Se usássemos z = R·η: z = 1710.5×0.525 = 898.0mm. Erro de 41.9mm (4.5%). Para η=1.4 (perto do limite do barril), o erro linear seria &gt;30%. A fórmula sinh é a definição matemática correta de η — não é uma aproximação.
+    <strong>Por que sinh e não linear?</strong> Se usássemos z = R·η: z = 1710.5×0.5125 = 876.6mm. O sinh dá 915.6mm. Erro de 39.0mm (4.3%). Para η=1.4 (perto do limite do barril), o erro linear seria &gt;30%. A fórmula sinh é a definição matemática correta de η — não é uma aproximação.
   </div>
 </section>
 
@@ -1537,6 +1587,11 @@ loop {
     <strong>Column-major:</strong> Three.js armazena matrizes em formato <em>column-major</em> — cada coluna fica em 4 floats consecutivos na memória. O índice [i] do array corresponde à linha <code>i%4</code>, coluna <code>i/4</code>. Esta é a convenção de OpenGL/WebGL, diferente de algumas APIs que usam row-major.
   </div>
 
+  <div class="info" style="margin-top:8px">
+    <strong>Por que elements[14] = translação Z?</strong><br>
+    Em column-major: a 4ª coluna (índice de coluna 3) ocupa os indices [12], [13], [14], [15]. Ela contém [tx, ty, tz, 1]. Portanto <code>elements[14] = tz = cz</code> (a translação Z da célula). Isto é usado em <code>buildMesh()</code> para extrair <code>cellZPositions[i] = m4tmp.elements[14]</code> para o Z-slicer.
+  </div>
+
   <h3>O que cada coluna representa</h3>
   <div class="def-list">
     <div class="def-item"><span class="def-term">Colunas 0 e 1</span><span class="def-desc">Definem como os eixos X e Y do cubo unitário são transformados. Como a célula deve estar orientada em φ no espaço, os eixos locais são rotacionados por φ usando sin e cos. A magnitude dos vetores é <code>sx</code> e <code>sy</code> — a escala da caixa.</span></div>
@@ -1574,7 +1629,7 @@ loop {
     <div class="snapshot-body">
       <div class="snap-row"><span class="snap-key" style="color:var(--tile)">Tile  (0..15)</span><span class="snap-val">−0.1286, −0.0773, 0, 0, 0.0619, −0.1031, 0, 0, 0, 0, 0.1278, 0, −2.100, −1.262, +0.621, 1</span></div>
       <div class="snap-row"><span class="snap-key" style="color:var(--hec)">HEC   (16..31)</span><span class="snap-val">−0.0387, −0.0645, 0, 0, 0.0808, −0.0456, 0, 0, 0, 0, 0.140, 0, −0.739, −1.233, +4.490, 1</span></div>
-      <div class="snap-row"><span class="snap-key" style="color:var(--larb)">LAr B (32..47)</span><span class="snap-val">−0.1269, −0.0270, 0, 0, 0.0043, −0.0206, 0, 0, 0, 0, 0.0244, 0, −1.673, −0.355, +0.940, 1</span></div>
+      <div class="snap-row"><span class="snap-key" style="color:var(--larb)">LAr B (32..47)</span><span class="snap-val">−0.1269, −0.0270, 0, 0, 0.0043, −0.0206, 0, 0, 0, 0, 0.0243, 0, −1.673, −0.355, +0.916, 1</span></div>
       <div class="snap-row"><span class="snap-key" style="color:var(--lare)">LAr E (48..63)</span><span class="snap-val">−0.0019, −0.0055, 0, 0, 0.0077, −0.0028, 0, 0, 0, 0, 0.0233, 0, −0.559, −1.564, +3.778, 1</span></div>
       <div class="snap-row"><span class="snap-key">colors (12 floats)</span><span class="snap-val">[0.00, 1.00, 0.73,  1.00, 0.00, 0.00,  0.00, 0.00, 1.00,  0.55, 1.00, 0.00]</span></div>
       <div class="snap-row"><span class="snap-key">energies (4 floats)</span><span class="snap-val">[0.3182, 1.0000, 0.0000, 0.6364]</span></div>
@@ -1587,6 +1642,10 @@ loop {
   </div>
 
   <p style="font-size:.84rem">Este objeto JavaScript é o retorno de <code>process_xml_data(bytes)</code>. O WASM terminou seu trabalho. A partir daqui tudo é JavaScript e GPU.</p>
+
+  <div class="warn" style="margin-top:12px">
+    <strong>Impacto do BUG-1 corrigido na matriz LAr B:</strong> O elemento [14] (translação Z) da matriz LAr Barril mudou de +0.940 para +0.916 m (correção de ~24mm). O elemento [10] (escala Z = sz) mudou de 0.0244 para 0.0243 m (diferença negligenciável). Os elementos [12] e [13] (cx, cy) não mudam pois dependem apenas de φ, não de η.
+  </div>
 </section>
 
 <!-- ═══ STEP 4: buildMesh ═══ -->
@@ -1657,8 +1716,11 @@ loop {
 
   <span class="c">// ─── Z-positions para Z-slicer ───</span>
   cellZPositions = <span class="k">new</span> Float32Array(n);
+  <span class="k">const</span> m4tmp = <span class="k">new</span> THREE.<span class="fn">Matrix4</span>();
   <span class="k">for</span> (<span class="k">let</span> i = <span class="n">0</span>; i &lt; n; i++) {
-    cellZPositions[i] = result.matrices[i * <span class="n">16</span> + <span class="n">14</span>]; <span class="c">// elemento [14] = cz</span>
+    m4tmp.<span class="fn">fromArray</span>(result.matrices, i * <span class="n">16</span>);   <span class="c">// carrega coluna por coluna (column-major)</span>
+    cellZPositions[i] = m4tmp.elements[<span class="n">14</span>];      <span class="c">// elements[14] = col 3, linha 2 = translação Z = cz</span>
+    <span class="c">// Equivalente a result.matrices[i*16 + 14] pois fromArray preserva a ordem</span>
   }
 
   scene.<span class="fn">add</span>(mesh);
@@ -1840,7 +1902,7 @@ loop {
     <div class="snapshot-body">
       <div class="snap-row"><span class="snap-key" style="color:var(--tile)">Célula Tile</span><span class="snap-val">Caixa ciano em (−2.10m, −1.26m, +0.62m), ~300×241×256mm</span></div>
       <div class="snap-row"><span class="snap-key" style="color:var(--hec)">Célula HEC</span><span class="snap-val">Caixa vermelha em (−0.74m, −1.23m, +4.49m), ~151×141×280mm</span></div>
-      <div class="snap-row"><span class="snap-key" style="color:var(--larb)">Célula LAr Barril</span><span class="snap-val">Caixa azul em (−1.67m, −0.35m, +0.94m), ~259×42×49mm</span></div>
+      <div class="snap-row"><span class="snap-key" style="color:var(--larb)">Célula LAr Barril</span><span class="snap-val">Caixa azul em (−1.67m, −0.35m, +0.92m), ~259×42×49mm</span></div>
       <div class="snap-row"><span class="snap-key" style="color:var(--lare)">Célula LAr Tampa</span><span class="snap-val">Caixa verde-amarela em (−0.56m, −1.56m, +3.78m), ~11×163×46mm</span></div>
     </div>
   </div>
@@ -1914,6 +1976,77 @@ loop {
     <div class="def-item"><span class="def-term">NDC — Normalized Device Coordinates</span><span class="def-desc">Sistema de coordenadas normalizado: x e y variam de −1 a +1, com origem no centro da tela. É o sistema que o raycaster usa para projetar o raio a partir da câmera na direção correta.</span></div>
     <div class="def-item"><span class="def-term">instanceId</span><span class="def-desc">Propriedade do resultado de <code>intersectObject</code>: o índice da instância intersectada (0, 1, 2...). É o mesmo índice usado para acessar <code>cellNormEnergies[id]</code>, <code>cellLayerIds[id]</code> etc.</span></div>
   </div>
+</section>
+
+<!-- ═══ FUNCIONALIDADES ADICIONAIS ═══ -->
+<section class="section" id="extras">
+  <div class="section-header">
+    <div class="section-icon" style="background:rgba(96,165,250,.12);color:#60a5fa"><span class="material-icons-round">widgets</span></div>
+    <div class="section-title-block">
+      <div class="step-label">main.js — Funcionalidades Complementares</div>
+      <h2>Hover Toggle, Focus Mode, Wiki Panel e Metadados</h2>
+    </div>
+  </div>
+
+  <p>Além do pipeline principal de renderização, o CGV Web tem várias funcionalidades de UX que melhoram a experiência sem afetar a geometria ou os shaders.</p>
+
+  <h3>Cell Hover Toggle — cellHoverEnabled</h3>
+  <div class="code-wrap">
+    <div class="code-header"><span class="material-icons-round" style="font-size:13px">javascript</span>main.js — hover toggle<span class="code-lang lang-js">JS</span></div>
+    <pre><span class="k">let</span> cellHoverEnabled = <span class="k">true</span>;
+cellHoverToggle?.<span class="fn">addEventListener</span>(<span class="str">'change'</span>, e => {
+  cellHoverEnabled = e.target.checked;
+  <span class="k">if</span> (!cellHoverEnabled) <span class="fn">clearTooltip</span>(); <span class="c">// limpa tooltip imediatamente ao desligar</span>
+});
+
+<span class="c">// No onMouseMove, a primeira coisa que faz:</span>
+<span class="k">if</span> (!cellHoverEnabled) { <span class="fn">clearTooltip</span>(); <span class="k">return</span>; } <span class="c">// retorna sem executar raycaster</span></pre>
+  </div>
+  <p style="font-size:.84rem">Com hover desligado, o raycaster não executa — nenhuma CPU desperdiçada a cada 80ms. Útil para capturar screenshots limpos ou explorar a cena com câmera sem o tooltip poluindo a visão.</p>
+
+  <h3>Modo Focus — btn-focus / focus-overlay</h3>
+  <div class="code-wrap">
+    <div class="code-header"><span class="material-icons-round" style="font-size:13px">javascript</span>main.js — focus mode<span class="code-lang lang-js">JS</span></div>
+    <pre><span class="c">// Atalho F ou botão btn-focus: esconde todo o HUD, apenas canvas visível</span>
+btnFocus?.<span class="fn">addEventListener</span>(<span class="str">'click'</span>, () => {
+  focusOverlay.classList.<span class="fn">add</span>(<span class="str">'active'</span>);   <span class="c">// mostra overlay (que esconde HUD)</span>
+  hud.classList.<span class="fn">add</span>(<span class="str">'hidden'</span>);           <span class="c">// oculta painel esquerdo, top bar etc.</span>
+});
+btnExitFocus?.<span class="fn">addEventListener</span>(<span class="str">'click'</span>, () => {
+  focusOverlay.classList.<span class="fn">remove</span>(<span class="str">'active'</span>);
+  hud.classList.<span class="fn">remove</span>(<span class="str">'hidden'</span>);
+});</pre>
+  </div>
+  <p style="font-size:.84rem">O focus mode é ideal para capturas 4K via Snapshot: sem o HUD, a imagem capturada mostra apenas o detector sobre o fundo escuro. O <code>btn-exit-focus</code> restaura a interface.</p>
+
+  <h3>Painel de Metadados Colapsável</h3>
+  <div class="code-wrap">
+    <div class="code-header"><span class="material-icons-round" style="font-size:13px">javascript</span>main.js — meta panel collapse<span class="code-lang lang-js">JS</span></div>
+    <pre><span class="k">let</span> metaCollapsed = <span class="k">false</span>;
+metaToggleBtn?.<span class="fn">addEventListener</span>(<span class="str">'click'</span>, () => {
+  metaCollapsed = !metaCollapsed;
+  metaBody?.classList.<span class="fn">toggle</span>(<span class="str">'collapsed'</span>, metaCollapsed);
+  metaToggleBtn.<span class="fn">setAttribute</span>(<span class="str">'aria-expanded'</span>, String(!metaCollapsed));
+  <span class="k">if</span> (metaChevron) {
+    metaChevron.style.transform = metaCollapsed ? <span class="str">'rotate(180deg)'</span> : <span class="str">''</span>;
+    <span class="c">// Chevron vira 180° quando colapsado — feedback visual imediato</span>
+  }
+});</pre>
+  </div>
+
+  <div class="def-list">
+    <div class="def-item"><span class="def-term">meta-filename</span><span class="def-desc">Nome do arquivo XML carregado. Atualizado por <code>filenameText.textContent = file.name</code> após carregamento.</span></div>
+    <div class="def-item"><span class="def-term">cell-count</span><span class="def-desc">Número de células renderizadas (N válidas após filtro de crack e geometria). Atualizado por <code>cellCountEl.textContent = n.toLocaleString()</code>.</span></div>
+    <div class="def-item"><span class="def-term">xml-date</span><span class="def-desc">Data do evento lida do atributo <code>date</code> do XML (<code>&lt;calorimeter date="2024-07-04"&gt;</code>). Exibida no painel para contextualizar o evento.</span></div>
+    <div class="def-item"><span class="def-term">info-energy-range</span><span class="def-desc">Range de energia formatado como "800 MeV – 3.00 GeV". Calculado por <code>fmtE(minE) + '–' + fmtE(maxE)</code>. A função <code>fmtE(mev)</code> exibe em MeV se &lt;1000, em GeV com 2 casas decimais caso contrário.</span></div>
+    <div class="def-item"><span class="def-term">active-blocks</span><span class="def-desc">Lista dos subdetectores ativos, derivada dos layer IDs presentes nos dados. Exemplo: "TileCal · HEC · LAr EM".</span></div>
+  </div>
+
+  <h3>Wiki Panel — 4 abas de conhecimento</h3>
+  <p style="font-size:.84rem">O painel lateral wiki é um <code>&lt;aside id="wiki-panel"&gt;</code> com 4 abas (<em>tab-start</em>, <em>tab-nips</em>, <em>tab-cern</em>, <em>tab-refs</em>), cada uma com conteúdo informativo estático. O <code>wiki-toggle-btn</code> na top bar abre o painel deslizando via CSS transition; <code>wiki-close-btn</code> dentro do painel fecha. As abas usam classe <code>.active</code> para mostrar/ocultar painéis sem reload.</p>
+
+  <h3>Tour Guiado — tour-overlay</h3>
+  <p style="font-size:.84rem">Na primeira visita, o <code>#tour-overlay</code> é exibido com até 9 passos. Cada passo pode ser um card centralizado (<code>.tour-card</code>) ou um popover posicionado perto do elemento descrito (<code>.tour-popover</code>). O estado "não mostrar novamente" (<code>tour-no-show</code>) é salvo em <code>localStorage</code>. O tour pode ser pulado a qualquer momento por <code>tour-skip</code>.</p>
 </section>
 
 <!-- ═══ FILTERS ═══ -->
