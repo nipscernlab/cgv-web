@@ -343,8 +343,8 @@ buildGhost();
 //  Custom ShaderMaterial
 // ──────────────────────────────────────────────────────────
 const shaderUniforms = {
-  u_threshold: { value: 0.0 },
-  u_time:      { value: 0.0 },
+  u_threshold: { value: 0.0  },
+  u_time:      { value: 0.0  },
   u_highlight: { value: -1.0 },
 };
 
@@ -354,24 +354,26 @@ const vertexShader = /* glsl */`
   attribute float a_energy;
   attribute float a_active;
   attribute float a_iid;
+  attribute vec3  a_normal;   // normal plana pré-computada por face no CPU
 
   varying float v_energy;
   varying float v_active;
   varying float v_iid;
   varying vec3  v_col;
-  varying vec3  v_normal;
   varying vec3  v_worldPos;
+  varying vec3  v_normal;
 
   void main() {
     v_energy   = a_energy;
     v_active   = a_active;
     v_iid      = a_iid;
-    v_col      = instanceColor;
-    v_normal   = normalize(normalMatrix * normal);
-    vec4 wp    = modelMatrix * instanceMatrix * vec4(position, 1.0);
+    v_col      = color;
+    v_normal   = normalize(normalMatrix * a_normal);  // transforma para view-space
+
+    vec4 wp    = modelMatrix * vec4(position, 1.0);
     v_worldPos = wp.xyz;
-    vec4 mvPosition = viewMatrix * wp;
-    gl_Position = projectionMatrix * mvPosition;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+
     #include <clipping_planes_vertex>
   }
 `;
@@ -387,38 +389,38 @@ const fragmentShader = /* glsl */`
   varying float v_active;
   varying float v_iid;
   varying vec3  v_col;
-  varying vec3  v_normal;
   varying vec3  v_worldPos;
+  varying vec3  v_normal;
 
   void main() {
     #include <clipping_planes_fragment>
 
-    if (v_active  < 0.5)         discard;
-    if (v_energy  < u_threshold) discard;
+    if (v_active < 0.5)         discard;
+    if (v_energy < u_threshold) discard;
 
-    vec3 ld1 = normalize(vec3(0.55, 1.0, 0.50));
-    vec3 ld2 = normalize(vec3(-0.8, -0.3, -0.6));
-    float d1 = max(dot(v_normal, ld1), 0.0) * 0.60;
-    float d2 = max(dot(v_normal, ld2), 0.0) * 0.13;
+    // Normal estável vinda do CPU — sem dFdx/dFdy
+    vec3 N = normalize(v_normal);
 
-    vec3 vd  = normalize(cameraPosition - v_worldPos);
-    float rim = pow(1.0 - max(dot(vd, v_normal), 0.0), 4.0) * 0.12;
+    vec3 L1 = normalize(vec3(0.50,  0.90, 0.45));
+    vec3 L2 = normalize(vec3(-0.70, -0.25, -0.55));
+    float d1 = max(dot(N, L1), 0.0) * 0.52;
+    float d2 = max(dot(N, L2), 0.0) * 0.10;
 
-    vec3 lit = v_col * (0.30 + d1 + d2) + vec3(rim * 0.30);
+    vec3 V    = normalize(cameraPosition - v_worldPos);
+    float rim = pow(1.0 - max(dot(V, N), 0.0), 5.0) * 0.07;
 
-    // Subtle specular highlight — gold-toned
-    float sp  = pow(max(dot(reflect(-ld1, v_normal), vd), 0.0), 40.0) * 0.06 * v_energy;
-    lit      += vec3(0.88, 0.72, 0.24) * sp;
+    vec3 lit = v_col * (0.28 + d1 + d2) + vec3(rim * 0.18);
 
-    // Energy-proportional brightness boost
-    float boost = 1.0 + v_energy * v_energy * 1.8;
+    float sp = pow(max(dot(reflect(-L1, N), V), 0.0), 48.0) * 0.04 * v_energy;
+    lit += vec3(0.85, 0.68, 0.20) * sp;
+
+    float boost = 1.0 + v_energy * v_energy * 0.55;
     lit *= boost;
 
-    // Hover highlight
     float isHot = step(u_highlight - 0.5, v_iid) * step(v_iid, u_highlight + 0.5);
-    lit = mix(lit, lit * 1.45 + vec3(0.06, 0.04, 0.0), isHot * 0.50);
+    lit = mix(lit, lit * 1.35 + vec3(0.05, 0.03, 0.0), isHot * 0.55);
 
-    gl_FragColor = vec4(lit, 0.93);
+    gl_FragColor = vec4(lit, 0.92);
   }
 `;
 
@@ -434,22 +436,28 @@ let activeAttr       = null;
 const detEnabled     = { tile: true, hec: true, lar: true };
 
 // ──────────────────────────────────────────────────────────
-//  ★ WIREFRAME OPTIMIZATION
-//  Build a single merged LineSegments object from EdgesGeometry
-//  — one draw call regardless of cell count.
-//  Respects: a_active filtering + energy threshold.
-//  Much cheaper and crash-free vs. material.wireframe = true.
+//  ★ WIREFRAME OVERLAY — ARB8 real
+//  Traça as 12 arestas do prisma trapezoidal de cada célula
+//  diretamente a partir dos vértices ARB8, sem transformar
+//  o cubo unitário. Uma draw call, sem instâncias.
 // ──────────────────────────────────────────────────────────
 let wireActive   = false;
 let wireLinesObj = null;
 
-// Shared base edge geometry: 12 edges × 2 verts = 24 verts
-const _baseEdgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
-const _edgePos     = _baseEdgeGeo.getAttribute('position').array; // 72 floats
-const _edgeVerts   = _edgePos.length / 3; // 24
+// 12 arestas do prisma ARB8 como pares de índices em v[0..7]:
+//   face z-:      0-2, 2-6, 6-4, 4-0
+//   face z+:      1-3, 3-7, 7-5, 5-1
+//   verticais:    0-1, 2-3, 4-5, 6-7
+const ARB8_EDGE_PAIRS = new Uint8Array([
+  0, 2,  2, 6,  6, 4,  4, 0,   // face z-
+  1, 3,  3, 7,  7, 5,  5, 1,   // face z+
+  0, 1,  2, 3,  4, 5,  6, 7,   // arestas verticais
+]);
+const ARB8_EDGES_N = ARB8_EDGE_PAIRS.length / 2; // 12 arestas
+const ARB8_LINE_VERTS = ARB8_EDGES_N * 2;        // 24 verts por célula
 
 function buildWireframeOverlay() {
-  // Dispose previous
+  // Descarta overlay anterior
   if (wireLinesObj) {
     scene.remove(wireLinesObj);
     wireLinesObj.geometry.dispose();
@@ -458,10 +466,10 @@ function buildWireframeOverlay() {
   }
   if (!activeMesh) return;
 
-  const n   = activeMesh.count;
+  const n = cellCount;
   const thr = shaderUniforms.u_threshold.value;
 
-  // Count visible cells first (avoid over-allocation)
+  // Conta células visíveis para dimensionar o buffer exato
   let visCount = 0;
   for (let i = 0; i < n; i++) {
     if (activeAttr && activeAttr[i] < 0.5) continue;
@@ -470,37 +478,51 @@ function buildWireframeOverlay() {
   }
   if (visCount === 0) return;
 
-  // Allocate exactly what we need
-  const totalFloats = visCount * _edgeVerts * 3;
-  const pos = new Float32Array(totalFloats);
+  const pos = new Float32Array(visCount * ARB8_LINE_VERTS * 3);
   let   off = 0;
 
-  const m4  = new THREE.Matrix4();
-  const v   = new THREE.Vector3();
+  if (cellArb8Verts) {
+    // ── Caminho rápido: usa vértices ARB8 reais ────────────────────────────
+    for (let i = 0; i < n; i++) {
+      if (activeAttr && activeAttr[i] < 0.5) continue;
+      if (cellNormEnergies && cellNormEnergies[i] < thr) continue;
 
-  for (let i = 0; i < n; i++) {
-    if (activeAttr && activeAttr[i] < 0.5) continue;
-    if (cellNormEnergies && cellNormEnergies[i] < thr) continue;
-
-    activeMesh.getMatrixAt(i, m4);
-    for (let j = 0; j < _edgeVerts; j++) {
-      v.set(_edgePos[j * 3], _edgePos[j * 3 + 1], _edgePos[j * 3 + 2]).applyMatrix4(m4);
-      pos[off++] = v.x;
-      pos[off++] = v.y;
-      pos[off++] = v.z;
+      const base = i * 24; // offset no flat array (24 floats = 8 verts × xyz)
+      for (let e = 0; e < ARB8_EDGE_PAIRS.length; e += 2) {
+        const ia = base + ARB8_EDGE_PAIRS[e]     * 3;
+        const ib = base + ARB8_EDGE_PAIRS[e + 1] * 3;
+        pos[off++] = cellArb8Verts[ia];     pos[off++] = cellArb8Verts[ia+1]; pos[off++] = cellArb8Verts[ia+2];
+        pos[off++] = cellArb8Verts[ib];     pos[off++] = cellArb8Verts[ib+1]; pos[off++] = cellArb8Verts[ib+2];
+      }
     }
+  } else {
+    // ── Fallback: transforma cubo unitário pela instanceMatrix (legado) ────
+    const _baseEdgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1));
+    const _edgePos     = _baseEdgeGeo.getAttribute('position').array;
+    const _edgeVerts   = _edgePos.length / 3;
+    const m4 = new THREE.Matrix4();
+    const v  = new THREE.Vector3();
+    for (let i = 0; i < n; i++) {
+      if (activeAttr && activeAttr[i] < 0.5) continue;
+      if (cellNormEnergies && cellNormEnergies[i] < thr) continue;
+      activeMesh.getMatrixAt(i, m4);
+      for (let j = 0; j < _edgeVerts; j++) {
+        v.set(_edgePos[j*3], _edgePos[j*3+1], _edgePos[j*3+2]).applyMatrix4(m4);
+        pos[off++] = v.x; pos[off++] = v.y; pos[off++] = v.z;
+      }
+    }
+    _baseEdgeGeo.dispose();
   }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
 
   const mat = new THREE.LineBasicMaterial({
-    color: 0x1a8fbb,
+    color:       0x1a8fbb,
     transparent: true,
-    opacity: 0.32,
+    opacity:     0.32,
   });
 
-  // Inherit same clipping planes
   if (renderer.clippingPlanes.length) {
     mat.clippingPlanes = renderer.clippingPlanes.slice();
   }
@@ -515,11 +537,9 @@ function setWireframe(active) {
   modeWireBtn?.classList.toggle('active',   active);
 
   if (active) {
-    // Hide the solid InstancedMesh, show wireframe lines
     if (activeMesh) activeMesh.visible = false;
     buildWireframeOverlay();
   } else {
-    // Show the solid mesh, remove wireframe lines
     if (activeMesh) activeMesh.visible = true;
     if (wireLinesObj) {
       scene.remove(wireLinesObj);
@@ -537,14 +557,22 @@ modeWireBtn?.addEventListener('click',  () => setWireframe(!wireActive));
 //  Cell Z-positions (for Z-axis filtering)
 // ──────────────────────────────────────────────────────────
 let cellZPositions = null;
+let cellCenters = null;  // Float32Array n*3 — centro de cada célula (média dos 8 verts)
+let cellRadii   = null;  // Float32Array n   — raio da esfera envolvente de cada célula
 
 // ──────────────────────────────────────────────────────────
 //  Build / tear down InstancedMesh
 // ──────────────────────────────────────────────────────────
 let activeMesh = null;
+let cellCount = 0; // total de células do evento atual
+
+// ── Variável global: vértices ARB8 de cada célula (metros, flat array) ───────
+// Layout: 24 floats/célula → [v0.x,v0.y,v0.z, v1.x,..., v7.x,v7.y,v7.z]
+// Usado pelo wireframe overlay para traçar as arestas reais.
+let cellArb8Verts = null;
 
 function buildMesh(result) {
-  // Tear down previous
+  // ── Tear-down ────────────────────────────────────────────────────────────
   if (activeMesh) {
     scene.remove(activeMesh);
     activeMesh.geometry.dispose();
@@ -560,13 +588,15 @@ function buildMesh(result) {
 
   const n = result.count;
   if (!n) return;
+  cellCount = n;
 
+  // ── Metadados ─────────────────────────────────────────────────────────────
   cellNormEnergies = result.energies ?? null;
   cellLayerIds     = result.layers   ?? null;
   cellEtaIds       = result.etas     ?? null;
   cellPhiIds       = result.phis     ?? null;
+  cellArb8Verts    = result.arb8     ?? null;
 
-  // Fallback energy reconstruction from colour channels
   if (!cellNormEnergies) {
     cellNormEnergies = new Float32Array(n);
     for (let i = 0; i < n; i++) {
@@ -576,55 +606,154 @@ function buildMesh(result) {
     }
   }
 
-  const geo  = new THREE.BoxGeometry(1, 1, 1);
-  const iids = new Float32Array(n);
-  for (let i = 0; i < n; i++) iids[i] = i;
-  geo.setAttribute('a_iid',    new THREE.InstancedBufferAttribute(iids, 1));
-  geo.setAttribute('a_energy', new THREE.InstancedBufferAttribute(cellNormEnergies.slice(), 1));
+  // ── 6 faces do prisma ARB8 como quads (4 índices de vértice cada) ─────────
+  // Vértices ARB8:  0:φ-r1z-  1:φ-r1z+  2:φ-r2z-  3:φ-r2z+
+  //                 4:φ+r1z-  5:φ+r1z+  6:φ+r2z-  7:φ+r2z+
+const FACE_QUADS = [
+    [0, 4, 6, 2],  // z-
+    [1, 3, 7, 5],  // z+
+    [0, 1, 5, 4],  // r1 inner
+    [2, 6, 7, 3],  // r2 outer
+    [0, 2, 3, 1],  // φ-
+    [4, 5, 7, 6],  // φ+
+  ];
+  const VERTS_PER_CELL = 6 * 4;
+  const IDX_PER_CELL   = 6 * 6;
+
+  const positions = new Float32Array(n * VERTS_PER_CELL * 3);
+  const normals   = new Float32Array(n * VERTS_PER_CELL * 3);  // ← novo
+  const colors    = new Float32Array(n * VERTS_PER_CELL * 3);
+  const energies  = new Float32Array(n * VERTS_PER_CELL);
+  const iids      = new Float32Array(n * VERTS_PER_CELL);
+  const actives   = new Float32Array(n * VERTS_PER_CELL);
+  const indices   = new Uint32Array(n * IDX_PER_CELL);
 
   activeAttr = new Float32Array(n).fill(1);
-  geo.setAttribute('a_active', new THREE.InstancedBufferAttribute(activeAttr, 1));
+
+  const arb = cellArb8Verts;
+
+  // Vetores temporários reutilizados para cálculo de normal (evita GC)
+  const _e1 = new THREE.Vector3();
+  const _e2 = new THREE.Vector3();
+  const _fn = new THREE.Vector3();
+
+  for (let i = 0; i < n; i++) {
+    const vBase = i * VERTS_PER_CELL;
+    const iBase = i * IDX_PER_CELL;
+    const cr = result.colors[i * 3];
+    const cg = result.colors[i * 3 + 1];
+    const cb = result.colors[i * 3 + 2];
+    const en = cellNormEnergies[i];
+
+    for (let f = 0; f < 6; f++) {
+      const quad = FACE_QUADS[f];
+
+      // ── Coleta os 4 vértices do quad em coordenadas de mundo ──────────────
+      const v = [];
+      for (let q = 0; q < 4; q++) {
+        const src = i * 24 + quad[q] * 3;
+        v.push(arb[src], arb[src + 1], arb[src + 2]);
+      }
+      // v[0..2]=A, v[3..5]=B, v[6..8]=C, v[9..11]=D
+
+      // ── Normal plana: cross(B-A, D-A) — estável mesmo para quads finos ───
+      _e1.set(v[3] - v[0], v[4] - v[1], v[5] - v[2]);  // B - A
+      _e2.set(v[9] - v[0], v[10]- v[1], v[11]- v[2]);  // D - A
+      _fn.crossVectors(_e1, _e2).normalize();
+      const nx = _fn.x, ny = _fn.y, nz = _fn.z;
+
+      for (let q = 0; q < 4; q++) {
+        const vi = vBase + f * 4 + q;
+
+        positions[vi * 3]     = v[q * 3];
+        positions[vi * 3 + 1] = v[q * 3 + 1];
+        positions[vi * 3 + 2] = v[q * 3 + 2];
+
+        normals[vi * 3]     = nx;
+        normals[vi * 3 + 1] = ny;
+        normals[vi * 3 + 2] = nz;
+
+        colors[vi * 3]     = cr;
+        colors[vi * 3 + 1] = cg;
+        colors[vi * 3 + 2] = cb;
+
+        energies[vi] = en;
+        iids[vi]     = i;
+        actives[vi]  = 1;
+      }
+
+      const v0 = vBase + f * 4;
+      const ii = iBase + f * 6;
+      indices[ii]     = v0;     indices[ii + 1] = v0 + 1; indices[ii + 2] = v0 + 2;
+      indices[ii + 3] = v0;     indices[ii + 4] = v0 + 2; indices[ii + 5] = v0 + 3;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('a_normal', new THREE.Float32BufferAttribute(normals,   3));  // ← novo
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors,    3));
+  geo.setAttribute('a_energy', new THREE.Float32BufferAttribute(energies,  1));
+  geo.setAttribute('a_iid',    new THREE.Float32BufferAttribute(iids,      1));
+  geo.setAttribute('a_active', new THREE.Float32BufferAttribute(actives,   1));
+  geo.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
 
   const mat = new THREE.ShaderMaterial({
     vertexShader, fragmentShader,
-    uniforms:    shaderUniforms,
-    transparent: true,
-    depthWrite:  true,
-    clipping:    true,
+    uniforms:       shaderUniforms,
+    vertexColors:   true,
+    transparent:    true,
+    depthWrite:     true,
+    clipping:       true,
+    side:           THREE.FrontSide,
+    polygonOffset:  true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits:  1,
   });
 
-  const mesh = new THREE.InstancedMesh(geo, mat, n);
-  mesh.instanceMatrix.usage = THREE.DynamicDrawUsage;
-  mesh.instanceColor = new THREE.InstancedBufferAttribute(result.colors.slice(), 3);
-
-  const m4 = new THREE.Matrix4();
-  for (let i = 0; i < n; i++) {
-    m4.fromArray(result.matrices, i * 16);
-    mesh.setMatrixAt(i, m4);
-  }
-  mesh.instanceMatrix.needsUpdate = true;
-
-  // Store world-space Z for each cell (used by Z-axis slicer)
-  const m4tmp = new THREE.Matrix4();
-  cellZPositions = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    m4tmp.fromArray(result.matrices, i * 16);
-    cellZPositions[i] = m4tmp.elements[14]; // Z translation
-  }
-
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;  // geometria world-space, não precisa de culling por bbox
   scene.add(mesh);
   activeMesh = mesh;
 
-  // Restore wireframe if it was active before reload
+// ── Centros, raios e Z-positions para filtro e picking ───────────────────
+  cellZPositions = new Float32Array(n);
+  cellCenters    = new Float32Array(n * 3);
+  cellRadii      = new Float32Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const base = i * 24;
+    let cx = 0, cy = 0, cz = 0;
+    for (let v = 0; v < 8; v++) {
+      cx += cellArb8Verts[base + v * 3];
+      cy += cellArb8Verts[base + v * 3 + 1];
+      cz += cellArb8Verts[base + v * 3 + 2];
+    }
+    cx /= 8; cy /= 8; cz /= 8;
+    cellCenters[i * 3]     = cx;
+    cellCenters[i * 3 + 1] = cy;
+    cellCenters[i * 3 + 2] = cz;
+    cellZPositions[i]      = cz;
+
+    // Raio = distância máxima do centro a qualquer vértice ARB8
+    let r2 = 0;
+    for (let v = 0; v < 8; v++) {
+      const dx = cellArb8Verts[base + v * 3]     - cx;
+      const dy = cellArb8Verts[base + v * 3 + 1] - cy;
+      const dz = cellArb8Verts[base + v * 3 + 2] - cz;
+      const d2 = dx*dx + dy*dy + dz*dz;
+      if (d2 > r2) r2 = d2;
+    }
+    cellRadii[i] = Math.sqrt(r2);
+  }
+
   if (wireActive) { wireActive = false; setWireframe(true); }
 
-  // Active blocks summary for metadata panel
+  // Resumo de blocos
   const detCounts = { tile: 0, hec: 0, lar: 0 };
   if (cellLayerIds) {
     for (let i = 0; i < n; i++) {
-      const layer  = cellLayerIds[i];
-      const detIdx = LAYER_DET[Math.min(layer, 25)];
-      const key    = DET_KEYS[detIdx];
+      const key = DET_KEYS[LAYER_DET[Math.min(cellLayerIds[i], 25)]];
       detCounts[key]++;
     }
   }
@@ -642,22 +771,20 @@ function buildMesh(result) {
 // ──────────────────────────────────────────────────────────
 function applyCombinedFilter() {
   if (!activeMesh || !cellLayerIds) return;
-  const n   = activeMesh.count;
   const att = activeMesh.geometry.attributes.a_active;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < cellCount; i++) {
     const layer  = cellLayerIds[i];
-    const detIdx = LAYER_DET[Math.min(layer, 25)];
-    const key    = DET_KEYS[detIdx];
+    const key    = DET_KEYS[LAYER_DET[Math.min(layer, 25)]];
     const detOk  = detEnabled[key];
     const zOk    = cellZPositions ? Math.abs(cellZPositions[i]) <= currentClipZ : true;
-    att.array[i] = (detOk && zOk) ? 1 : 0;
+    const val    = (detOk && zOk) ? 1 : 0;
+    activeAttr[i] = val;
+    const base   = i * 24;
+    for (let j = 0; j < 24; j++) att.array[base + j] = val;
   }
   att.needsUpdate = true;
 
-  // Rebuild wireframe overlay if active, since visibility changed
-  if (wireActive) {
-    setTimeout(buildWireframeOverlay, 0); // defer to next frame
-  }
+  if (wireActive) setTimeout(buildWireframeOverlay, 0);
 }
 
 function applyDetectorFilter() { applyCombinedFilter(); }
@@ -864,7 +991,7 @@ document.querySelectorAll('.branch-header').forEach(btn => {
 const raycaster  = new THREE.Raycaster();
 const mouseNDC   = new THREE.Vector2();
 let   lastRayMs  = 0;
-const RAY_GAP_MS = 80;
+const RAY_GAP_MS = 100;
 let   hoveredId  = -1;
 
 function isHelpModalOpen() {
@@ -920,29 +1047,91 @@ function clearTooltip() {
   cellTooltip.classList.remove('visible');
 }
 
-function onMouseMove(e) {
-  // Constraint 1: disabled in focus mode
-  if (document.body.classList.contains('focus-mode')) { clearTooltip(); return; }
-  // Constraint 2: disabled when Help modal is open
-  if (isHelpModalOpen()) { clearTooltip(); return; }
-  // Constraint 3: disabled if cell hover toggle is off
-  if (!cellHoverEnabled) { clearTooltip(); return; }
-  // Throttle
-  const now = performance.now();
-  if (now - lastRayMs < RAY_GAP_MS) return;
-  lastRayMs = now;
+// ──────────────────────────────────────────────────────────
+//  ★ FAST CELL PICKER — ray-sphere em vez de ray-triangle
+//  O(n) mas com operações escalares mínimas (~10 ops/célula).
+//  Ordens de magnitude mais rápido que o raycaster do Three.js
+//  numa geometria mesclada com centenas de milhares de triângulos.
+// ──────────────────────────────────────────────────────────
+  const _rayOrig = new THREE.Vector3();
+  const _rayDir  = new THREE.Vector3();
+  const _tmpRay  = new THREE.Ray();
 
+  function pickCell(clientX, clientY) {
+    if (!activeMesh || !cellCenters || !cellRadii) return -1;
+
+    // Monta o raio em world-space
+    const ndcX =  (clientX / window.innerWidth)  * 2 - 1;
+    const ndcY = -(clientY / window.innerHeight)  * 2 + 1;
+
+    _rayOrig.setFromMatrixPosition(camera.matrixWorld);
+    _rayDir.set(ndcX, ndcY, 0.5).unproject(camera).sub(_rayOrig).normalize();
+    _tmpRay.set(_rayOrig, _rayDir);
+
+    const ox = _rayOrig.x, oy = _rayOrig.y, oz = _rayOrig.z;
+    const dx = _rayDir.x,  dy = _rayDir.y,  dz = _rayDir.z;
+
+    let bestT   = Infinity;
+    let bestId  = -1;
+    const thr   = shaderUniforms.u_threshold.value;
+
+    for (let i = 0; i < cellCount; i++) {
+      // Ignora células ocultadas pelo filtro ou pelo threshold
+      if (activeAttr && activeAttr[i] < 0.5) continue;
+      if (cellNormEnergies && cellNormEnergies[i] < thr) continue;
+
+      // Vetor do ponto de origem do raio ao centro da esfera
+      const cx = cellCenters[i * 3]     - ox;
+      const cy = cellCenters[i * 3 + 1] - oy;
+      const cz = cellCenters[i * 3 + 2] - oz;
+
+      // Projeção do centro sobre o raio
+      const tca = cx * dx + cy * dy + cz * dz;
+      if (tca < 0) continue; // esfera atrás da câmera
+
+      // Distância perpendicular ao quadrado
+      const d2 = cx*cx + cy*cy + cz*cz - tca*tca;
+      const r   = cellRadii[i];
+      if (d2 > r * r) continue; // raio passa fora
+
+      // Ponto de interseção mais próximo
+      const t = tca - Math.sqrt(r * r - d2);
+      if (t < bestT) { bestT = t; bestId = i; }
+    }
+
+    return bestId;
+  }
+
+// Flag para evitar chamadas sobrepostas (ex.: mouse se move durante compute)
+let _pickPending = false;
+
+function onMouseMove(e) {
+  if (document.body.classList.contains('focus-mode')) { clearTooltip(); return; }
+  if (isHelpModalOpen())  { clearTooltip(); return; }
+  if (!cellHoverEnabled)  { clearTooltip(); return; }
   if (!activeMesh || !activeMesh.visible) { clearTooltip(); return; }
 
-  mouseNDC.x =  (e.clientX / window.innerWidth)  * 2 - 1;
-  mouseNDC.y = -(e.clientY / window.innerHeight)  * 2 + 1;
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits = raycaster.intersectObject(activeMesh);
-  if (hits.length > 0 && hits[0].instanceId !== undefined) {
-    showTooltip(hits[0].instanceId, e.clientX, e.clientY);
-  } else {
-    clearTooltip();
-  }
+  // Throttle por tempo — 100 ms é imperceptível para o usuário
+  const now = performance.now();
+  if (now - lastRayMs < RAY_GAP_MS) return;
+  if (_pickPending) return;  // não empilha chamadas
+
+  lastRayMs    = now;
+  _pickPending = true;
+
+  // Captura coordenadas antes do setTimeout (closure)
+  const cx = e.clientX, cy = e.clientY;
+
+  // Adia para fora do handler de evento → não bloqueia o frame atual
+  setTimeout(() => {
+    try {
+      const id = pickCell(cx, cy);
+      if (id >= 0) showTooltip(id, cx, cy);
+      else         clearTooltip();
+    } finally {
+      _pickPending = false;
+    }
+  }, 0);
 }
 
 document.addEventListener('mousemove', onMouseMove, { passive: true });
@@ -1237,6 +1426,7 @@ btnReset.addEventListener('click', () => {
   cellNormEnergies = null; cellLayerIds = null;
   cellEtaIds = null; cellPhiIds = null; activeAttr = null;
   cellZPositions = null; currentClipZ = Infinity;
+  cellCount = 0;
 
   energyPanel.classList.remove('on');
   cellCountEl.textContent   = '—';

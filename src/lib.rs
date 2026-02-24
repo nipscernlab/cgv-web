@@ -622,66 +622,201 @@ fn in_barrel_crack(eta_abs: f64, is_barrel: bool) -> bool {
 }
 
 // =============================================================================
-// CÁLCULO DA POSIÇÃO 3D DA CÉLULA
+// GEOMETRIA ARB8 — Célula detectora com 8 vértices arbitrários
 //
-// Entrada: configuração da camada + índices (eta, phi)
-// Saída:   (cx, cy, cz, sx, sy, sz) em mm
-//   cx,cy,cz = centro da célula no espaço 3D cartesiano
-//   sx,sy,sz = semi-extensões (metade do tamanho) em cada eixo
+// Um ARB8 é um prisma trapezoidal no plano R-φ, extrudado em Z (barril) ou
+// em R (tampa). Todas as 6 faces são planas, o que garante que células
+// vizinhas se encostem sem lacunas ou sobreposições — ao contrário da
+// caixa + matriz 4×4 que produz retângulos que não cobrem o setor circular.
 //
-// Retorna None se a célula é inválida (fora do range, 0.0 na tabela, crack)
+// ORDENAÇÃO DOS VÉRTICES — compatível com BoxGeometry do Three.js:
+//   idx = (x>0 ? 4 : 0) | (y<0 ? 2 : 0) | (z>0 ? 1 : 0)
+//
+//   idx=0  (x<0, y>0, z<0) → face φ-, raio r1, z-   (interno, φ-esquerda, baixo)
+//   idx=1  (x<0, y>0, z>0) → face φ-, raio r1, z+
+//   idx=2  (x<0, y<0, z<0) → face φ-, raio r2, z-   (externo, φ-esquerda, baixo)
+//   idx=3  (x<0, y<0, z>0) → face φ-, raio r2, z+
+//   idx=4  (x>0, y>0, z<0) → face φ+, raio r1, z-   (interno, φ-direita, baixo)
+//   idx=5  (x>0, y>0, z>0) → face φ+, raio r1, z+
+//   idx=6  (x>0, y<0, z<0) → face φ+, raio r2, z-   (externo, φ-direita, baixo)
+//   idx=7  (x>0, y<0, z>0) → face φ+, raio r2, z+
+//
+// Posição cartesiana: x = -r·sin(φ),  y = r·cos(φ)
+// (sinal negativo em x vem da convenção do sistema de coordenadas do detector)
+//
+// EMPACOTAMENTO DOS 24 FLOATS EM 6 vec4 (para atributos de instância WebGL):
+//   a_arb01 = (v[0].xyz,  v[1].x)
+//   a_arb12 = (v[1].yz,   v[2].xy)
+//   a_arb23 = (v[2].z,    v[3].xyz)
+//   a_arb45 = (v[4].xyz,  v[5].x)
+//   a_arb56 = (v[5].yz,   v[6].xy)
+//   a_arb67 = (v[6].z,    v[7].xyz)
 // =============================================================================
-fn compute_cell(cfg: &LayerCfg, eta_idx: i32, phi_idx: usize)
-    -> Option<(f64, f64, f64, f64, f64, f64)>
-{
+
+/// Geometria completa de uma célula detectora.
+/// Os campos cx/cy/cz/sx/sy/sz/phi alimentam a `instanceMatrix` (raycasting/culling).
+/// Os campos r1/r2/phi_m/phi_p/z_lo/z_hi alimentam os vértices ARB8 reais.
+struct CellGeom {
+    // ---- Centro cartesiano da célula (espaço do detector, mm) ----------------
+    cx:    f64, // coordenada X do centro
+    cy:    f64, // coordenada Y do centro
+    cz:    f64, // coordenada Z do centro (positivo: lado A; negativo: lado C)
+    // ---- Semi-extensões para a instanceMatrix (bounding box, mm) -------------
+    sx:    f64, // metade da espessura radial:  (r2 - r1) / 2
+    sy:    f64, // metade do arco azimutal:     r_mid · Δφ / 2
+    sz:    f64, // metade da extensão em Z (ou R, para tampas)
+    // ---- Ângulo central (rad) — usado por build_matrix e normalMatrix ---------
+    phi:   f64,
+    // ---- Parâmetros físicos reais para build_arb8_vertices -------------------
+    r1:    f64, // raio interno real (mm) — face mais próxima do eixo do feixe
+    r2:    f64, // raio externo real (mm) — face mais afastada do eixo do feixe
+    phi_m: f64, // ângulo da face φ- (rad): phi_center - Δφ/2
+    phi_p: f64, // ângulo da face φ+ (rad): phi_center + Δφ/2
+    z_lo:  f64, // face z inferior (mm): pode ser negativa (lado C do detector)
+    z_hi:  f64, // face z superior (mm): z_lo < z_hi sempre
+}
+
+// =============================================================================
+// BUILD_ARB8_VERTICES — Calcula os 8 vértices do prisma ARB8 em metros
+//
+// Converte as coordenadas físicas em mm (r1, r2, phi_m, phi_p, z_lo, z_hi)
+// para coordenadas cartesianas em metros, ordenadas conforme o índice ARB8.
+//
+// Saída: [f32; 24] — 8 vértices × (x, y, z), já em metros
+//   Floats [0..3]:  v[0] = (-r1·sin(φ-),  r1·cos(φ-),  z_lo)
+//   Floats [3..6]:  v[1] = (-r1·sin(φ-),  r1·cos(φ-),  z_hi)
+//   Floats [6..9]:  v[2] = (-r2·sin(φ-),  r2·cos(φ-),  z_lo)
+//   Floats [9..12]: v[3] = (-r2·sin(φ-),  r2·cos(φ-),  z_hi)
+//   Floats [12..15]:v[4] = (-r1·sin(φ+),  r1·cos(φ+),  z_lo)
+//   Floats [15..18]:v[5] = (-r1·sin(φ+),  r1·cos(φ+),  z_hi)
+//   Floats [18..21]:v[6] = (-r2·sin(φ+),  r2·cos(φ+),  z_lo)
+//   Floats [21..24]:v[7] = (-r2·sin(φ+),  r2·cos(φ+),  z_hi)
+// =============================================================================
+fn build_arb8_vertices(geom: &CellGeom, scale: f64) -> [f32; 24] {
+    // Pré-calcula senos e cossenos das duas faces azimutais
+    let (sm, cm) = (geom.phi_m.sin(), geom.phi_m.cos()); // φ- (face esquerda)
+    let (sp, cp) = (geom.phi_p.sin(), geom.phi_p.cos()); // φ+ (face direita)
+
+    // Raios e alturas já escalonados para metros
+    let r1 = (geom.r1 * scale) as f32;
+    let r2 = (geom.r2 * scale) as f32;
+    let zl = (geom.z_lo * scale) as f32;
+    let zh = (geom.z_hi * scale) as f32;
+
+    let (sm, cm) = (sm as f32, cm as f32);
+    let (sp, cp) = (sp as f32, cp as f32);
+
+    [
+        // v[0]: φ-, interno (r1), z-
+        -r1 * sm,  r1 * cm,  zl,
+        // v[1]: φ-, interno (r1), z+
+        -r1 * sm,  r1 * cm,  zh,
+        // v[2]: φ-, externo (r2), z-
+        -r2 * sm,  r2 * cm,  zl,
+        // v[3]: φ-, externo (r2), z+
+        -r2 * sm,  r2 * cm,  zh,
+        // v[4]: φ+, interno (r1), z-
+        -r1 * sp,  r1 * cp,  zl,
+        // v[5]: φ+, interno (r1), z+
+        -r1 * sp,  r1 * cp,  zh,
+        // v[6]: φ+, externo (r2), z-
+        -r2 * sp,  r2 * cp,  zl,
+        // v[7]: φ+, externo (r2), z+
+        -r2 * sp,  r2 * cp,  zh,
+    ]
+}
+
+// =============================================================================
+// CÁLCULO DA GEOMETRIA 3D DA CÉLULA
+//
+// Entrada: configuração da camada (LayerCfg) + índices (eta, phi)
+// Saída:   Option<CellGeom> — None se a célula é inválida ou inexistente
+//
+// Para cada subdetector, calcula:
+//   · cx, cy, cz   — centro cartesiano (mm)
+//   · sx, sy, sz   — semi-extensões para a bounding matrix (mm)
+//   · r1, r2       — raios interno/externo reais para ARB8 (mm)
+//   · phi_m, phi_p — ângulos das faces azimutais para ARB8 (rad)
+//   · z_lo, z_hi   — faces axiais para ARB8 (mm, podem ser negativas)
+//   · phi          — ângulo central (rad)
+//
+// NOTA: z_lo < z_hi é sempre garantido. Para o lado C (η<0), z_lo e z_hi
+// são ambos negativos, com |z_hi| < |z_lo|.
+// =============================================================================
+fn compute_cell(cfg: &LayerCfg, eta_idx: i32, phi_idx: usize) -> Option<CellGeom> {
     let eta_abs = eta_idx.unsigned_abs() as usize;
     // z_sign: +1 para o lado A (η>0), -1 para o lado C (η<0)
     let z_sign  = if eta_idx >= 0 { 1.0_f64 } else { -1.0_f64 };
-    let phi     = phi_center(phi_idx, cfg.phi_seg);
-    let dphi    = 2.0 * PI / cfg.phi_seg as f64;
+
+    // Ângulo central da fatia φ e largura azimutal (rad)
+    let phi  = phi_center(phi_idx, cfg.phi_seg);
+    let dphi = 2.0 * PI / cfg.phi_seg as f64;
+
+    // Faces azimutais do ARB8: meio ± metade do passo
+    let phi_m = phi - dphi / 2.0;
+    let phi_p = phi + dphi / 2.0;
+
     let sin_phi = phi.sin();
     let cos_phi = phi.cos();
 
     match cfg.subdet {
         // -----------------------------------------------------------------
-        // TILE — barras cilíndricas com z da tabela TILE_Z
-        // Geometria: raio fixo [h1, h2], posição z e largura lidas da tabela
+        // TILE — barras cilíndricas com posição Z lida da tabela TILE_Z
+        //
+        // Geometria ARB8: raios reais h1/h2, faces φ planas (radiais),
+        //                 faces z± lidas de TILE_Z ± TILE_DZ/2.
         // -----------------------------------------------------------------
         SubDet::Tile => {
             let row = cfg.tile_row;
-            if eta_abs >= 10 { return None; } // TILE_Z tem no máximo 10 slots de eta
+            if eta_abs >= 10 { return None; } // TILE_Z tem no máximo 10 slots
 
             let z_val = TILE_Z[row][eta_abs];
             let dz    = TILE_DZ[row][eta_abs];
             if z_val == 0.0 || dz == 0.0 { return None; } // célula inexistente
 
-            let r_mid = (cfg.h1 + cfg.h2) / 2.0;
-            let dr    = cfg.h2 - cfg.h1;
-
-            // Para camadas mescladas (l=1, BC barril): média dos dz das duas sub-linhas
-            // Isso suaviza a transição visual entre as sub-regiões B e C
+            // Para camadas mescladas (l=1, BC): média dos dz das duas sub-linhas
             let dz_final = if cfg.tile_row2 != row && TILE_DZ[cfg.tile_row2][eta_abs] > 0.0 {
                 (dz + TILE_DZ[cfg.tile_row2][eta_abs]) / 2.0
             } else {
                 dz
             };
 
-            // Conversão polar→cartesiano: x = -r·sin(φ), y = r·cos(φ)
+            let r1    = cfg.h1;                         // raio interno real
+            let r2    = cfg.h2;                         // raio externo real
+            let r_mid = (r1 + r2) / 2.0;               // raio central
+            let dr    = r2 - r1;                        // espessura radial
+            let sz    = dz_final / 2.0;                 // semi-extensão axial
+
+            // Centro da célula em cartesiano
             let cx = -r_mid * sin_phi;
             let cy =  r_mid * cos_phi;
             let cz =  z_sign * z_val;
 
-            // semi-extensões: (dr/2, r·Δφ/2, dz/2)
-            Some((cx, cy, cz, dr / 2.0, r_mid * dphi / 2.0, dz_final / 2.0))
+            // Faces axiais ARB8 (z_lo < z_hi garantido porque sz > 0)
+            let z_lo = cz - sz;
+            let z_hi = cz + sz;
+
+            Some(CellGeom {
+                cx, cy, cz,
+                sx: dr / 2.0,
+                sy: r_mid * dphi / 2.0,
+                sz,
+                phi,
+                r1, r2,
+                phi_m, phi_p,
+                z_lo, z_hi,
+            })
         }
 
         // -----------------------------------------------------------------
-        // HEC — anéis no plano z=cte, raio lido de HEC_R
-        // Geometria: z fixo por camada [h1,h2], raio e ΔR da tabela
+        // HEC — anéis no plano z = cte, raio central lido de HEC_R
+        //
+        // Geometria ARB8: r1 = r_val - dr/2, r2 = r_val + dr/2,
+        //                 faces z± em cfg.h1/h2 (com sinal para lado C).
         // -----------------------------------------------------------------
         SubDet::Hec => {
             let (r_val, dr_val) = if cfg.hec_row1 == cfg.hec_row2 {
-                // Sub-região única: consulta diretamente HEC_R[row1][eta_abs]
+                // Sub-região única
                 if eta_abs >= HEC_SIZE[cfg.hec_row1] { return None; }
                 (HEC_R[cfg.hec_row1][eta_abs], HEC_DR[cfg.hec_row1][eta_abs])
             } else {
@@ -695,22 +830,39 @@ fn compute_cell(cfg: &LayerCfg, eta_idx: i32, phi_idx: usize)
                 }
             };
 
-            if r_val == 0.0 { return None; } // posição inválida na tabela
+            if r_val == 0.0 { return None; }
 
             let z_mid = (cfg.h1 + cfg.h2) / 2.0;
-            let dz    = cfg.h2 - cfg.h1;
+            let dz    =  cfg.h2 - cfg.h1;
+            let sz    =  dz / 2.0;
+
+            let r1 = r_val - dr_val / 2.0; // raio interno real
+            let r2 = r_val + dr_val / 2.0; // raio externo real
 
             let cx = -r_val * sin_phi;
             let cy =  r_val * cos_phi;
             let cz =  z_sign * z_mid;
 
-            // semi-extensões: (dr/2, r·Δφ/2, dz/2)
-            Some((cx, cy, cz, dr_val / 2.0, r_val * dphi / 2.0, dz / 2.0))
+            // Para o lado C (z_sign=-1): cz negativo, z_lo < z_hi ainda se mantém
+            let z_lo = cz - sz;
+            let z_hi = cz + sz;
+
+            Some(CellGeom {
+                cx, cy, cz,
+                sx: dr_val / 2.0,
+                sy: r_val * dphi / 2.0,
+                sz,
+                phi,
+                r1, r2,
+                phi_m, phi_p,
+                z_lo, z_hi,
+            })
         }
 
         // -----------------------------------------------------------------
         // LAr BARRIL — cilindros concêntricos, z calculado por z = R·sinh(η)
-        // Geometria: raio fixo por camada [h1,h2], z varia com η
+        //
+        // Geometria ARB8: raios reais h1/h2, faces z± calculadas pela física.
         // -----------------------------------------------------------------
         SubDet::LarBarrel => {
             let lar = cfg.lar_layer;
@@ -718,68 +870,93 @@ fn compute_cell(cfg: &LayerCfg, eta_idx: i32, phi_idx: usize)
 
             let eta_c     = laba_eta(lar, eta_abs);
             let eta_c_abs = eta_c.abs();
-
-            // Suprime células além do limite do barril (região de crack)
             if in_barrel_crack(eta_c_abs, true) { return None; }
 
-            let r_mid = (cfg.h1 + cfg.h2) / 2.0;
-            let dr    = cfg.h2 - cfg.h1;
+            let r1    = cfg.h1;
+            let r2    = cfg.h2;
+            let r_mid = (r1 + r2) / 2.0;
+            let dr    = r2 - r1;
 
-            // FÍSICA: z = R·sinh(η) — mapeamento exato, não linear!
+            // z = R·sinh(η) — mapeamento físico exato
             let cz = z_sign * eta_to_z(eta_c_abs, r_mid);
             let cx = -r_mid * sin_phi;
             let cy =  r_mid * cos_phi;
 
-            // Extensão em z por regra da cadeia: dz = R·cosh(η)·Δη
-            // Limitada a 800 mm para evitar artefatos visuais em células muito grandes
+            // Extensão em z: dz = R·cosh(η)·Δη (limitada a 800 mm)
             let deta = laba_deta(lar, eta_abs);
-            let sz   = (r_mid * eta_c_abs.cosh() * deta / 2.0).min(800.0);
+            let sz   = (r_mid * eta_c_abs.cosh() * deta / 2.0)
+                           .min(800.0)
+                           .max(1.0);
 
-            // semi-extensões: (dr/2, r·Δφ/2, sz)
-            // sz mínimo de 1 mm para manter células visíveis
-            Some((cx, cy, cz, dr / 2.0, r_mid * dphi / 2.0, sz.max(1.0)))
+            let z_lo = cz - sz;
+            let z_hi = cz + sz;
+
+            Some(CellGeom {
+                cx, cy, cz,
+                sx: dr / 2.0,
+                sy: r_mid * dphi / 2.0,
+                sz,
+                phi,
+                r1, r2,
+                phi_m, phi_p,
+                z_lo, z_hi,
+            })
         }
 
         // -----------------------------------------------------------------
-        // LAr TAMPA — discos em z=cte, raio calculado por r = z/sinh(η)
-        // Geometria: z fixo por célula [laeb_h1, laeb_h2], r varia com η
+        // LAr TAMPA — discos em z = cte, raio calculado por r = z/sinh(η)
+        //
+        // Geometria ARB8: r1 = r_perp - dr, r2 = r_perp + dr,
+        //                 faces z± em laeb_h1/h2 (com sinal).
         // -----------------------------------------------------------------
         SubDet::LarEndCap => {
             let lar = cfg.lar_layer;
             if eta_abs >= laeb_ncells(lar) { return None; }
 
             let eta_c = laeb_eta(lar, eta_abs);
-            if eta_c == 0.0 { return None; } // eta=0 → célula inválida
+            if eta_c == 0.0 { return None; }
             let eta_c_abs = eta_c.abs();
-
-            // Suprime células abaixo do limite da tampa (região de crack)
             if in_barrel_crack(eta_c_abs, false) { return None; }
 
-            // Limites z da célula (variam com eta para camada 2 e 3)
-            // [BUG-4 CORRIGIDO] laeb_h2 agora retorna 4201.25 para camada 2, idx>=44
+            // [BUG-4 CORRIGIDO] laeb_h2 retorna 4201.25 para camada 2, idx>=44
             let h1    = laeb_h1(lar, eta_abs);
             let h2    = laeb_h2(lar, eta_abs);
             let z_mid = (h1 + h2) / 2.0;
-            let dz    = h2 - h1;
+            let dz    =  h2 - h1;
 
-            // FÍSICA INVERSA: dado z e η → r = z/sinh(η)
-            // .max(0.001) evita divisão por zero em η ≈ 0
+            // r = z/sinh(η)
             let sinh_eta = eta_c_abs.sinh().max(0.001);
             let r_perp   = z_mid / sinh_eta;
+
+            // Extensão radial: dr ≈ z·Δη·cosh(η)/sinh²(η), mín 5 mm
+            let deta      = laeb_deta(lar, eta_abs);
+            let dr_approx = (z_mid * deta * eta_c_abs.cosh()
+                              / (sinh_eta * sinh_eta))
+                              .abs()
+                              .min(500.0)
+                              .max(5.0);
+
+            let r1 = r_perp - dr_approx; // raio interno real
+            let r2 = r_perp + dr_approx; // raio externo real
 
             let cx = -r_perp * sin_phi;
             let cy =  r_perp * cos_phi;
             let cz =  z_sign * z_mid;
 
-            // Extensão radial aproximada: dr ≈ dz·Δη·cosh(η)/sinh²(η)
-            // Limitada a 500 mm para evitar células excessivamente grandes
-            let deta      = laeb_deta(lar, eta_abs);
-            let dr_approx = (z_mid * deta / (sinh_eta * sinh_eta) * eta_c_abs.cosh())
-                .abs().min(500.0);
+            // Para lado C: z_lo = -(h1+h2)/2 - dz/2 = -h2 (face mais distal)
+            let z_lo = cz - dz / 2.0;
+            let z_hi = cz + dz / 2.0;
 
-            // semi-extensões: (dr/2, r·Δφ/2, dz/2)
-            // dr mínimo de 5 mm para manter células visíveis
-            Some((cx, cy, cz, dr_approx.max(5.0), r_perp * dphi / 2.0, dz / 2.0))
+            Some(CellGeom {
+                cx, cy, cz,
+                sx: dr_approx,
+                sy: r_perp * dphi / 2.0,
+                sz: dz / 2.0,
+                phi,
+                r1, r2,
+                phi_m, phi_p,
+                z_lo, z_hi,
+            })
         }
     }
 }
@@ -938,49 +1115,48 @@ pub fn process_xml_data(xml_bytes: &[u8]) -> Result<JsValue, JsValue> {
         .fold(f64::INFINITY, f64::min).min(max_e);
 
     // Vetores de saída (acumulados célula a célula)
-    let mut matrices:   Vec<f32> = Vec::new(); // 16 floats por célula
+    let mut matrices:   Vec<f32> = Vec::new(); // 16 floats por célula (instanceMatrix p/ raycasting)
+    let mut arb8_verts: Vec<f32> = Vec::new(); // 24 floats por célula (8 vértices ARB8 reais em m)
     let mut colors:     Vec<f32> = Vec::new(); // 3 floats (RGB)
-    let mut energies:   Vec<f32> = Vec::new(); // 1 float (energia normalizada)
+    let mut energies:   Vec<f32> = Vec::new(); // 1 float (energia normalizada [0,1])
     let mut layers_out: Vec<f32> = Vec::new(); // 1 float (índice de camada)
     let mut etas_out:   Vec<f32> = Vec::new(); // 1 float (índice de eta)
     let mut phis_out:   Vec<f32> = Vec::new(); // 1 float (índice de phi)
 
     for (&(l, et, ph), &energy) in &energy_map {
-        if energy <= 0.0 { continue; } // ignora células sem depósito de energia
+        if energy <= 0.0 { continue; }
 
         let l_idx = l as usize;
-        if l_idx >= layers.len() { continue; } // camada fora do range válido
+        if l_idx >= layers.len() { continue; }
         let cfg = &layers[l_idx];
 
-        if (ph as usize) >= cfg.phi_seg { continue; } // phi fora do range da camada
+        if (ph as usize) >= cfg.phi_seg { continue; }
 
-        // Calcula posição e dimensões 3D da célula
-        if let Some((cx, cy, cz, sx, sy, sz)) = compute_cell(cfg, et, ph as usize) {
-            let phi_a = phi_center(ph as usize, cfg.phi_seg);
-
-            // Constrói a matriz 4×4 em metros (fator de escala mm→m)
+        if let Some(geom) = compute_cell(cfg, et, ph as usize) {
+            // ---- instanceMatrix 4×4 (em metros) — usada para raycasting/culling ----
             let mat = build_matrix(
-                cx * scale, cy * scale, cz * scale, // centro em metros
-                sx * scale, sy * scale, sz * scale, // semi-extensões em metros
-                phi_a                               // ângulo em radianos
+                geom.cx * scale, geom.cy * scale, geom.cz * scale,
+                geom.sx * scale, geom.sy * scale, geom.sz * scale,
+                geom.phi,
             );
             matrices.extend_from_slice(&mat);
 
-            // Normaliza energia: t = (E - E_min) / (E_max - E_min)
-            // Se todas as energias são iguais, usa t=1 (cor máxima)
+            // ---- 8 vértices ARB8 reais (em metros) — geometria correta para GPU ----
+            let verts = build_arb8_vertices(&geom, scale);
+            arb8_verts.extend_from_slice(&verts);
+
+            // ---- Cor a partir da escala jet ----------------------------------------
             let t = if max_e > min_e {
                 ((energy - min_e) / (max_e - min_e)) as f32
             } else {
                 1.0_f32
             };
-
-            // Cor RGB a partir da escala jet
             let (r, g, b) = energy_color(t);
             colors.push(r);
             colors.push(g);
             colors.push(b);
 
-            // Metadados para filtros e tooltips no JavaScript
+            // ---- Metadados para filtros e tooltips ---------------------------------
             energies.push(t);
             layers_out.push(l as f32);
             etas_out.push(et as f32);
@@ -988,19 +1164,20 @@ pub fn process_xml_data(xml_bytes: &[u8]) -> Result<JsValue, JsValue> {
         }
     }
 
-    // Total de células 3D geradas (cada matriz tem 16 floats)
     let count = (matrices.len() / 16) as u32;
 
     // ==========================================================================
     // EMPACOTAMENTO EM ARRAYS JAVASCRIPT
-    //
-    // Float32Array é o tipo nativo de 32 bits em JavaScript e o formato direto
-    // que a GPU consome via InstancedMesh e BufferAttribute do Three.js.
     // ==========================================================================
 
-    // Matrizes 4×4 de transformação (count × 16 floats)
+    // Matrizes 4×4 (count × 16 floats) — instanceMatrix para raycasting/culling
     let mat_array = Float32Array::new_with_length(matrices.len() as u32);
     mat_array.copy_from(&matrices);
+
+    // Vértices ARB8 (count × 24 floats) — 8 vértices reais por célula, em metros
+    // Layout: [v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, ..., v7.x, v7.y, v7.z] por célula
+    let arb8_array = Float32Array::new_with_length(arb8_verts.len() as u32);
+    arb8_array.copy_from(&arb8_verts);
 
     // Cores RGB (count × 3 floats)
     let col_array = Float32Array::new_with_length(colors.len() as u32);
@@ -1024,16 +1201,16 @@ pub fn process_xml_data(xml_bytes: &[u8]) -> Result<JsValue, JsValue> {
 
     // Empacota tudo em um objeto JavaScript {}
     let obj = Object::new();
-    Reflect::set(&obj, &"matrices".into(),  &mat_array).unwrap();  // 16 floats/célula
-    Reflect::set(&obj, &"colors".into(),    &col_array).unwrap();  // 3 floats/célula (RGB)
-    Reflect::set(&obj, &"energies".into(),  &eng_array).unwrap();  // 1 float/célula [0,1]
-    Reflect::set(&obj, &"layers".into(),    &lay_array).unwrap();  // 1 float/célula (índice)
-    Reflect::set(&obj, &"etas".into(),      &eta_array).unwrap();  // 1 float/célula (índice)
-    Reflect::set(&obj, &"phis".into(),      &phi_array).unwrap();  // 1 float/célula (índice)
-    Reflect::set(&obj, &"count".into(),     &(count as f64).into()).unwrap(); // total de células
-    Reflect::set(&obj, &"maxEnergy".into(), &max_e.into()).unwrap(); // energia máx em MeV
-    Reflect::set(&obj, &"minEnergy".into(), &min_e.into()).unwrap(); // energia mín em MeV
+    Reflect::set(&obj, &"matrices".into(),  &mat_array).unwrap();   // 16 floats/célula (raycasting)
+    Reflect::set(&obj, &"arb8".into(),      &arb8_array).unwrap();  // 24 floats/célula (vértices reais)
+    Reflect::set(&obj, &"colors".into(),    &col_array).unwrap();   // 3  floats/célula (RGB)
+    Reflect::set(&obj, &"energies".into(),  &eng_array).unwrap();   // 1  float/célula  [0,1]
+    Reflect::set(&obj, &"layers".into(),    &lay_array).unwrap();   // 1  float/célula  (índice)
+    Reflect::set(&obj, &"etas".into(),      &eta_array).unwrap();   // 1  float/célula  (índice)
+    Reflect::set(&obj, &"phis".into(),      &phi_array).unwrap();   // 1  float/célula  (índice)
+    Reflect::set(&obj, &"count".into(),     &(count as f64).into()).unwrap();
+    Reflect::set(&obj, &"maxEnergy".into(), &max_e.into()).unwrap();
+    Reflect::set(&obj, &"minEnergy".into(), &min_e.into()).unwrap();
 
-    // Retorna o objeto JS (erros viram exceções no browser)
     Ok(obj.into())
 }
