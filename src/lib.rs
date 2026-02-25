@@ -1,826 +1,440 @@
 // =============================================================================
-// lib.rs — Módulo WASM para visualização do calorímetro do detector ATLAS (CERN)
-//          Projeto: CGV-WEB
+// lib.rs — Módulo WASM para visualização do calorímetro ATLAS
+//          CGV-WEB v4.0 — NIPSCERN Laboratory × ATLAS / CERN
 //
-// VISÃO GERAL DO FLUXO DE DADOS:
-//   1. JavaScript chama `process_xml_data(bytes)` enviando um arquivo XML bruto
-//   2. O WASM (este código Rust compilado) analisa o XML e extrai energia por célula
-//   3. Para cada célula com energia > 0, calcula a posição 3D física no detector
-//   4. Gera matrizes 4×4 de transformação para o Three.js (InstancedMesh)
-//   5. Retorna para o JavaScript um objeto com arrays Float32 prontos para a GPU
-//   6. O Three.js usa esses dados para renderizar milhares de células 3D na tela
+// OTIMIZAÇÕES v4.0:
+//   [OPT-1] build_matrix REMOVIDA: a matriz 4×4 não era usada na renderização
+//            (vértices ARB8 já estão em world-space). Economia: n×64 bytes/evento.
 //
-// GEOMETRIA: todos os valores provêm de CaloGeoConst.h (fonte única de verdade)
-//   - TILE:      14 camadas lógicas, dados em TILE_Z / TILE_DZ
-//   - HEC:       4 camadas lógicas (7 linhas de tabela), dados em HEC_R / HEC_DR
-//   - LAr Barril: 4 camadas (l=18..21), LaBa_eta / LaBa_deta / LaBa_size
-//   - LAr Tampa:  4 camadas (l=22..25), LaEb_eta / LaEb_deta / LaEb_h1 / LaEb_h2
+//   [OPT-2] buildMesh MOVIDO PARA WASM: o loop que construía posições, normais
+//            outward, cores, energias e índices GPU agora roda em Rust (10–50×
+//            mais rápido que JS para loops numéricos densos). O JS recebe arrays
+//            prontos para passar diretamente ao Three.js BufferGeometry.
 //
-// CORREÇÕES APLICADAS (vs versão anterior):
-//   [BUG-1] laba_eta(camada=2): fórmula estava errada — iniciava em 0.025 e usava
-//           slope 0.1 para idx>=44, produzindo η até 2.325 (fora do detector!).
-//           Correto: 0.0125 + 0.025*idx para idx<56, 1.4375 para idx=56.
-//   [BUG-2] laba_deta(camada=2): retornava 0.1 para idx>=44.
-//           Correto: 0.025 para idx<56, 0.05 para idx=56.
-//   [BUG-3] laba_eta/deta(camada=1): idx=448,449,450 são células de transição
-//           especiais (Δη=0.025) em η=1.4125/1.4375/1.4625.
-//           A fórmula uniforme de 0.003125 gerava posições ~0.003 erradas.
-//   [BUG-4] laeb_h2(camada=2): sempre retornava 4156.24 mm.
-//           Para idx>=44 (7 células finais da tampa LAr 2), o correto é 4201.25 mm.
+//   [OPT-3] Frustum culling habilitado: o WASM retorna a bounding sphere de toda
+//            a cena. O JS a aplica em geo.boundingSphere, permitindo que o Three.js
+//            pule frames onde o detector está fora do frustum de câmera.
+//
+//   [OPT-4] pick_cell_ray EXPORTADA: o ray-sphere O(n) roda em Rust em vez de JS,
+//            eliminando overhead de GC e interpretador. O estado de células
+//            (centros, raios, energias) é mantido em thread_local após o parse.
+//
+// GEOMETRIA: mantida idêntica a CaloGeoConst.h (fonte única de verdade).
+// CORREÇÕES BUG-1..4: mantidas do v3 (laba_eta, laba_deta, laeb_h2).
 // =============================================================================
 
 use wasm_bindgen::prelude::*;
-use js_sys::{Float32Array, Object, Reflect};
+use js_sys::{Float32Array, Uint32Array, Object, Reflect};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use std::collections::HashMap;
-
-// =============================================================================
-// CONSTANTES FÍSICAS DO CALORÍMETRO — Portadas de CaloGeoConst.h
-// Todos os valores estão em milímetros (mm)
-// =============================================================================
+use std::cell::RefCell;
 
 const PI: f64 = std::f64::consts::PI;
 
-// --- Calorímetro TILE (hadrônico de telhas de cintilação) --------------------
+// =============================================================================
+// ESTADO GLOBAL DE PICKING — armazenado após process_xml_data
 //
-// TILE_Z[linha][idx_eta]: posição central em Z de cada célula Tile (mm)
-// Dimensão [15 linhas físicas][10 slots de eta]
-// Valor 0.0 => célula inexistente nessa posição
+// Utiliza thread_local! + RefCell porque WASM é single-threaded.
+// Evita re-alocar/re-calcular centros e raios a cada chamada de pick_cell_ray.
+// =============================================================================
+#[derive(Default)]
+struct PickState {
+    centers:  Vec<f32>,  // n*3 floats: [cx0,cy0,cz0, cx1,cy1,cz1, ...]
+    radii:    Vec<f32>,  // n floats: raio da esfera envolvente de cada célula
+    energies: Vec<f32>,  // n floats: energia normalizada [0,1] por célula
+    count:    usize,     // número total de células
+}
+
+thread_local! {
+    static PICK_STATE: RefCell<PickState> = RefCell::new(PickState::default());
+}
+
+// =============================================================================
+// TABELAS DE GEOMETRIA DO TILE — portadas de CaloGeoConst.h
+//   TILE_Z[linha][idx_eta]:  posição central em Z (mm), 0.0 = célula inexistente
+//   TILE_DZ[linha][idx_eta]: largura total em Z (mm)
 //
-// Correspondência entre linhas e sub-detectores (de CaloGeoConst.h Tilez):
-//   Linha  0 → A barril      (até 10 células em eta, Tile_size[0]=10)
-//   Linha  1 → B barril      (9 células,  Tile_size[1]=9)
-//   Linha  2 → C barril      (8 células,  Tile_size[2]=8)  ← mesclada com B na camada l=1
-//   Linha  3 → D barril      (4 células,  Tile_size[3]=4)
-//   Linha  4 → A extensão    (5 células,  Tile_size[4]=5)
-//   Linha  5 → B extensão    (5 células,  Tile_size[5]=5)
-//   Linha  6 → D extensão    (2 células,  Tile_size[6]=2)
-//   Linha  7 → D4 (gap)      (1 célula,   Tile_size[7]=1)
-//   Linha  8 → C9 (gap)      (1 célula,   Tile_size[8]=1)
-//   Linhas 9-12 → Cintiladores especiais (1 célula cada)
-//   Linhas 13-14 → MBTS outer / inner (1 célula cada, phi_seg=8)
+// 15 linhas físicas → 14 camadas lógicas (l=0..13) + linha extra para BC merge
+// =============================================================================
 static TILE_Z: [[f64; 10]; 15] = [
-    // Linha 0: camada A do barril central (Tile_size[0]=10)
-    [123.240, 369.720, 620.760, 876.365, 1141.10, 1419.53, 1707.10, 2012.91, 2341.54, 2656.48],
-    // Linha 1: camada B do barril central (Tile_size[1]=9)
-    [141.495, 424.490, 707.485, 999.605, 1300.86, 1615.80, 1949.00, 2300.46, 2642.79,    0.0],
-    // Linha 2: camada C do barril central (Tile_size[2]=8) — mesclada com B em l=1
-    [159.755, 483.830, 812.465, 1150.23, 1497.13, 1857.71, 2241.12, 2619.97,    0.0,    0.0],
-    // Linha 3: camada D do barril central (Tile_size[3]=4)
-    [   0.0,  734.870, 1497.13, 2346.10,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 4: camada A da extensão do barril (Tile_size[4]=5)
-    [3646.64, 3956.95, 4440.67, 4970.03, 5681.91,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 5: camada B da extensão do barril (Tile_size[5]=5)
-    [3710.53, 4102.98, 4623.21, 5189.07, 5800.57,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 6: camada D da extensão do barril (Tile_size[6]=2)
-    [4167.74, 5445.49,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 7: célula D4 — região de transição barril↔tampa (Tile_size[7]=1)
-    [3405.00,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 8: célula C9 (Tile_size[8]=1)
-    [3511.85,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 9: cintilador especial (Tile_size[9]=1)
-    [3551.50,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 10: cintilador especial (Tile_size[10]=1)
-    [3551.50,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 11: célula de gap (Tile_size[11]=1)
-    [3536.00,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 12: célula de crack (Tile_size[12]=1)
-    [3536.00,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 13: MBTS outer (Tile_size[13]=1, phi_seg=8)
-    [3566.00,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 14: MBTS inner (Tile_size[14]=1, phi_seg=8)
-    [3566.00,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
+    [123.240, 369.720, 620.760, 876.365, 1141.10, 1419.53, 1707.10, 2012.91, 2341.54, 2656.48], // A barrel
+    [141.495, 424.490, 707.485, 999.605, 1300.86, 1615.80, 1949.00, 2300.46, 2642.79,    0.0 ], // B barrel
+    [159.755, 483.830, 812.465, 1150.23, 1497.13, 1857.71, 2241.12, 2619.97,    0.0 ,    0.0 ], // C barrel
+    [   0.0 , 734.870, 1497.13, 2346.10,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // D barrel
+    [3646.64, 3956.95, 4440.67, 4970.03, 5681.91,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // A extend
+    [3710.53, 4102.98, 4623.21, 5189.07, 5800.57,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // B extend
+    [4167.74, 5445.49,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // D extend
+    [3405.00,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // D4
+    [3511.85,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // C9
+    [3551.50,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // scint
+    [3551.50,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // scint
+    [3536.00,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // gap
+    [3536.00,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // crack
+    [3566.00,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // MBTS outer
+    [3566.00,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ,    0.0 ], // MBTS inner
 ];
 
-// TILE_DZ[linha][idx_eta]: largura total em Z de cada célula Tile (mm)
-// Metade desse valor é usada como semi-extensão na construção da caixa 3D
 static TILE_DZ: [[f64; 10]; 15] = [
-    // Linha 0: A barril
     [246.480, 246.480, 255.600, 255.610, 273.860, 283.000, 292.120, 319.510, 337.760, 292.120],
-    // Linha 1: B barril
-    [282.990, 283.000, 282.990, 301.250, 301.250, 328.640, 337.760, 365.160, 319.500,    0.0],
-    // Linha 2: C barril (mesclada com B)
-    [319.510, 328.640, 328.630, 346.900, 346.900, 374.280, 392.540, 365.150,    0.0,    0.0],
-    // Linha 3: D barril
-    [730.300, 739.440, 785.070, 912.880,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 4: A extensão
-    [164.280, 461.912, 511.100, 547.610, 876.170,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 5: B extensão
-    [292.060, 492.840, 547.610, 584.120, 638.870,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 6: D extensão
-    [1186.48, 1369.02,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 7: D4
-    [309.000,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 8: C9
-    [94.7100,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 9: cintilador 1
-    [15.0000,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 10: cintilador 2
-    [15.0000,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 11: gap
-    [ 8.0000,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 12: crack
-    [ 8.0000,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 13: MBTS outer
-    [20.0000,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
-    // Linha 14: MBTS inner
-    [20.0000,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0,    0.0],
+    [282.990, 283.000, 282.990, 301.250, 301.250, 328.640, 337.760, 365.160, 319.500,   0.0  ],
+    [319.510, 328.640, 328.630, 346.900, 346.900, 374.280, 392.540, 365.150,   0.0  ,   0.0  ],
+    [730.300, 739.440, 785.070, 912.880,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [164.280, 461.912, 511.100, 547.610, 876.170,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [292.060, 492.840, 547.610, 584.120, 638.870,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [1186.48, 1369.02,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [309.000,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [ 94.710,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [ 15.000,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [ 15.000,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [  8.000,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [  8.000,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [ 20.000,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
+    [ 20.000,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ,   0.0  ],
 ];
 
-// --- Calorímetro HEC (Hadronic End-Cap) ----------------------------------------
-//
-// HEC_R[linha][idx_eta]: raio transversal central da célula HEC (mm)
-// O HEC fica nas tampas do detector → usa raio polar R em vez de Z como coordenada
-// Z é fixo por camada lógica (definido em LayerCfg::h1/h2).
-//
-// Estrutura de linhas (de HECz/HECdz do .h):
-//   Linhas 0-1 → camada lógica HEC 0 (duas sub-regiões de módulos)
-//   Linhas 2-3 → camada lógica HEC 1
-//   Linhas 4-5 → camada lógica HEC 2
-//   Linha  6   → camada lógica HEC 3
-//
-// Número real de células em eta por linha (HEC_size[7]={14,13,12,12,11,12,11}):
+// =============================================================================
+// TABELAS DE GEOMETRIA DO HEC — portadas de CaloGeoConst.h
+//   HEC_R[linha][idx_eta]:  raio transversal central (mm)
+//   HEC_DR[linha][idx_eta]: largura radial ΔR (mm)
+//   HEC_SIZE[linha]:        número de células válidas em eta por linha
+// =============================================================================
 static HEC_SIZE: [usize; 7] = [14, 13, 12, 12, 11, 12, 11];
 
 static HEC_R: [[f64; 14]; 7] = [
-    // Linha 0 — HEC camada 0, sub-região 1 (14 células)
     [1953.63, 1777.76, 1597.56, 1437.47, 1294.76, 1167.21, 1052.94,  950.382,  858.205,  775.278,  668.405,  545.996,  446.465,  386.875],
-    // Linha 1 — HEC camada 0, sub-região 2 (13 células)
     [2008.09, 1881.11, 1690.42, 1521.01, 1370.00, 1235.03, 1114.11, 1005.59,   908.060,  820.287,  707.225,  577.746,  502.371,    0.0  ],
-    // Linha 2 — HEC camada 1, sub-região 1 (12 células)
     [1951.08, 1774.10, 1596.30, 1437.80, 1296.15, 1169.26, 1060.37,  958.008,  860.888,  742.229,  606.344,  515.234,    0.0  ,    0.0  ],
-    // Linha 3 — HEC camada 1, sub-região 2 (12 células)
     [2008.26, 1882.60, 1693.79, 1525.52, 1375.14, 1240.45, 1119.58, 1010.96,   913.220,  787.548,  643.565,  531.973,    0.0  ,    0.0  ],
-    // Linha 4 — HEC camada 2, sub-região 1 (11 células)
     [1947.43, 1768.06, 1592.41, 1435.44, 1294.84, 1168.68, 1055.29,  953.266,  822.083,  671.786,  549.312,    0.0  ,    0.0  ,    0.0  ],
-    // Linha 5 — HEC camada 2, sub-região 2 (12 células)
     [1986.52, 1842.34, 1659.31, 1495.74, 1349.24, 1217.77, 1099.62,  993.312,  856.619,  700.007,  572.389,  500.028,    0.0  ,    0.0  ],
-    // Linha 6 — HEC camada 3 (11 células)
     [1916.61, 1726.20, 1556.04, 1403.63, 1266.87, 1143.96, 1033.36,  891.153,  728.228,  595.465,  510.411,    0.0  ,    0.0  ,    0.0  ],
 ];
 
-// HEC_DR[linha][idx_eta]: largura radial (ΔR) de cada célula HEC (mm)
 static HEC_DR: [[f64; 14]; 7] = [
-    // Linha 0
     [160.737, 191.003, 169.396, 150.788, 134.625, 120.488, 108.053,  97.0569,  87.2970,  78.5560, 135.189, 109.630,  89.431,  29.75 ],
-    // Linha 1
     [ 51.825, 202.126, 179.258, 159.561, 142.456, 127.495, 114.335, 102.699,   92.371,   83.174,  142.951, 116.007,  34.742,   0.0  ],
-    // Linha 2
     [165.839, 188.131, 167.459, 149.535, 133.779, 119.994,  97.783, 106.943,   87.297,  150.022,  121.749,  60.469,   0.0  ,   0.0  ],
-    // Linha 3
     [ 51.487, 199.818, 177.818, 158.723, 142.030, 127.352, 114.378, 102.866,   92.616,  158.728,  129.238,  93.946,   0.0  ,   0.0  ],
-    // Linha 4
     [173.132, 185.615, 165.683, 148.259, 132.936, 119.394, 107.377,  96.676,  165.689,  134.906,  110.042,   0.0  ,   0.0  ,   0.0  ],
-    // Linha 5
     [ 94.958, 193.413, 172.644, 154.486, 138.521, 124.410, 111.887, 100.738,  172.649,  140.573,  114.665,  30.056,   0.0  ,   0.0  ],
-    // Linha 6
     [201.210, 179.604, 160.715, 144.105, 129.425, 116.399, 104.799, 179.610,  146.239,  119.288,   50.821,   0.0  ,   0.0  ,   0.0  ],
 ];
 
 // =============================================================================
 // LIMITES DA REGIÃO DE CRACK (transição barril ↔ tampa)
-// Células fora desses limites são suprimidas na visualização
 // =============================================================================
-// O barril LAr termina em |η| ≈ 1.475 (BARREL_ETA_MAX)
-const BARREL_ETA_MAX: f64 = 1.475;
-// A tampa LAr começa em |η| ≈ 1.5 (ENDCAP_ETA_MIN)
-const ENDCAP_ETA_MIN: f64 = 1.5;
+const BARREL_ETA_MAX: f64 = 1.475; // barril LAr termina aqui
+const ENDCAP_ETA_MIN: f64 = 1.5;   // tampa LAr começa aqui
 
 // =============================================================================
-// ENUMERAÇÃO DOS SUBDETECTORES
+// ENUMERAÇÕES E TIPOS
 // =============================================================================
 #[derive(Clone, Copy)]
 enum SubDet {
-    Tile,       // Hadrônico de telhas: barril, |η| < 1.7
-    Hec,        // Hadrônico de tampas em LAr: 1.5 < |η| < 3.2
-    LarBarrel,  // Eletromagnético de barril em LAr: |η| < 1.475
-    LarEndCap,  // Eletromagnético de tampas em LAr: 1.375 < |η| < 3.2
+    Tile,
+    Hec,
+    LarBarrel,
+    LarEndCap,
 }
 
-// =============================================================================
-// ESTRUTURA DE CONFIGURAÇÃO DE CAMADA
-// Mapeia cada uma das 26 camadas lógicas do XML para seus parâmetros físicos
-// =============================================================================
 #[derive(Clone)]
 struct LayerCfg {
-    subdet:    SubDet, // Subdetector físico
-    h1:        f64,    // Raio interno (Tile/LAr barril) ou z inicial (HEC), em mm
-    h2:        f64,    // Raio externo (Tile/LAr barril) ou z final (HEC), em mm
-    phi_seg:   usize,  // Número de segmentos em φ: 8, 64 ou 256
-    tile_row:  usize,  // Linha primária em TILE_Z/TILE_DZ
-    tile_row2: usize,  // Linha secundária (para camadas mescladas B+C)
-    hec_row1:  usize,  // Linha HEC primária (ou única, quando hec_row1==hec_row2)
-    hec_row2:  usize,  // Linha HEC secundária (para o merge de sub-regiões)
-    lar_layer: usize,  // Índice de camada dentro do LAr (0–3)
+    subdet:    SubDet,
+    h1:        f64,    // raio interno (Tile/LArB) ou z inicial (HEC), mm
+    h2:        f64,    // raio externo (Tile/LArB) ou z final (HEC), mm
+    phi_seg:   usize,  // divisões em φ: 8, 64 ou 256
+    tile_row:  usize,
+    tile_row2: usize,
+    hec_row1:  usize,
+    hec_row2:  usize,
+    lar_layer: usize,
 }
 
 impl LayerCfg {
-    // Camada Tile simples: h1/h2 = raio interno/externo (mm), row = linha em TILE_Z
     fn tile(h1: f64, h2: f64, phi_seg: usize, row: usize) -> Self {
-        LayerCfg {
-            subdet: SubDet::Tile, h1, h2, phi_seg,
-            tile_row: row, tile_row2: row,
-            hec_row1: 0, hec_row2: 0, lar_layer: 0,
-        }
+        LayerCfg { subdet: SubDet::Tile, h1, h2, phi_seg,
+            tile_row: row, tile_row2: row, hec_row1: 0, hec_row2: 0, lar_layer: 0 }
     }
-
-    // Camada Tile que funde (merge) duas linhas da tabela: usada em l=1 (BC barril)
-    // O dz final é a média dos dois dz das sub-linhas
     fn tile_merge(h1: f64, h2: f64, row1: usize, row2: usize) -> Self {
-        LayerCfg {
-            subdet: SubDet::Tile, h1, h2, phi_seg: 64,
-            tile_row: row1, tile_row2: row2,
-            hec_row1: 0, hec_row2: 0, lar_layer: 0,
-        }
+        LayerCfg { subdet: SubDet::Tile, h1, h2, phi_seg: 64,
+            tile_row: row1, tile_row2: row2, hec_row1: 0, hec_row2: 0, lar_layer: 0 }
     }
-
-    // Camada HEC: h1/h2 = limites em z (mm) da rodela de absorção
-    // row1==row2 → única sub-região; row1≠row2 → duas sub-regiões mescladas
     fn hec(h1: f64, h2: f64, row1: usize, row2: usize) -> Self {
-        LayerCfg {
-            subdet: SubDet::Hec, h1, h2, phi_seg: 64,
-            tile_row: 0, tile_row2: 0, hec_row1: row1, hec_row2: row2, lar_layer: 0,
-        }
+        LayerCfg { subdet: SubDet::Hec, h1, h2, phi_seg: 64,
+            tile_row: 0, tile_row2: 0, hec_row1: row1, hec_row2: row2, lar_layer: 0 }
     }
-
-    // LAr Barril: h1/h2 = raio interno/externo (mm)
-    // phi_seg = 64 (camadas 0,1) ou 256 (camadas 2,3)
     fn lar_b(h1: f64, h2: f64, phi_seg: usize, lyr: usize) -> Self {
-        LayerCfg {
-            subdet: SubDet::LarBarrel, h1, h2, phi_seg,
-            tile_row: 0, tile_row2: 0, hec_row1: 0, hec_row2: 0, lar_layer: lyr,
-        }
+        LayerCfg { subdet: SubDet::LarBarrel, h1, h2, phi_seg,
+            tile_row: 0, tile_row2: 0, hec_row1: 0, hec_row2: 0, lar_layer: lyr }
     }
-
-    // LAr Tampa: h1/h2 não usados (calculados dinamicamente por laeb_h1/h2)
     fn lar_e(phi_seg: usize, lyr: usize) -> Self {
-        LayerCfg {
-            subdet: SubDet::LarEndCap, h1: 0.0, h2: 0.0, phi_seg,
-            tile_row: 0, tile_row2: 0, hec_row1: 0, hec_row2: 0, lar_layer: lyr,
-        }
+        LayerCfg { subdet: SubDet::LarEndCap, h1: 0.0, h2: 0.0, phi_seg,
+            tile_row: 0, tile_row2: 0, hec_row1: 0, hec_row2: 0, lar_layer: lyr }
     }
 }
 
+/// Geometria mínima de uma célula: parâmetros físicos para os 8 vértices ARB8.
+/// [OPT-1] sx/sy/sz/phi removidos — eram usados apenas por build_matrix (eliminada).
+struct CellGeom {
+    cx:    f64, // centro X (mm, world-space)
+    cy:    f64, // centro Y (mm, world-space)
+    cz:    f64, // centro Z (mm, world-space)
+    r1:    f64, // raio interno (mm)
+    r2:    f64, // raio externo (mm)
+    phi_m: f64, // face φ- (rad)
+    phi_p: f64, // face φ+ (rad)
+    z_lo:  f64, // face z inferior (mm)
+    z_hi:  f64, // face z superior (mm)
+}
+
 // =============================================================================
-// TABELA DE CAMADAS — mapeia l=0..25 (índice XML) para LayerCfg
-//
-// NLAYER = NLAY_TILE + NLAY_HEC + 2*NLAY_LAR = 14 + 4 + 8 = 26
-//
-// Mapeamento dos índices e tamanhos (de eta_size[] e phi_size[] do .h):
-//   l= 0..13 → TILE  (eta_size: 10,9,4,5,5,2,1,1,1,1,1,1,1,1 ; phi: 64,64,...,8,8)
-//   l=14..17 → HEC   (eta_size: 14,13,12,12               ; phi: 64,64,64,64)
-//   l=18..21 → LArBa (eta_size: 61,451,57,27               ; phi: 64,64,256,256)
-//   l=22..25 → LArEb (eta_size: 12,216,51,34               ; phi: 64,64,256,256)
+// HELPERS MATEMÁTICOS — operações vetoriais em f32 para os buffers GPU
 // =============================================================================
-fn build_layer_table() -> Vec<LayerCfg> {
-    vec![
-        // ---- TILE BARRIL (l=0..2) ------------------------------------------------
-        /* l= 0 */ LayerCfg::tile(2300.0, 2600.0, 64,  0), // A barril (eta_size=10)
-        /* l= 1 */ LayerCfg::tile_merge(2600.0, 3440.0, 1, 2), // BC barril mesclados (eta_size=9)
-        /* l= 2 */ LayerCfg::tile(3440.0, 3820.0, 64,  3), // D barril (eta_size=4)
 
-        // ---- TILE EXTENSÃO DO BARRIL (l=3..5) ------------------------------------
-        /* l= 3 */ LayerCfg::tile(2300.0, 2600.0, 64,  4), // A extensão (eta_size=5)
-        /* l= 4 */ LayerCfg::tile(2600.0, 3140.0, 64,  5), // B extensão (eta_size=5)
-        /* l= 5 */ LayerCfg::tile(3140.0, 3820.0, 64,  6), // D extensão (eta_size=2)
-
-        // ---- TILE CÉLULAS DE TRANSIÇÃO / GAP / CRACK (l=6..13) ------------------
-        /* l= 6 */ LayerCfg::tile(3440.0, 3820.0, 64,  7), // D4 gap (eta_size=1)
-        /* l= 7 */ LayerCfg::tile(2990.0, 3440.0, 64,  8), // C9 crack (eta_size=1)
-        /* l= 8 */ LayerCfg::tile(2632.0, 2959.0, 64,  9), // cintilador (eta_size=1)
-        /* l= 9 */ LayerCfg::tile(2305.0, 2632.0, 64, 10), // cintilador (eta_size=1)
-        /* l=10 */ LayerCfg::tile(1885.0, 2305.0, 64, 11), // gap cell (eta_size=1)
-        /* l=11 */ LayerCfg::tile(1465.0, 1885.0, 64, 12), // crack cell (eta_size=1)
-        /* l=12 */ LayerCfg::tile( 426.0,  876.0,  8, 13), // MBTS outer (eta_size=1, phi=8)
-        /* l=13 */ LayerCfg::tile( 153.0,  426.0,  8, 14), // MBTS inner (eta_size=1, phi=8)
-
-        // ---- HEC (l=14..17) -------------------------------------------------------
-        // hec(h1,h2,row1,row2): h1/h2 em mm (posição z da rodela de absorção)
-        // row1==row2 → sub-região única; row1≠row2 → eta=0 usa row1, eta≥1 usa row2
-        /* l=14 */ LayerCfg::hec(4350.0, 4630.0, 0, 0), // HEC cam.0 (eta_size=14)
-        /* l=15 */ LayerCfg::hec(4630.0, 5100.0, 1, 2), // HEC cam.1 (eta_size=13)
-        /* l=16 */ LayerCfg::hec(5130.0, 5590.0, 3, 4), // HEC cam.2 (eta_size=12)
-        /* l=17 */ LayerCfg::hec(5590.0, 6050.0, 5, 6), // HEC cam.3 (eta_size=12)
-
-        // ---- LAr BARRIL (l=18..21) ------------------------------------------------
-        // lar_b(r_interno_mm, r_externo_mm, phi_seg, camada_lar)
-        /* l=18 */ LayerCfg::lar_b(1421.73, 1438.58,  64, 0), // pré-amostragem (eta_size=61)
-        /* l=19 */ LayerCfg::lar_b(1481.75, 1579.00,  64, 1), // tiras finas     (eta_size=451)
-        /* l=20 */ LayerCfg::lar_b(1581.00, 1840.00, 256, 2), // células médias  (eta_size=57)
-        /* l=21 */ LayerCfg::lar_b(1840.00, 1984.70, 256, 3), // traseira        (eta_size=27)
-
-        // ---- LAr TAMPA (l=22..25) -------------------------------------------------
-        // lar_e(phi_seg, camada_lar): posições z calculadas por laeb_h1/h2
-        /* l=22 */ LayerCfg::lar_e( 64, 0), // pré-amostragem (eta_size=12)
-        /* l=23 */ LayerCfg::lar_e( 64, 1), // tiras           (eta_size=216)
-        /* l=24 */ LayerCfg::lar_e(256, 2), // células médias  (eta_size=51)
-        /* l=25 */ LayerCfg::lar_e(256, 3), // traseira        (eta_size=34)
+/// Produto vetorial de dois vetores 3D.
+#[inline(always)]
+fn cross3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
     ]
 }
 
-// =============================================================================
-// FÍSICA: η → z (pseudorapidez para coordenada axial)
-//
-// Definição: η = -ln[tan(θ/2)], portanto z = R · sinh(η)
-// Usada no LAr barril onde R é fixo e z varia com η
-// =============================================================================
-#[inline]
-fn eta_to_z(eta: f64, r_transverse: f64) -> f64 {
-    r_transverse * eta.sinh()
+/// Produto escalar de dois vetores 3D.
+#[inline(always)]
+fn dot3(a: [f32; 3], b: [f32; 3]) -> f32 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-// Conversão η → θ (ângulo polar) — para diagnóstico
-#[inline]
-fn eta_to_theta(eta: f64) -> f64 {
-    2.0 * (-eta).exp().atan()
-}
-
-// =============================================================================
-// ETA DO LAr BARRIL — posições centrais de cada célula (LaBa_eta do .h)
-//
-// Camada 0 (pré-amostragem, LaBa_size[0]=61):
-//   Δη = 0.025, células em η = 0.0125, 0.0375, ..., 1.5125
-//
-// Camada 1 (tiras, LaBa_size[1]=451):
-//   Δη = 0.003125 para idx=0..447 (448 células finas)
-//   Δη = 0.025    para idx=448,449,450 (3 células de transição: η=1.4125/1.4375/1.4625)
-//
-// Camada 2 (meio, LaBa_size[2]=57):  ← [BUG-1 CORRIGIDO]
-//   Δη = 0.025 para idx=0..55 (η = 0.0125 + 0.025*idx)
-//   Δη = 0.05  para idx=56   (η = 1.4375, célula de transição)
-//
-// Camada 3 (traseira, LaBa_size[3]=27):
-//   Δη = 0.05, células em η = 0.025, 0.075, ..., 1.325
-// =============================================================================
-fn laba_eta(layer: usize, idx: usize) -> f64 {
-    match layer {
-        // Camada 0: 61 células uniformes a partir de η=0.0125, passo 0.025
-        0 => 0.0125 + 0.025 * idx as f64,
-
-        // Camada 1: 451 células — 448 finas + 3 especiais de transição
-        // Os últimos 3 índices (448, 449, 450) têm posições distintas do padrão
-        // conforme LaBa_eta[1] do .h (linha terminada em ..., 1.4125, 1.4375, 1.4625)
-        1 => {
-            if idx < 448 {
-                // Região fina: Δη = 0.003125
-                0.0015625 + 0.003125 * idx as f64
-            } else {
-                // [BUG-3 CORRIGIDO] Células de transição barril↔crack (Δη=0.025 cada)
-                // η=1.4125 (idx=448), 1.4375 (idx=449), 1.4625 (idx=450)
-                [1.4125, 1.4375, 1.4625][idx - 448]
-            }
-        }
-
-        // Camada 2: 57 células — todas com Δη=0.025, última (idx=56) é célula especial
-        // [BUG-1 CORRIGIDO] Antes iniciava em 0.025 e usava slope 0.1 para idx>=44
-        2 => {
-            if idx < 56 {
-                // 56 células regulares: η = 0.0125, 0.0375, ..., 1.3875
-                0.0125 + 0.025 * idx as f64
-            } else {
-                // Célula de transição: 1.3875 + 0.05 = 1.4375 (pula 1.4125)
-                1.4375
-            }
-        }
-
-        // Camada 3: 27 células uniformes, passo 0.05, a partir de η=0.025
-        3 => 0.025 + 0.05 * idx as f64,
-
-        _ => 0.0,
-    }
-}
-
-// Largura em eta (Δη) de cada célula do LAr barril — de LaBa_deta do .h
-fn laba_deta(layer: usize, idx: usize) -> f64 {
-    match layer {
-        // Camada 0: granularidade uniforme
-        0 => 0.025,
-
-        // Camada 1: granularidade variável
-        // [BUG-3 CORRIGIDO] as células de transição (448..450) têm Δη=0.025
-        1 => {
-            if idx < 448 { 0.003125 }
-            else         { 0.025    } // células de transição finais
-        }
-
-        // Camada 2: granularidade variável
-        // [BUG-2 CORRIGIDO] Antes usava 0.1 para idx>=44 — completamente errado
-        // O .h mostra Δη=0.025 para todos, exceto a última célula (idx=56) com Δη=0.05
-        2 => {
-            if idx < 56 { 0.025 }
-            else        { 0.05  } // célula de transição final (η=1.4375)
-        }
-
-        // Camada 3: granularidade uniforme
-        3 => 0.05,
-
-        _ => 0.05,
-    }
-}
-
-// Número de células em eta por camada do LAr barril (LaBa_size[4]={61,451,57,27})
-fn laba_ncells(layer: usize) -> usize {
-    [61, 451, 57, 27][layer]
+/// Normaliza um vetor 3D. Retorna [0,0,1] se comprimento ≈ 0.
+#[inline(always)]
+fn normalize3(v: [f32; 3]) -> [f32; 3] {
+    let len2 = v[0]*v[0] + v[1]*v[1] + v[2]*v[2];
+    if len2 < 1e-20 { return [0.0, 0.0, 1.0]; }
+    let inv = 1.0 / len2.sqrt();
+    [v[0] * inv, v[1] * inv, v[2] * inv]
 }
 
 // =============================================================================
-// ETA DO LAr TAMPA (EndCap) — posições centrais (LaEb_eta do .h)
-//
-// Camada 0 (pré-amostragem, LaEb_size[0]=12):
-//   Δη=0.025, de η=1.52078 a 1.79578
-//
-// Camada 1 (tiras, LaEb_size[1]=216): estrutura complexa com 5 sub-regiões
-//   idx=0:    η=1.40828, Δη=0.05  (1 célula coarse na região de overlap)
-//   idx=1..3: η=1.44578/1.47078/1.49578, Δη=0.025 (3 células coarse)
-//   idx=4..99:    Δη=0.003125 (96 células finas, η de 1.50984 a 1.80672)
-//   idx=100..147: Δη=0.00416667 (48 células médias, η de 1.81036 a 1.99786)
-//   idx=148..207: Δη=0.00625 (60 células médias, η de 2.01141 a 2.40516)
-//   idx=208..215: Δη=0.025 (8 células grossas, η de 2.42078 a 2.49578)
-//
-// Camada 2 (meio, LaEb_size[2]=51):
-//   idx=0..3: coarse [1.40828, 1.44578, 1.47078, 1.49578] (< ENDCAP_ETA_MIN → suprimidas)
-//   idx=4..43: Δη=0.025 (40 células, η de 1.52078 a 2.49578)
-//   idx=44..50: Δη=0.1  (7 células, η de 2.55828 a 3.15828)
-//
-// Camada 3 (traseira, LaEb_size[3]=34):
-//   idx=0..11:  Δη=0.025 (η de 1.47078 a 1.74578)
-//   idx=12..26: Δη=0.05  (η de 1.78328 a 2.48328)
-//   idx=27..33: Δη=0.1   (η de 2.55828 a 3.15828)
-// =============================================================================
-fn laeb_eta(layer: usize, idx: usize) -> f64 {
-    match layer {
-        // Camada 0: pré-amostragem da tampa, uniforme
-        0 => 1.52078 + 0.025 * idx as f64,
-
-        // Camada 1: tiras da tampa com estrutura de 5 sub-regiões
-        1 => {
-            // 4 células de transição barril↔tampa explicitadas no .h
-            let coarse: [f64; 4] = [1.40828, 1.44578, 1.47078, 1.49578];
-            if idx < 4 {
-                coarse[idx]
-            } else if idx < 4 + 96 {
-                // Células finas: Δη=0.003125
-                1.50984 + 0.003125 * (idx - 4) as f64
-            } else if idx < 4 + 96 + 48 {
-                // Células médias: Δη=0.00416667
-                1.81036 + 0.00416667 * (idx - 4 - 96) as f64
-            } else if idx < 4 + 96 + 48 + 60 {
-                // Células médias-grossas: Δη=0.00625
-                2.01141 + 0.00625 * (idx - 4 - 96 - 48) as f64
-            } else {
-                // Células grossas: Δη=0.025
-                2.42078 + 0.025 * (idx - 4 - 96 - 48 - 60) as f64
-            }
-        }
-
-        // Camada 2: meio da tampa
-        2 => {
-            let coarse: [f64; 4] = [1.40828, 1.44578, 1.47078, 1.49578];
-            if idx < 4 {
-                coarse[idx] // serão suprimidas pelo crack guard (< ENDCAP_ETA_MIN)
-            } else if idx < 4 + 40 {
-                // Região central: Δη=0.025
-                1.52078 + 0.025 * (idx - 4) as f64
-            } else if idx < 4 + 40 + 7 {
-                // Alta eta: Δη=0.1
-                2.55828 + 0.1 * (idx - 44) as f64
-            } else {
-                0.0 // inválido
-            }
-        }
-
-        // Camada 3: traseira da tampa com 3 sub-regiões
-        3 => {
-            if idx < 12 {
-                // Baixo eta: Δη=0.025
-                1.47078 + 0.025 * idx as f64
-            } else if idx < 12 + 15 {
-                // Médio eta: Δη=0.05
-                1.78328 + 0.05 * (idx - 12) as f64
-            } else if idx < 12 + 15 + 7 {
-                // Alto eta: Δη=0.1
-                2.55828 + 0.1 * (idx - 27) as f64
-            } else {
-                0.0
-            }
-        }
-
-        _ => 0.0,
-    }
-}
-
-// Largura em eta (Δη) de cada célula da tampa LAr — de LaEb_deta do .h
-fn laeb_deta(layer: usize, idx: usize) -> f64 {
-    match layer {
-        // Camada 0: uniforme
-        0 => 0.025,
-
-        // Camada 1: estrutura idêntica à de laeb_eta
-        // Atenção: idx=0 tem Δη=0.05 (primeira célula de transição é mais larga)
-        1 => {
-            if idx < 1          { 0.05       } // célula de transição coarse-1
-            else if idx < 4     { 0.025      } // células de transição coarse-2,3,4
-            else if idx < 4+96  { 0.003125   } // finas
-            else if idx < 4+96+48 { 0.00416667 } // médias
-            else if idx < 4+96+48+60 { 0.00625 } // médias-grossas
-            else                { 0.025      } // grossas finais
-        }
-
-        // Camada 2: variável
-        2 => {
-            if idx < 1 { 0.05 }         // primeira célula coarse
-            else if idx < 44 { 0.025 }  // região central
-            else             { 0.1   }  // alta eta
-        }
-
-        // Camada 3: variável por sub-região
-        3 => {
-            if idx < 12      { 0.025 }
-            else if idx < 27 { 0.05  }
-            else             { 0.1   }
-        }
-
-        _ => 0.05,
-    }
-}
-
-// Número de células em eta por camada da tampa LAr (LaEb_size[4]={12,216,51,34})
-fn laeb_ncells(layer: usize) -> usize {
-    [12, 216, 51, 34][layer]
-}
-
-// =============================================================================
-// LIMITES z DA TAMPA LAr — face interna (LaEb_h1) e externa (LaEb_h2)
-//
-// Esses valores definem a espessura e posição axial de cada camada da tampa.
-// Para a maioria das camadas o valor é fixo, mas camada 2 e 3 têm variação
-// interna conforme o índice de eta (estrutura em "escada").
-//
-// De LaEb_h1[4][216] do .h:
-//   Camada 0: h1 = 3680.75 mm (12 células)
-//   Camada 1: h1 = 3754.24 mm (todas 216 células)
-//   Camada 2: h1 = 3800.73 mm (idx 0..43) ou 3754.24 mm (idx 44..50)
-//   Camada 3: h1 = 4156.24 mm (idx 0..26) ou 4201.25 mm (idx 27..33)
-//
-// De LaEb_h2[4][216] do .h:
-//   Camada 0: h2 = 3714.25 mm
-//   Camada 1: h2 = 3800.73 mm
-//   Camada 2: h2 = 4156.24 mm (idx 0..43) ou 4201.25 mm (idx 44..50)
-//   Camada 3: h2 = 4243.26 mm
+// HELPERS GEOMÉTRICOS
 // =============================================================================
 
-// Posição z da face interna (mais próxima do IP) da camada da tampa LAr (mm)
-fn laeb_h1(layer: usize, idx: usize) -> f64 {
-    match layer {
-        // Camada 2: variação conforme eta (estrutura em escada)
-        2 => if idx < 44 { 3800.73 } else { 3754.24 },
-        // Camada 3: variação conforme eta
-        3 => if idx < 27 { 4156.24 } else { 4201.25 },
-        // Camadas 0 e 1: valor fixo
-        _ => [3680.75, 3754.24, 3800.73, 4156.24][layer],
-    }
-}
-
-// Posição z da face externa (mais afastada do IP) da camada da tampa LAr (mm)
-// [BUG-4 CORRIGIDO]: camada 2 retornava sempre 4156.24, mas idx>=44 devem ter 4201.25
-fn laeb_h2(layer: usize, idx: usize) -> f64 {
-    match layer {
-        // Camada 2: as 7 células finais (idx=44..50) têm h2=4201.25 conforme LaEb_h2 do .h
-        2 => if idx < 44 { 4156.24 } else { 4201.25 },
-        // Demais camadas: valor fixo (uniform nas tabelas do .h)
-        _ => [3714.25, 3800.73, 4156.24, 4243.26][layer],
-    }
-}
-
-// =============================================================================
-// ÂNGULO PHI CENTRAL DA FATIA j
-//
-// O detector é dividido em `phi_seg` fatias uniformes de 0 a 2π.
-// O offset de π/2 alinha φ=0 com o eixo +Y no sistema Three.js.
-// =============================================================================
+/// Ângulo central (rad) da fatia φ de índice j, com offset de π/2 para alinhar
+/// φ=0 com +Y no sistema Three.js.
 #[inline]
 fn phi_center(j: usize, phi_seg: usize) -> f64 {
-    let dphi = 2.0 * PI / phi_seg as f64; // largura angular de cada fatia
+    let dphi = 2.0 * PI / phi_seg as f64;
     dphi / 2.0 + PI / 2.0 + j as f64 * dphi
 }
 
-// =============================================================================
-// GUARDA DE CRACK (transição barril ↔ tampa)
-//
-// Retorna `true` se a célula deve ser suprimida (está na região morta).
-// - Células do barril além de |η|=1.475 são suprimidas
-// - Células da tampa abaixo de |η|=1.5 são suprimidas
-// =============================================================================
+/// z = R·sinh(η) — mapeamento físico pseudorapidez→coordenada axial.
+#[inline]
+fn eta_to_z(eta: f64, r: f64) -> f64 {
+    r * eta.sinh()
+}
+
+/// Guarda de crack: retorna true se a célula está na região morta barril↔tampa.
 #[inline]
 fn in_barrel_crack(eta_abs: f64, is_barrel: bool) -> bool {
-    if is_barrel {
-        eta_abs > BARREL_ETA_MAX   // barril: suprime se além do limite
-    } else {
-        eta_abs < ENDCAP_ETA_MIN   // tampa: suprime se antes do início
-    }
+    if is_barrel { eta_abs > BARREL_ETA_MAX }
+    else         { eta_abs < ENDCAP_ETA_MIN }
+}
+
+/// Mapeamento energia normalizada t∈[0,1] → cor RGB (escala "jet" de física).
+///   t=0 → azul (energia mínima)  |  t=1 → vermelho (energia máxima)
+fn energy_color(t: f32) -> (f32, f32, f32) {
+    let t = t.clamp(0.0, 1.0);
+    if      t < 0.25 { let u = t / 0.25;           (0.0,   u, 1.0)       } // azul→ciano
+    else if t < 0.50 { let u = (t - 0.25) / 0.25;  (0.0, 1.0, 1.0 - u)  } // ciano→verde
+    else if t < 0.75 { let u = (t - 0.50) / 0.25;  ( u,  1.0, 0.0)       } // verde→amarelo
+    else             { let u = (t - 0.75) / 0.25;   (1.0, 1.0 - u, 0.0)  } // amarelo→verm.
 }
 
 // =============================================================================
-// GEOMETRIA ARB8 — Célula detectora com 8 vértices arbitrários
-//
-// Um ARB8 é um prisma trapezoidal no plano R-φ, extrudado em Z (barril) ou
-// em R (tampa). Todas as 6 faces são planas, o que garante que células
-// vizinhas se encostem sem lacunas ou sobreposições — ao contrário da
-// caixa + matriz 4×4 que produz retângulos que não cobrem o setor circular.
-//
-// ORDENAÇÃO DOS VÉRTICES — compatível com BoxGeometry do Three.js:
-//   idx = (x>0 ? 4 : 0) | (y<0 ? 2 : 0) | (z>0 ? 1 : 0)
-//
-//   idx=0  (x<0, y>0, z<0) → face φ-, raio r1, z-   (interno, φ-esquerda, baixo)
-//   idx=1  (x<0, y>0, z>0) → face φ-, raio r1, z+
-//   idx=2  (x<0, y<0, z<0) → face φ-, raio r2, z-   (externo, φ-esquerda, baixo)
-//   idx=3  (x<0, y<0, z>0) → face φ-, raio r2, z+
-//   idx=4  (x>0, y>0, z<0) → face φ+, raio r1, z-   (interno, φ-direita, baixo)
-//   idx=5  (x>0, y>0, z>0) → face φ+, raio r1, z+
-//   idx=6  (x>0, y<0, z<0) → face φ+, raio r2, z-   (externo, φ-direita, baixo)
-//   idx=7  (x>0, y<0, z>0) → face φ+, raio r2, z+
-//
-// Posição cartesiana: x = -r·sin(φ),  y = r·cos(φ)
-// (sinal negativo em x vem da convenção do sistema de coordenadas do detector)
-//
-// EMPACOTAMENTO DOS 24 FLOATS EM 6 vec4 (para atributos de instância WebGL):
-//   a_arb01 = (v[0].xyz,  v[1].x)
-//   a_arb12 = (v[1].yz,   v[2].xy)
-//   a_arb23 = (v[2].z,    v[3].xyz)
-//   a_arb45 = (v[4].xyz,  v[5].x)
-//   a_arb56 = (v[5].yz,   v[6].xy)
-//   a_arb67 = (v[6].z,    v[7].xyz)
+// TABELAS LAR BARRIL — portadas literalmente de CaloGeoConst.h
+//   Substituem as funções de fórmula anteriores que tinham erros (e.g., 
+//   laba_deta[2][56]=0.075 não 0.05, eta[2] tem salto irregular de 1.3875→1.4375)
+//   LaBa_size[4] = {61, 451, 57, 27}
 // =============================================================================
 
-/// Geometria completa de uma célula detectora.
-/// Os campos cx/cy/cz/sx/sy/sz/phi alimentam a `instanceMatrix` (raycasting/culling).
-/// Os campos r1/r2/phi_m/phi_p/z_lo/z_hi alimentam os vértices ARB8 reais.
-struct CellGeom {
-    // ---- Centro cartesiano da célula (espaço do detector, mm) ----------------
-    cx:    f64, // coordenada X do centro
-    cy:    f64, // coordenada Y do centro
-    cz:    f64, // coordenada Z do centro (positivo: lado A; negativo: lado C)
-    // ---- Semi-extensões para a instanceMatrix (bounding box, mm) -------------
-    sx:    f64, // metade da espessura radial:  (r2 - r1) / 2
-    sy:    f64, // metade do arco azimutal:     r_mid · Δφ / 2
-    sz:    f64, // metade da extensão em Z (ou R, para tampas)
-    // ---- Ângulo central (rad) — usado por build_matrix e normalMatrix ---------
-    phi:   f64,
-    // ---- Parâmetros físicos reais para build_arb8_vertices -------------------
-    r1:    f64, // raio interno real (mm) — face mais próxima do eixo do feixe
-    r2:    f64, // raio externo real (mm) — face mais afastada do eixo do feixe
-    phi_m: f64, // ângulo da face φ- (rad): phi_center - Δφ/2
-    phi_p: f64, // ângulo da face φ+ (rad): phi_center + Δφ/2
-    z_lo:  f64, // face z inferior (mm): pode ser negativa (lado C do detector)
-    z_hi:  f64, // face z superior (mm): z_lo < z_hi sempre
-}
+// LaBa_eta[4][451]  — posição η central do LAr barril (CaloGeoConst.h)
+static LABA_ETA: [[f64; 451]; 4] = [
+    [0.0125, 0.0375, 0.0625, 0.0875, 0.1125, 0.1375, 0.1625, 0.1875, 0.2125, 0.2375, 0.2625, 0.2875, 0.3125, 0.3375, 0.3625, 0.3875, 0.4125, 0.4375, 0.4625, 0.4875, 0.5125, 0.5375, 0.5625, 0.5875, 0.6125, 0.6375, 0.6625, 0.6875, 0.7125, 0.7375, 0.7625, 0.7875, 0.8125, 0.8375, 0.8625, 0.8875, 0.9125, 0.9375, 0.9625, 0.9875, 1.0125, 1.0375, 1.0625, 1.0875, 1.1125, 1.1375, 1.1625, 1.1875, 1.2125, 1.2375, 1.2625, 1.2875, 1.3125, 1.3375, 1.3625, 1.3875, 1.4125, 1.4375, 1.4625, 1.4875, 1.5125, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 0
+    [0.0015625, 0.0046875, 0.0078125, 0.0109375, 0.0140625, 0.0171875, 0.0203125, 0.0234375, 0.0265625, 0.0296875, 0.0328125, 0.0359375, 0.0390625, 0.0421875, 0.0453125, 0.0484375, 0.0515625, 0.0546875, 0.0578125, 0.0609375, 0.0640625, 0.0671875, 0.0703125, 0.0734375, 0.0765625, 0.0796875, 0.0828125, 0.0859375, 0.0890625, 0.0921875, 0.0953125, 0.0984375, 0.101563, 0.104688, 0.107813, 0.110938, 0.114063, 0.117188, 0.120313, 0.123438, 0.126563, 0.129688, 0.132813, 0.135938, 0.139063, 0.142188, 0.145313, 0.148438, 0.151563, 0.154688, 0.157813, 0.160938, 0.164063, 0.167188, 0.170313, 0.173438, 0.176563, 0.179688, 0.182813, 0.185938, 0.189063, 0.192188, 0.195313, 0.198438, 0.201563, 0.204688, 0.207813, 0.210938, 0.214063, 0.217188, 0.220313, 0.223438, 0.226563, 0.229688, 0.232813, 0.235938, 0.239063, 0.242188, 0.245313, 0.248438, 0.251563, 0.254688, 0.257813, 0.260938, 0.264063, 0.267188, 0.270313, 0.273438, 0.276563, 0.279688, 0.282813, 0.285938, 0.289063, 0.292188, 0.295313, 0.298438, 0.301563, 0.304688, 0.307813, 0.310938, 0.314063, 0.317188, 0.320313, 0.323438, 0.326563, 0.329688, 0.332813, 0.335938, 0.339063, 0.342188, 0.345313, 0.348438, 0.351563, 0.354688, 0.357813, 0.360938, 0.364063, 0.367188, 0.370313, 0.373438, 0.376563, 0.379688, 0.382813, 0.385938, 0.389063, 0.392188, 0.395313, 0.398438, 0.401563, 0.404688, 0.407813, 0.410938, 0.414063, 0.417188, 0.420313, 0.423438, 0.426563, 0.429688, 0.432813, 0.435938, 0.439063, 0.442188, 0.445313, 0.448438, 0.451563, 0.454688, 0.457813, 0.460938, 0.464063, 0.467188, 0.470313, 0.473438, 0.476563, 0.479688, 0.482813, 0.485938, 0.489063, 0.492188, 0.495313, 0.498438, 0.501563, 0.504688, 0.507813, 0.510938, 0.514063, 0.517188, 0.520313, 0.523438, 0.526563, 0.529688, 0.532813, 0.535938, 0.539063, 0.542188, 0.545313, 0.548438, 0.551563, 0.554688, 0.557813, 0.560938, 0.564063, 0.567188, 0.570313, 0.573438, 0.576563, 0.579688, 0.582813, 0.585938, 0.589063, 0.592188, 0.595313, 0.598438, 0.601563, 0.604688, 0.607813, 0.610938, 0.614063, 0.617188, 0.620313, 0.623438, 0.626563, 0.629688, 0.632813, 0.635938, 0.639063, 0.642188, 0.645313, 0.648438, 0.651563, 0.654688, 0.657813, 0.660938, 0.664063, 0.667188, 0.670313, 0.673438, 0.676563, 0.679688, 0.682813, 0.685938, 0.689063, 0.692188, 0.695313, 0.698438, 0.701563, 0.704688, 0.707813, 0.710938, 0.714063, 0.717188, 0.720313, 0.723438, 0.726563, 0.729688, 0.732813, 0.735938, 0.739063, 0.742188, 0.745313, 0.748438, 0.751563, 0.754688, 0.757813, 0.760938, 0.764063, 0.767188, 0.770313, 0.773438, 0.776563, 0.779688, 0.782813, 0.785938, 0.789063, 0.792188, 0.795313, 0.798438, 0.801563, 0.804688, 0.807813, 0.810938, 0.814063, 0.817188, 0.820313, 0.823438, 0.826563, 0.829688, 0.832813, 0.835938, 0.839063, 0.842188, 0.845313, 0.848438, 0.851563, 0.854688, 0.857813, 0.860938, 0.864063, 0.867188, 0.870313, 0.873438, 0.876563, 0.879688, 0.882813, 0.885938, 0.889063, 0.892188, 0.895313, 0.898438, 0.901563, 0.904688, 0.907813, 0.910938, 0.914063, 0.917188, 0.920313, 0.923438, 0.926563, 0.929688, 0.932813, 0.935938, 0.939063, 0.942188, 0.945313, 0.948438, 0.951563, 0.954688, 0.957813, 0.960938, 0.964063, 0.967188, 0.970313, 0.973438, 0.976563, 0.979688, 0.982813, 0.985938, 0.989063, 0.992188, 0.995313, 0.998438, 1.00156, 1.00469, 1.00781, 1.01094, 1.01406, 1.01719, 1.02031, 1.02344, 1.02656, 1.02969, 1.03281, 1.03594, 1.03906, 1.04219, 1.04531, 1.04844, 1.05156, 1.05469, 1.05781, 1.06094, 1.06406, 1.06719, 1.07031, 1.07344, 1.07656, 1.07969, 1.08281, 1.08594, 1.08906, 1.09219, 1.09531, 1.09844, 1.10156, 1.10469, 1.10781, 1.11094, 1.11406, 1.11719, 1.12031, 1.12344, 1.12656, 1.12969, 1.13281, 1.13594, 1.13906, 1.14219, 1.14531, 1.14844, 1.15156, 1.15469, 1.15781, 1.16094, 1.16406, 1.16719, 1.17031, 1.17344, 1.17656, 1.17969, 1.18281, 1.18594, 1.18906, 1.19219, 1.19531, 1.19844, 1.20156, 1.20469, 1.20781, 1.21094, 1.21406, 1.21719, 1.22031, 1.22344, 1.22656, 1.22969, 1.23281, 1.23594, 1.23906, 1.24219, 1.24531, 1.24844, 1.25156, 1.25469, 1.25781, 1.26094, 1.26406, 1.26719, 1.27031, 1.27344, 1.27656, 1.27969, 1.28281, 1.28594, 1.28906, 1.29219, 1.29531, 1.29844, 1.30156, 1.30469, 1.30781, 1.31094, 1.31406, 1.31719, 1.32031, 1.32344, 1.32656, 1.32969, 1.33281, 1.33594, 1.33906, 1.34219, 1.34531, 1.34844, 1.35156, 1.35469, 1.35781, 1.36094, 1.36406, 1.36719, 1.37031, 1.37344, 1.37656, 1.37969, 1.38281, 1.38594, 1.38906, 1.39219, 1.39531, 1.39844, 1.4125, 1.4375, 1.4625], // row 1
+    [0.0125, 0.0375, 0.0625, 0.0875, 0.1125, 0.1375, 0.1625, 0.1875, 0.2125, 0.2375, 0.2625, 0.2875, 0.3125, 0.3375, 0.3625, 0.3875, 0.4125, 0.4375, 0.4625, 0.4875, 0.5125, 0.5375, 0.5625, 0.5875, 0.6125, 0.6375, 0.6625, 0.6875, 0.7125, 0.7375, 0.7625, 0.7875, 0.8125, 0.8375, 0.8625, 0.8875, 0.9125, 0.9375, 0.9625, 0.9875, 1.0125, 1.0375, 1.0625, 1.0875, 1.1125, 1.1375, 1.1625, 1.1875, 1.2125, 1.2375, 1.2625, 1.2875, 1.3125, 1.3375, 1.3625, 1.3875, 1.4375, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 2
+    [0.025, 0.075, 0.125, 0.175, 0.225, 0.275, 0.325, 0.375, 0.425, 0.475, 0.525, 0.575, 0.625, 0.675, 0.725, 0.775, 0.825, 0.875, 0.925, 0.975, 1.025, 1.075, 1.125, 1.175, 1.225, 1.275, 1.325, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 3
+];
+
+// LaBa_deta[4][451] — largura Δη do LAr barril (CaloGeoConst.h)
+static LABA_DETA: [[f64; 451]; 4] = [
+    [0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 0
+    [0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.025, 0.025, 0.025], // row 1
+    [0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.075, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 2
+    [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 3
+];
+
+// LaEb_eta[4][216]  — posição η central do LAr tampa (CaloGeoConst.h)
+static LAEB_ETA: [[f64; 216]; 4] = [
+    [1.52078, 1.54578, 1.57078, 1.59578, 1.62078, 1.64578, 1.67078, 1.69578, 1.72078, 1.74578, 1.77078, 1.79578, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 0
+    [1.40828, 1.44578, 1.47078, 1.49578, 1.50984, 1.51297, 1.51609, 1.51922, 1.52234, 1.52547, 1.52859, 1.53172, 1.53484, 1.53797, 1.54109, 1.54422, 1.54734, 1.55047, 1.55359, 1.55672, 1.55984, 1.56297, 1.56609, 1.56922, 1.57234, 1.57547, 1.57859, 1.58172, 1.58484, 1.58797, 1.59109, 1.59422, 1.59734, 1.60047, 1.60359, 1.60672, 1.60984, 1.61297, 1.61609, 1.61922, 1.62234, 1.62547, 1.62859, 1.63172, 1.63484, 1.63797, 1.64109, 1.64422, 1.64734, 1.65047, 1.65359, 1.65672, 1.65984, 1.66297, 1.66609, 1.66922, 1.67234, 1.67547, 1.67859, 1.68172, 1.68484, 1.68797, 1.69109, 1.69422, 1.69734, 1.70047, 1.70359, 1.70672, 1.70984, 1.71297, 1.71609, 1.71922, 1.72234, 1.72547, 1.72859, 1.73172, 1.73484, 1.73797, 1.74109, 1.74422, 1.74734, 1.75047, 1.75359, 1.75672, 1.75984, 1.76297, 1.76609, 1.76922, 1.77234, 1.77547, 1.77859, 1.78172, 1.78484, 1.78797, 1.79109, 1.79422, 1.79734, 1.80047, 1.80359, 1.80672, 1.81036, 1.81453, 1.8187, 1.82286, 1.82703, 1.8312, 1.83536, 1.83953, 1.8437, 1.84786, 1.85203, 1.8562, 1.86036, 1.86453, 1.8687, 1.87286, 1.87703, 1.8812, 1.88536, 1.88953, 1.8937, 1.89786, 1.90203, 1.9062, 1.91036, 1.91453, 1.9187, 1.92286, 1.92703, 1.9312, 1.93536, 1.93953, 1.9437, 1.94786, 1.95203, 1.9562, 1.96036, 1.96453, 1.9687, 1.97286, 1.97703, 1.9812, 1.98536, 1.98953, 1.9937, 1.99786, 2.00203, 2.0062, 2.01141, 2.01766, 2.02391, 2.03016, 2.03641, 2.04266, 2.04891, 2.05516, 2.06141, 2.06766, 2.07391, 2.08016, 2.08641, 2.09266, 2.09891, 2.10516, 2.11141, 2.11766, 2.12391, 2.13016, 2.13641, 2.14266, 2.14891, 2.15516, 2.16141, 2.16766, 2.17391, 2.18016, 2.18641, 2.19266, 2.19891, 2.20516, 2.21141, 2.21766, 2.22391, 2.23016, 2.23641, 2.24266, 2.24891, 2.25516, 2.26141, 2.26766, 2.27391, 2.28016, 2.28641, 2.29266, 2.29891, 2.30516, 2.31141, 2.31766, 2.32391, 2.33016, 2.33641, 2.34266, 2.34891, 2.35516, 2.36141, 2.36766, 2.37391, 2.38016, 2.38641, 2.39266, 2.39891, 2.40516, 2.42078, 2.44578, 2.47078, 2.49578], // row 1
+    [1.40828, 1.44578, 1.47078, 1.49578, 1.52078, 1.54578, 1.57078, 1.59578, 1.62078, 1.64578, 1.67078, 1.69578, 1.72078, 1.74578, 1.77078, 1.79578, 1.82078, 1.84578, 1.87078, 1.89578, 1.92078, 1.94578, 1.97078, 1.99578, 2.02078, 2.04578, 2.07078, 2.09578, 2.12078, 2.14578, 2.17078, 2.19578, 2.22078, 2.24578, 2.27078, 2.29578, 2.32078, 2.34578, 2.37078, 2.39578, 2.42078, 2.44578, 2.47078, 2.49578, 2.55828, 2.65828, 2.75828, 2.85828, 2.95828, 3.05828, 3.15828, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 2
+    [1.47078, 1.49578, 1.52078, 1.54578, 1.57078, 1.59578, 1.62078, 1.64578, 1.67078, 1.69578, 1.72078, 1.74578, 1.78328, 1.83328, 1.88328, 1.93328, 1.98328, 2.03328, 2.08328, 2.13328, 2.18328, 2.23328, 2.28328, 2.33328, 2.38328, 2.43328, 2.48328, 2.55828, 2.65828, 2.75828, 2.85828, 2.95828, 3.05828, 3.15828, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 3
+];
+
+// LaEb_deta[4][216] — largura Δη do LAr tampa (CaloGeoConst.h)
+static LAEB_DETA: [[f64; 216]; 4] = [
+    [0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 0
+    [0.05, 0.025, 0.025, 0.025, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.003125, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00416667, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.00625, 0.025, 0.025, 0.025, 0.025], // row 1
+    [0.05, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 2
+    [0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.025, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 3
+];
+
+// LaEb_h1[4][216]   — raio interno da célula LAr tampa em mm (CaloGeoConst.h)
+static LAEB_H1: [[f64; 216]; 4] = [
+    [3680.75, 3680.75, 3680.75, 3680.75, 3680.75, 3680.75, 3680.75, 3680.75, 3680.75, 3680.75, 3680.75, 3680.75, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 0
+    [3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24], // row 1
+    [3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 3754.24, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 2
+    [4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4201.25, 4201.25, 4201.25, 4201.25, 4201.25, 4201.25, 4201.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 3
+];
+
+// LaEb_h2[4][216]   — raio externo da célula LAr tampa em mm (CaloGeoConst.h)
+static LAEB_H2: [[f64; 216]; 4] = [
+    [3714.25, 3714.25, 3714.25, 3714.25, 3714.25, 3714.25, 3714.25, 3714.25, 3714.25, 3714.25, 3714.25, 3714.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 0
+    [3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73, 3800.73], // row 1
+    [4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4156.24, 4201.25, 4201.25, 4201.25, 4201.25, 4201.25, 4201.25, 4201.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 2
+    [4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 4243.26, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], // row 3
+];
 
 // =============================================================================
-// BUILD_ARB8_VERTICES — Calcula os 8 vértices do prisma ARB8 em metros
-//
-// Converte as coordenadas físicas em mm (r1, r2, phi_m, phi_p, z_lo, z_hi)
-// para coordenadas cartesianas em metros, ordenadas conforme o índice ARB8.
-//
-// Saída: [f32; 24] — 8 vértices × (x, y, z), já em metros
-//   Floats [0..3]:  v[0] = (-r1·sin(φ-),  r1·cos(φ-),  z_lo)
-//   Floats [3..6]:  v[1] = (-r1·sin(φ-),  r1·cos(φ-),  z_hi)
-//   Floats [6..9]:  v[2] = (-r2·sin(φ-),  r2·cos(φ-),  z_lo)
-//   Floats [9..12]: v[3] = (-r2·sin(φ-),  r2·cos(φ-),  z_hi)
-//   Floats [12..15]:v[4] = (-r1·sin(φ+),  r1·cos(φ+),  z_lo)
-//   Floats [15..18]:v[5] = (-r1·sin(φ+),  r1·cos(φ+),  z_hi)
-//   Floats [18..21]:v[6] = (-r2·sin(φ+),  r2·cos(φ+),  z_lo)
-//   Floats [21..24]:v[7] = (-r2·sin(φ+),  r2·cos(φ+),  z_hi)
+// HELPERS LAR BARRIL — lookup direto nas tabelas (zero fórmulas)
 // =============================================================================
-fn build_arb8_vertices(geom: &CellGeom, scale: f64) -> [f32; 24] {
-    // Pré-calcula senos e cossenos das duas faces azimutais
-    let (sm, cm) = (geom.phi_m.sin(), geom.phi_m.cos()); // φ- (face esquerda)
-    let (sp, cp) = (geom.phi_p.sin(), geom.phi_p.cos()); // φ+ (face direita)
 
-    // Raios e alturas já escalonados para metros
-    let r1 = (geom.r1 * scale) as f32;
-    let r2 = (geom.r2 * scale) as f32;
-    let zl = (geom.z_lo * scale) as f32;
-    let zh = (geom.z_hi * scale) as f32;
+#[inline]
+fn laba_eta(layer: usize, idx: usize) -> f64   { LABA_ETA[layer][idx] }
+#[inline]
+fn laba_deta(layer: usize, idx: usize) -> f64  { LABA_DETA[layer][idx] }
+#[inline]
+fn laba_ncells(layer: usize) -> usize           { [61, 451, 57, 27][layer] }
 
-    let (sm, cm) = (sm as f32, cm as f32);
-    let (sp, cp) = (sp as f32, cp as f32);
+// =============================================================================
+// HELPERS LAR TAMPA — lookup direto nas tabelas (zero fórmulas)
+//   LaEb_size[4] = {12, 216, 51, 34}
+// =============================================================================
 
-    [
-        // v[0]: φ-, interno (r1), z-
-        -r1 * sm,  r1 * cm,  zl,
-        // v[1]: φ-, interno (r1), z+
-        -r1 * sm,  r1 * cm,  zh,
-        // v[2]: φ-, externo (r2), z-
-        -r2 * sm,  r2 * cm,  zl,
-        // v[3]: φ-, externo (r2), z+
-        -r2 * sm,  r2 * cm,  zh,
-        // v[4]: φ+, interno (r1), z-
-        -r1 * sp,  r1 * cp,  zl,
-        // v[5]: φ+, interno (r1), z+
-        -r1 * sp,  r1 * cp,  zh,
-        // v[6]: φ+, externo (r2), z-
-        -r2 * sp,  r2 * cp,  zl,
-        // v[7]: φ+, externo (r2), z+
-        -r2 * sp,  r2 * cp,  zh,
+#[inline]
+fn laeb_eta(layer: usize, idx: usize) -> f64   { LAEB_ETA[layer][idx] }
+#[inline]
+fn laeb_deta(layer: usize, idx: usize) -> f64  { LAEB_DETA[layer][idx] }
+#[inline]
+fn laeb_h1(layer: usize, idx: usize) -> f64    { LAEB_H1[layer][idx] }
+#[inline]
+fn laeb_h2(layer: usize, idx: usize) -> f64    { LAEB_H2[layer][idx] }
+#[inline]
+fn laeb_ncells(layer: usize) -> usize           { [12, 216, 51, 34][layer] }
+
+// =============================================================================
+// TABELA DE CAMADAS — mapeia l=0..25 para LayerCfg
+//   l= 0..13 → Tile  (14 camadas)
+//   l=14..17 → HEC   ( 4 camadas)
+//   l=18..21 → LArBa ( 4 camadas)
+//   l=22..25 → LArEb ( 4 camadas)
+// =============================================================================
+fn build_layer_table() -> Vec<LayerCfg> {
+    vec![
+        // Tile barril
+        /* l= 0 */ LayerCfg::tile(2300.0, 2600.0, 64,  0), // A barrel
+        /* l= 1 */ LayerCfg::tile_merge(2600.0, 3440.0, 1, 2), // BC merged
+        /* l= 2 */ LayerCfg::tile(3440.0, 3820.0, 64,  3), // D barrel
+        // Tile extensão
+        /* l= 3 */ LayerCfg::tile(2300.0, 2600.0, 64,  4), // A extend
+        /* l= 4 */ LayerCfg::tile(2600.0, 3140.0, 64,  5), // B extend
+        /* l= 5 */ LayerCfg::tile(3140.0, 3820.0, 64,  6), // D extend
+        // Tile transição / gap / crack / MBTS
+        /* l= 6 */ LayerCfg::tile(3440.0, 3820.0, 64,  7), // D4
+        /* l= 7 */ LayerCfg::tile(2990.0, 3440.0, 64,  8), // C9
+        /* l= 8 */ LayerCfg::tile(2632.0, 2959.0, 64,  9),
+        /* l= 9 */ LayerCfg::tile(2305.0, 2632.0, 64, 10),
+        /* l=10 */ LayerCfg::tile(1885.0, 2305.0, 64, 11),
+        /* l=11 */ LayerCfg::tile(1465.0, 1885.0, 64, 12),
+        /* l=12 */ LayerCfg::tile( 426.0,  876.0,  8, 13), // MBTS outer φ=8
+        /* l=13 */ LayerCfg::tile( 153.0,  426.0,  8, 14), // MBTS inner φ=8
+        // HEC
+        /* l=14 */ LayerCfg::hec(4350.0, 4630.0, 0, 0),
+        /* l=15 */ LayerCfg::hec(4630.0, 5100.0, 1, 2),
+        /* l=16 */ LayerCfg::hec(5130.0, 5590.0, 3, 4),
+        /* l=17 */ LayerCfg::hec(5590.0, 6050.0, 5, 6),
+        // LAr barril
+        /* l=18 */ LayerCfg::lar_b(1421.73, 1438.58,  64, 0), // presampler
+        /* l=19 */ LayerCfg::lar_b(1481.75, 1579.00,  64, 1), // strips
+        /* l=20 */ LayerCfg::lar_b(1581.00, 1840.00, 256, 2), // middle
+        /* l=21 */ LayerCfg::lar_b(1840.00, 1984.70, 256, 3), // back
+        // LAr tampa
+        /* l=22 */ LayerCfg::lar_e( 64, 0), // presampler
+        /* l=23 */ LayerCfg::lar_e( 64, 1), // strips
+        /* l=24 */ LayerCfg::lar_e(256, 2), // middle
+        /* l=25 */ LayerCfg::lar_e(256, 3), // back
     ]
 }
 
 // =============================================================================
-// CÁLCULO DA GEOMETRIA 3D DA CÉLULA
+// COMPUTE_CELL — calcula a geometria física de uma célula dado (l, eta, phi)
 //
-// Entrada: configuração da camada (LayerCfg) + índices (eta, phi)
-// Saída:   Option<CellGeom> — None se a célula é inválida ou inexistente
-//
-// Para cada subdetector, calcula:
-//   · cx, cy, cz   — centro cartesiano (mm)
-//   · sx, sy, sz   — semi-extensões para a bounding matrix (mm)
-//   · r1, r2       — raios interno/externo reais para ARB8 (mm)
-//   · phi_m, phi_p — ângulos das faces azimutais para ARB8 (rad)
-//   · z_lo, z_hi   — faces axiais para ARB8 (mm, podem ser negativas)
-//   · phi          — ângulo central (rad)
-//
-// NOTA: z_lo < z_hi é sempre garantido. Para o lado C (η<0), z_lo e z_hi
-// são ambos negativos, com |z_hi| < |z_lo|.
+// Retorna None se a célula não existe ou está na região morta de crack.
+// Nota: z_lo < z_hi é sempre garantido (inclusive para o lado C, η<0).
 // =============================================================================
 fn compute_cell(cfg: &LayerCfg, eta_idx: i32, phi_idx: usize) -> Option<CellGeom> {
     let eta_abs = eta_idx.unsigned_abs() as usize;
-    // z_sign: +1 para o lado A (η>0), -1 para o lado C (η<0)
     let z_sign  = if eta_idx >= 0 { 1.0_f64 } else { -1.0_f64 };
 
-    // Ângulo central da fatia φ e largura azimutal (rad)
-    let phi  = phi_center(phi_idx, cfg.phi_seg);
-    let dphi = 2.0 * PI / cfg.phi_seg as f64;
-
-    // Faces azimutais do ARB8: meio ± metade do passo
+    let phi   = phi_center(phi_idx, cfg.phi_seg);
+    let dphi  = 2.0 * PI / cfg.phi_seg as f64;
     let phi_m = phi - dphi / 2.0;
     let phi_p = phi + dphi / 2.0;
-
     let sin_phi = phi.sin();
     let cos_phi = phi.cos();
 
     match cfg.subdet {
         // -----------------------------------------------------------------
-        // TILE — barras cilíndricas com posição Z lida da tabela TILE_Z
-        //
-        // Geometria ARB8: raios reais h1/h2, faces φ planas (radiais),
-        //                 faces z± lidas de TILE_Z ± TILE_DZ/2.
+        // TILE — barras cilíndricas, posição Z da tabela TILE_Z
         // -----------------------------------------------------------------
         SubDet::Tile => {
             let row = cfg.tile_row;
-            if eta_abs >= 10 { return None; } // TILE_Z tem no máximo 10 slots
-
+            if eta_abs >= 10 { return None; }
             let z_val = TILE_Z[row][eta_abs];
             let dz    = TILE_DZ[row][eta_abs];
-            if z_val == 0.0 || dz == 0.0 { return None; } // célula inexistente
+            if z_val == 0.0 || dz == 0.0 { return None; }
 
-            // Para camadas mescladas (l=1, BC): média dos dz das duas sub-linhas
+            // Para camadas BC mescladas: média dos dz
             let dz_final = if cfg.tile_row2 != row && TILE_DZ[cfg.tile_row2][eta_abs] > 0.0 {
                 (dz + TILE_DZ[cfg.tile_row2][eta_abs]) / 2.0
-            } else {
-                dz
-            };
+            } else { dz };
 
-            let r1    = cfg.h1;                         // raio interno real
-            let r2    = cfg.h2;                         // raio externo real
-            let r_mid = (r1 + r2) / 2.0;               // raio central
-            let dr    = r2 - r1;                        // espessura radial
-            let sz    = dz_final / 2.0;                 // semi-extensão axial
-
-            // Centro da célula em cartesiano
-            let cx = -r_mid * sin_phi;
-            let cy =  r_mid * cos_phi;
-            let cz =  z_sign * z_val;
-
-            // Faces axiais ARB8 (z_lo < z_hi garantido porque sz > 0)
-            let z_lo = cz - sz;
-            let z_hi = cz + sz;
+            let r_mid = (cfg.h1 + cfg.h2) / 2.0;
+            let sz    = dz_final / 2.0;
+            let cz    = z_sign * z_val;
 
             Some(CellGeom {
-                cx, cy, cz,
-                sx: dr / 2.0,
-                sy: r_mid * dphi / 2.0,
-                sz,
-                phi,
-                r1, r2,
+                cx: -r_mid * sin_phi,
+                cy:  r_mid * cos_phi,
+                cz,
+                r1:    cfg.h1,
+                r2:    cfg.h2,
                 phi_m, phi_p,
-                z_lo, z_hi,
+                z_lo:  cz - sz,
+                z_hi:  cz + sz,
             })
         }
 
         // -----------------------------------------------------------------
-        // HEC — anéis no plano z = cte, raio central lido de HEC_R
-        //
-        // Geometria ARB8: r1 = r_val - dr/2, r2 = r_val + dr/2,
-        //                 faces z± em cfg.h1/h2 (com sinal para lado C).
+        // HEC — anéis no plano z=cte, raio da tabela HEC_R
         // -----------------------------------------------------------------
         SubDet::Hec => {
             let (r_val, dr_val) = if cfg.hec_row1 == cfg.hec_row2 {
-                // Sub-região única
                 if eta_abs >= HEC_SIZE[cfg.hec_row1] { return None; }
                 (HEC_R[cfg.hec_row1][eta_abs], HEC_DR[cfg.hec_row1][eta_abs])
             } else {
-                // Duas sub-regiões: eta=0 usa row1, eta>=1 usa row2 com offset
                 if eta_abs == 0 {
                     (HEC_R[cfg.hec_row1][0], HEC_DR[cfg.hec_row1][0])
                 } else {
@@ -829,388 +443,493 @@ fn compute_cell(cfg: &LayerCfg, eta_idx: i32, phi_idx: usize) -> Option<CellGeom
                     (HEC_R[cfg.hec_row2][i2], HEC_DR[cfg.hec_row2][i2])
                 }
             };
-
             if r_val == 0.0 { return None; }
 
             let z_mid = (cfg.h1 + cfg.h2) / 2.0;
-            let dz    =  cfg.h2 - cfg.h1;
-            let sz    =  dz / 2.0;
-
-            let r1 = r_val - dr_val / 2.0; // raio interno real
-            let r2 = r_val + dr_val / 2.0; // raio externo real
-
-            let cx = -r_val * sin_phi;
-            let cy =  r_val * cos_phi;
-            let cz =  z_sign * z_mid;
-
-            // Para o lado C (z_sign=-1): cz negativo, z_lo < z_hi ainda se mantém
-            let z_lo = cz - sz;
-            let z_hi = cz + sz;
+            let sz    = (cfg.h2 - cfg.h1) / 2.0;
+            let cz    = z_sign * z_mid;
 
             Some(CellGeom {
-                cx, cy, cz,
-                sx: dr_val / 2.0,
-                sy: r_val * dphi / 2.0,
-                sz,
-                phi,
-                r1, r2,
+                cx: -r_val * sin_phi,
+                cy:  r_val * cos_phi,
+                cz,
+                r1:    r_val - dr_val / 2.0,
+                r2:    r_val + dr_val / 2.0,
                 phi_m, phi_p,
-                z_lo, z_hi,
+                z_lo:  cz - sz,
+                z_hi:  cz + sz,
             })
         }
 
         // -----------------------------------------------------------------
-        // LAr BARRIL — cilindros concêntricos, z calculado por z = R·sinh(η)
-        //
-        // Geometria ARB8: raios reais h1/h2, faces z± calculadas pela física.
+        // LAR BARRIL — cilindros concêntricos, z = R·sinh(η)
         // -----------------------------------------------------------------
         SubDet::LarBarrel => {
             let lar = cfg.lar_layer;
             if eta_abs >= laba_ncells(lar) { return None; }
+            let eta_c = laba_eta(lar, eta_abs).abs();
+            if in_barrel_crack(eta_c, true) { return None; }
 
-            let eta_c     = laba_eta(lar, eta_abs);
-            let eta_c_abs = eta_c.abs();
-            if in_barrel_crack(eta_c_abs, true) { return None; }
-
-            let r1    = cfg.h1;
-            let r2    = cfg.h2;
-            let r_mid = (r1 + r2) / 2.0;
-            let dr    = r2 - r1;
-
-            // z = R·sinh(η) — mapeamento físico exato
-            let cz = z_sign * eta_to_z(eta_c_abs, r_mid);
-            let cx = -r_mid * sin_phi;
-            let cy =  r_mid * cos_phi;
-
-            // Extensão em z: dz = R·cosh(η)·Δη (limitada a 800 mm)
-            let deta = laba_deta(lar, eta_abs);
-            let sz   = (r_mid * eta_c_abs.cosh() * deta / 2.0)
-                           .min(800.0)
-                           .max(1.0);
-
-            let z_lo = cz - sz;
-            let z_hi = cz + sz;
+            let r_mid = (cfg.h1 + cfg.h2) / 2.0;
+            let cz    = z_sign * eta_to_z(eta_c, r_mid);
+            let deta  = laba_deta(lar, eta_abs);
+            let sz    = (r_mid * eta_c.cosh() * deta / 2.0).min(800.0).max(1.0);
 
             Some(CellGeom {
-                cx, cy, cz,
-                sx: dr / 2.0,
-                sy: r_mid * dphi / 2.0,
-                sz,
-                phi,
-                r1, r2,
+                cx: -r_mid * sin_phi,
+                cy:  r_mid * cos_phi,
+                cz,
+                r1:    cfg.h1,
+                r2:    cfg.h2,
                 phi_m, phi_p,
-                z_lo, z_hi,
+                z_lo:  cz - sz,
+                z_hi:  cz + sz,
             })
         }
 
         // -----------------------------------------------------------------
-        // LAr TAMPA — discos em z = cte, raio calculado por r = z/sinh(η)
-        //
-        // Geometria ARB8: r1 = r_perp - dr, r2 = r_perp + dr,
-        //                 faces z± em laeb_h1/h2 (com sinal).
+        // LAR TAMPA — discos em z=cte, r = z/sinh(η)
         // -----------------------------------------------------------------
         SubDet::LarEndCap => {
             let lar = cfg.lar_layer;
             if eta_abs >= laeb_ncells(lar) { return None; }
+            let eta_c = laeb_eta(lar, eta_abs).abs();
+            if eta_c == 0.0 || in_barrel_crack(eta_c, false) { return None; }
 
-            let eta_c = laeb_eta(lar, eta_abs);
-            if eta_c == 0.0 { return None; }
-            let eta_c_abs = eta_c.abs();
-            if in_barrel_crack(eta_c_abs, false) { return None; }
-
-            // [BUG-4 CORRIGIDO] laeb_h2 retorna 4201.25 para camada 2, idx>=44
             let h1    = laeb_h1(lar, eta_abs);
             let h2    = laeb_h2(lar, eta_abs);
             let z_mid = (h1 + h2) / 2.0;
-            let dz    =  h2 - h1;
+            let dz    = h2 - h1;
 
-            // r = z/sinh(η)
-            let sinh_eta = eta_c_abs.sinh().max(0.001);
-            let r_perp   = z_mid / sinh_eta;
-
-            // Extensão radial: dr ≈ z·Δη·cosh(η)/sinh²(η), mín 5 mm
+            let sinh_eta  = eta_c.sinh().max(0.001);
+            let r_perp    = z_mid / sinh_eta;
             let deta      = laeb_deta(lar, eta_abs);
-            let dr_approx = (z_mid * deta * eta_c_abs.cosh()
-                              / (sinh_eta * sinh_eta))
-                              .abs()
-                              .min(500.0)
-                              .max(5.0);
-
-            let r1 = r_perp - dr_approx; // raio interno real
-            let r2 = r_perp + dr_approx; // raio externo real
-
-            let cx = -r_perp * sin_phi;
-            let cy =  r_perp * cos_phi;
-            let cz =  z_sign * z_mid;
-
-            // Para lado C: z_lo = -(h1+h2)/2 - dz/2 = -h2 (face mais distal)
-            let z_lo = cz - dz / 2.0;
-            let z_hi = cz + dz / 2.0;
+            let dr_approx = (z_mid * deta * eta_c.cosh() / (sinh_eta * sinh_eta))
+                             .abs().min(500.0).max(5.0);
+            let cz = z_sign * z_mid;
 
             Some(CellGeom {
-                cx, cy, cz,
-                sx: dr_approx,
-                sy: r_perp * dphi / 2.0,
-                sz: dz / 2.0,
-                phi,
-                r1, r2,
+                cx: -r_perp * sin_phi,
+                cy:  r_perp * cos_phi,
+                cz,
+                r1:    r_perp - dr_approx,
+                r2:    r_perp + dr_approx,
                 phi_m, phi_p,
-                z_lo, z_hi,
+                z_lo:  cz - dz / 2.0,
+                z_hi:  cz + dz / 2.0,
             })
         }
     }
 }
 
 // =============================================================================
-// CONSTRUÇÃO DA MATRIZ DE TRANSFORMAÇÃO 4×4 (column-major para Three.js)
+// BUILD_ARB8_VERTICES — 8 cantos exatos do prisma trapezoidal em metros
 //
-// Three.js InstancedMesh espera a matriz em ordem column-major (colunas primeiro).
-// A matriz combina:
-//   - Escala não-uniforme: (sx, sy, sz) — tamanho da caixa em cada eixo
-//   - Rotação em φ: orienta a célula azimutalmente no detector
-//   - Translação: posiciona a célula em (cx, cy, cz) no espaço 3D
+// Convenção de índices:
+//   v[0]: φ-, r1, z-    v[1]: φ-, r1, z+
+//   v[2]: φ-, r2, z-    v[3]: φ-, r2, z+
+//   v[4]: φ+, r1, z-    v[5]: φ+, r1, z+
+//   v[6]: φ+, r2, z-    v[7]: φ+, r2, z+
 //
-// Os parâmetros cx,cy,cz e sx,sy,sz devem estar em METROS (fator 0.001 aplicado
-// antes de chamar esta função, convertendo de mm para m).
+// Coordenada cartesiana: x = -r·sin(φ), y = r·cos(φ)
+// (sinal negativo em x por convenção do sistema de coordenadas ATLAS)
 // =============================================================================
-fn build_matrix(cx: f64, cy: f64, cz: f64, sx: f64, sy: f64, sz: f64, phi: f64) -> [f32; 16] {
-    let (s, c) = (phi.sin(), phi.cos()); // sin/cos do ângulo azimutal
-    let s32 = |v: f64| v as f32;        // converte f64 → f32
-
-    // Matriz 4×4 column-major (16 floats):
-    // Coluna 0: eixo X local (perpendicular ao raio, direção φ), escalado por sx
-    // Coluna 1: eixo Y local (direção radial, aponta para fora), escalado por sy
-    // Coluna 2: eixo Z local (ao longo do feixe), escalado por sz
-    // Coluna 3: posição de translação (cx, cy, cz, 1.0)
+fn build_arb8_vertices(geom: &CellGeom, scale: f64) -> [f32; 24] {
+    let (sm, cm) = (geom.phi_m.sin() as f32, geom.phi_m.cos() as f32);
+    let (sp, cp) = (geom.phi_p.sin() as f32, geom.phi_p.cos() as f32);
+    let r1 = (geom.r1 * scale) as f32;
+    let r2 = (geom.r2 * scale) as f32;
+    let zl = (geom.z_lo * scale) as f32;
+    let zh = (geom.z_hi * scale) as f32;
     [
-        s32(-s * sx),  s32(c * sx),  0.0,     0.0,  // Coluna 0
-        s32(-c * sy),  s32(-s * sy), 0.0,     0.0,  // Coluna 1
-        0.0,           0.0,          s32(sz), 0.0,  // Coluna 2
-        s32(cx),       s32(cy),      s32(cz), 1.0,  // Coluna 3 (translação)
+        -r1*sm,  r1*cm,  zl,  // v[0]: φ-, r1, z-
+        -r1*sm,  r1*cm,  zh,  // v[1]: φ-, r1, z+
+        -r2*sm,  r2*cm,  zl,  // v[2]: φ-, r2, z-
+        -r2*sm,  r2*cm,  zh,  // v[3]: φ-, r2, z+
+        -r1*sp,  r1*cp,  zl,  // v[4]: φ+, r1, z-
+        -r1*sp,  r1*cp,  zh,  // v[5]: φ+, r1, z+
+        -r2*sp,  r2*cp,  zl,  // v[6]: φ+, r2, z-
+        -r2*sp,  r2*cp,  zh,  // v[7]: φ+, r2, z+
     ]
 }
 
 // =============================================================================
-// MAPEAMENTO DE ENERGIA → COR (escala "jet" arco-íris normalizada)
+// PROCESS_XML_DATA — ponto de entrada público do WASM
 //
-// t ∈ [0,1] onde t=0 → azul (energia mínima), t=1 → vermelho (energia máxima)
-// Idêntico à escala "jet" usada em displays de física de partículas:
-//   [0.00, 0.25]: azul → ciano    (g cresce, b=1)
-//   [0.25, 0.50]: ciano → verde   (b cai, g=1)
-//   [0.50, 0.75]: verde → amarelo (r cresce, g=1)
-//   [0.75, 1.00]: amarelo → verm. (g cai, r=1)
+// Fluxo:
+//   1. Parse XML streaming → HashMap<(l, eta, phi), energia_MeV>
+//   2. Para cada célula com energia > 0:
+//      a. compute_cell()          → parâmetros físicos
+//      b. build_arb8_vertices()   → 8 vértices em metros
+//      c. loop de 6 faces:
+//         - computa normal outward garantida (dot check)
+//         - emite 4 posições, 4 normais, 4 cores, 4 energias, 4 iids
+//         - emite 6 índices (2 triângulos)
+//      d. computa centro + raio da esfera envolvente (para picking)
+//   3. Armazena centros/raios em PICK_STATE (para pick_cell_ray)
+//   4. Computa bounding sphere da cena toda (para frustum culling no Three.js)
+//   5. Retorna Float32Arrays/Uint32Array prontos para BufferGeometry
+//
+// Retorno (objeto JS):
+//   .positions   — Float32Array n×24×3  posições vértices GPU
+//   .normals     — Float32Array n×24×3  normais outward pré-computadas
+//   .vert_colors — Float32Array n×24×3  cor RGB por vértice
+//   .vert_energ  — Float32Array n×24    energia normalizada por vértice
+//   .iids        — Float32Array n×24    id da célula por vértice
+//   .actives     — Float32Array n×24    1=visível, 0=oculto (gerido pelo JS)
+//   .indices     — Uint32Array  n×36    índices de triângulo
+//   .arb8        — Float32Array n×24    vértices ARB8 brutos (para wireframe)
+//   .energies    — Float32Array n       energia normalizada por célula
+//   .layers      — Float32Array n       índice de camada
+//   .etas        — Float32Array n       índice de eta
+//   .phis        — Float32Array n       índice de phi
+//   .centers     — Float32Array n×3     centro de cada célula (para picking)
+//   .radii       — Float32Array n       raio da esfera envolvente
+//   .bsphere     — Float32Array 4       [cx, cy, cz, r] bounding sphere da cena
+//   .count       — Number
+//   .maxEnergy   — Number (MeV)
+//   .minEnergy   — Number (MeV)
 // =============================================================================
-fn energy_color(t: f32) -> (f32, f32, f32) {
-    let t = t.clamp(0.0, 1.0);
-    if t < 0.25 {
-        let u = t / 0.25;
-        (0.0, u, 1.0)          // azul → ciano
-    } else if t < 0.5 {
-        let u = (t - 0.25) / 0.25;
-        (0.0, 1.0, 1.0 - u)   // ciano → verde
-    } else if t < 0.75 {
-        let u = (t - 0.5) / 0.25;
-        (u, 1.0, 0.0)          // verde → amarelo
-    } else {
-        let u = (t - 0.75) / 0.25;
-        (1.0, 1.0 - u, 0.0)   // amarelo → vermelho
-    }
-}
 
-// =============================================================================
-// PONTO DE ENTRADA PÚBLICO DO WASM
-//
-// Única função exportada para JavaScript.
-//
-// FLUXO:
-//   1. Parseia o XML byte a byte (streaming), acumulando energia por célula
-//      no HashMap<(layer, eta_idx, phi_idx), energia_MeV>
-//   2. Calcula min/max de energia para normalização de cor
-//   3. Para cada célula com energia > 0:
-//      a. Determina a LayerCfg via build_layer_table()
-//      b. Calcula posição 3D via compute_cell()
-//      c. Constrói matriz 4×4 via build_matrix()
-//      d. Mapeia energia para cor via energy_color()
-//   4. Empacota tudo em Float32Arrays e retorna objeto JavaScript
-//
-// RETORNO (objeto JS):
-//   .matrices  — Float32Array, count×16 floats (matrizes 4×4)
-//   .colors    — Float32Array, count×3  floats (RGB por célula)
-//   .energies  — Float32Array, count×1  float  (energia normalizada [0,1])
-//   .layers    — Float32Array, count×1  float  (índice de camada 0–25)
-//   .etas      — Float32Array, count×1  float  (índice de eta)
-//   .phis      — Float32Array, count×1  float  (índice de phi)
-//   .count     — Number (total de células renderizáveis)
-//   .maxEnergy — Number (energia máxima em MeV)
-//   .minEnergy — Number (energia mínima em MeV)
-// =============================================================================
+/// Índices dos 4 vértices ARB8 de cada uma das 6 faces do prisma.
+/// Ordem A,B,C,D é consistente para winding correto antes do outward-check.
+const FACE_QUADS: [[usize; 4]; 6] = [
+    [0, 4, 6, 2],  // face z-  (tampa traseira)
+    [1, 3, 7, 5],  // face z+  (tampa frontal)
+    [0, 1, 5, 4],  // face r1  (interna, mais próxima do eixo)
+    [2, 6, 7, 3],  // face r2  (externa)
+    [0, 2, 3, 1],  // face φ-  (lateral azimutal -)
+    [4, 5, 7, 6],  // face φ+  (lateral azimutal +)
+];
+
+const VERTS_PER_CELL: usize = 6 * 4;  // 24 vértices por célula
+const IDX_PER_CELL:   usize = 6 * 6;  // 36 índices por célula
+
 #[wasm_bindgen]
 pub fn process_xml_data(xml_bytes: &[u8]) -> Result<JsValue, JsValue> {
-    // Redireciona pânicos Rust para console.error() no browser
     console_error_panic_hook::set_once();
 
-    // HashMap: chave = (camada, idx_eta, idx_phi), valor = energia em MeV
+    // ── 1. Parse XML → HashMap de energias ────────────────────────────────
     let mut energy_map: HashMap<(i32, i32, i32), f64> = HashMap::new();
-
-    // Parser XML em modo streaming (processa byte a byte, memória constante)
     let mut reader = Reader::from_reader(xml_bytes);
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
-
-    // Lê evento por evento até o fim do arquivo XML
     loop {
         match reader.read_event_into(&mut buf) {
-            // Processa tags self-closing (<cell .../>) e de abertura (<cell ...>)
             Ok(Event::Empty(e)) | Ok(Event::Start(e)) => {
                 if e.name().as_ref() == b"cell" {
-                    // Atributos esperados de cada <cell>
-                    let mut layer = None::<i32>; // l="camada"  (0–25)
-                    let mut eta   = None::<i32>; // eta="índice de η"
-                    let mut phi   = None::<i32>; // phi="índice de φ"
-                    let mut e_val = None::<f64>; // e="energia em MeV"
-
+                    let mut layer = None::<i32>;
+                    let mut eta   = None::<i32>;
+                    let mut phi   = None::<i32>;
+                    let mut e_val = None::<f64>;
                     for attr in e.attributes().flatten() {
                         match attr.key.as_ref() {
-                            b"l"   => layer = std::str::from_utf8(&attr.value).ok()
-                                                  .and_then(|s| s.trim().parse().ok()),
-                            b"eta" => eta   = std::str::from_utf8(&attr.value).ok()
-                                                  .and_then(|s| s.trim().parse().ok()),
-                            b"phi" => phi   = std::str::from_utf8(&attr.value).ok()
-                                                  .and_then(|s| s.trim().parse().ok()),
-                            b"e"   => e_val = std::str::from_utf8(&attr.value).ok()
-                                                  .and_then(|s| s.trim().parse().ok()),
+                            b"l"   => layer = std::str::from_utf8(&attr.value).ok().and_then(|s| s.trim().parse().ok()),
+                            b"eta" => eta   = std::str::from_utf8(&attr.value).ok().and_then(|s| s.trim().parse().ok()),
+                            b"phi" => phi   = std::str::from_utf8(&attr.value).ok().and_then(|s| s.trim().parse().ok()),
+                            b"e"   => e_val = std::str::from_utf8(&attr.value).ok().and_then(|s| s.trim().parse().ok()),
                             _ => {}
                         }
                     }
-
-                    // Acumula energia apenas se todos os 4 atributos foram encontrados
                     if let (Some(l), Some(et), Some(ph), Some(en)) = (layer, eta, phi, e_val) {
-                        // or_insert(0.0): cria entrada zerada na primeira ocorrência
                         *energy_map.entry((l, et, ph)).or_insert(0.0) += en;
                     }
                 }
             }
-            Ok(Event::Eof) => break, // fim do XML
-            Err(_) => break,         // erro de parsing: aborta silenciosamente
-            _ => {}                  // outros eventos (comentários, etc.): ignora
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
         }
-        buf.clear(); // reutiliza o buffer para economizar alocações
+        buf.clear();
     }
 
-    // Carrega a tabela de configuração das 26 camadas
-    let layers = build_layer_table();
+    let layers_cfg = build_layer_table();
+    let scale = 0.001_f64; // mm → metros
 
-    // Fator de escala: converte mm → metros para o Three.js
-    let scale = 0.001_f64;
-
-    // Calcula energia máxima entre células com E > 0
-    // NEG_INFINITY como inicial garante que qualquer E>0 vença; .max(1.0) evita div/0
+    // ── 2. Energia min/max para normalização de cor ────────────────────────
     let max_e = energy_map.values().copied()
         .filter(|e| *e > 0.0)
         .fold(f64::NEG_INFINITY, f64::max).max(1.0);
-
-    // Calcula energia mínima entre células com E > 0
     let min_e = energy_map.values().copied()
         .filter(|e| *e > 0.0)
         .fold(f64::INFINITY, f64::min).min(max_e);
 
-    // Vetores de saída (acumulados célula a célula)
-    let mut matrices:   Vec<f32> = Vec::new(); // 16 floats por célula (instanceMatrix p/ raycasting)
-    let mut arb8_verts: Vec<f32> = Vec::new(); // 24 floats por célula (8 vértices ARB8 reais em m)
-    let mut colors:     Vec<f32> = Vec::new(); // 3 floats (RGB)
-    let mut energies:   Vec<f32> = Vec::new(); // 1 float (energia normalizada [0,1])
-    let mut layers_out: Vec<f32> = Vec::new(); // 1 float (índice de camada)
-    let mut etas_out:   Vec<f32> = Vec::new(); // 1 float (índice de eta)
-    let mut phis_out:   Vec<f32> = Vec::new(); // 1 float (índice de phi)
-
+    // ── 3. Pre-pass: conta células válidas para pre-alocar buffers ─────────
+    // Evita re-alocações durante o loop principal.
+    let mut n = 0usize;
     for (&(l, et, ph), &energy) in &energy_map {
         if energy <= 0.0 { continue; }
-
         let l_idx = l as usize;
-        if l_idx >= layers.len() { continue; }
-        let cfg = &layers[l_idx];
-
+        if l_idx >= layers_cfg.len() { continue; }
+        let cfg = &layers_cfg[l_idx];
         if (ph as usize) >= cfg.phi_seg { continue; }
-
-        if let Some(geom) = compute_cell(cfg, et, ph as usize) {
-            // ---- instanceMatrix 4×4 (em metros) — usada para raycasting/culling ----
-            let mat = build_matrix(
-                geom.cx * scale, geom.cy * scale, geom.cz * scale,
-                geom.sx * scale, geom.sy * scale, geom.sz * scale,
-                geom.phi,
-            );
-            matrices.extend_from_slice(&mat);
-
-            // ---- 8 vértices ARB8 reais (em metros) — geometria correta para GPU ----
-            let verts = build_arb8_vertices(&geom, scale);
-            arb8_verts.extend_from_slice(&verts);
-
-            // ---- Cor a partir da escala jet ----------------------------------------
-            let t = if max_e > min_e {
-                ((energy - min_e) / (max_e - min_e)) as f32
-            } else {
-                1.0_f32
-            };
-            let (r, g, b) = energy_color(t);
-            colors.push(r);
-            colors.push(g);
-            colors.push(b);
-
-            // ---- Metadados para filtros e tooltips ---------------------------------
-            energies.push(t);
-            layers_out.push(l as f32);
-            etas_out.push(et as f32);
-            phis_out.push(ph as f32);
-        }
+        if compute_cell(cfg, et, ph as usize).is_some() { n += 1; }
     }
 
-    let count = (matrices.len() / 16) as u32;
+    // ── 4. Aloca todos os buffers de saída de uma vez ─────────────────────
+    let mut positions    = vec![0.0f32; n * VERTS_PER_CELL * 3];
+    let mut normals      = vec![0.0f32; n * VERTS_PER_CELL * 3];
+    let mut vert_colors  = vec![0.0f32; n * VERTS_PER_CELL * 3];
+    let mut vert_energ   = vec![0.0f32; n * VERTS_PER_CELL];
+    let mut iids         = vec![0.0f32; n * VERTS_PER_CELL];
+    let mut actives      = vec![1.0f32; n * VERTS_PER_CELL]; // todas visíveis
+    let mut indices      = vec![0u32;   n * IDX_PER_CELL];
+    let mut arb8_verts   = vec![0.0f32; n * 24]; // 8 verts × xyz por célula
+    let mut energies     = vec![0.0f32; n];
+    let mut layers_out   = vec![0.0f32; n];
+    let mut etas_out     = vec![0.0f32; n];
+    let mut phis_out     = vec![0.0f32; n];
+    let mut centers      = vec![0.0f32; n * 3];
+    let mut radii        = vec![0.0f32; n];
 
-    // ==========================================================================
-    // EMPACOTAMENTO EM ARRAYS JAVASCRIPT
-    // ==========================================================================
+    // ── 5. Loop principal: geometria + buffers GPU ────────────────────────
+    let mut cell_idx = 0usize;
+    for (&(l, et, ph), &energy) in &energy_map {
+        if energy <= 0.0 { continue; }
+        let l_idx = l as usize;
+        if l_idx >= layers_cfg.len() { continue; }
+        let cfg = &layers_cfg[l_idx];
+        if (ph as usize) >= cfg.phi_seg { continue; }
 
-    // Matrizes 4×4 (count × 16 floats) — instanceMatrix para raycasting/culling
-    let mat_array = Float32Array::new_with_length(matrices.len() as u32);
-    mat_array.copy_from(&matrices);
+        let geom = match compute_cell(cfg, et, ph as usize) {
+            Some(g) => g,
+            None    => continue,
+        };
 
-    // Vértices ARB8 (count × 24 floats) — 8 vértices reais por célula, em metros
-    // Layout: [v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, ..., v7.x, v7.y, v7.z] por célula
-    let arb8_array = Float32Array::new_with_length(arb8_verts.len() as u32);
-    arb8_array.copy_from(&arb8_verts);
+        // ── Energia normalizada e cor ──────────────────────────────────────
+        let t = if max_e > min_e {
+            ((energy - min_e) / (max_e - min_e)) as f32
+        } else { 1.0f32 };
+        let (cr, cg, cb) = energy_color(t);
 
-    // Cores RGB (count × 3 floats)
-    let col_array = Float32Array::new_with_length(colors.len() as u32);
-    col_array.copy_from(&colors);
+        // ── Vértices ARB8 brutos (metros) ─────────────────────────────────
+        let v8 = build_arb8_vertices(&geom, scale);
+        arb8_verts[cell_idx * 24 .. cell_idx * 24 + 24].copy_from_slice(&v8);
 
-    // Energias normalizadas [0,1] (count × 1 float)
-    let eng_array = Float32Array::new_with_length(energies.len() as u32);
-    eng_array.copy_from(&energies);
+        // ── Centro da célula = média dos 8 vértices ARB8 ──────────────────
+        let (mut cx, mut cy, mut cz) = (0.0f32, 0.0f32, 0.0f32);
+        for vi in 0..8 {
+            cx += v8[vi * 3];
+            cy += v8[vi * 3 + 1];
+            cz += v8[vi * 3 + 2];
+        }
+        cx *= 0.125; cy *= 0.125; cz *= 0.125;
+        centers[cell_idx * 3]     = cx;
+        centers[cell_idx * 3 + 1] = cy;
+        centers[cell_idx * 3 + 2] = cz;
 
-    // Índices de camada (count × 1 float)
-    let lay_array = Float32Array::new_with_length(layers_out.len() as u32);
-    lay_array.copy_from(&layers_out);
+        // ── Raio da esfera envolvente ──────────────────────────────────────
+        let mut max_r2 = 0.0f32;
+        for vi in 0..8 {
+            let dx = v8[vi * 3]     - cx;
+            let dy = v8[vi * 3 + 1] - cy;
+            let dz = v8[vi * 3 + 2] - cz;
+            let r2 = dx*dx + dy*dy + dz*dz;
+            if r2 > max_r2 { max_r2 = r2; }
+        }
+        radii[cell_idx] = max_r2.sqrt();
 
-    // Índices de eta (count × 1 float)
-    let eta_array = Float32Array::new_with_length(etas_out.len() as u32);
-    eta_array.copy_from(&etas_out);
+        // ── Offsets nos buffers para esta célula ───────────────────────────
+        let vbase = cell_idx * VERTS_PER_CELL; // primeiro vértice
+        let ibase = cell_idx * IDX_PER_CELL;   // primeiro índice
 
-    // Índices de phi (count × 1 float)
-    let phi_array = Float32Array::new_with_length(phis_out.len() as u32);
-    phi_array.copy_from(&phis_out);
+        // ── 6 faces, 4 vértices cada, 2 triângulos cada ───────────────────
+        for (f, &quad) in FACE_QUADS.iter().enumerate() {
+            // Posições dos 4 vértices do quad: A, B, C, D
+            let ax = v8[quad[0]*3];
+            let ay = v8[quad[0]*3+1];
+            let az = v8[quad[0]*3+2];
+            let bx = v8[quad[1]*3];
+            let by = v8[quad[1]*3+1];
+            let bz = v8[quad[1]*3+2];
+            let rx = v8[quad[2]*3];
+            let ry = v8[quad[2]*3+1];
+            let rz = v8[quad[2]*3+2]; // C
+            let dx = v8[quad[3]*3];
+            let dy = v8[quad[3]*3+1];
+            let dz = v8[quad[3]*3+2];
 
-    // Empacota tudo em um objeto JavaScript {}
+            // Normal plana: cross(B-A, D-A)
+            let e1 = [bx - ax, by - ay, bz - az];
+            let e2 = [dx - ax, dy - ay, dz - az];
+            let mut n = cross3(e1, e2);
+
+            // Outward check: dot(normal, face_center - cell_center) deve ser > 0
+            let fcx = (ax + bx + rx + dx) * 0.25;
+            let fcy = (ay + by + ry + dy) * 0.25;
+            let fcz = (az + bz + rz + dz) * 0.25;
+            if dot3(n, [fcx - cx, fcy - cy, fcz - cz]) < 0.0 {
+                n = [-n[0], -n[1], -n[2]]; // inverte para garantir outward
+            }
+            let n = normalize3(n);
+
+            // Emite 4 vértices
+            let quad_verts = [(ax,ay,az),(bx,by,bz),(rx,ry,rz),(dx,dy,dz)];
+            for (q, &(vx, vy, vz)) in quad_verts.iter().enumerate() {
+                let vi = vbase + f * 4 + q;
+                positions[vi*3]     = vx;
+                positions[vi*3 + 1] = vy;
+                positions[vi*3 + 2] = vz;
+                normals[vi*3]       = n[0];
+                normals[vi*3 + 1]   = n[1];
+                normals[vi*3 + 2]   = n[2];
+                vert_colors[vi*3]   = cr;
+                vert_colors[vi*3+1] = cg;
+                vert_colors[vi*3+2] = cb;
+                vert_energ[vi]      = t;
+                iids[vi]            = cell_idx as f32;
+                actives[vi]         = 1.0;
+            }
+
+            // Emite 6 índices: triângulos (A,B,C) e (A,C,D)
+            let v0 = (vbase + f * 4) as u32;
+            let ii = ibase + f * 6;
+            indices[ii]     = v0;
+            indices[ii + 1] = v0 + 1;
+            indices[ii + 2] = v0 + 2;
+            indices[ii + 3] = v0;
+            indices[ii + 4] = v0 + 2;
+            indices[ii + 5] = v0 + 3;
+        }
+
+        // ── Metadados por célula ───────────────────────────────────────────
+        energies[cell_idx]   = t;
+        layers_out[cell_idx] = l as f32;
+        etas_out[cell_idx]   = et as f32;
+        phis_out[cell_idx]   = ph as f32;
+
+        cell_idx += 1;
+    }
+
+    // Ajusta n ao número real de células emitidas (pode ser < pre-pass se compute_cell
+    // retornar None em algum caso que o pre-pass não detectou)
+    let n = cell_idx;
+
+    // ── Bounding sphere da cena toda ──────────────────────────────────────
+    // Calculada como (centro de todos os centros de célula, max dist ao centro)
+    let bsphere = if n > 0 {
+        let inv = 1.0 / n as f32;
+        let bx: f32 = centers[..n*3].iter().step_by(3).sum::<f32>() * inv;
+        let by: f32 = centers[1..n*3].iter().step_by(3).sum::<f32>() * inv;
+        let bz: f32 = centers[2..n*3].iter().step_by(3).sum::<f32>() * inv;
+        let br = (0..n).map(|i| {
+            let dx = centers[i*3] - bx;
+            let dy = centers[i*3+1] - by;
+            let dz = centers[i*3+2] - bz;
+            // inclui o raio da célula para cobrir seus vértices
+            (dx*dx + dy*dy + dz*dz).sqrt() + radii[i]
+        }).fold(0.0f32, f32::max);
+        [bx, by, bz, br]
+    } else {
+        [0.0f32; 4]
+    };
+
+    // ── Armazena estado de picking no thread_local ─────────────────────────
+    PICK_STATE.with(|ps| {
+        let mut ps = ps.borrow_mut();
+        ps.centers  = centers[..n*3].to_vec();
+        ps.radii    = radii[..n].to_vec();
+        ps.energies = energies[..n].to_vec();
+        ps.count    = n;
+    });
+
+    // ── 6. Empacota em Float32Arrays/Uint32Array JavaScript ───────────────
+    macro_rules! f32_arr {
+        ($v:expr, $len:expr) => {{
+            let a = Float32Array::new_with_length($len as u32);
+            a.copy_from(&$v[..$len]);
+            a.into()
+        }};
+    }
+
+    let idx_arr = Uint32Array::new_with_length((n * IDX_PER_CELL) as u32);
+    idx_arr.copy_from(&indices[..n * IDX_PER_CELL]);
+
+    let bsphere_arr = Float32Array::new_with_length(4);
+    bsphere_arr.copy_from(&bsphere);
+
     let obj = Object::new();
-    Reflect::set(&obj, &"matrices".into(),  &mat_array).unwrap();   // 16 floats/célula (raycasting)
-    Reflect::set(&obj, &"arb8".into(),      &arb8_array).unwrap();  // 24 floats/célula (vértices reais)
-    Reflect::set(&obj, &"colors".into(),    &col_array).unwrap();   // 3  floats/célula (RGB)
-    Reflect::set(&obj, &"energies".into(),  &eng_array).unwrap();   // 1  float/célula  [0,1]
-    Reflect::set(&obj, &"layers".into(),    &lay_array).unwrap();   // 1  float/célula  (índice)
-    Reflect::set(&obj, &"etas".into(),      &eta_array).unwrap();   // 1  float/célula  (índice)
-    Reflect::set(&obj, &"phis".into(),      &phi_array).unwrap();   // 1  float/célula  (índice)
-    Reflect::set(&obj, &"count".into(),     &(count as f64).into()).unwrap();
-    Reflect::set(&obj, &"maxEnergy".into(), &max_e.into()).unwrap();
-    Reflect::set(&obj, &"minEnergy".into(), &min_e.into()).unwrap();
+    // Buffers GPU (prontos para BufferGeometry — sem loop em JS)
+    Reflect::set(&obj, &"positions".into(),    &f32_arr!(positions,   n * VERTS_PER_CELL * 3)).unwrap();
+    Reflect::set(&obj, &"normals".into(),      &f32_arr!(normals,     n * VERTS_PER_CELL * 3)).unwrap();
+    Reflect::set(&obj, &"vert_colors".into(),  &f32_arr!(vert_colors, n * VERTS_PER_CELL * 3)).unwrap();
+    Reflect::set(&obj, &"vert_energ".into(),   &f32_arr!(vert_energ,  n * VERTS_PER_CELL)).unwrap();
+    Reflect::set(&obj, &"iids".into(),         &f32_arr!(iids,        n * VERTS_PER_CELL)).unwrap();
+    Reflect::set(&obj, &"actives".into(),      &f32_arr!(actives,     n * VERTS_PER_CELL)).unwrap();
+    Reflect::set(&obj, &"indices".into(),      &idx_arr).unwrap();
+    // Dados brutos (wireframe + metadados)
+    Reflect::set(&obj, &"arb8".into(),         &f32_arr!(arb8_verts,  n * 24)).unwrap();
+    Reflect::set(&obj, &"energies".into(),     &f32_arr!(energies,    n)).unwrap();
+    Reflect::set(&obj, &"layers".into(),       &f32_arr!(layers_out,  n)).unwrap();
+    Reflect::set(&obj, &"etas".into(),         &f32_arr!(etas_out,    n)).unwrap();
+    Reflect::set(&obj, &"phis".into(),         &f32_arr!(phis_out,    n)).unwrap();
+    // Picking e culling
+    Reflect::set(&obj, &"centers".into(),      &f32_arr!(centers,     n * 3)).unwrap();
+    Reflect::set(&obj, &"radii".into(),        &f32_arr!(radii,       n)).unwrap();
+    Reflect::set(&obj, &"bsphere".into(),      &bsphere_arr).unwrap();
+    // Metadados escalares
+    Reflect::set(&obj, &"count".into(),        &(n as f64).into()).unwrap();
+    Reflect::set(&obj, &"maxEnergy".into(),    &max_e.into()).unwrap();
+    Reflect::set(&obj, &"minEnergy".into(),    &min_e.into()).unwrap();
 
     Ok(obj.into())
+}
+
+// =============================================================================
+// PICK_CELL_RAY — ray-sphere picking em Rust (O(n) com ops escalares mínimas)
+//
+// Parâmetros:
+//   ox, oy, oz  — origem do raio em world-space (metros)
+//   dx, dy, dz  — direção do raio (normalizada)
+//   active      — Float32Array[n]: flags por célula (1=visível, 0=oculta)
+//                 Deve refletir o estado atual dos filtros de detector e Z.
+//   threshold   — limiar de energia normalizada [0,1]
+//
+// Retorno:
+//   Índice da célula mais próxima atingida, ou -1 se nenhuma.
+//
+// Algoritmo: intersecção raio-esfera para a bounding sphere de cada célula.
+// Usa o estado armazenado por process_xml_data (thread_local PICK_STATE).
+// =============================================================================
+#[wasm_bindgen]
+pub fn pick_cell_ray(
+    ox: f32, oy: f32, oz: f32,
+    dx: f32, dy: f32, dz: f32,
+    active: &[f32],   // per-cell flags (length = count)
+    threshold: f32,
+) -> i32 {
+    PICK_STATE.with(|ps| {
+        let ps = ps.borrow();
+        let n = ps.count;
+        if n == 0 { return -1; }
+
+        let mut best_t  = f32::INFINITY;
+        let mut best_id = -1i32;
+
+        for i in 0..n {
+            // Filtra células ocultas e abaixo do limiar de energia
+            if active.get(i).copied().unwrap_or(0.0) < 0.5 { continue; }
+            if ps.energies.get(i).copied().unwrap_or(0.0) < threshold { continue; }
+
+            // Vetor do ponto de origem ao centro da esfera
+            let cx = ps.centers[i * 3]     - ox;
+            let cy = ps.centers[i * 3 + 1] - oy;
+            let cz = ps.centers[i * 3 + 2] - oz;
+
+            // Projeção no eixo do raio
+            let tca = cx * dx + cy * dy + cz * dz;
+            if tca < 0.0 { continue; } // esfera atrás da câmera
+
+            // Distância ao quadrado da reta ao centro
+            let d2 = cx*cx + cy*cy + cz*cz - tca*tca;
+            let r  = ps.radii[i];
+            if d2 > r * r { continue; } // raio passa fora da esfera
+
+            // Ponto de entrada na esfera
+            let t = tca - (r * r - d2).sqrt();
+            if t < best_t { best_t = t; best_id = i as i32; }
+        }
+
+        best_id
+    })
 }

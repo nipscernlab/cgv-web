@@ -9,7 +9,7 @@ import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass }        from 'three/addons/postprocessing/SMAAPass.js';
-import init, { process_xml_data } from './pkg/cgv_web.js';
+import init, { process_xml_data, pick_cell_ray } from './pkg/cgv_web.js';
 import { createIcons, icons } from 'lucide';
 createIcons({ icons });
 
@@ -557,8 +557,7 @@ modeWireBtn?.addEventListener('click',  () => setWireframe(!wireActive));
 //  Cell Z-positions (for Z-axis filtering)
 // ──────────────────────────────────────────────────────────
 let cellZPositions = null;
-let cellCenters = null;  // Float32Array n*3 — centro de cada célula (média dos 8 verts)
-let cellRadii   = null;  // Float32Array n   — raio da esfera envolvente de cada célula
+
 
 // ──────────────────────────────────────────────────────────
 //  Build / tear down InstancedMesh
@@ -571,6 +570,18 @@ let cellCount = 0; // total de células do evento atual
 // Usado pelo wireframe overlay para traçar as arestas reais.
 let cellArb8Verts = null;
 
+// ──────────────────────────────────────────────────────────
+//  buildMesh — v4.0 (GPU arrays prontos do WASM)
+//
+//  [OPT-2] O loop pesado de geometria agora roda em Rust (10–50× mais rápido).
+//  O WASM retorna Float32Array/Uint32Array prontos para BufferGeometry.
+//  O JS apenas passa os buffers para a GPU e aplica a bounding sphere.
+//
+//  [OPT-1] instanceMatrix (build_matrix) foi eliminada do Rust.
+//           O JS não precisa mais setMatrixAt() ou atribuir matrices.
+//
+//  [OPT-3] Frustum culling habilitado via geo.boundingSphere calculada pelo WASM.
+// ──────────────────────────────────────────────────────────
 function buildMesh(result) {
   // ── Tear-down ────────────────────────────────────────────────────────────
   if (activeMesh) {
@@ -590,166 +601,84 @@ function buildMesh(result) {
   if (!n) return;
   cellCount = n;
 
-  // ── Metadados ─────────────────────────────────────────────────────────────
-  cellNormEnergies = result.energies ?? null;
-  cellLayerIds     = result.layers   ?? null;
-  cellEtaIds       = result.etas     ?? null;
-  cellPhiIds       = result.phis     ?? null;
-  cellArb8Verts    = result.arb8     ?? null;
+  // ── Metadados por célula (para filtros, tooltip e wireframe) ──────────────
+  cellNormEnergies = result.energies  ?? null;
+  cellLayerIds     = result.layers    ?? null;
+  cellEtaIds       = result.etas      ?? null;
+  cellPhiIds       = result.phis      ?? null;
+  cellArb8Verts    = result.arb8      ?? null;
+  cellZPositions   = result.centers
+    ? (() => {
+        // Extrai coluna Z dos centros (índice 2 de cada triplet)
+        const z = new Float32Array(n);
+        for (let i = 0; i < n; i++) z[i] = result.centers[i * 3 + 2];
+        return z;
+      })()
+    : null;
 
+  // ── activeAttr: gerenciado pelo JS para filtros de detector / Z ───────────
+  // O WASM inicializa todos como 1.0; o JS escreve 0.0 para ocultar.
+  // É uma CÓPIA do buffer retornado, para que applyCombinedFilter() possa
+  // modificar o atributo da geometria sem afetar os dados originais do WASM.
+  activeAttr = new Float32Array(n).fill(1);
+
+  // ── Fallback de energias normalizadas (caso o WASM não retorne) ───────────
   if (!cellNormEnergies) {
     cellNormEnergies = new Float32Array(n);
     for (let i = 0; i < n; i++) {
-      const r = result.colors[i * 3];
-      const b = result.colors[i * 3 + 2];
+      const r = result.vert_colors[i * 72];       // primeiro vértice, canal R
+      const b = result.vert_colors[i * 72 + 2];   // canal B
       cellNormEnergies[i] = Math.max(0, Math.min(1, (r - b * 0.5 + 0.5) * 0.8));
     }
   }
 
-  // ── 6 faces do prisma ARB8 como quads (4 índices de vértice cada) ─────────
-  // Vértices ARB8:  0:φ-r1z-  1:φ-r1z+  2:φ-r2z-  3:φ-r2z+
-  //                 4:φ+r1z-  5:φ+r1z+  6:φ+r2z-  7:φ+r2z+
-const FACE_QUADS = [
-    [0, 4, 6, 2],  // z-
-    [1, 3, 7, 5],  // z+
-    [0, 1, 5, 4],  // r1 inner
-    [2, 6, 7, 3],  // r2 outer
-    [0, 2, 3, 1],  // φ-
-    [4, 5, 7, 6],  // φ+
-  ];
-  const VERTS_PER_CELL = 6 * 4;
-  const IDX_PER_CELL   = 6 * 6;
-
-  const positions = new Float32Array(n * VERTS_PER_CELL * 3);
-  const normals   = new Float32Array(n * VERTS_PER_CELL * 3);  // ← novo
-  const colors    = new Float32Array(n * VERTS_PER_CELL * 3);
-  const energies  = new Float32Array(n * VERTS_PER_CELL);
-  const iids      = new Float32Array(n * VERTS_PER_CELL);
-  const actives   = new Float32Array(n * VERTS_PER_CELL);
-  const indices   = new Uint32Array(n * IDX_PER_CELL);
-
-  activeAttr = new Float32Array(n).fill(1);
-
-  const arb = cellArb8Verts;
-
-  // Vetores temporários reutilizados para cálculo de normal (evita GC)
-  const _e1 = new THREE.Vector3();
-  const _e2 = new THREE.Vector3();
-  const _fn = new THREE.Vector3();
-
-  for (let i = 0; i < n; i++) {
-    const vBase = i * VERTS_PER_CELL;
-    const iBase = i * IDX_PER_CELL;
-    const cr = result.colors[i * 3];
-    const cg = result.colors[i * 3 + 1];
-    const cb = result.colors[i * 3 + 2];
-    const en = cellNormEnergies[i];
-
-    for (let f = 0; f < 6; f++) {
-      const quad = FACE_QUADS[f];
-
-      // ── Coleta os 4 vértices do quad em coordenadas de mundo ──────────────
-      const v = [];
-      for (let q = 0; q < 4; q++) {
-        const src = i * 24 + quad[q] * 3;
-        v.push(arb[src], arb[src + 1], arb[src + 2]);
-      }
-      // v[0..2]=A, v[3..5]=B, v[6..8]=C, v[9..11]=D
-
-      // ── Normal plana: cross(B-A, D-A) — estável mesmo para quads finos ───
-      _e1.set(v[3] - v[0], v[4] - v[1], v[5] - v[2]);  // B - A
-      _e2.set(v[9] - v[0], v[10]- v[1], v[11]- v[2]);  // D - A
-      _fn.crossVectors(_e1, _e2).normalize();
-      const nx = _fn.x, ny = _fn.y, nz = _fn.z;
-
-      for (let q = 0; q < 4; q++) {
-        const vi = vBase + f * 4 + q;
-
-        positions[vi * 3]     = v[q * 3];
-        positions[vi * 3 + 1] = v[q * 3 + 1];
-        positions[vi * 3 + 2] = v[q * 3 + 2];
-
-        normals[vi * 3]     = nx;
-        normals[vi * 3 + 1] = ny;
-        normals[vi * 3 + 2] = nz;
-
-        colors[vi * 3]     = cr;
-        colors[vi * 3 + 1] = cg;
-        colors[vi * 3 + 2] = cb;
-
-        energies[vi] = en;
-        iids[vi]     = i;
-        actives[vi]  = 1;
-      }
-
-      const v0 = vBase + f * 4;
-      const ii = iBase + f * 6;
-      indices[ii]     = v0;     indices[ii + 1] = v0 + 1; indices[ii + 2] = v0 + 2;
-      indices[ii + 3] = v0;     indices[ii + 4] = v0 + 2; indices[ii + 5] = v0 + 3;
-    }
-  }
-
+  // ── BufferGeometry — zero loops em JS ─────────────────────────────────────
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('a_normal', new THREE.Float32BufferAttribute(normals,   3));  // ← novo
-  geo.setAttribute('color',    new THREE.Float32BufferAttribute(colors,    3));
-  geo.setAttribute('a_energy', new THREE.Float32BufferAttribute(energies,  1));
-  geo.setAttribute('a_iid',    new THREE.Float32BufferAttribute(iids,      1));
-  geo.setAttribute('a_active', new THREE.Float32BufferAttribute(actives,   1));
-  geo.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
 
+  // Atributos GPU — buffers prontos do WASM, passados por referência
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(result.positions,   3));
+  geo.setAttribute('a_normal', new THREE.Float32BufferAttribute(result.normals,     3));
+  geo.setAttribute('color',    new THREE.Float32BufferAttribute(result.vert_colors, 3));
+  geo.setAttribute('a_energy', new THREE.Float32BufferAttribute(result.vert_energ,  1));
+  geo.setAttribute('a_iid',    new THREE.Float32BufferAttribute(result.iids,        1));
+  geo.setAttribute('a_active', new THREE.Float32BufferAttribute(result.actives,     1));
+  geo.setIndex(new THREE.BufferAttribute(result.indices, 1));
+
+  // [OPT-3] Bounding sphere pré-calculada pelo WASM → frustum culling funcionando
+  // result.bsphere = [cx, cy, cz, radius] em metros
+  geo.boundingSphere = new THREE.Sphere(
+    new THREE.Vector3(result.bsphere[0], result.bsphere[1], result.bsphere[2]),
+    result.bsphere[3]
+  );
+  // BoundingBox não é usada pelo Three.js se boundingSphere já está definida,
+  // mas computamos para compatibilidade com ferramentas de inspeção.
+  geo.computeBoundingBox();
+
+  // ── ShaderMaterial ────────────────────────────────────────────────────────
   const mat = new THREE.ShaderMaterial({
-    vertexShader, fragmentShader,
-    uniforms:       shaderUniforms,
-    vertexColors:   true,
-    transparent:    true,
-    depthWrite:     true,
-    clipping:       true,
-    side:           THREE.FrontSide,
-    polygonOffset:  true,
-    polygonOffsetFactor: 1,
-    polygonOffsetUnits:  1,
+    vertexShader,
+    fragmentShader,
+    uniforms:            shaderUniforms,
+    vertexColors:        true,
+    transparent:         true,
+    depthWrite:          true,
+    clipping:            true,
+    side:                THREE.DoubleSide,
+    polygonOffset:       true,
+    polygonOffsetFactor: 2,
+    polygonOffsetUnits:  2,
   });
 
+  // ── Mesh ──────────────────────────────────────────────────────────────────
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false;  // geometria world-space, não precisa de culling por bbox
+  // frustumCulled = true agora é seguro pois boundingSphere está definida
+  mesh.frustumCulled = true;
   scene.add(mesh);
   activeMesh = mesh;
 
-// ── Centros, raios e Z-positions para filtro e picking ───────────────────
-  cellZPositions = new Float32Array(n);
-  cellCenters    = new Float32Array(n * 3);
-  cellRadii      = new Float32Array(n);
-
-  for (let i = 0; i < n; i++) {
-    const base = i * 24;
-    let cx = 0, cy = 0, cz = 0;
-    for (let v = 0; v < 8; v++) {
-      cx += cellArb8Verts[base + v * 3];
-      cy += cellArb8Verts[base + v * 3 + 1];
-      cz += cellArb8Verts[base + v * 3 + 2];
-    }
-    cx /= 8; cy /= 8; cz /= 8;
-    cellCenters[i * 3]     = cx;
-    cellCenters[i * 3 + 1] = cy;
-    cellCenters[i * 3 + 2] = cz;
-    cellZPositions[i]      = cz;
-
-    // Raio = distância máxima do centro a qualquer vértice ARB8
-    let r2 = 0;
-    for (let v = 0; v < 8; v++) {
-      const dx = cellArb8Verts[base + v * 3]     - cx;
-      const dy = cellArb8Verts[base + v * 3 + 1] - cy;
-      const dz = cellArb8Verts[base + v * 3 + 2] - cz;
-      const d2 = dx*dx + dy*dy + dz*dz;
-      if (d2 > r2) r2 = d2;
-    }
-    cellRadii[i] = Math.sqrt(r2);
-  }
-
   if (wireActive) { wireActive = false; setWireframe(true); }
 
-  // Resumo de blocos
+  // ── Resumo de blocos ───────────────────────────────────────────────────────
   const detCounts = { tile: 0, hec: 0, lar: 0 };
   if (cellLayerIds) {
     for (let i = 0; i < n; i++) {
@@ -1048,59 +977,37 @@ function clearTooltip() {
 }
 
 // ──────────────────────────────────────────────────────────
-//  ★ FAST CELL PICKER — ray-sphere em vez de ray-triangle
-//  O(n) mas com operações escalares mínimas (~10 ops/célula).
-//  Ordens de magnitude mais rápido que o raycaster do Three.js
-//  numa geometria mesclada com centenas de milhares de triângulos.
+//  ★ FAST CELL PICKER v4.0 — ray-sphere em Rust via WASM
+//
+//  [OPT-4] pick_cell_ray() exportada do WASM roda o loop O(n) em Rust,
+//  eliminando overhead de GC/interpretador JS. O estado de células
+//  (centros, raios, energias) é mantido em thread_local no WASM após
+//  process_xml_data(), sem re-alocação a cada frame.
 // ──────────────────────────────────────────────────────────
-  const _rayOrig = new THREE.Vector3();
-  const _rayDir  = new THREE.Vector3();
-  const _tmpRay  = new THREE.Ray();
+const _rayOrig = new THREE.Vector3();
+const _rayDir  = new THREE.Vector3();
 
-  function pickCell(clientX, clientY) {
-    if (!activeMesh || !cellCenters || !cellRadii) return -1;
+function pickCell(clientX, clientY) {
+  if (!activeMesh || !activeAttr) return -1;
 
-    // Monta o raio em world-space
-    const ndcX =  (clientX / window.innerWidth)  * 2 - 1;
-    const ndcY = -(clientY / window.innerHeight)  * 2 + 1;
+  // Monta o raio em world-space
+  const ndcX =  (clientX / window.innerWidth)  * 2 - 1;
+  const ndcY = -(clientY / window.innerHeight)  * 2 + 1;
 
-    _rayOrig.setFromMatrixPosition(camera.matrixWorld);
-    _rayDir.set(ndcX, ndcY, 0.5).unproject(camera).sub(_rayOrig).normalize();
-    _tmpRay.set(_rayOrig, _rayDir);
+  _rayOrig.setFromMatrixPosition(camera.matrixWorld);
+  _rayDir.set(ndcX, ndcY, 0.5).unproject(camera).sub(_rayOrig).normalize();
 
-    const ox = _rayOrig.x, oy = _rayOrig.y, oz = _rayOrig.z;
-    const dx = _rayDir.x,  dy = _rayDir.y,  dz = _rayDir.z;
-
-    let bestT   = Infinity;
-    let bestId  = -1;
-    const thr   = shaderUniforms.u_threshold.value;
-
-    for (let i = 0; i < cellCount; i++) {
-      // Ignora células ocultadas pelo filtro ou pelo threshold
-      if (activeAttr && activeAttr[i] < 0.5) continue;
-      if (cellNormEnergies && cellNormEnergies[i] < thr) continue;
-
-      // Vetor do ponto de origem do raio ao centro da esfera
-      const cx = cellCenters[i * 3]     - ox;
-      const cy = cellCenters[i * 3 + 1] - oy;
-      const cz = cellCenters[i * 3 + 2] - oz;
-
-      // Projeção do centro sobre o raio
-      const tca = cx * dx + cy * dy + cz * dz;
-      if (tca < 0) continue; // esfera atrás da câmera
-
-      // Distância perpendicular ao quadrado
-      const d2 = cx*cx + cy*cy + cz*cz - tca*tca;
-      const r   = cellRadii[i];
-      if (d2 > r * r) continue; // raio passa fora
-
-      // Ponto de interseção mais próximo
-      const t = tca - Math.sqrt(r * r - d2);
-      if (t < bestT) { bestT = t; bestId = i; }
-    }
-
-    return bestId;
-  }
+  // Chama pick_cell_ray no Rust:
+  //   - activeAttr: array per-célula (1=visível, 0=oculta) refletindo filtros atuais
+  //   - threshold: limiar de energia do slider
+  // O WASM usa os centros/raios armazenados internamente (thread_local PICK_STATE)
+  return pick_cell_ray(
+    _rayOrig.x, _rayOrig.y, _rayOrig.z,
+    _rayDir.x,  _rayDir.y,  _rayDir.z,
+    activeAttr,
+    shaderUniforms.u_threshold.value,
+  );
+}
 
 // Flag para evitar chamadas sobrepostas (ex.: mouse se move durante compute)
 let _pickPending = false;

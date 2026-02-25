@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<event id="998877" timestamp="2023-11-15T14:30:00Z" description="Heavy Ion Collision Simulation - 500+ Cells">
+  
+  <cell l="19" eta="220" phi="100" e="15000.0" />
+  <cell l="19" eta="220" phi="101" e="14500.0" />
+  <cell l="19" eta="221" phi="100" e="14200.0" />
+  <cell l="19" eta="219" phi="100" e="14100.0" />
+  <cell l="19" eta="220" phi="99"  e="13900.0" />
+
+  <cell l="19" eta="218" phi="98" e="5200.0" />
+  <cell l="19" eta="218" phi="99" e="5400.0" />
+  <cell l="19" eta="218" phi="100" e="5600.0" />
+  <cell l="19" eta="218" phi="101" e="5400.0" />
+  <cell l="19" eta="218" phi="102" e="5100.0" />
+  
+  <cell l="19" eta="219" phi="98" e="5800.0" />
+  <cell l="19" eta="219" phi="99" e="6500.0" />
+  <cell l="19" eta="219" phi="101" e="6400.0" />
+  <cell l="19" eta="219" phi="102" e="5700.0" />
+
+  <cell l="19" eta="220" phi="98" e="6000.0" />
+  <cell l="19" eta="220" phi="102" e="5900.0" />
+
+  <cell l="19" eta="221" phi="98" e="5700.0" />
+  <cell l="19" eta="221" phi="99" e="6300.0" />
+  <cell l="19" eta="221" phi="101" e="6200.0" />
+  <cell l="19" eta="221" phi="102" e="5600.0" />
+
+  <cell l="19" eta="222" phi="98" e="5000.0" />
+  <cell l="19" eta="222" phi="99" e="5300.0" />
+  <cell l="19" eta="222" phi="100" e="5500.0" />
+  <cell l="19" eta="222" phi="101" e="5200.0" />
+  <cell l="19" eta="222" phi="102" e="4900.0" />
+
+  <cell l="19" eta="217" phi="97" e="800.0" />
+  <cell l="19" eta="217" phi="98" e="850.0" />
+  <cell l="19" eta="217" phi="99" e="900.0" />
+  <cell l="19" eta="217" phi="100" e="950.0" />
+  <cell l="19" eta="217" phi="101" e="900.0" />
+  <cell l="19" eta="217" phi="102" e="850.0" />
+  <cell l="19" eta="217" phi="103" e="800.0" />
+
+  <cell l="19" eta="223" phi="97" e="750.0" />
+  <cell l="19" eta="223" phi="98" e="820.0" />
+  <cell l="19" eta="223" phi="99" e="880.0" />
+  <cell l="19" eta="223" phi="100" e="920.0" />
+  <cell l="19" eta="223" phi="101" e="870.0" />
+  <cell l="19" eta="223" phi="102" e="810.0" />
+  <cell l="19" eta="223" phi="103" e="760.0" />
+
+  <cell l="19" eta="220" phi="96" e="400.0" />
+  <cell l="19" eta="220" phi="97" e="600.0" />
+  <cell l="19" eta="220" phi="103" e="600.0" />
+  <cell l="19" eta="220" phi="104" e="400.0" />
+
+  <cell l="1" eta="5" phi="10" e="8000.0" />
+  <cell l="1" eta="6" phi="10" e="7500.0" />
+  <cell l="1" eta="5" phi="11" e="7200.0" />
+  <cell l="1" eta="6" phi="11" e="6900.0" />
+  
+  <cell l="2" eta="2" phi="10" e="4000.0" />
+  <cell l="2" eta="3" phi="10" e="4200.0" />
+  <cell l="2" eta="2" phi="11" e="3800.0" />
+  <cell l="2" eta="3" phi="11" e="3900.0" />
+
+  <cell l="0" eta="5" phi="10" e="2000.0" />
+  <cell l="0" eta="6" phi="10" e="1800.0" />
+
+  <cell l="19" eta="200" phi="50" e="1000.0" />
+  <cell l="19" eta="200" phi="50" e="1000.0" />
+  <cell l="19" eta="200" phi="50" e="1000.0" />
+
+  <cell l="15" eta="5" phi="20" e="500.0" />
+  <cell l="15" eta="5" phi="20" e="250.0" /> <cell l="14" eta="0" phi="0" e="120.0" /> <cell l="14" eta="1" phi="1" e="130.0" /> <cell l="14" eta="2" phi="2" e="140.0" />
+  <cell l="14" eta="3" phi="3" e="150.0" /> <cell l="14" eta="4" phi="4" e="110.0" /> <cell l="14" eta="5" phi="5" e="125.0" />
+  <cell l="14" eta="6" phi="6" e="135.0" /> <cell l="14" eta="7" phi="7" e="145.0" /> <cell l="14" eta="8" phi="8" e="155.0" />
+  <cell l="15" eta="0" phi="10" e="120.0" /> <cell l="15" eta="1" phi="11" e="130.0" /> <cell l="15" eta="2" phi="12" e="140.0" />
+  <cell l="15" eta="3" phi="13" e="150.0" /> <cell l="15" eta="4" phi="14" e="110.0" /> <cell l="15" eta="5" phi="15" e="125.0" />
+  
+  <cell l="19" eta="10" phi="10" e="50.0" /> <cell l="19" eta="11" phi="11" e="55.0" /> <cell l="19" eta="12" phi="12" e="60.0" />
+  <cell l="19" eta="13" phi="13" e="65.0" /> <cell l="19" eta="14" phi="14" e="70.0" /> <cell l="19" eta="15" phi="15" e="75.0" />
+  <cell l="19" eta="16" phi="16" e="80.0" /> <cell l="19" eta="17" phi="17" e="85.0" /> <cell l="19" eta="18" phi="18" e="90.0" />
+  <cell l="19" eta="19" phi="19" e="95.0" /> <cell l="19" eta="20" phi="20" e="50.0" /> <cell l="19" eta="21" phi="21" e="55.0" />
+  <cell l="19" eta="22" phi="22" e="60.0" /> <cell l="19" eta="23" phi="23" e="65.0" /> <cell l="19" eta="24" phi="24" e="70.0" />
+  <cell l="19" eta="25" phi="25" e="75.0" /> <cell l="19" eta="26" phi="26" e="80.0" /> <cell l="19" eta="27" phi="27" e="85.0" />
+  <cell l="19" eta="28" phi="28" e="90.0" /> <cell l="19" eta="29" phi="29" e="95.0" /> <cell l="19" eta="30" phi="30" e="50.0" />
+
+  <cell l="19" eta="10" phi="150" e="50.0" /> <cell l="19" eta="11" phi="151" e="55.0" /> <cell l="19" eta="12" phi="152" e="60.0" />
+  <cell l="19" eta="13" phi="153" e="65.0" /> <cell l="19" eta="14" phi="154" e="70.0" /> <cell l="19" eta="15" phi="155" e="75.0" />
+  <cell l="19" eta="16" phi="156" e="80.0" /> <cell l="19" eta="17" phi="157" e="85.0" /> <cell l="19" eta="18" phi="158" e="90.0" />
+  <cell l="19" eta="19" phi="159" e="95.0" /> <cell l="19" eta="20" phi="160" e="50.0" /> <cell l="19" eta="21" phi="161" e="55.0" />
+  <cell l="19" eta="22" phi="162" e="60.0" /> <cell l="19" eta="23" phi="163" e="65.0" /> <cell l="19" eta="24" phi="164" e="70.0" />
+  <cell l="19" eta="25" phi="165" e="75.0" /> <cell l="19" eta="26" phi="166" e="80.0" /> <cell l="19" eta="27" phi="167" e="85.0" />
+  <cell l="19" eta="28" phi="168" e="90.0" /> <cell l="19" eta="29" phi="169" e="95.0" /> <cell l="19" eta="30" phi="170" e="50.0" />
+
+  <cell l="3" eta="0" phi="0" e="200.0" /> <cell l="3" eta="1" phi="2" e="210.0" /> <cell l="3" eta="2" phi="4" e="220.0" />
+  <cell l="3" eta="3" phi="6" e="230.0" /> <cell l="3" eta="4" phi="8" e="240.0" /> <cell l="3" eta="0" phi="10" e="200.0" />
+  <cell l="3" eta="1" phi="12" e="210.0" /> <cell l="3" eta="2" phi="14" e="220.0" /> <cell l="3" eta="3" phi="16" e="230.0" />
+  <cell l="3" eta="4" phi="18" e="240.0" /> <cell l="3" eta="0" phi="20" e="200.0" /> <cell l="3" eta="1" phi="22" e="210.0" />
+  <cell l="3" eta="2" phi="24" e="220.0" /> <cell l="3" eta="3" phi="26" e="230.0" /> <cell l="3" eta="4" phi="28" e="240.0" />
+
+  <cell l="18" eta="0" phi="0" e="300.0" />
+  <cell l="18" eta="2" phi="5" e="310.0" />
+  <cell l="18" eta="4" phi="10" e="320.0" />
+  <cell l="18" eta="6" phi="15" e="330.0" />
+  <cell l="18" eta="8" phi="20" e="340.0" />
+  <cell l="18" eta="10" phi="25" e="350.0" />
+  <cell l="18" eta="12" phi="30" e="360.0" />
+  <cell l="18" eta="14" phi="35" e="370.0" />
+  <cell l="18" eta="16" phi="40" e="380.0" />
+  <cell l="18" eta="18" phi="45" e="390.0" />
+  <cell l="18" eta="20" phi="50" e="400.0" />
+  <cell l="18" eta="22" phi="55" e="410.0" />
+  <cell l="18" eta="24" phi="60" e="420.0" />
+
+  <cell l="20" eta="0" phi="0" e="10.0" /> <cell l="20" eta="0" phi="1" e="10.0" /> <cell l="20" eta="0" phi="2" e="10.0" /> <cell l="20" eta="0" phi="3" e="10.0" /> <cell l="20" eta="0" phi="4" e="10.0" />
+  <cell l="20" eta="1" phi="0" e="10.0" /> <cell l="20" eta="1" phi="1" e="10.0" /> <cell l="20" eta="1" phi="2" e="10.0" /> <cell l="20" eta="1" phi="3" e="10.0" /> <cell l="20" eta="1" phi="4" e="10.0" />
+  <cell l="20" eta="2" phi="0" e="10.0" /> <cell l="20" eta="2" phi="1" e="10.0" /> <cell l="20" eta="2" phi="2" e="10.0" /> <cell l="20" eta="2" phi="3" e="10.0" /> <cell l="20" eta="2" phi="4" e="10.0" />
+  <cell l="20" eta="3" phi="0" e="10.0" /> <cell l="20" eta="3" phi="1" e="10.0" /> <cell l="20" eta="3" phi="2" e="10.0" /> <cell l="20" eta="3" phi="3" e="10.0" /> <cell l="20" eta="3" phi="4" e="10.0" />
+  <cell l="20" eta="4" phi="0" e="10.0" /> <cell l="20" eta="4" phi="1" e="10.0" /> <cell l="20" eta="4" phi="2" e="10.0" /> <cell l="20" eta="4" phi="3" e="10.0" /> <cell l="20" eta="4" phi="4" e="10.0" />
+  
+  <cell l="20" eta="0" phi="10" e="10.0" /> <cell l="20" eta="0" phi="11" e="10.0" /> <cell l="20" eta="0" phi="12" e="10.0" /> <cell l="20" eta="0" phi="13" e="10.0" /> <cell l="20" eta="0" phi="14" e="10.0" />
+  <cell l="20" eta="1" phi="10" e="10.0" /> <cell l="20" eta="1" phi="11" e="10.0" /> <cell l="20" eta="1" phi="12" e="10.0" /> <cell l="20" eta="1" phi="13" e="10.0" /> <cell l="20" eta="1" phi="14" e="10.0" />
+  <cell l="20" eta="2" phi="10" e="10.0" /> <cell l="20" eta="2" phi="11" e="10.0" /> <cell l="20" eta="2" phi="12" e="10.0" /> <cell l="20" eta="2" phi="13" e="10.0" /> <cell l="20" eta="2" phi="14" e="10.0" />
+  <cell l="20" eta="3" phi="10" e="10.0" /> <cell l="20" eta="3" phi="11" e="10.0" /> <cell l="20" eta="3" phi="12" e="10.0" /> <cell l="20" eta="3" phi="13" e="10.0" /> <cell l="20" eta="3" phi="14" e="10.0" />
+  <cell l="20" eta="4" phi="10" e="10.0" /> <cell l="20" eta="4" phi="11" e="10.0" /> <cell l="20" eta="4" phi="12" e="10.0" /> <cell l="20" eta="4" phi="13" e="10.0" /> <cell l="20" eta="4" phi="14" e="10.0" />
+
+  <cell l="21" eta="10" phi="100" e="20.0" /> <cell l="21" eta="12" phi="102" e="20.0" /> <cell l="21" eta="14" phi="104" e="20.0" />
+  <cell l="21" eta="16" phi="106" e="20.0" /> <cell l="21" eta="18" phi="108" e="20.0" /> <cell l="21" eta="20" phi="110" e="20.0" />
+  <cell l="21" eta="22" phi="112" e="20.0" /> <cell l="21" eta="24" phi="114" e="20.0" /> <cell l="21" eta="26" phi="116" e="20.0" />
+  <cell l="21" eta="28" phi="118" e="20.0" /> <cell l="21" eta="30" phi="120" e="20.0" /> <cell l="21" eta="32" phi="122" e="20.0" />
+  <cell l="21" eta="34" phi="124" e="20.0" /> <cell l="21" eta="36" phi="126" e="20.0" /> <cell l="21" eta="38" phi="128" e="20.0" />
+  <cell l="21" eta="40" phi="130" e="20.0" /> <cell l="21" eta="42" phi="132" e="20.0" /> <cell l="21" eta="44" phi="134" e="20.0" />
+  
+  <cell l="22" eta="50" phi="200" e="30.0" /> <cell l="22" eta="51" phi="201" e="30.0" /> <cell l="22" eta="52" phi="202" e="30.0" />
+  <cell l="22" eta="53" phi="203" e="30.0" /> <cell l="22" eta="54" phi="204" e="30.0" /> <cell l="22" eta="55" phi="205" e="30.0" />
+  <cell l="22" eta="56" phi="206" e="30.0" /> <cell l="22" eta="57" phi="207" e="30.0" /> <cell l="22" eta="58" phi="208" e="30.0" />
+  
+  <cell l="23" eta="100" phi="10" e="40.0" /> <cell l="23" eta="101" phi="11" e="40.0" /> <cell l="23" eta="102" phi="12" e="40.0" />
+  <cell l="23" eta="103" phi="13" e="40.0" /> <cell l="23" eta="104" phi="14" e="40.0" /> <cell l="23" eta="105" phi="15" e="40.0" />
+  <cell l="23" eta="106" phi="16" e="40.0" /> <cell l="23" eta="107" phi="17" e="40.0" /> <cell l="23" eta="108" phi="18" e="40.0" />
+  
+  <cell l="25" eta="10" phi="10" e="5.0" />
+  <cell l="25" eta="20" phi="20" e="5.0" />
+  <cell l="25" eta="30" phi="30" e="5.0" />
+
+</event>
