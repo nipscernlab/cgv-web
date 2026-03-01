@@ -2,10 +2,8 @@
 //  CGV Web — tour.js
 //  9-step guided tour. Steps 0, 1, 8 use the centered card;
 //  steps 2-7 use a floating popover anchored to a UI element.
-//
-//  Bug fixed: removed duplicate id="tour-welcome-title" from
-//  HTML (index.html now has a single id="tour-title" on the h2).
 // ============================================================
+import { t } from './i18n/i18n.js';
 
 const TOUR_DONE_KEY = 'cgv_tour_done';
 const TOTAL_STEPS   = 9;
@@ -210,7 +208,7 @@ function positionPop(targetEl, side) {
 // ── Render a step ─────────────────────────────────────────────
 function render(idx) {
   const step  = STEPS[idx];
-  const label = `Step ${idx + 1} / ${TOTAL_STEPS}`;
+  const label = `${t('tour_step')} ${idx + 1} ${t('tour_of')} ${TOTAL_STEPS}`;
   const isLast = idx === TOTAL_STEPS - 1;
 
   cardStep.textContent = label;
@@ -221,7 +219,7 @@ function render(idx) {
   popPrev.style.display = idx === 0 ? 'none' : 'flex';
 
   // Next/Finish label
-  const nextLabel = isLast ? 'Finish' : 'Next →';
+  const nextLabel = isLast ? t('tour_finish') : t('tour_next');
   btnNext.textContent = nextLabel;
   popNext.textContent = isLast ? '✓' : '→';
 
@@ -298,6 +296,17 @@ btnSkip.addEventListener('click', end);
 popNext.addEventListener('click', next);
 popPrev.addEventListener('click', prev);
 popSkip.addEventListener('click', end);
+
+// Re-render current step label when language changes
+document.addEventListener('cgv:langchange', () => {
+  if (!overlay.classList.contains('active')) return;
+  const label = `${t('tour_step')} ${current + 1} ${t('tour_of')} ${TOTAL_STEPS}`;
+  cardStep.textContent = label;
+  popStep.textContent  = label;
+  const isLast = current === TOTAL_STEPS - 1;
+  btnNext.textContent = isLast ? t('tour_finish') : t('tour_next');
+  btnSkip.textContent = t('tour_skip');
+});
 
 document.addEventListener('keydown', e => {
   if (!overlay.classList.contains('active')) return;

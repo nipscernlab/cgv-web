@@ -8,59 +8,62 @@
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="examples/images/camera_256dp_003153_FILL0_wght400_GRAD0_opsz48.svg">
-  
-  <!-- Fonts -->
+
+  <!-- Fonts: Source Serif 4 (editorial/display) + Inter (UI) + JetBrains Mono (data) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Flag icons — lipis/flag-icons (no emojis, pure CSS + SVG sprites) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/flag-icons/7.2.3/css/flag-icons.min.css" crossorigin="anonymous" />
 
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
   <canvas id="gl-canvas"></canvas>
-
-  <input type="file" id="file-input" accept=".xml" aria-hidden="true" />
-
-  <!-- Ghost label -->
-  <div id="ghost-lbl" aria-hidden="true">
-    <span class="ghost-title">ATLAS Calorimeter</span>
-    <span class="ghost-sub">Ghost reference geometry — load a calorimeter XML to begin</span>
-  </div>
+  <input type="file" id="file-input"      accept=".xml"  aria-hidden="true" />
+  <input type="file" id="root-file-input" accept=".root" aria-hidden="true" />
 
   <!-- ═══════════════════════════════════════════════════════
        DROP ZONE
   ═══════════════════════════════════════════════════════ -->
-  <div id="drop-zone" role="region" aria-label="File upload">
+  <div id="drop-zone" role="region" data-i18n-aria="dz_region">
     <div class="dz-inner">
       <div class="dz-symbol" aria-hidden="true">
-        <img 
-          src="examples/images/camera_256dp_003153_FILL0_wght400_GRAD0_opsz48.svg" 
-          alt="Ícone de câmera"
-          width="48"
-          height="48"
+        <img
+          src="examples/images/camera_256dp_003153_FILL0_wght400_GRAD0_opsz48.svg"
+          alt=""
+          width="52"
+          height="52"
         >
       </div>
-      <h2 class="dz-headline">Load Calorimeter Data</h2>
-      <p class="dz-sub">Drop an ATLAS calorimeter XML event file here, or use the options below. The file is processed entirely in your browser — nothing is uploaded.</p>
+      <h2 class="dz-headline" data-i18n="dz_headline">Load Calorimeter Data</h2>
+      <p class="dz-sub" data-i18n="dz_sub">Drop an ATLAS calorimeter XML event file or ROOT geometry file here, or use the options below. All processing happens in your browser — nothing is uploaded.</p>
       <div class="dz-actions">
         <button id="dz-browse-btn" class="btn-primary" type="button">
           <i data-lucide="folder-open" style="width:15px;height:15px"></i>
-          Browse XML File
+          <span data-i18n="dz_browse">Browse XML File</span>
+        </button>
+        <button id="dz-root-btn" class="btn-ghost" type="button">
+          <i data-lucide="database" style="width:15px;height:15px"></i>
+          <span data-i18n="dz_root">Load ROOT Geometry</span>
         </button>
         <button id="dz-sample-btn" class="btn-ghost" type="button">
           <i data-lucide="flask-conical" style="width:15px;height:15px"></i>
-          Load Sample Event
+          <span data-i18n="dz_sample">Load Sample Event</span>
         </button>
       </div>
-      <p class="dz-formats">Accepts ATLAS calorimeter XML&ensp;·&ensp;<code>*.xml</code></p>
+      <p class="dz-formats">
+        <span data-i18n="dz_formats">Accepts ATLAS calorimeter XML or ROOT geometry</span>&ensp;·&ensp;<code>*.xml</code>&ensp;·&ensp;<code>*.root</code>
+      </p>
     </div>
   </div>
 
   <!-- Loading bar -->
   <div id="loading-bar" role="status" aria-live="polite">
     <div class="lb-inner">
-      <span id="loading-label" class="lb-label">Initializing…</span>
+      <span id="loading-label" class="lb-label" data-i18n="loading_init">Initializing…</span>
       <div class="lb-track"><div id="loading-fill" class="lb-fill"></div></div>
     </div>
   </div>
@@ -68,26 +71,38 @@
   <!-- Toast -->
   <div id="toast" role="alert" aria-live="assertive">
     <span id="toast-pip" class="toast-pip"></span>
-    <span id="toast-text">Ready</span>
+    <span id="toast-text" data-i18n="toast_ready">Ready</span>
   </div>
 
-  <!-- Cell tooltip -->
+  <!-- Cell tooltip — z-index: 9999 via CSS -->
   <div id="cell-tooltip" role="tooltip">
     <div class="ct-header">
       <i data-lucide="cpu" style="width:11px;height:11px;opacity:0.7"></i>
-      Cell Data
+      <span data-i18n="ct_header">Cell Data</span>
     </div>
     <div class="ct-rows">
-      <div class="ct-row"><span class="ct-label">Energy</span><span id="ct-energy" class="ct-val mono">—</span></div>
-      <div class="ct-row"><span class="ct-label">Layer / Detector</span><span id="ct-layer" class="ct-val mono">—</span></div>
-      <div class="ct-row"><span class="ct-label">η (pseudorapidity)</span><span id="ct-eta" class="ct-val mono">—</span></div>
-      <div class="ct-row"><span class="ct-label">φ (azimuth)</span><span id="ct-phi" class="ct-val mono">—</span></div>
+      <div class="ct-row">
+        <span class="ct-label" data-i18n="ct_energy">Energy</span>
+        <span id="ct-energy" class="ct-val mono">—</span>
+      </div>
+      <div class="ct-row">
+        <span class="ct-label" data-i18n="ct_layer">Layer / Detector</span>
+        <span id="ct-layer" class="ct-val mono">—</span>
+      </div>
+      <div class="ct-row">
+        <span class="ct-label" data-i18n="ct_eta">η (pseudorapidity)</span>
+        <span id="ct-eta" class="ct-val mono">—</span>
+      </div>
+      <div class="ct-row">
+        <span class="ct-label" data-i18n="ct_phi">φ (azimuth)</span>
+        <span id="ct-phi" class="ct-val mono">—</span>
+      </div>
     </div>
   </div>
 
   <!-- Energy slider tip -->
   <div id="slider-tip" aria-hidden="true">
-    <div id="tip-val" class="tip-val">All cells</div>
+    <div id="tip-val" class="tip-val" data-i18n="slider_all">All cells</div>
     <div id="tip-pct" class="tip-pct">0%</div>
   </div>
 
@@ -100,24 +115,29 @@
     <header id="top-bar">
       <div class="tb-left">
         <div class="tb-logo">
-          <span class="tb-wordmark">CGV</span>
+          <span class="tb-wordmark" data-i18n="tb_wordmark">CGV</span>
           <div class="tb-brand">
-            <span class="tb-brand-title">Calorimeter Geometry Viewer</span>
-            <span class="tb-brand-sub">NIPSCERN Laboratory &times; ATLAS / CERN</span>
+            <span class="tb-brand-title" data-i18n="tb_title">Calorimeter Geometry Viewer</span>
+            <span class="tb-brand-sub" data-i18n="tb_sub">NIPSCERN Laboratory × ATLAS / CERN</span>
           </div>
         </div>
       </div>
 
       <div id="filename-display" class="tb-filename hidden" aria-live="polite">
-        <i data-lucide="file-code" style="width:12px;height:12px;opacity:0.6;flex-shrink:0"></i>
+        <i data-lucide="file-code" style="width:12px;height:12px;opacity:0.5;flex-shrink:0"></i>
         <span id="filename-text" class="fn-text mono">—</span>
       </div>
 
       <nav class="tb-actions" aria-label="Actions">
         <!-- External links -->
         <div class="tb-link-group">
-          <a href="https://nipscern.com" target="_blank" rel="noopener" class="tb-text-link" aria-label="NIPSCERN Lab">NIPS</a>
-          <a href="https://atlas.cern" target="_blank" rel="noopener" class="tb-text-link" aria-label="ATLAS CERN">ATLAS</a>
+          <a href="https://nipscern.com" target="_blank" rel="noopener" class="tb-text-link" data-i18n-aria="tb_link_nips"><span data-i18n="tb_link_nips">NIPS</span></a>
+          <a href="https://atlas.cern" target="_blank" rel="noopener" class="tb-text-link" data-i18n-aria="tb_link_atlas"><span data-i18n="tb_link_atlas">ATLAS</span></a>
+        </div>
+
+        <!-- Language switcher -->
+        <div id="lang-switcher" role="group" aria-label="Language / Langue / Språk / Idioma">
+          <!-- Populated by i18n.js -->
         </div>
 
         <!-- Separator -->
@@ -125,60 +145,59 @@
 
         <!-- Knowledge Tree -->
         <div class="tb-btn-wrap">
-          <button id="wiki-toggle-btn" class="tb-icon-btn" aria-label="Open knowledge panel">
+          <button id="wiki-toggle-btn" class="tb-icon-btn" data-i18n-aria="wiki_btn_title">
             <i data-lucide="git-branch" style="width:16px;height:16px"></i>
           </button>
           <div class="tb-tooltip" role="tooltip">
-            <span class="tb-tt-title">Knowledge Tree</span>
-            <span class="tb-tt-desc">Educational panels about ATLAS, CERN, and NIPSCERN Lab</span>
+            <span class="tb-tt-title" data-i18n="wiki_btn_title">Knowledge Tree</span>
+            <span class="tb-tt-desc" data-i18n="wiki_btn_desc">Educational panels about ATLAS, CERN, and NIPSCERN Lab</span>
           </div>
         </div>
 
         <!-- Help -->
         <div class="tb-btn-wrap">
-          <button id="btn-help" class="tb-icon-btn" aria-label="Help and shortcuts">
+          <button id="btn-help" class="tb-icon-btn" data-i18n-aria="help_btn_title">
             <i data-lucide="circle-help" style="width:16px;height:16px"></i>
           </button>
           <div class="tb-tooltip" role="tooltip">
-            <span class="tb-tt-title">Help &amp; Shortcuts</span>
-            <span class="tb-tt-desc">Keyboard shortcuts, navigation guide, and app information</span>
+            <span class="tb-tt-title" data-i18n="help_btn_title">Help &amp; Shortcuts</span>
+            <span class="tb-tt-desc" data-i18n="help_btn_desc">Keyboard shortcuts, navigation guide, and app information</span>
           </div>
         </div>
-
 
         <!-- Separator -->
         <div class="tb-sep" aria-hidden="true"></div>
 
         <!-- Focus mode -->
         <div class="tb-btn-wrap">
-          <button id="btn-focus" class="tb-icon-btn tb-btn-accent" aria-label="Focus mode (F)">
+          <button id="btn-focus" class="tb-icon-btn tb-btn-accent" data-i18n-aria="focus_btn_title">
             <i data-lucide="maximize" style="width:16px;height:16px"></i>
           </button>
           <div class="tb-tooltip" role="tooltip">
-            <span class="tb-tt-title">Focus Mode</span>
-            <span class="tb-tt-desc">Fullscreen auto-rotation — fades out all UI. Press <kbd>F</kbd> to toggle</span>
+            <span class="tb-tt-title" data-i18n="focus_btn_title">Focus Mode</span>
+            <span class="tb-tt-desc" data-i18n="focus_btn_desc">Fullscreen auto-rotation — fades out all UI. Press <kbd>F</kbd> to toggle</span>
           </div>
         </div>
 
         <!-- Snapshot -->
         <div class="tb-btn-wrap">
-          <button id="btn-snapshot" class="tb-icon-btn" aria-label="4K snapshot">
+          <button id="btn-snapshot" class="tb-icon-btn" data-i18n-aria="snapshot_btn_title">
             <i data-lucide="camera" style="width:16px;height:16px"></i>
           </button>
           <div class="tb-tooltip" role="tooltip">
-            <span class="tb-tt-title">4K Snapshot</span>
-            <span class="tb-tt-desc">Download a 3840 × 2160 PNG of the current view</span>
+            <span class="tb-tt-title" data-i18n="snapshot_btn_title">4K Snapshot</span>
+            <span class="tb-tt-desc" data-i18n="snapshot_btn_desc">Download a 3840 × 2160 PNG of the current view</span>
           </div>
         </div>
 
         <!-- Reset -->
         <div class="tb-btn-wrap">
-          <button id="btn-reset" class="tb-icon-btn tb-btn-danger" aria-label="Reset scene">
+          <button id="btn-reset" class="tb-icon-btn tb-btn-danger" data-i18n-aria="reset_btn_title">
             <i data-lucide="rotate-ccw" style="width:16px;height:16px"></i>
           </button>
           <div class="tb-tooltip" role="tooltip">
-            <span class="tb-tt-title">Reset Scene</span>
-            <span class="tb-tt-desc">Clear loaded data and return to the ghost reference geometry</span>
+            <span class="tb-tt-title" data-i18n="reset_btn_title">Reset Scene</span>
+            <span class="tb-tt-desc" data-i18n="reset_btn_desc">Clear loaded data and return to the ghost reference geometry</span>
           </div>
         </div>
       </nav>
@@ -190,29 +209,29 @@
       <!-- Event Metadata (collapsible) -->
       <div class="panel-card" id="meta-card">
         <button class="panel-card-hdr collapsible-hdr" id="meta-toggle-btn" aria-expanded="true" aria-controls="meta-body">
-          <span>Event Metadata</span>
+          <span data-i18n="meta_card_title">Event Metadata</span>
           <i data-lucide="chevron-up" style="width:13px;height:13px;color:var(--text-muted);transition:transform var(--t-mid)" id="meta-chevron"></i>
         </button>
         <div id="meta-body" class="meta-body">
           <div class="meta-rows">
             <div class="meta-row">
-              <span class="meta-label">File</span>
+              <span class="meta-label" data-i18n="meta_file">File</span>
               <span id="meta-filename" class="meta-val mono">—</span>
             </div>
             <div class="meta-row">
-              <span class="meta-label">Cell count</span>
+              <span class="meta-label" data-i18n="meta_cell_count">Cell count</span>
               <span id="cell-count" class="meta-val mono">—</span>
             </div>
             <div class="meta-row">
-              <span class="meta-label">Event date</span>
+              <span class="meta-label" data-i18n="meta_event_date">Event date</span>
               <span id="xml-date" class="meta-val mono">—</span>
             </div>
             <div class="meta-row">
-              <span class="meta-label">Energy range</span>
+              <span class="meta-label" data-i18n="meta_energy_range">Energy range</span>
               <span id="info-energy-range" class="meta-val mono">—</span>
             </div>
             <div class="meta-row meta-row--wrap">
-              <span class="meta-label">Active blocks</span>
+              <span class="meta-label" data-i18n="meta_active_blocks">Active blocks</span>
               <span id="active-blocks" class="meta-val mono meta-val--wrap">—</span>
             </div>
           </div>
@@ -223,14 +242,14 @@
       <div class="panel-card" id="geometry-panel">
         <button id="gp-toggle-btn" class="gp-toggle" aria-expanded="true" aria-controls="gp-body">
           <i data-lucide="layers" style="width:13px;height:13px;color:var(--accent);opacity:0.7;flex-shrink:0"></i>
-          <span class="gp-title">Visualization</span>
+          <span class="gp-title" data-i18n="viz_card_title">Visualization</span>
           <i data-lucide="chevron-up" style="width:12px;height:12px" class="gp-chevron"></i>
         </button>
         <div id="gp-body" class="gp-body">
 
           <!-- Sub-detectors -->
           <div class="gp-section">
-            <div class="gp-section-label">Sub-detectors</div>
+            <div class="gp-section-label" data-i18n="viz_subdet">Sub-detectors</div>
             <div class="det-toggles">
               <label class="det-toggle" title="Tile Calorimeter — hadronic barrel, |η| &lt; 1.7">
                 <input type="checkbox" class="det-check" data-det="tile" checked />
@@ -253,11 +272,11 @@
             </div>
           </div>
 
-          <!-- Z-Axis Slice — redesigned -->
+          <!-- Z-Axis Slice -->
           <div class="gp-section">
             <div class="gp-section-label">
-              <i data-lucide="slice" style="width:11px;height:11px;opacity:0.6"></i>
-              Z-Axis Slice
+              <i data-lucide="slice" style="width:11px;height:11px;opacity:0.5"></i>
+              <span data-i18n="viz_zslice">Z-Axis Slice</span>
               <span id="clip-val-display" class="gp-val mono">OFF</span>
             </div>
             <div class="zslice-wrapper">
@@ -266,10 +285,11 @@
                 <div class="zslice-bar-wrap">
                   <div class="clip-track">
                     <div id="clip-fill" class="clip-fill"></div>
-                    <input id="clip-slider" type="range" min="0" max="100" value="100" class="clip-slider" aria-label="Z-axis slice" />
+                    <input id="clip-slider" type="range" min="0" max="100" value="100" class="clip-slider" data-i18n-aria="viz_zslice" />
                   </div>
                   <div class="zslice-labels">
-                    <span>Core</span><span>Full</span>
+                    <span data-i18n="zslice_core">Core</span>
+                    <span data-i18n="zslice_full">Full</span>
                   </div>
                 </div>
                 <div class="zslice-icon-z">±z</div>
@@ -283,35 +303,37 @@
           <!-- Render Mode -->
           <div class="gp-section">
             <div class="gp-section-label">
-              <i data-lucide="box" style="width:11px;height:11px;opacity:0.6"></i>
-              Render Mode
+              <i data-lucide="box" style="width:11px;height:11px;opacity:0.5"></i>
+              <span data-i18n="viz_render">Render Mode</span>
             </div>
             <div class="mode-btns">
               <button id="mode-solid" class="mode-btn active" aria-pressed="true">
-                <i data-lucide="box" style="width:12px;height:12px"></i>Solid
+                <i data-lucide="box" style="width:12px;height:12px"></i>
+                <span data-i18n="viz_solid">Solid</span>
               </button>
               <button id="mode-wire" class="mode-btn" aria-pressed="false">
-                <i data-lucide="box-select" style="width:12px;height:12px"></i>Wireframe
+                <i data-lucide="box-select" style="width:12px;height:12px"></i>
+                <span data-i18n="viz_wire">Wireframe</span>
               </button>
             </div>
           </div>
 
-          <!-- Scene toggles (iOS switches) -->
+          <!-- Scene toggles -->
           <div class="gp-section">
             <div class="gp-section-label">
-              <i data-lucide="eye" style="width:11px;height:11px;opacity:0.6"></i>
-              Scene
+              <i data-lucide="eye" style="width:11px;height:11px;opacity:0.5"></i>
+              <span data-i18n="viz_scene">Scene</span>
             </div>
             <div class="scene-toggles">
               <div class="scene-toggle-row">
-                <span class="scene-toggle-label">Beam axis &amp; North marker</span>
+                <span class="scene-toggle-label" data-i18n="viz_axis">Beam axis &amp; North marker</span>
                 <label class="ios-switch">
                   <input type="checkbox" id="axis-toggle" checked />
                   <span class="ios-thumb"></span>
                 </label>
               </div>
               <div class="scene-toggle-row">
-                <span class="scene-toggle-label">Cell data hover</span>
+                <span class="scene-toggle-label" data-i18n="viz_hover">Cell data hover</span>
                 <label class="ios-switch">
                   <input type="checkbox" id="cell-hover-toggle" checked />
                   <span class="ios-thumb"></span>
@@ -326,32 +348,34 @@
       <!-- External links -->
       <div class="ext-links">
         <a href="https://nipscern.com" target="_blank" rel="noopener" class="ext-link">
-          <i data-lucide="external-link" style="width:10px;height:10px"></i>nipscern.com
+          <i data-lucide="external-link" style="width:10px;height:10px"></i>
+          <span data-i18n="ext_nipscern">nipscern.com</span>
         </a>
         <a href="https://nipscern.com/projects/cgvweb" target="_blank" rel="noopener" class="ext-link">
-          <i data-lucide="external-link" style="width:10px;height:10px"></i>CGV Project
+          <i data-lucide="external-link" style="width:10px;height:10px"></i>
+          <span data-i18n="ext_cgv">CGV Project</span>
         </a>
       </div>
 
     </aside>
 
     <!-- Energy rail -->
-    <aside id="energy-rail" aria-label="Energy threshold">
+    <aside id="energy-rail" data-i18n-aria="rail_label">
       <div class="rail-label-top">E<sub>min</sub></div>
 
       <div id="energy-panel" aria-live="polite">
         <span id="ep-max" class="ep-val ep-max mono">—</span>
         <div id="grad-track" class="grad-track" role="slider"
-             aria-label="Energy threshold" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+             data-i18n-aria="rail_label" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div id="track-dim" class="track-dim"></div>
-          <div id="track-handle" class="track-handle" tabindex="0" aria-label="Energy threshold handle"></div>
+          <div id="track-handle" class="track-handle" tabindex="0" data-i18n-aria="rail_label"></div>
         </div>
         <span id="ep-min" class="ep-val ep-min mono">—</span>
       </div>
 
       <div class="threshold-readout">
-        <span class="thr-label">Threshold</span>
-        <span id="threshold-display" class="thr-val mono">All</span>
+        <span class="thr-label" data-i18n="threshold_label">Threshold</span>
+        <span id="threshold-display" class="thr-val mono" data-i18n="threshold_all">All</span>
       </div>
     </aside>
 
@@ -359,20 +383,23 @@
 
   <!-- Focus overlay -->
   <div id="focus-overlay" aria-label="Focus mode">
-    <button id="btn-exit-focus" class="exit-focus-btn" aria-label="Exit focus mode">
-      <i data-lucide="minimize" style="width:15px;height:15px"></i> Exit Focus
+    <button id="btn-exit-focus" class="exit-focus-btn" data-i18n-aria="exit_focus">
+      <i data-lucide="minimize" style="width:15px;height:15px"></i>
+      <span data-i18n="exit_focus">Exit Focus</span>
     </button>
-    <div class="focus-hint">Press <kbd>Esc</kbd> or <kbd>F</kbd> to exit</div>
+    <div class="focus-hint">
+      <span data-i18n="focus_hint">Press <kbd>Esc</kbd> or <kbd>F</kbd> to exit</span>
+    </div>
   </div>
 
   <!-- ═══════════════════════════════════════════════════════
        WIKI PANEL
   ═══════════════════════════════════════════════════════ -->
-  <aside id="wiki-panel" role="complementary" aria-label="Knowledge panel">
+  <aside id="wiki-panel" role="complementary" data-i18n-aria="wiki_title">
     <div class="wiki-header">
       <div class="wiki-title">
         <i data-lucide="git-branch" style="width:14px;height:14px;opacity:0.8"></i>
-        Knowledge Tree
+        <span data-i18n="wiki_title">Knowledge Tree</span>
       </div>
       <button id="wiki-close-btn" class="wiki-close" aria-label="Close">
         <i data-lucide="x" style="width:14px;height:14px"></i>
@@ -380,41 +407,41 @@
     </div>
 
     <div class="wiki-tabs" role="tablist">
-      <button class="wiki-tab active" data-tab="start" role="tab" aria-selected="true">Overview</button>
-      <button class="wiki-tab" data-tab="nips" role="tab" aria-selected="false">NIPS Lab</button>
-      <button class="wiki-tab" data-tab="cern" role="tab" aria-selected="false">CERN / ATLAS</button>
-      <button class="wiki-tab" data-tab="refs" role="tab" aria-selected="false">References</button>
+      <button class="wiki-tab active" data-tab="start" role="tab" aria-selected="true" data-i18n="wiki_tab_overview">Overview</button>
+      <button class="wiki-tab" data-tab="nips" role="tab" aria-selected="false" data-i18n="wiki_tab_nips">NIPS Lab</button>
+      <button class="wiki-tab" data-tab="cern" role="tab" aria-selected="false" data-i18n="wiki_tab_cern">CERN / ATLAS</button>
+      <button class="wiki-tab" data-tab="refs" role="tab" aria-selected="false" data-i18n="wiki_tab_refs">References</button>
     </div>
 
     <div class="wiki-content">
 
       <!-- Overview tab -->
       <div class="wiki-pane active" id="tab-start" role="tabpanel">
-        <h3 class="wiki-pane-title">About CGV Web</h3>
-        <p class="wiki-para">The <strong>Calorimeter Geometry Viewer</strong> is a browser-native 3D tool for exploring particle physics detector data from the ATLAS experiment at CERN's Large Hadron Collider — the world's highest-energy particle accelerator.</p>
-        <p class="wiki-para">It renders individual calorimeter cells — the ~190,000 readout units that measure energy deposited by particles emerging from proton–proton collisions. Each cell lights up in proportion to the energy it absorbed, letting physicists identify jets, electromagnetic showers, and hadronic activity at a glance.</p>
-        <p class="wiki-para">The tool runs entirely in your browser: XML event data is parsed by a Rust/WebAssembly module and rendered via Three.js with custom GLSL shaders. Nothing is uploaded to any server.</p>
+        <h3 class="wiki-pane-title" data-i18n="wiki_overview_title">About CGV Web</h3>
+        <p class="wiki-para" data-i18n="wiki_overview_p1">The <strong>Calorimeter Geometry Viewer</strong> is a browser-native 3D tool for exploring particle physics detector data from the ATLAS experiment at CERN's Large Hadron Collider — the world's highest-energy particle accelerator.</p>
+        <p class="wiki-para" data-i18n="wiki_overview_p2">It renders individual calorimeter cells — the ~190,000 readout units that measure energy deposited by particles emerging from proton–proton collisions. Each cell lights up in proportion to the energy it absorbed, letting physicists identify jets, electromagnetic showers, and hadronic activity at a glance.</p>
+        <p class="wiki-para" data-i18n="wiki_overview_p3">The tool runs entirely in your browser: XML event data is parsed by a Rust/WebAssembly module and rendered via Three.js with custom GLSL shaders. Nothing is uploaded to any server.</p>
 
         <div class="wiki-tree">
           <div class="branch">
             <button class="branch-header" aria-expanded="true">
-              <span>Controls reference</span>
+              <span data-i18n="wiki_controls_title">Controls reference</span>
               <i data-lucide="chevron-down" style="width:11px;height:11px" class="branch-arrow-icon"></i>
             </button>
             <div class="branch-body open">
               <table class="wiki-table">
-                <tr><td><kbd>Left drag</kbd></td><td>Orbit the detector</td></tr>
-                <tr><td><kbd>Right drag</kbd></td><td>Pan camera</td></tr>
-                <tr><td><kbd>Scroll</kbd></td><td>Zoom in / out</td></tr>
-                <tr><td><kbd>F</kbd></td><td>Cinema / focus mode</td></tr>
-                <tr><td><kbd>W</kbd></td><td>Toggle wireframe</td></tr>
-                <tr><td><kbd>Esc</kbd></td><td>Exit mode / close panels</td></tr>
+                <tr><td><kbd>Left drag</kbd></td><td data-i18n="nav_left_drag">Orbit the detector</td></tr>
+                <tr><td><kbd>Right drag</kbd></td><td data-i18n="nav_right_drag">Pan camera</td></tr>
+                <tr><td><kbd>Scroll</kbd></td><td data-i18n="nav_scroll">Zoom in / out</td></tr>
+                <tr><td><kbd>F</kbd></td><td data-i18n="shortcut_f">Cinema / focus mode</td></tr>
+                <tr><td><kbd>W</kbd></td><td data-i18n="shortcut_w">Toggle wireframe</td></tr>
+                <tr><td><kbd>Esc</kbd></td><td data-i18n="shortcut_esc">Exit mode / close panels</td></tr>
               </table>
             </div>
           </div>
           <div class="branch">
             <button class="branch-header" aria-expanded="false">
-              <span>Workflow tips</span>
+              <span data-i18n="wiki_workflow_title">Workflow tips</span>
               <i data-lucide="chevron-down" style="width:11px;height:11px" class="branch-arrow-icon"></i>
             </button>
             <div class="branch-body">
@@ -432,10 +459,10 @@
 
       <!-- NIPS Lab tab -->
       <div class="wiki-pane" id="tab-nips" role="tabpanel">
-        <h3 class="wiki-pane-title">NIPSCERN Laboratory</h3>
-        <p class="wiki-para">The <strong>Núcleo de Instrumentação e Processamento de Sinais</strong> (NIPSCERN) is based at the Federal University of Juiz de Fora (UFJF), Minas Gerais, Brazil. Since 2008 the group has maintained a formal collaboration with the ATLAS detector operations team at CERN, focusing on calorimeter signal processing and energy reconstruction.</p>
-        <p class="wiki-para">Core research areas include optimal filtering algorithms for pulse shaping in the TileCal readout chain, FPGA-based real-time trigger systems for the first-level ATLAS trigger, and machine-learning methods for noise suppression in liquid-argon calorimeter channels. The group has published over 50 peer-reviewed papers in the field of particle physics instrumentation.</p>
-        <p class="wiki-para">CGV Web is an open-source outreach and research tool maintained by NIPSCERN, allowing physicists, students, and the public to explore real ATLAS event data directly in a modern browser — with no plugins or downloads required.</p>
+        <h3 class="wiki-pane-title" data-i18n="wiki_nips_title">NIPSCERN Laboratory</h3>
+        <p class="wiki-para" data-i18n="wiki_nips_p1">The <strong>Núcleo de Instrumentação e Processamento de Sinais</strong> (NIPSCERN) is based at the Federal University of Juiz de Fora (UFJF), Minas Gerais, Brazil. Since 2008 the group has maintained a formal collaboration with the ATLAS detector operations team at CERN, focusing on calorimeter signal processing and energy reconstruction.</p>
+        <p class="wiki-para" data-i18n="wiki_nips_p2">Core research areas include optimal filtering algorithms for pulse shaping in the TileCal readout chain, FPGA-based real-time trigger systems for the first-level ATLAS trigger, and machine-learning methods for noise suppression in liquid-argon calorimeter channels. The group has published over 50 peer-reviewed papers in the field of particle physics instrumentation.</p>
+        <p class="wiki-para" data-i18n="wiki_nips_p3">CGV Web is an open-source outreach and research tool maintained by NIPSCERN, allowing physicists, students, and the public to explore real ATLAS event data directly in a modern browser — with no plugins or downloads required.</p>
         <div class="wiki-link-row" style="margin-bottom:18px;">
           <a href="https://nipscern.com" class="wiki-chip" target="_blank" rel="noopener">
             <i data-lucide="external-link" style="width:11px;height:11px"></i>nipscern.com
@@ -448,7 +475,7 @@
         <div class="wiki-tree">
           <div class="branch">
             <button class="branch-header" aria-expanded="true">
-              <span>CGV Web — technical architecture</span>
+              <span data-i18n="wiki_arch_title">CGV Web — technical architecture</span>
               <i data-lucide="chevron-down" style="width:11px;height:11px" class="branch-arrow-icon"></i>
             </button>
             <div class="branch-body open">
@@ -462,14 +489,13 @@
             </div>
           </div>
 
-          <!-- Sponsors -->
           <div class="branch">
             <button class="branch-header" aria-expanded="false">
-              <span>Sponsors &amp; Funding</span>
+              <span data-i18n="wiki_sponsors_title">Sponsors &amp; Funding</span>
               <i data-lucide="chevron-down" style="width:11px;height:11px" class="branch-arrow-icon"></i>
             </button>
             <div class="branch-body">
-              <p class="branch-text">This research is supported by Brazilian national and state funding agencies. The NIPSCERN–ATLAS collaboration is maintained through grants from:</p>
+              <p class="branch-text" data-i18n="wiki_sponsors_text">This research is supported by Brazilian national and state funding agencies. The NIPSCERN–ATLAS collaboration is maintained through grants from:</p>
               <div class="sponsor-grid">
                 <div class="sponsor-badge">
                   <div class="sponsor-logo-placeholder" style="color:#1e7cbc">FAPEMIG</div>
@@ -495,7 +521,7 @@
 
       <!-- CERN tab -->
       <div class="wiki-pane" id="tab-cern" role="tabpanel">
-        <h3 class="wiki-pane-title">CERN &amp; the ATLAS Detector</h3>
+        <h3 class="wiki-pane-title" data-i18n="wiki_cern_title">CERN &amp; the ATLAS Detector</h3>
         <p class="wiki-para">The <strong>European Organization for Nuclear Research</strong> (CERN) operates the Large Hadron Collider — a 27 km superconducting ring in which proton beams are accelerated to 6.8 TeV per beam and collided at four interaction points, yielding centre-of-mass energies up to 13.6 TeV in Run 3.
         <sup><a href="https://home.cern/science/accelerators/large-hadron-collider" target="_blank" class="ref-link">[1]</a></sup></p>
         <p class="wiki-para"><strong>ATLAS</strong> (<em>A Toroidal LHC ApparatuS</em>) is one of two general-purpose detectors at the LHC. At 46 m long, 25 m in diameter and approximately 7,000 tonnes, it is the largest detector ever built. ATLAS co-discovered the Higgs boson in July 2012, confirming the final missing piece of the Standard Model of particle physics.
@@ -527,7 +553,7 @@
               <i data-lucide="chevron-down" style="width:11px;height:11px" class="branch-arrow-icon"></i>
             </button>
             <div class="branch-body">
-              <p class="branch-text">Two copper/liquid-argon wheels on each end-cap extend hadronic calorimetry into the forward region. Copper plates serve as passive absorber; liquid argon at 87 K is the active ionisation medium. The signal is induced on copper electrodes by drifting ionisation electrons. The HEC consists of two wheels per end-cap (HEC1 and HEC2), each with two longitudinal segments.
+              <p class="branch-text">Two copper/liquid-argon wheels on each end-cap extend hadronic calorimetry into the forward region. Copper plates serve as passive absorber; liquid argon at 87 K is the active ionisation medium. The signal is induced on copper electrodes by drifting ionisation electrons.
               <sup><a href="https://atlas.cern/discover/detector/calorimeter" target="_blank" class="ref-link">[4]</a></sup></p>
               <div class="spec-grid">
                 <div class="spec-item"><span class="spec-k">η coverage</span><span class="spec-v">1.5 – 3.2</span></div>
@@ -544,7 +570,7 @@
               <i data-lucide="chevron-down" style="width:11px;height:11px" class="branch-arrow-icon"></i>
             </button>
             <div class="branch-body">
-              <p class="branch-text">Accordion-folded lead absorbers immersed in liquid argon provide full azimuthal symmetry without projective cracks. The accordion geometry yields fast charge collection and uniform response across φ. It is the primary tool for identifying electrons and photons, with energy resolution σ/E ≈ 10%/√E ⊕ 0.7%. The barrel covers |η| &lt; 1.475 and end-caps extend to |η| &lt; 3.2.
+              <p class="branch-text">Accordion-folded lead absorbers immersed in liquid argon provide full azimuthal symmetry without projective cracks. It is the primary tool for identifying electrons and photons, with energy resolution σ/E ≈ 10%/√E ⊕ 0.7%.
               <sup><a href="https://atlas.cern/discover/detector/calorimeter" target="_blank" class="ref-link">[4]</a></sup></p>
               <div class="spec-grid">
                 <div class="spec-item"><span class="spec-k">η coverage</span><span class="spec-v">|η| &lt; 3.2</span></div>
@@ -561,93 +587,21 @@
 
       <!-- References tab -->
       <div class="wiki-pane" id="tab-refs" role="tabpanel">
-        <h3 class="wiki-pane-title">References</h3>
-        <p class="wiki-para" style="font-size:0.8rem;color:var(--text-muted)">Scientific references for the ATLAS detector, calorimeter systems, and NIPSCERN research.</p>
+        <h3 class="wiki-pane-title" data-i18n="wiki_refs_title">References</h3>
+        <p class="wiki-para" style="font-size:0.78rem;color:var(--text-muted)" data-i18n="wiki_refs_note">Scientific references for the ATLAS detector, calorimeter systems, and NIPSCERN research.</p>
         <ol class="ref-list-full">
-          <li>
-            <span class="ref-num">[1]</span>
-            <div>
-              <a href="https://home.cern/science/accelerators/large-hadron-collider" target="_blank" class="wiki-link">CERN — Large Hadron Collider overview</a>
-              <span class="ref-note">CERN official description of the LHC ring, injection chain, and physics programme.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[2]</span>
-            <div>
-              <a href="https://atlas.cern/discover/detector" target="_blank" class="wiki-link">ATLAS Collaboration — Detector description</a>
-              <span class="ref-note">Official description of the ATLAS detector subsystems, dimensions, and physics goals.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[3]</span>
-            <div>
-              <a href="https://cds.cern.ch/record/331061" target="_blank" class="wiki-link">ATLAS TileCal Technical Design Report (CERN/LHCC/96-42)</a>
-              <span class="ref-note">The TDR specifying the geometry, materials, and readout electronics of the hadronic tile calorimeter.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[4]</span>
-            <div>
-              <a href="https://atlas.cern/discover/detector/calorimeter" target="_blank" class="wiki-link">ATLAS — Calorimeter systems overview</a>
-              <span class="ref-note">Technical overview of TileCal, HEC, LAr EM, FCal and their η coverage and segmentation.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[5]</span>
-            <div>
-              <a href="https://cds.cern.ch/record/391176" target="_blank" class="wiki-link">ATLAS LAr EM Calorimeter TDR (CERN/LHCC/96-41)</a>
-              <span class="ref-note">Technical Design Report for the liquid-argon accordion electromagnetic calorimeter.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[6]</span>
-            <div>
-              <a href="https://doi.org/10.1088/1748-0221/3/08/S08003" target="_blank" class="wiki-link">ATLAS Collaboration, JINST 3 (2008) S08003</a>
-              <span class="ref-note">The ATLAS detector paper: complete description of all subsystems as built for Run 1.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[7]</span>
-            <div>
-              <a href="https://doi.org/10.1016/j.nima.2010.06.009" target="_blank" class="wiki-link">Aharrouche et al., NIM A 617 (2010)</a>
-              <span class="ref-note">TileCal signal reconstruction and noise filtering with optimal filtering algorithms. Foundational for NIPSCERN research.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[8]</span>
-            <div>
-              <a href="https://doi.org/10.1007/JHEP08(2012)098" target="_blank" class="wiki-link">ATLAS Collaboration, JHEP 08 (2012) 098</a>
-              <span class="ref-note">Higgs boson discovery paper: observation of a new boson with mass ~125 GeV with the ATLAS detector.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[9]</span>
-            <div>
-              <a href="https://doi.org/10.1140/epjc/s10052-021-09507-3" target="_blank" class="wiki-link">ATLAS TileCal Collaboration, Eur. Phys. J. C 81 (2021)</a>
-              <span class="ref-note">Operation and performance of the ATLAS Tile Calorimeter during Run 2 at the LHC.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[10]</span>
-            <div>
-              <a href="https://nipscern.com" target="_blank" class="wiki-link">NIPSCERN Laboratory — nipscern.com</a>
-              <span class="ref-note">Home page of the Nuclear Instrumentation and Signal Processing Laboratory at UFJF, Brazil.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[11]</span>
-            <div>
-              <a href="https://doi.org/10.1088/1748-0221/6/10/P10003" target="_blank" class="wiki-link">ATLAS Liquid Argon Calorimeter: Run 1 performance, JINST 6 (2011)</a>
-              <span class="ref-note">Complete performance evaluation of the LAr calorimeters (EM, HEC, FCal) during proton–proton collisions at 7 TeV.</span>
-            </div>
-          </li>
-          <li>
-            <span class="ref-num">[12]</span>
-            <div>
-              <a href="https://doi.org/10.1088/1748-0221/15/09/P09017" target="_blank" class="wiki-link">ATLAS Collaboration, JINST 15 (2020) P09017</a>
-              <span class="ref-note">Jet reconstruction and calibration with the ATLAS detector in Run 2, directly relevant to TileCal and HEC signals.</span>
-            </div>
-          </li>
+          <li><span class="ref-num">[1]</span><div><a href="https://home.cern/science/accelerators/large-hadron-collider" target="_blank" class="wiki-link">CERN — Large Hadron Collider overview</a><span class="ref-note">CERN official description of the LHC ring, injection chain, and physics programme.</span></div></li>
+          <li><span class="ref-num">[2]</span><div><a href="https://atlas.cern/discover/detector" target="_blank" class="wiki-link">ATLAS Collaboration — Detector description</a><span class="ref-note">Official description of the ATLAS detector subsystems, dimensions, and physics goals.</span></div></li>
+          <li><span class="ref-num">[3]</span><div><a href="https://cds.cern.ch/record/331061" target="_blank" class="wiki-link">ATLAS TileCal Technical Design Report (CERN/LHCC/96-42)</a><span class="ref-note">The TDR specifying the geometry, materials, and readout electronics of the hadronic tile calorimeter.</span></div></li>
+          <li><span class="ref-num">[4]</span><div><a href="https://atlas.cern/discover/detector/calorimeter" target="_blank" class="wiki-link">ATLAS — Calorimeter systems overview</a><span class="ref-note">Technical overview of TileCal, HEC, LAr EM, FCal and their η coverage and segmentation.</span></div></li>
+          <li><span class="ref-num">[5]</span><div><a href="https://cds.cern.ch/record/391176" target="_blank" class="wiki-link">ATLAS LAr EM Calorimeter TDR (CERN/LHCC/96-41)</a><span class="ref-note">Technical Design Report for the liquid-argon accordion electromagnetic calorimeter.</span></div></li>
+          <li><span class="ref-num">[6]</span><div><a href="https://doi.org/10.1088/1748-0221/3/08/S08003" target="_blank" class="wiki-link">ATLAS Collaboration, JINST 3 (2008) S08003</a><span class="ref-note">The ATLAS detector paper: complete description of all subsystems as built for Run 1.</span></div></li>
+          <li><span class="ref-num">[7]</span><div><a href="https://doi.org/10.1016/j.nima.2010.06.009" target="_blank" class="wiki-link">Aharrouche et al., NIM A 617 (2010)</a><span class="ref-note">TileCal signal reconstruction and noise filtering with optimal filtering algorithms. Foundational for NIPSCERN research.</span></div></li>
+          <li><span class="ref-num">[8]</span><div><a href="https://doi.org/10.1007/JHEP08(2012)098" target="_blank" class="wiki-link">ATLAS Collaboration, JHEP 08 (2012) 098</a><span class="ref-note">Higgs boson discovery paper: observation of a new boson with mass ~125 GeV with the ATLAS detector.</span></div></li>
+          <li><span class="ref-num">[9]</span><div><a href="https://doi.org/10.1140/epjc/s10052-021-09507-3" target="_blank" class="wiki-link">ATLAS TileCal Collaboration, Eur. Phys. J. C 81 (2021)</a><span class="ref-note">Operation and performance of the ATLAS Tile Calorimeter during Run 2 at the LHC.</span></div></li>
+          <li><span class="ref-num">[10]</span><div><a href="https://nipscern.com" target="_blank" class="wiki-link">NIPSCERN Laboratory — nipscern.com</a><span class="ref-note">Home page of the Nuclear Instrumentation and Signal Processing Laboratory at UFJF, Brazil.</span></div></li>
+          <li><span class="ref-num">[11]</span><div><a href="https://doi.org/10.1088/1748-0221/6/10/P10003" target="_blank" class="wiki-link">ATLAS Liquid Argon Calorimeter: Run 1 performance, JINST 6 (2011)</a><span class="ref-note">Complete performance evaluation of the LAr calorimeters (EM, HEC, FCal) during proton–proton collisions at 7 TeV.</span></div></li>
+          <li><span class="ref-num">[12]</span><div><a href="https://doi.org/10.1088/1748-0221/15/09/P09017" target="_blank" class="wiki-link">ATLAS Collaboration, JINST 15 (2020) P09017</a><span class="ref-note">Jet reconstruction and calibration with the ATLAS detector in Run 2, directly relevant to TileCal and HEC signals.</span></div></li>
         </ol>
       </div>
 
@@ -662,7 +616,7 @@
       <div class="modal-header">
         <h2 id="modal-title" class="modal-title">
           <i data-lucide="circle-help" style="width:16px;height:16px;opacity:0.7"></i>
-          Help &amp; Shortcuts
+          <span data-i18n="modal_title">Help &amp; Shortcuts</span>
         </h2>
         <button id="modal-close-btn" class="modal-close" aria-label="Close">
           <i data-lucide="x" style="width:14px;height:14px"></i>
@@ -670,34 +624,37 @@
       </div>
       <div class="modal-body">
         <div class="modal-section">
-          <h3 class="modal-section-title">Keyboard shortcuts</h3>
+          <h3 class="modal-section-title" data-i18n="modal_keyboard">Keyboard shortcuts</h3>
           <table class="shortcut-table">
-            <tr><td><kbd>F</kbd></td><td>Enter / exit Cinema mode</td></tr>
-            <tr><td><kbd>W</kbd></td><td>Toggle wireframe rendering</td></tr>
-            <tr><td><kbd>Esc</kbd></td><td>Exit focus mode or close open panels</td></tr>
+            <tr><td><kbd>F</kbd></td><td data-i18n="shortcut_f">Enter / exit Cinema mode</td></tr>
+            <tr><td><kbd>W</kbd></td><td data-i18n="shortcut_w">Toggle wireframe rendering</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td data-i18n="shortcut_esc">Exit focus mode or close open panels</td></tr>
           </table>
         </div>
         <div class="modal-section">
-          <h3 class="modal-section-title">3D navigation</h3>
+          <h3 class="modal-section-title" data-i18n="modal_navigation">3D navigation</h3>
           <table class="shortcut-table">
-            <tr><td><kbd>Left drag</kbd></td><td>Orbit around the detector centre</td></tr>
-            <tr><td><kbd>Right drag</kbd></td><td>Pan the camera laterally</td></tr>
-            <tr><td><kbd>Scroll</kbd></td><td>Zoom in / out along view axis</td></tr>
-            <tr><td><kbd>Hover cell</kbd></td><td>Display energy and position data (visible cells only, when enabled)</td></tr>
+            <tr><td><kbd>Left drag</kbd></td><td data-i18n="nav_left_drag">Orbit around the detector centre</td></tr>
+            <tr><td><kbd>Right drag</kbd></td><td data-i18n="nav_right_drag">Pan the camera laterally</td></tr>
+            <tr><td><kbd>Scroll</kbd></td><td data-i18n="nav_scroll">Zoom in / out along view axis</td></tr>
+            <tr><td><kbd>Hover cell</kbd></td><td data-i18n="nav_hover">Display energy and position data (visible cells only, when enabled)</td></tr>
           </table>
         </div>
         <div class="modal-section">
-          <h3 class="modal-section-title">About CGV Web</h3>
-          <p class="modal-text">CGV Web is developed by the <strong>NIPSCERN Signal Processing Laboratory</strong> (Núcleo de Instrumentação e Processamento de Sinais) at UFJF, Brazil, in collaboration with the ATLAS experiment at CERN. The viewer uses Three.js, a Rust/WASM XML parser, and custom GLSL shaders. All processing happens locally — no server upload.</p>
+          <h3 class="modal-section-title" data-i18n="modal_about">About CGV Web</h3>
+          <p class="modal-text" data-i18n="modal_about_text">CGV Web is developed by the <strong>NIPSCERN Signal Processing Laboratory</strong> (Núcleo de Instrumentação e Processamento de Sinais) at UFJF, Brazil, in collaboration with the ATLAS experiment at CERN. The viewer uses Three.js, a Rust/WASM XML parser, and custom GLSL shaders. All processing happens locally — no server upload.</p>
           <div class="modal-links">
             <a href="https://nipscern.com" target="_blank" rel="noopener" class="modal-link">
-              <i data-lucide="external-link" style="width:11px;height:11px"></i>NIPS Lab
+              <i data-lucide="external-link" style="width:11px;height:11px"></i>
+              <span data-i18n="modal_link_nips">NIPS Lab</span>
             </a>
             <a href="https://nipscern.com/projects/cgvweb" target="_blank" rel="noopener" class="modal-link">
-              <i data-lucide="external-link" style="width:11px;height:11px"></i>CGV Project
+              <i data-lucide="external-link" style="width:11px;height:11px"></i>
+              <span data-i18n="modal_link_cgv">CGV Project</span>
             </a>
             <a href="https://atlas.cern" target="_blank" rel="noopener" class="modal-link">
-              <i data-lucide="external-link" style="width:11px;height:11px"></i>ATLAS / CERN
+              <i data-lucide="external-link" style="width:11px;height:11px"></i>
+              <span data-i18n="modal_link_atlas">ATLAS / CERN</span>
             </a>
           </div>
         </div>
@@ -714,20 +671,22 @@
     <div id="tour-welcome" class="tour-card tour-centered">
       <div class="tour-card-header">
         <div class="tour-badge">CGV Web</div>
-        <div class="tour-step-indicator" id="tour-step-indicator">Step 1 / 9</div>
+        <div class="tour-step-indicator" id="tour-step-indicator">
+          <span data-i18n="tour_step">Step</span> 1 <span data-i18n="tour_of">/</span> 9
+        </div>
       </div>
       <div class="tour-orb" aria-hidden="true">⊕</div>
       <h2 id="tour-title" class="tour-title"></h2>
       <div id="tour-body" class="tour-body"></div>
       <div class="tour-actions">
-        <button id="tour-skip" class="tour-btn-ghost" type="button">Skip tour</button>
+        <button id="tour-skip" class="tour-btn-ghost" type="button" data-i18n="tour_skip">Skip tour</button>
         <label class="tour-no-show">
           <input type="checkbox" id="tour-no-show" />
-          <span>Don't show again</span>
+          <span data-i18n="tour_no_show">Don't show again</span>
         </label>
         <div class="tour-nav">
           <button id="tour-prev" class="tour-btn-sec" type="button" style="display:none">←</button>
-          <button id="tour-next" class="tour-btn-pri" type="button">Next →</button>
+          <button id="tour-next" class="tour-btn-pri" type="button" data-i18n="tour_next">Next →</button>
         </div>
       </div>
     </div>
@@ -735,14 +694,16 @@
     <!-- Floating popover -->
     <div id="tour-popover" class="tour-popover">
       <div class="pop-arrow" id="tour-arrow"></div>
-      <div class="pop-step-indicator" id="pop-step-indicator">Step 2 / 9</div>
+      <div class="pop-step-indicator" id="pop-step-indicator">
+        <span data-i18n="tour_step">Step</span> 2 <span data-i18n="tour_of">/</span> 9
+      </div>
       <h3 id="tour-pop-title" class="pop-title"></h3>
       <div id="tour-pop-body" class="pop-body"></div>
       <div class="pop-actions">
-        <button id="pop-skip" class="tour-btn-ghost" type="button">Skip</button>
+        <button id="pop-skip" class="tour-btn-ghost" type="button" data-i18n="tour_skip">Skip</button>
         <div class="tour-nav">
           <button id="pop-prev" class="tour-btn-sec" type="button">←</button>
-          <button id="pop-next" class="tour-btn-pri" type="button">Next →</button>
+          <button id="pop-next" class="tour-btn-pri" type="button">→</button>
         </div>
       </div>
     </div>
@@ -752,15 +713,20 @@
 
   </div>
 
+  <!-- main.js initializes i18n first (top-level await), then renders -->
   <script type="module" src="main.js"></script>
   <script type="module" src="tour.js"></script>
+
   <script>
     // Initialise Lucide icons after DOM is ready
     document.addEventListener('DOMContentLoaded', () => {
       if (window.lucide) lucide.createIcons();
     });
-    // Also run after modules load (icons added dynamically by JS)
     window.addEventListener('load', () => {
+      if (window.lucide) lucide.createIcons();
+    });
+    // Re-run icons after language change (switcher buttons use icons too)
+    document.addEventListener('cgv:langchange', () => {
       if (window.lucide) lucide.createIcons();
     });
   </script>

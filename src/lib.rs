@@ -242,14 +242,22 @@ fn in_barrel_crack(eta_abs: f64, is_barrel: bool) -> bool {
     else         { eta_abs < ENDCAP_ETA_MIN }
 }
 
-/// Mapeamento energia normalizada t∈[0,1] → cor RGB (escala "jet" de física).
-///   t=0 → azul (energia mínima)  |  t=1 → vermelho (energia máxima)
+/// ATLAS energy colormap: navy → electric blue → cyan → lime → amber → warm white.
+/// Matches the GLSL atlasColor() function in the fragment shader exactly.
+///   t=0.00 → deep navy        |  t=1.00 → warm white
+/// Used for: wireframe picking colour reference and vertex colour attribute.
 fn energy_color(t: f32) -> (f32, f32, f32) {
     let t = t.clamp(0.0, 1.0);
-    if      t < 0.25 { let u = t / 0.25;           (0.0,   u, 1.0)       } // azul→ciano
-    else if t < 0.50 { let u = (t - 0.25) / 0.25;  (0.0, 1.0, 1.0 - u)  } // ciano→verde
-    else if t < 0.75 { let u = (t - 0.50) / 0.25;  ( u,  1.0, 0.0)       } // verde→amarelo
-    else             { let u = (t - 0.75) / 0.25;   (1.0, 1.0 - u, 0.0)  } // amarelo→verm.
+    if      t < 0.18 { let u = t / 0.18;           lerp3((0.01, 0.02, 0.18), (0.00, 0.22, 1.00), u) }
+    else if t < 0.40 { let u = (t - 0.18) / 0.22;  lerp3((0.00, 0.22, 1.00), (0.00, 0.92, 0.88), u) }
+    else if t < 0.62 { let u = (t - 0.40) / 0.22;  lerp3((0.00, 0.92, 0.88), (0.55, 1.00, 0.00), u) }
+    else if t < 0.82 { let u = (t - 0.62) / 0.20;  lerp3((0.55, 1.00, 0.00), (1.00, 0.52, 0.00), u) }
+    else             { let u = (t - 0.82) / 0.18;   lerp3((1.00, 0.52, 0.00), (1.00, 0.97, 0.72), u) }
+}
+
+#[inline(always)]
+fn lerp3(a: (f32, f32, f32), b: (f32, f32, f32), t: f32) -> (f32, f32, f32) {
+    (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t)
 }
 
 // =============================================================================
@@ -871,6 +879,258 @@ pub fn process_xml_data(xml_bytes: &[u8]) -> Result<JsValue, JsValue> {
     Reflect::set(&obj, &"count".into(),        &(n as f64).into()).unwrap();
     Reflect::set(&obj, &"maxEnergy".into(),    &max_e.into()).unwrap();
     Reflect::set(&obj, &"minEnergy".into(),    &min_e.into()).unwrap();
+
+    Ok(obj.into())
+}
+
+// =============================================================================
+// PROCESS_ROOT_GEOMETRY — constrói buffers GPU a partir de malha já tesselada
+//
+// Chamado pelo JS depois que o JSRoot parseia o arquivo .root e extrai as
+// malhas de cada volume detector como arrays de vértices e índices.
+//
+// Parâmetros (todos em typed arrays JavaScript):
+//   positions_mm  — [x0,y0,z0, x1,y1,z1, ...] em mm, world-space, nv×3
+//   tri_indices   — [i0,i1,i2, ...] índices globalmente offsetados, ni=nt×3
+//   cell_vcounts  — vértices por célula, length = nc
+//   cell_centers  — [cx0,cy0,cz0, ...] centros em mm fornecidos pelo JS, nc×3
+//   cell_types    — tipo detector por célula: 0=TileCal, 1=HEC, 2=LAr, 3=outro
+//
+// Retorno: mesmo formato de objeto JS que process_xml_data, com campo extra:
+//   .vert_offsets — Uint32Array(nc+1) com offsets de vértice por célula
+//                   (necessário para applyCombinedFilter com contagens variáveis)
+// =============================================================================
+
+/// Energia representativa por tipo de sub-detector (mapa para a paleta ATLAS).
+#[inline]
+fn cell_type_energy(t: u8) -> f32 {
+    match t {
+        0 => 0.28, // TileCal → azul-ciano
+        1 => 0.60, // HEC    → ciano-lime
+        2 => 0.84, // LAr EM → âmbar
+        _ => 0.45, // desconhecido → ciano médio
+    }
+}
+
+/// Camada lógica compatível com LAYER_DET do JS (0=TileCal, 14=HEC, 18=LAr).
+#[inline]
+fn cell_type_to_layer(t: u8) -> u8 {
+    match t {
+        0 => 0,
+        1 => 14,
+        _ => 18,
+    }
+}
+
+#[wasm_bindgen]
+pub fn process_root_geometry(
+    positions_mm: &[f32],  // nv×3 — posições world-space em mm
+    tri_indices:  &[u32],  // ni   — índices de triângulo globalmente offsetados
+    cell_vcounts: &[u32],  // nc   — vértices por célula
+    cell_centers: &[f32],  // nc×3 — centros em mm (fornecidos pelo JS)
+    cell_types:   &[u8],   // nc   — tipo detector
+) -> Result<JsValue, JsValue> {
+    console_error_panic_hook::set_once();
+
+    let nc = cell_vcounts.len();
+    let nv = positions_mm.len() / 3;
+    let ni = tri_indices.len();
+
+    const S: f32 = 0.001; // mm → metros
+
+    // ── 1. Converte posições para metros ──────────────────────────────────────
+    let mut positions = vec![0f32; nv * 3];
+    for i in 0..nv * 3 { positions[i] = positions_mm[i] * S; }
+
+    // ── 2. Normais por vértice (acumula normais de face, depois normaliza) ─────
+    let mut normals = vec![0f32; nv * 3];
+    let nt = ni / 3;
+    for t in 0..nt {
+        let i0 = tri_indices[t * 3]     as usize;
+        let i1 = tri_indices[t * 3 + 1] as usize;
+        let i2 = tri_indices[t * 3 + 2] as usize;
+        if i0 >= nv || i1 >= nv || i2 >= nv { continue; }
+
+        let pa = [positions[i0*3], positions[i0*3+1], positions[i0*3+2]];
+        let pb = [positions[i1*3], positions[i1*3+1], positions[i1*3+2]];
+        let pc = [positions[i2*3], positions[i2*3+1], positions[i2*3+2]];
+        let ab = [pb[0]-pa[0], pb[1]-pa[1], pb[2]-pa[2]];
+        let ac = [pc[0]-pa[0], pc[1]-pa[1], pc[2]-pa[2]];
+        let n  = cross3(ab, ac);
+        for i in [i0, i1, i2] {
+            normals[i*3]   += n[0];
+            normals[i*3+1] += n[1];
+            normals[i*3+2] += n[2];
+        }
+    }
+    for i in 0..nv {
+        let n = normalize3([normals[i*3], normals[i*3+1], normals[i*3+2]]);
+        normals[i*3] = n[0]; normals[i*3+1] = n[1]; normals[i*3+2] = n[2];
+    }
+
+    // ── 3. Tabela de offsets de vértices por célula (prefix sum) ─────────────
+    let mut vert_offsets = vec![0u32; nc + 1];
+    for i in 0..nc { vert_offsets[i + 1] = vert_offsets[i] + cell_vcounts[i]; }
+
+    // ── 4. Atributos por vértice (cor, energia, iid, active) ─────────────────
+    let mut vert_colors = vec![0f32; nv * 3];
+    let mut vert_energ  = vec![0f32; nv];
+    let mut iids        = vec![0f32; nv];
+    let mut actives     = vec![1f32; nv];
+
+    for ci in 0..nc {
+        let t   = cell_type_energy(cell_types.get(ci).copied().unwrap_or(3));
+        let (r, g, b) = energy_color(t);
+        let vs  = vert_offsets[ci]   as usize;
+        let ve  = vert_offsets[ci+1] as usize;
+        for v in vs..ve {
+            vert_colors[v*3]   = r;
+            vert_colors[v*3+1] = g;
+            vert_colors[v*3+2] = b;
+            vert_energ[v]      = t;
+            iids[v]            = ci as f32;
+            actives[v]         = 1.0;
+        }
+    }
+
+    // ── 5. Metadados por célula ───────────────────────────────────────────────
+    let mut energies   = vec![0f32; nc];
+    let mut layers_out = vec![0f32; nc];
+    let mut etas_out   = vec![0f32; nc];
+    let mut phis_out   = vec![0f32; nc];
+
+    for ci in 0..nc {
+        let ty = cell_types.get(ci).copied().unwrap_or(3);
+        energies[ci]   = cell_type_energy(ty);
+        layers_out[ci] = cell_type_to_layer(ty) as f32;
+        etas_out[ci]   = 0.0;
+        phis_out[ci]   = 0.0;
+    }
+
+    // ── 6. AABB por célula → 8 cantos ARB8 + centros + raios ─────────────────
+    let mut arb8    = vec![0f32; nc * 24];
+    let mut centers = vec![0f32; nc * 3];
+    let mut radii   = vec![0f32; nc];
+
+    for ci in 0..nc {
+        let vs = vert_offsets[ci]   as usize;
+        let ve = vert_offsets[ci+1] as usize;
+
+        if vs == ve {
+            // Célula vazia: usa centro fornecido pelo JS
+            if ci * 3 + 2 < cell_centers.len() {
+                centers[ci*3]   = cell_centers[ci*3]   * S;
+                centers[ci*3+1] = cell_centers[ci*3+1] * S;
+                centers[ci*3+2] = cell_centers[ci*3+2] * S;
+            }
+            continue;
+        }
+
+        let (mut mnx, mut mny, mut mnz) = (f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let (mut mxx, mut mxy, mut mxz) = (f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+
+        for v in vs..ve {
+            let px = positions[v*3]; let py = positions[v*3+1]; let pz = positions[v*3+2];
+            if px < mnx { mnx = px; } if px > mxx { mxx = px; }
+            if py < mny { mny = py; } if py > mxy { mxy = py; }
+            if pz < mnz { mnz = pz; } if pz > mxz { mxz = pz; }
+        }
+
+        let cx = (mnx + mxx) * 0.5;
+        let cy = (mny + mxy) * 0.5;
+        let cz = (mnz + mxz) * 0.5;
+        centers[ci*3] = cx; centers[ci*3+1] = cy; centers[ci*3+2] = cz;
+
+        let dx = (mxx - mnx) * 0.5;
+        let dy = (mxy - mny) * 0.5;
+        let dz = (mxz - mnz) * 0.5;
+        radii[ci] = (dx*dx + dy*dy + dz*dz).sqrt();
+
+        // 8 cantos AABB no layout ARB8
+        let corners: [[f32; 3]; 8] = [
+            [mnx, mny, mnz], [mnx, mny, mxz],
+            [mxx, mny, mnz], [mxx, mny, mxz],
+            [mnx, mxy, mnz], [mnx, mxy, mxz],
+            [mxx, mxy, mnz], [mxx, mxy, mxz],
+        ];
+        let base = ci * 24;
+        for (j, c) in corners.iter().enumerate() {
+            arb8[base + j*3]   = c[0];
+            arb8[base + j*3+1] = c[1];
+            arb8[base + j*3+2] = c[2];
+        }
+    }
+
+    // ── 7. Bounding sphere da cena ────────────────────────────────────────────
+    let bsphere = if nc > 0 {
+        let inv = 1.0 / nc as f32;
+        let bx: f32 = (0..nc).map(|i| centers[i*3]  ).sum::<f32>() * inv;
+        let by: f32 = (0..nc).map(|i| centers[i*3+1]).sum::<f32>() * inv;
+        let bz: f32 = (0..nc).map(|i| centers[i*3+2]).sum::<f32>() * inv;
+        let br = (0..nc).map(|i| {
+            let dx = centers[i*3]   - bx;
+            let dy = centers[i*3+1] - by;
+            let dz = centers[i*3+2] - bz;
+            (dx*dx + dy*dy + dz*dz).sqrt() + radii[i]
+        }).fold(0.0f32, f32::max);
+        [bx, by, bz, br]
+    } else { [0.0f32; 4] };
+
+    // ── 8. Atualiza PICK_STATE para pick_cell_ray funcionar em modo ROOT ──────
+    PICK_STATE.with(|ps| {
+        let mut ps = ps.borrow_mut();
+        ps.centers  = centers[..nc*3].to_vec();
+        ps.radii    = radii[..nc].to_vec();
+        ps.energies = energies[..nc].to_vec();
+        ps.count    = nc;
+    });
+
+    // ── 9. Empacota em TypedArrays JavaScript ─────────────────────────────────
+    macro_rules! f32_arr {
+        ($v:expr, $len:expr) => {{
+            let a = Float32Array::new_with_length($len as u32);
+            a.copy_from(&$v[..$len]);
+            a.into()
+        }};
+    }
+    macro_rules! u32_arr {
+        ($v:expr, $len:expr) => {{
+            let a = Uint32Array::new_with_length($len as u32);
+            a.copy_from(&$v[..$len]);
+            a.into()
+        }};
+    }
+
+    let idx_arr = Uint32Array::new_with_length(ni as u32);
+    idx_arr.copy_from(&tri_indices[..ni]);
+
+    let bsphere_arr = Float32Array::new_with_length(4);
+    bsphere_arr.copy_from(&bsphere);
+
+    let obj = Object::new();
+    // Buffers GPU
+    Reflect::set(&obj, &"positions".into(),    &f32_arr!(positions,   nv*3)).unwrap();
+    Reflect::set(&obj, &"normals".into(),      &f32_arr!(normals,     nv*3)).unwrap();
+    Reflect::set(&obj, &"vert_colors".into(),  &f32_arr!(vert_colors, nv*3)).unwrap();
+    Reflect::set(&obj, &"vert_energ".into(),   &f32_arr!(vert_energ,  nv)).unwrap();
+    Reflect::set(&obj, &"iids".into(),         &f32_arr!(iids,        nv)).unwrap();
+    Reflect::set(&obj, &"actives".into(),      &f32_arr!(actives,     nv)).unwrap();
+    Reflect::set(&obj, &"indices".into(),      &idx_arr.into()).unwrap();
+    // Dados por célula
+    Reflect::set(&obj, &"arb8".into(),         &f32_arr!(arb8,        nc*24)).unwrap();
+    Reflect::set(&obj, &"energies".into(),     &f32_arr!(energies,    nc)).unwrap();
+    Reflect::set(&obj, &"layers".into(),       &f32_arr!(layers_out,  nc)).unwrap();
+    Reflect::set(&obj, &"etas".into(),         &f32_arr!(etas_out,    nc)).unwrap();
+    Reflect::set(&obj, &"phis".into(),         &f32_arr!(phis_out,    nc)).unwrap();
+    Reflect::set(&obj, &"centers".into(),      &f32_arr!(centers,     nc*3)).unwrap();
+    Reflect::set(&obj, &"radii".into(),        &f32_arr!(radii,       nc)).unwrap();
+    Reflect::set(&obj, &"bsphere".into(),      &bsphere_arr.into()).unwrap();
+    // Offsets variáveis (para applyCombinedFilter com ROOT)
+    Reflect::set(&obj, &"vert_offsets".into(), &u32_arr!(vert_offsets, nc+1)).unwrap();
+    // Escalares
+    Reflect::set(&obj, &"count".into(),        &(nc as f64).into()).unwrap();
+    Reflect::set(&obj, &"minEnergy".into(),    &0.0_f64.into()).unwrap();
+    Reflect::set(&obj, &"maxEnergy".into(),    &1000.0_f64.into()).unwrap();
 
     Ok(obj.into())
 }

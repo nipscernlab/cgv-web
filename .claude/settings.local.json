@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wasm-pack --version)",
+      "Bash(cargo --version)",
+      "Bash(node -e \"const t=require\\(''./i18n/translations.json''\\); console.log\\(Object.keys\\(t\\)\\); console.log\\(Object.keys\\(t.en\\).slice\\(0,5\\)\\); console.log\\(Object.keys\\(t.fr\\).slice\\(0,5\\)\\);\")"
+    ]
+  }
+}

@@ -2,6 +2,7 @@
 //  CGV-WEB v3.0 — main.js
 //  NIPSCERN Laboratory × ATLAS / CERN
 // ============================================================
+import { init as i18nInit, t } from './i18n/i18n.js';
 import * as THREE from 'three';
 import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
@@ -9,10 +10,13 @@ import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass }        from 'three/addons/postprocessing/SMAAPass.js';
-import init, { process_xml_data, pick_cell_ray } from './pkg/cgv_web.js';
+import init, { process_xml_data, process_root_geometry, pick_cell_ray } from './pkg/cgv_web.js';
 import { createIcons, icons } from 'lucide';
 createIcons({ icons });
 
+// Initialize i18n before anything renders, then the WASM module
+await i18nInit();
+window.cgvI18n = { t };   // expose for tour.js
 await init();
 
 // ──────────────────────────────────────────────────────────
@@ -52,7 +56,6 @@ const btnSnap         = document.getElementById('btn-snapshot');
 const btnHelp         = document.getElementById('btn-help');
 const modalOv         = document.getElementById('modal-overlay');
 const modalCloseBtn   = document.getElementById('modal-close-btn');
-const ghostLbl        = document.getElementById('ghost-lbl');
 const cellTooltip     = document.getElementById('cell-tooltip');
 const ctEnergy        = document.getElementById('ct-energy');
 const ctLayer         = document.getElementById('ct-layer');
@@ -75,6 +78,8 @@ const filenameText    = document.getElementById('filename-text');
 const metaFilename    = document.getElementById('meta-filename');
 const dzBrowseBtn     = document.getElementById('dz-browse-btn');
 const dzSampleBtn     = document.getElementById('dz-sample-btn');
+const dzRootBtn       = document.getElementById('dz-root-btn');
+const rootFileInput   = document.getElementById('root-file-input');
 const loadingBar      = document.getElementById('loading-bar');
 const loadingFill     = document.getElementById('loading-fill');
 const loadingLabel    = document.getElementById('loading-label');
@@ -122,16 +127,16 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x000811);
+renderer.setClearColor(0x00060e);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;   // slightly reduced for balanced look
+renderer.toneMappingExposure = 1.12;
 renderer.localClippingEnabled = true;
 
 // ──────────────────────────────────────────────────────────
 //  Scene & Camera
 // ──────────────────────────────────────────────────────────
 const scene  = new THREE.Scene();
-scene.fog    = new THREE.FogExp2(0x000811, 0.006);
+scene.fog    = new THREE.FogExp2(0x00060e, 0.0038);
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.01, 300);
 camera.position.set(10, 5, 16);
@@ -143,13 +148,12 @@ camera.lookAt(0, 0, 0);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 
-// ▼ Bloom values significantly reduced for premium scientific look
-// strength: 0.60→0.22, radius: 0.50→0.38, threshold: 0.34→0.52
+// Bloom: energetic cells glow — calibrated for CERN visual impact
 const bloomPass = new UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  0.22,  // strength  — was 0.60 (too aggressive)
-  0.38,  // radius    — keeps soft halo without bleeding
-  0.52,  // threshold — only bright cells bloom, not geometry
+  0.35,  // strength  — slightly stronger for hot cell glow
+  0.50,  // radius    — wider soft corona
+  0.46,  // threshold — bloom activates at slightly lower luminance
 );
 composer.addPass(bloomPass);
 
@@ -175,23 +179,31 @@ controls.autoRotate      = true;
 controls.autoRotateSpeed = 0.22;
 
 // ──────────────────────────────────────────────────────────
-//  Lighting — balanced, artistic
+//  Lighting — CERN artistic setup
 // ──────────────────────────────────────────────────────────
-scene.add(new THREE.AmbientLight(0x001828, 1.4));
 
-const sun = new THREE.DirectionalLight(0xffffff, 1.75);
+// Hemisphere: deep space sky (blue-black) over dark ground
+scene.add(new THREE.HemisphereLight(0x0a1830, 0x030608, 1.1));
+
+// Key light: clean cool-white from upper-right
+const sun = new THREE.DirectionalLight(0xd4eaff, 2.4);
 sun.position.set(8, 18, 10);
 scene.add(sun);
 
-// Warm fill from below-side for depth
-const warmFill = new THREE.DirectionalLight(0xffc870, 0.28);
-warmFill.position.set(-14, -2, 9);
+// Warm accent fill: orange-gold from lower-right for energy glow
+const warmFill = new THREE.DirectionalLight(0xff8830, 0.42);
+warmFill.position.set(12, -6, 8);
 scene.add(warmFill);
 
-// Cool blue-fill from rear
-const coolFill = new THREE.DirectionalLight(0x1a3050, 0.36);
-coolFill.position.set(-14, -4, -8);
+// Cool blue-teal from rear-left: CERN aesthetic depth
+const coolFill = new THREE.DirectionalLight(0x1a80c0, 0.55);
+coolFill.position.set(-16, -2, -10);
 scene.add(coolFill);
+
+// Subtle top-down fill for the barrel crown
+const topFill = new THREE.DirectionalLight(0x304878, 0.28);
+topFill.position.set(0, 20, 0);
+scene.add(topFill);
 
 // ──────────────────────────────────────────────────────────
 //  Central beam axis + North marker
@@ -257,87 +269,6 @@ clipSlider.addEventListener('input', () => {
   applyCombinedFilter();
 });
 
-// ──────────────────────────────────────────────────────────
-//  Ghost calorimeter
-// ──────────────────────────────────────────────────────────
-let ghostGrp = null;
-
-function buildGhost() {
-  if (ghostGrp) { scene.remove(ghostGrp); ghostGrp = null; }
-  const g = new THREE.Group();
-
-  const shell = (r, hl, zc, op, col) => {
-    const m = new THREE.Mesh(
-      new THREE.CylinderGeometry(r, r, hl * 2, 80, 1, true),
-      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, side: THREE.DoubleSide, depthWrite: false }),
-    );
-    m.rotation.x = Math.PI / 2; m.position.z = zc;
-    g.add(m);
-  };
-  const ring = (rI, rO, z, op, col) => {
-    const m = new THREE.Mesh(
-      new THREE.RingGeometry(rI, rO, 80),
-      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, side: THREE.DoubleSide, depthWrite: false }),
-    );
-    m.rotation.x = Math.PI / 2; m.position.z = z;
-    g.add(m);
-  };
-
-  const G = 0.048, E = 0.12;
-  const EM = 0x0d3a4a, TI = 0x0a2038, HC = 0x06121c;
-
-  shell(1.42, 3.17,  0, G,       EM); shell(1.98, 3.17, 0, G * 0.6, EM);
-  for (const z of [3.17, -3.17]) ring(1.42, 1.98, z, E * 0.5, EM);
-  shell(2.30, 3.82,  0, G * 0.85, TI); shell(3.82, 3.82, 0, G * 0.42, TI);
-  for (const z of [3.82, -3.82]) ring(2.30, 3.82, z, E * 0.28, TI);
-
-  for (const s of [1, -1]) {
-    const zc = s * 3.745;
-    shell(0.33, 0.065, zc, G * 1.1, EM); shell(2.10, 0.065, zc, G * 1.1, EM);
-    ring(0.33, 2.10, s * 3.68, E * 0.48, EM); ring(0.33, 2.10, s * 3.81, E * 0.36, EM);
-  }
-  for (const s of [1, -1]) {
-    const z0 = s * 3.20, z1 = s * 5.20, zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
-    shell(2.30, hl, zc, G, TI); shell(3.82, hl, zc, G * 0.40, TI);
-    ring(2.30, 3.82, z0, E * 0.26, TI); ring(2.30, 3.82, z1, E * 0.26, TI);
-  }
-  for (const s of [1, -1]) {
-    const z0 = s * 4.35, z1 = s * 6.05, zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
-    shell(0.37, hl, zc, G * 0.62, HC); shell(2.00, hl, zc, G * 0.62, HC);
-    ring(0.37, 2.00, z0, E * 0.22, HC); ring(0.37, 2.00, z1, E * 0.22, HC);
-  }
-  for (const s of [1, -1]) {
-    const z0 = s * 4.60, z1 = s * 5.60, zc = (z0 + z1) / 2, hl = Math.abs(z1 - z0) / 2;
-    shell(0.05, hl, zc, G * 0.82, HC); shell(0.45, hl, zc, G * 0.82, HC);
-    ring(0.05, 0.45, z0, E * 0.32, HC); ring(0.05, 0.45, z1, E * 0.32, HC);
-  }
-
-  g.add(new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, -9.5), new THREE.Vector3(0, 0, 9.5),
-    ]),
-    new THREE.LineBasicMaterial({ color: 0x0a2030, transparent: true, opacity: 0.45 }),
-  ));
-
-  const eqRing = new THREE.Mesh(
-    new THREE.RingGeometry(4.68, 4.72, 96),
-    new THREE.MeshBasicMaterial({ color: 0x0a2a3a, side: THREE.DoubleSide, transparent: true, opacity: 0.16, depthWrite: false }),
-  );
-  eqRing.rotation.x = Math.PI / 2;
-  g.add(eqRing);
-
-  const coneGeo = new THREE.ConeGeometry(0.065, 0.28, 8);
-  const mk = (col, z, rx) => {
-    const m = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.65 }));
-    m.position.z = z; m.rotation.x = rx; return m;
-  };
-  g.add(mk(0x70c8b0,  9.0, -Math.PI / 2));
-  g.add(mk(0xc87860, -9.0,  Math.PI / 2));
-
-  scene.add(g);
-  ghostGrp = g;
-}
-buildGhost();
 
 // ──────────────────────────────────────────────────────────
 //  Custom ShaderMaterial
@@ -354,12 +285,11 @@ const vertexShader = /* glsl */`
   attribute float a_energy;
   attribute float a_active;
   attribute float a_iid;
-  attribute vec3  a_normal;   // normal plana pré-computada por face no CPU
+  attribute vec3  a_normal;
 
   varying float v_energy;
   varying float v_active;
   varying float v_iid;
-  varying vec3  v_col;
   varying vec3  v_worldPos;
   varying vec3  v_normal;
 
@@ -367,8 +297,7 @@ const vertexShader = /* glsl */`
     v_energy   = a_energy;
     v_active   = a_active;
     v_iid      = a_iid;
-    v_col      = color;
-    v_normal   = normalize(normalMatrix * a_normal);  // transforma para view-space
+    v_normal   = normalize(normalMatrix * a_normal);
 
     vec4 wp    = modelMatrix * vec4(position, 1.0);
     v_worldPos = wp.xyz;
@@ -388,9 +317,20 @@ const fragmentShader = /* glsl */`
   varying float v_energy;
   varying float v_active;
   varying float v_iid;
-  varying vec3  v_col;
   varying vec3  v_worldPos;
   varying vec3  v_normal;
+
+  // ── ATLAS energy colormap: deep navy → electric blue → cyan → lime → amber → white ──
+  vec3 atlasColor(float t) {
+    t = clamp(t, 0.0, 1.0);
+    vec3 c;
+    if      (t < 0.18) { c = mix(vec3(0.01, 0.02, 0.18), vec3(0.00, 0.22, 1.00), t / 0.18); }
+    else if (t < 0.40) { c = mix(vec3(0.00, 0.22, 1.00), vec3(0.00, 0.92, 0.88), (t - 0.18) / 0.22); }
+    else if (t < 0.62) { c = mix(vec3(0.00, 0.92, 0.88), vec3(0.55, 1.00, 0.00), (t - 0.40) / 0.22); }
+    else if (t < 0.82) { c = mix(vec3(0.55, 1.00, 0.00), vec3(1.00, 0.52, 0.00), (t - 0.62) / 0.20); }
+    else               { c = mix(vec3(1.00, 0.52, 0.00), vec3(1.00, 0.97, 0.72), (t - 0.82) / 0.18); }
+    return c;
+  }
 
   void main() {
     #include <clipping_planes_fragment>
@@ -398,29 +338,50 @@ const fragmentShader = /* glsl */`
     if (v_active < 0.5)         discard;
     if (v_energy < u_threshold) discard;
 
-    // Normal estável vinda do CPU — sem dFdx/dFdy
-    vec3 N = normalize(v_normal);
+    // Correct normal for back-facing geometry (DoubleSide rendering)
+    vec3 N = normalize(gl_FrontFacing ? v_normal : -v_normal);
 
-    vec3 L1 = normalize(vec3(0.50,  0.90, 0.45));
-    vec3 L2 = normalize(vec3(-0.70, -0.25, -0.55));
-    float d1 = max(dot(N, L1), 0.0) * 0.52;
-    float d2 = max(dot(N, L2), 0.0) * 0.10;
+    // Key light: cool-white from upper-right
+    vec3 L1 = normalize(vec3(0.45,  0.85,  0.42));
+    // Fill light: warm-blue from lower-left
+    vec3 L2 = normalize(vec3(-0.60, -0.30, -0.50));
+    // Accent fill: subtle uplighting from below
+    vec3 L3 = normalize(vec3(0.18, -0.72,  0.50));
 
-    vec3 V    = normalize(cameraPosition - v_worldPos);
-    float rim = pow(1.0 - max(dot(V, N), 0.0), 5.0) * 0.07;
+    float d1 = max(dot(N, L1), 0.0) * 0.58;
+    float d2 = max(dot(N, L2), 0.0) * 0.14;
+    float d3 = max(dot(N, L3), 0.0) * 0.09;
 
-    vec3 lit = v_col * (0.28 + d1 + d2) + vec3(rim * 0.18);
+    // View direction
+    vec3 V = normalize(cameraPosition - v_worldPos);
 
-    float sp = pow(max(dot(reflect(-L1, N), V), 0.0), 48.0) * 0.04 * v_energy;
-    lit += vec3(0.85, 0.68, 0.20) * sp;
+    // Rim light: energetic cells glow at silhouette edges
+    float rim = pow(1.0 - max(dot(V, N), 0.0), 3.5) * 0.18;
 
-    float boost = 1.0 + v_energy * v_energy * 0.55;
+    // Energy-based beautiful color
+    vec3 baseCol = atlasColor(v_energy);
+
+    // Lighting accumulation
+    float ambient = 0.20;
+    vec3 lit = baseCol * (ambient + d1 + d2 + d3);
+
+    // Rim emission tinted by cell color
+    lit += baseCol * rim * (0.4 + v_energy * 1.2);
+
+    // Blinn-Phong specular: warm gold shimmer on high-energy cells
+    vec3 H  = normalize(L1 + V);
+    float sp = pow(max(dot(N, H), 0.0), 72.0) * 0.10 * (0.2 + v_energy * 0.8);
+    lit += vec3(0.92, 0.78, 0.28) * sp;
+
+    // Energy boost: brightest cells approach white
+    float boost = 1.0 + v_energy * v_energy * 0.72;
     lit *= boost;
 
+    // Highlight picked cell with a warm pulse
     float isHot = step(u_highlight - 0.5, v_iid) * step(v_iid, u_highlight + 0.5);
-    lit = mix(lit, lit * 1.35 + vec3(0.05, 0.03, 0.0), isHot * 0.55);
+    lit = mix(lit, lit * 1.45 + vec3(0.08, 0.05, 0.01), isHot * 0.65);
 
-    gl_FragColor = vec4(lit, 0.92);
+    gl_FragColor = vec4(lit, 0.95);
   }
 `;
 
@@ -433,6 +394,8 @@ let cellLayerIds     = null;
 let cellEtaIds       = null;
 let cellPhiIds       = null;
 let activeAttr       = null;
+// Uint32Array(nc+1): vertex start per cell. null = fixed 24 verts (XML mode).
+let cellVertOffsets  = null;
 const detEnabled     = { tile: true, hec: true, lar: true };
 
 // ──────────────────────────────────────────────────────────
@@ -602,11 +565,12 @@ function buildMesh(result) {
   cellCount = n;
 
   // ── Metadados por célula (para filtros, tooltip e wireframe) ──────────────
-  cellNormEnergies = result.energies  ?? null;
-  cellLayerIds     = result.layers    ?? null;
-  cellEtaIds       = result.etas      ?? null;
-  cellPhiIds       = result.phis      ?? null;
-  cellArb8Verts    = result.arb8      ?? null;
+  cellNormEnergies = result.energies     ?? null;
+  cellLayerIds     = result.layers      ?? null;
+  cellEtaIds       = result.etas        ?? null;
+  cellPhiIds       = result.phis        ?? null;
+  cellArb8Verts    = result.arb8        ?? null;
+  cellVertOffsets  = result.vert_offsets ?? null;
   cellZPositions   = result.centers
     ? (() => {
         // Extrai coluna Z dos centros (índice 2 de cada triplet)
@@ -659,14 +623,14 @@ function buildMesh(result) {
     vertexShader,
     fragmentShader,
     uniforms:            shaderUniforms,
-    vertexColors:        true,
     transparent:         true,
     depthWrite:          true,
     clipping:            true,
     side:                THREE.DoubleSide,
+    // Polygon offset: prevents Z-fighting between solid mesh and wireframe overlay
     polygonOffset:       true,
-    polygonOffsetFactor: 2,
-    polygonOffsetUnits:  2,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits:  1,
   });
 
   // ── Mesh ──────────────────────────────────────────────────────────────────
@@ -708,8 +672,16 @@ function applyCombinedFilter() {
     const zOk    = cellZPositions ? Math.abs(cellZPositions[i]) <= currentClipZ : true;
     const val    = (detOk && zOk) ? 1 : 0;
     activeAttr[i] = val;
-    const base   = i * 24;
-    for (let j = 0; j < 24; j++) att.array[base + j] = val;
+    if (cellVertOffsets) {
+      // ROOT geometry: variable vertex count per cell
+      const vs = cellVertOffsets[i];
+      const ve = cellVertOffsets[i + 1];
+      for (let v = vs; v < ve; v++) att.array[v] = val;
+    } else {
+      // XML geometry: fixed 24 verts per cell
+      const base = i * 24;
+      for (let j = 0; j < 24; j++) att.array[base + j] = val;
+    }
   }
   att.needsUpdate = true;
 
@@ -795,9 +767,9 @@ function applyThreshold(f, tipX, tipY) {
 
   const pct   = Math.round(frac * 100);
   const e     = minE + frac * (maxE - minE);
-  const label = frac > 0 ? `\u2265\u00a0${fmtE(e)}` : 'All cells';
+  const label = frac > 0 ? `\u2265\u00a0${fmtE(e)}` : t('slider_all');
 
-  threshDisp.textContent = frac > 0 ? fmtE(e) : 'All';
+  threshDisp.textContent = frac > 0 ? fmtE(e) : t('threshold_all');
   tipVal.textContent     = label;
   tipPct.textContent     = `${pct}%`;
 
@@ -1125,10 +1097,9 @@ async function loadFile(file, xmlTextOverride = null) {
   const fname  = file?.name ?? 'sample-event.xml';
   const fnBase = fname.replace(/\.xml$/i, '');
 
-  toast(`Reading ${fname}…`);
-  showLoading('Reading file…', 15);
+  toast(`${t('toast_loading')} ${fname}`);
+  showLoading(t('loading_init'), 15);
   dropZone.classList.add('hidden');
-  ghostLbl.classList.add('gone');
 
   // Show filename in header pill
   if (filenameDisplay && filenameText) {
@@ -1152,20 +1123,18 @@ async function loadFile(file, xmlTextOverride = null) {
     const dateStr = extractXmlDate(xmlText);
     if (xmlDateEl) xmlDateEl.textContent = dateStr ?? '—';
 
-    showLoading('Computing geometry…', 45);
-    toast('Computing geometry…');
+    showLoading(t('loading_parsing'), 45);
+    toast(t('loading_parsing'));
     await new Promise(r => setTimeout(r, 30));
 
-    showLoading('Building mesh…', 75);
+    showLoading(t('loading_building'), 75);
     const result = process_xml_data(bytes);
     await new Promise(r => setTimeout(r, 16));
 
-    showLoading('Uploading to GPU…', 92);
+    showLoading(t('loading_done'), 92);
     await new Promise(r => setTimeout(r, 16));
 
     buildMesh(result);
-
-    if (ghostGrp) ghostGrp.visible = false;
 
     const n = result.count;
     setPanel(result.minEnergy, result.maxEnergy);
@@ -1182,9 +1151,211 @@ async function loadFile(file, xmlTextOverride = null) {
     hideLoading();
     toast(`Error: ${err?.message ?? err}`, false);
     dropZone.classList.remove('hidden');
-    ghostLbl.classList.remove('gone');
     filenameDisplay?.classList.add('hidden');
     if (metaFilename) metaFilename.textContent = '—';
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+//  ROOT geometry loader
+//  Uses JSRoot (CDN) to parse the binary .root file, tessellate
+//  each TGeo volume into triangles, then passes the raw mesh
+//  data to the Rust/WASM process_root_geometry() for GPU buffer
+//  preparation.  The result is fed directly into buildMesh(),
+//  so all shaders, post-processing, and controls work unchanged.
+// ──────────────────────────────────────────────────────────
+
+// Module-level cache so JSROOT is imported only once per session.
+let _jsrootIO  = null;
+let _jsrootGeo = null;
+
+async function _getJSROOT() {
+  if (!_jsrootIO)  _jsrootIO  = await import('https://root.cern/js/latest/modules/io.mjs');
+  if (!_jsrootGeo) _jsrootGeo = await import('https://root.cern/js/latest/modules/geom/TGeoPainter.mjs');
+  return { openFile: _jsrootIO.openFile, build: _jsrootGeo.build };
+}
+
+/**
+ * Walk a THREE.js-like object tree returned by JSROOT's build() and
+ * collect all mesh vertex/index data per volume (= "cell").
+ *
+ * Returns:
+ *   positions  Float32Array  nv*3 — world-space positions in mm
+ *   indices    Uint32Array   ni   — globally-offset triangle indices
+ *   vcounts    Uint32Array   nc   — vertex count per cell
+ *   centers    Float32Array  nc*3 — AABB centre per cell (mm)
+ *   types      Uint8Array    nc   — detector type: 0=TileCal,1=HEC,2=LAr,3=other
+ */
+function extractRootMeshData(obj3d) {
+  // Ensure world matrices are up-to-date before traversal
+  if (typeof obj3d.updateMatrixWorld === 'function') obj3d.updateMatrixWorld(true);
+
+  const allPos  = [];
+  const allIdx  = [];
+  const vcounts = [];
+  const centers = [];
+  const types   = [];
+  let   vOffset = 0;
+
+  obj3d.traverse(child => {
+    const geo = child.geometry;
+    if (!geo) return;
+    const posAttr = geo.attributes?.position;
+    if (!posAttr || posAttr.count < 3) return;
+
+    const nv  = posAttr.count;
+    const src = posAttr.array;
+
+    // World transform (column-major Float32Array — same in every THREE.js version)
+    const me = child.matrixWorld?.elements;
+
+    let mnX=Infinity, mnY=Infinity, mnZ=Infinity;
+    let mxX=-Infinity, mxY=-Infinity, mxZ=-Infinity;
+
+    for (let i = 0; i < nv; i++) {
+      let px = src[i*3], py = src[i*3+1], pz = src[i*3+2];
+      if (me) {
+        const w  = me[3]*px + me[7]*py + me[11]*pz + me[15];
+        const wx = (me[0]*px + me[4]*py + me[8]*pz  + me[12]) / w;
+        const wy = (me[1]*px + me[5]*py + me[9]*pz  + me[13]) / w;
+        const wz = (me[2]*px + me[6]*py + me[10]*pz + me[14]) / w;
+        px = wx; py = wy; pz = wz;
+      }
+      allPos.push(px, py, pz);
+      if (px < mnX) mnX = px; if (px > mxX) mxX = px;
+      if (py < mnY) mnY = py; if (py > mxY) mxY = py;
+      if (pz < mnZ) mnZ = pz; if (pz > mxZ) mxZ = pz;
+    }
+
+    // Indices (apply per-cell vertex offset so they're globally referenced)
+    const idx = geo.index;
+    if (idx) {
+      const ia = idx.array;
+      for (let i = 0; i < ia.length; i++) allIdx.push(ia[i] + vOffset);
+    } else {
+      for (let i = 0; i < nv; i++) allIdx.push(i + vOffset);
+    }
+
+    vcounts.push(nv);
+    centers.push((mnX+mxX)*0.5, (mnY+mxY)*0.5, (mnZ+mxZ)*0.5);
+
+    // Detect sub-detector from TGeo volume name
+    const volName = (
+      child.userData?.volume?.fName ||
+      child.userData?.name          ||
+      child.name                    || ''
+    ).toLowerCase();
+
+    let type = 3; // unknown
+    if (/tile|scint|gap|crack|mbts/.test(volName))       type = 0; // TileCal
+    else if (/\bhec\b/.test(volName))                    type = 1; // HEC
+    else if (/lar|emb|emec|emf|fcal|cryo|liq/.test(volName)) type = 2; // LAr
+
+    types.push(type);
+    vOffset += nv;
+  });
+
+  return {
+    positions: new Float32Array(allPos),
+    indices:   new Uint32Array(allIdx),
+    vcounts:   new Uint32Array(vcounts),
+    centers:   new Float32Array(centers),
+    types:     new Uint8Array(types),
+    count:     vcounts.length,
+  };
+}
+
+async function loadRootFile(file) {
+  const fname  = file?.name ?? 'geometry.root';
+  const fnBase = fname.replace(/\.root$/i, '');
+
+  toast(`${t('toast_loading')} ${fname}`);
+  showLoading(t('loading_init'), 10);
+  dropZone.classList.add('hidden');
+
+  if (filenameDisplay && filenameText) {
+    filenameDisplay.classList.remove('hidden');
+    filenameText.textContent = fname;
+  }
+  if (metaFilename) metaFilename.textContent = fnBase;
+
+  try {
+    // ── 1. Load JSROOT modules (cached after first use) ───────────────────
+    showLoading('Loading JSROOT…', 18);
+    const { openFile, build } = await _getJSROOT();
+
+    // ── 2. Open ROOT file ─────────────────────────────────────────────────
+    showLoading(t('loading_parsing_root'), 30);
+    await new Promise(r => setTimeout(r, 16));
+    const rootFile = await openFile(file);
+
+    // ── 3. Find TGeoManager key ───────────────────────────────────────────
+    const keys = rootFile.getKeys ? rootFile.getKeys() : [];
+    let geoKey = keys.find(k =>
+      (k.fClassName || k.className || '') === 'TGeoManager'
+    );
+    if (!geoKey && keys.length) geoKey = keys[0]; // fallback: first object
+    if (!geoKey) throw new Error('No geometry object found in ROOT file');
+
+    const keyName = geoKey.fName || geoKey.name || geoKey;
+    const manager = await rootFile.readObject(keyName);
+    if (!manager) throw new Error('Failed to read geometry object from ROOT file');
+
+    // ── 4. Tessellate geometry via JSROOT ─────────────────────────────────
+    showLoading(t('loading_parsing_root'), 50);
+    await new Promise(r => setTimeout(r, 16));
+    let obj3d = build(manager, {
+      numfaces:   500000,
+      numnodes:   100000,
+      vislevel:   99,
+      doubleside: true,
+    });
+    // build() may be sync or async depending on JSROOT version
+    if (obj3d && typeof obj3d.then === 'function') obj3d = await obj3d;
+    if (!obj3d) throw new Error('JSROOT build() returned no geometry');
+
+    // ── 5. Extract mesh data from the THREE.js scene tree ─────────────────
+    showLoading(t('loading_building_root'), 65);
+    await new Promise(r => setTimeout(r, 16));
+    const meshData = extractRootMeshData(obj3d);
+    if (meshData.count === 0) throw new Error('No visible volumes found in ROOT geometry');
+
+    // ── 6. Build GPU buffers in Rust/WASM ─────────────────────────────────
+    showLoading(t('loading_building_root'), 80);
+    await new Promise(r => setTimeout(r, 16));
+    const result = process_root_geometry(
+      meshData.positions,
+      meshData.indices,
+      meshData.vcounts,
+      meshData.centers,
+      meshData.types,
+    );
+    if (result instanceof Error || !result) throw result || new Error('process_root_geometry failed');
+
+    showLoading(t('loading_done'), 93);
+    await new Promise(r => setTimeout(r, 16));
+
+    // ── 7. Build scene — same pipeline as XML ─────────────────────────────
+    buildMesh(result);
+    const n = result.count;
+    setPanel(result.minEnergy, result.maxEnergy);
+    applyThreshold(0);
+
+    cellCountEl.textContent = n.toLocaleString();
+    if (xmlDateEl) xmlDateEl.textContent = '—';
+
+    hideLoading();
+    toast(`${n.toLocaleString()} volumes loaded`, false);
+    toastTimer = setTimeout(hideToast, 2800);
+    controls.autoRotate = false;
+
+  } catch (err) {
+    hideLoading();
+    toast(`Error: ${err?.message ?? String(err)}`, false);
+    dropZone.classList.remove('hidden');
+    filenameDisplay?.classList.add('hidden');
+    if (metaFilename) metaFilename.textContent = '—';
+    console.error('[CGV ROOT] load error:', err);
   }
 }
 
@@ -1195,11 +1366,21 @@ dropZone.addEventListener('drop', e => {
   e.preventDefault();
   dropZone.classList.remove('drag-over');
   const f = e.dataTransfer?.files[0];
-  if (f) loadFile(f);
+  if (!f) return;
+  if (f.name.toLowerCase().endsWith('.root')) loadRootFile(f);
+  else loadFile(f);
 });
 
 dzBrowseBtn?.addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
 fileInput.addEventListener('change', e => { const f = e.target.files[0]; if (f) loadFile(f); });
+
+dzRootBtn?.addEventListener('click', e => { e.stopPropagation(); rootFileInput?.click(); });
+rootFileInput?.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) loadRootFile(f);
+  // Reset so the same file can be re-selected
+  rootFileInput.value = '';
+});
 
 dzSampleBtn?.addEventListener('click', e => {
   e.stopPropagation();
@@ -1327,11 +1508,9 @@ btnReset.addEventListener('click', () => {
   modeSolidBtn?.classList.add('active');
   modeWireBtn?.classList.remove('active');
 
-  if (ghostGrp) ghostGrp.visible = true;
-  else buildGhost();
-
   cellNormEnergies = null; cellLayerIds = null;
   cellEtaIds = null; cellPhiIds = null; activeAttr = null;
+  cellVertOffsets = null;
   cellZPositions = null; currentClipZ = Infinity;
   cellCount = 0;
 
@@ -1341,7 +1520,7 @@ btnReset.addEventListener('click', () => {
   if (xmlDateEl)     xmlDateEl.textContent      = '—';
   if (activeBlocksEl) activeBlocksEl.textContent = '—';
   if (metaFilename) metaFilename.textContent     = '—';
-  threshDisp.textContent    = 'All';
+  threshDisp.textContent    = t('threshold_all');
   epMax.textContent         = '—';
   epMin.textContent         = '—';
   applyThreshold(0);
@@ -1356,7 +1535,6 @@ btnReset.addEventListener('click', () => {
   renderer.clippingPlanes  = [];
 
   dropZone.classList.remove('hidden');
-  ghostLbl.classList.remove('gone');
   filenameDisplay?.classList.add('hidden');
   fileInput.value = '';
   hideToast();
