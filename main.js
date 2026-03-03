@@ -1287,19 +1287,43 @@ async function loadRootFile(file) {
     // ── 2. Open ROOT file ─────────────────────────────────────────────────
     showLoading(t('loading_parsing_root'), 30);
     await new Promise(r => setTimeout(r, 16));
-    const rootFile = await openFile(file);
 
-    // ── 3. Find TGeoManager key ───────────────────────────────────────────
+    // Read file as ArrayBuffer first — JSROOT's most reliable input type.
+    // Passing a raw File object can silently produce empty key lists in some
+    // JSROOT builds depending on internal FileReader timing.
+    const arrayBuf  = await file.arrayBuffer();
+    const rootFile  = await openFile(arrayBuf);
+
+    // ── 3. Find TGeoManager / any readable object ─────────────────────────
     const keys = rootFile.getKeys ? rootFile.getKeys() : [];
-    let geoKey = keys.find(k =>
-      (k.fClassName || k.className || '') === 'TGeoManager'
-    );
-    if (!geoKey && keys.length) geoKey = keys[0]; // fallback: first object
-    if (!geoKey) throw new Error('No geometry object found in ROOT file');
+    console.log('[CGV ROOT] keys in file:',
+      keys.length ? keys.map(k => `${k.fName}(${k.fClassName})`).join(', ') : '(none)');
 
-    const keyName = geoKey.fName || geoKey.name || geoKey;
-    const manager = await rootFile.readObject(keyName);
-    if (!manager) throw new Error('Failed to read geometry object from ROOT file');
+    let manager = null;
+
+    // Strategy A: scan key list for TGeoManager, then fall back to first key
+    const geoKey = keys.find(k => (k.fClassName || k.className || '') === 'TGeoManager')
+                   || keys[0];
+    if (geoKey) {
+      const kn = geoKey.fName || geoKey.name;
+      console.log('[CGV ROOT] reading key:', kn);
+      try { manager = await rootFile.readObject(kn); } catch (e) {
+        console.warn('[CGV ROOT] readObject failed for key', kn, e);
+      }
+    }
+
+    // Strategy B: try names we know from CaloBuild.C and common ROOT conventions
+    if (!manager) {
+      const candidates = ['Calorimeter;1', 'Calorimeter', 'Geometry;1', 'Geometry', 'geo;1', 'geo'];
+      for (const name of candidates) {
+        try {
+          const obj = await rootFile.readObject(name);
+          if (obj) { manager = obj; console.log('[CGV ROOT] found via candidate name:', name); break; }
+        } catch { /* not found — try next */ }
+      }
+    }
+
+    if (!manager) throw new Error('No geometry object found in ROOT file');
 
     // ── 4. Tessellate geometry via JSROOT ─────────────────────────────────
     showLoading(t('loading_parsing_root'), 50);
