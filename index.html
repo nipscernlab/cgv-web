@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CaloGeometry Viewer</title>
+    <style>
+        html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; }
+        #drawing { width: 100vw; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="drawing"></div>
+    <script type="module">
+        import { openFile, draw } from 'https://root.cern/js/latest/modules/main.mjs';
+
+        // Visibility bit constants (from ROOT TGeoAtt)
+        const kVisOverride  = 1;   // BIT(0)
+        const kVisNone      = 2;   // BIT(1)
+        const kVisThis      = 4;   // BIT(2)
+        const kVisDaughters = 8;   // BIT(3)
+
+        function hideAll(vol, visited = new Set()) {
+            if (!vol || visited.has(vol)) return;
+            visited.add(vol);
+            // Set override + none, clear visThis and visDaughters
+            vol.fGeoAtt = (vol.fGeoAtt | kVisOverride | kVisNone) & ~kVisThis & ~kVisDaughters;
+            if (vol.fNodes && vol.fNodes.arr) {
+                for (const node of vol.fNodes.arr)
+                    hideAll(node.fVolume, visited);
+            }
+        }
+
+        function setContainer(vol) {
+            // Traversable but not drawn
+            vol.fGeoAtt = (vol.fGeoAtt | kVisOverride | kVisDaughters) & ~kVisNone & ~kVisThis;
+        }
+
+        function setVisible(vol) {
+            // Drawn
+            vol.fGeoAtt = (vol.fGeoAtt | kVisOverride | kVisThis) & ~kVisNone;
+        }
+
+        function findNode(vol, name) {
+            if (vol.fNodes && vol.fNodes.arr) {
+                for (const node of vol.fNodes.arr) {
+                    if (node.fName === name) return node;
+                }
+            }
+            return null;
+        }
+
+        // Open the ROOT file
+        const file = await openFile('CaloGeometry.root');
+
+        // Find the TGeoManager object
+        let geo = null;
+        for (const key of file.fKeys) {
+            if (key.fClassName === 'TGeoManager') {
+                geo = await file.readObject(key.fName + ';' + key.fCycle);
+                break;
+            }
+        }
+        if (!geo) {
+            document.getElementById('drawing').innerText = 'No TGeoManager found in file';
+            throw new Error('No TGeoManager found');
+        }
+
+        const topVolume = geo.fMasterVolume || geo.fTopVolume;
+
+        // 1) Hide every volume in the hierarchy
+        hideAll(topVolume);
+
+        // Maps a CSS hex color to the nearest ROOT standard color index.
+        // ROOT palette sample: 2=red, 3=dark green, 4=blue, 5=yellow, 6=magenta, 7=cyan
+        const ROOT_PALETTE = [
+            [0,  255, 255, 255],  // white
+            [1,    0,   0,   0],  // black
+            [2,  255,   0,   0],  // kRed
+            [3,    0, 128,   0],  // kGreen
+            [4,    0,   0, 255],  // kBlue
+            [5,  255, 255,   0],  // kYellow
+            [6,  255,   0, 255],  // kMagenta
+            [7,    0, 255, 255],  // kCyan
+            [8,   89, 212,  84],  // light green
+            [9,   89,  89, 230],  // light blue
+            [28,  99,  60,   0],  // brown
+            [29,   0, 165, 165],  // teal
+            [41, 230, 128,   0],  // orange
+        ];
+
+        function hexToRootColor(hex) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            let best = 2, bestDist = Infinity;
+            for (const [idx, cr, cg, cb] of ROOT_PALETTE) {
+                const d = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2;
+                if (d < bestDist) { bestDist = d; best = idx; }
+            }
+            return best;
+        }
+
+        function showPath(topVol, node1, node2, node3, hexColor) {
+            let currentVol = topVol;
+            setContainer(currentVol); // top volume: traversable, not drawn
+
+            const path = [node1, node2, node3];
+            for (let i = 0; i < path.length; i++) {
+                const node = findNode(currentVol, path[i]);
+                if (!node) {
+                    document.getElementById('drawing').innerText = `Node "${path[i]}" not found`;
+                    throw new Error(`Node "${path[i]}" not found`);
+                }
+                if (i < path.length - 1) {
+                    setContainer(node.fVolume); // intermediate: traversable, not drawn
+                } else {
+                    setVisible(node.fVolume);   // leaf: visible
+                    if (hexColor !== undefined) {
+                        const rootColor = hexToRootColor(hexColor);
+                        node.fVolume.fFillColor = rootColor;
+                        node.fVolume.fLineColor = rootColor;
+                    }
+                }
+                currentVol = node.fVolume;
+            }
+        }
+
+        // 2) Make the path visible: Calo -> Tile1p_0 -> Tile1p0_0 -> cell_0
+        showPath(topVolume, 'Tile4n_0', 'Tile4n0_0', 'cell_0', '#ff0000');  // vermelho
+        showPath(topVolume, 'Tile23p_0', 'Tile23p0_0', 'cell_0', '#00ff00');  // verde
+        
+        // 3) Draw the geometry
+        await draw('drawing', geo, 'vislevel9');
+    </script>
+</body>
+</html>
