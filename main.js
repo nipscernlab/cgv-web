@@ -1627,7 +1627,7 @@ async function loadRootFile(file) {
 
     // Collect all meshes first (snapshot), then attach outlines — avoids
     // mutating children while iterating (which caused infinite recursion).
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a9fd6, transparent: true, opacity: 0.6 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x00e5ff });
     const meshes = [];
     const stack = [obj3d];
     while (stack.length) {
@@ -1659,12 +1659,14 @@ async function loadRootFile(file) {
       const radius = size.length() * 0.5;
       const dist   = radius / Math.tan((camera.fov * Math.PI / 180) * 0.5) * 1.3;
       camera.position.set(center.x + dist * 0.5, center.y + dist * 0.3, center.z + dist);
-      camera.near = dist * 0.01;
-      camera.far  = dist * 10;
+      camera.near = dist * 0.001;
+      camera.far  = dist * 20;
       camera.updateProjectionMatrix();
       controls.target.copy(center);
+      controls.minDistance = radius * 0.01;
+      controls.maxDistance = dist * 5;
       controls.update();
-      console.log('[CGV ROOT] camera fit — center:', center, 'radius:', radius.toFixed(1));
+      console.log('[CGV ROOT] camera fit — center:', center, 'radius:', radius.toFixed(1), 'dist:', dist.toFixed(1));
     }
 
     // Store metadata
