@@ -1,0 +1,15 @@
+{
+  "name": "cgv-web",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "cgv_web_bg.wasm",
+    "cgv_web.js",
+    "cgv_web.d.ts"
+  ],
+  "main": "cgv_web.js",
+  "types": "cgv_web.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
