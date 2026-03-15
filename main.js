@@ -10,7 +10,7 @@ import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass }        from 'three/addons/postprocessing/SMAAPass.js';
-import init, { process_xml_data, process_root_geometry, pick_cell_ray } from './pkg/cgv_web.js';
+import init, { process_xml_data, pick_cell_ray } from './pkg/cgv_web.js';
 import { createIcons, icons } from 'lucide';
 createIcons({ icons });
 
@@ -61,6 +61,11 @@ const ctEnergy        = document.getElementById('ct-energy');
 const ctLayer         = document.getElementById('ct-layer');
 const ctEta           = document.getElementById('ct-eta');
 const ctPhi           = document.getElementById('ct-phi');
+const ctXmlRows       = document.getElementById('ct-xml-rows');
+const ctRootRows      = document.getElementById('ct-root-rows');
+const ctRootPath      = document.getElementById('ct-root-path');
+const ctRootType      = document.getElementById('ct-root-type');
+const ctRootParams    = document.getElementById('ct-root-params');
 const clipSlider      = document.getElementById('clip-slider');
 const clipFill        = document.getElementById('clip-fill');
 const clipValDisp     = document.getElementById('clip-val-display');
@@ -92,6 +97,8 @@ const cellHoverToggle = document.getElementById('cell-hover-toggle');
 const metaToggleBtn   = document.getElementById('meta-toggle-btn');
 const metaBody        = document.getElementById('meta-body');
 const metaChevron     = document.getElementById('meta-chevron');
+const rootHierBtn     = document.getElementById('root-hier-btn');
+const rootHierRow     = document.getElementById('root-hier-row');
 
 // ──────────────────────────────────────────────────────────
 //  Cell hover enabled flag
@@ -320,15 +327,14 @@ const fragmentShader = /* glsl */`
   varying vec3  v_worldPos;
   varying vec3  v_normal;
 
-  // ── ATLAS energy colormap: deep navy → electric blue → cyan → lime → amber → white ──
+  // ── Energy colormap: red (low) → orange → warm-white → cyan → intense blue (high) ──
   vec3 atlasColor(float t) {
     t = clamp(t, 0.0, 1.0);
     vec3 c;
-    if      (t < 0.18) { c = mix(vec3(0.01, 0.02, 0.18), vec3(0.00, 0.22, 1.00), t / 0.18); }
-    else if (t < 0.40) { c = mix(vec3(0.00, 0.22, 1.00), vec3(0.00, 0.92, 0.88), (t - 0.18) / 0.22); }
-    else if (t < 0.62) { c = mix(vec3(0.00, 0.92, 0.88), vec3(0.55, 1.00, 0.00), (t - 0.40) / 0.22); }
-    else if (t < 0.82) { c = mix(vec3(0.55, 1.00, 0.00), vec3(1.00, 0.52, 0.00), (t - 0.62) / 0.20); }
-    else               { c = mix(vec3(1.00, 0.52, 0.00), vec3(1.00, 0.97, 0.72), (t - 0.82) / 0.18); }
+    if      (t < 0.25) { c = mix(vec3(0.82, 0.02, 0.02), vec3(1.00, 0.46, 0.00), t / 0.25); }
+    else if (t < 0.50) { c = mix(vec3(1.00, 0.46, 0.00), vec3(1.00, 0.97, 0.84), (t - 0.25) / 0.25); }
+    else if (t < 0.75) { c = mix(vec3(1.00, 0.97, 0.84), vec3(0.08, 0.74, 0.96), (t - 0.50) / 0.25); }
+    else               { c = mix(vec3(0.08, 0.74, 0.96), vec3(0.02, 0.18, 0.92), (t - 0.75) / 0.25); }
     return c;
   }
 
@@ -368,10 +374,10 @@ const fragmentShader = /* glsl */`
     // Rim emission tinted by cell color
     lit += baseCol * rim * (0.4 + v_energy * 1.2);
 
-    // Blinn-Phong specular: warm gold shimmer on high-energy cells
+    // Blinn-Phong specular: cool-blue shimmer matching high-energy cells
     vec3 H  = normalize(L1 + V);
     float sp = pow(max(dot(N, H), 0.0), 72.0) * 0.10 * (0.2 + v_energy * 0.8);
-    lit += vec3(0.92, 0.78, 0.28) * sp;
+    lit += vec3(0.55, 0.80, 1.00) * sp;
 
     // Energy boost: brightest cells approach white
     float boost = 1.0 + v_energy * v_energy * 0.72;
@@ -396,6 +402,36 @@ let cellPhiIds       = null;
 let activeAttr       = null;
 // Uint32Array(nc+1): vertex start per cell. null = fixed 24 verts (XML mode).
 let cellVertOffsets  = null;
+
+// ROOT mode state
+let _isRootMode  = false;
+let _rootCellMeta = null; // Array<{path, type, params}> indexed by cell id
+
+/** Extract shape type + dimension parameters from a TGeoShape JSROOT object. */
+function extractShapeParams(shape) {
+  if (!shape) return { type: '—', params: {} };
+  const type = (shape._typename || shape.typename || '').replace(/^TGeo/, '') || '—';
+  const params = {};
+  for (const [k, v] of Object.entries(shape)) {
+    if (typeof v !== 'number' || k[0] !== 'f') continue;
+    const name = k.slice(1); // strip leading 'f'
+    // Keep dimension-like fields: DX,DY,DZ,Dx,Dy,Dz,Dx1,Dx2,Dy1,Dy2,Rmin,Rmax,Phi1,Dphi,…
+    if (/^[DdRrPp][a-zA-Z0-9]*$/.test(name)) params[name] = +v.toFixed(4);
+  }
+  return { type, params };
+}
+
+/** Format ROOT shape params as multi-line string (for tooltip display). */
+function formatShapeParams(params) {
+  if (!params || Object.keys(params).length === 0) return '';
+  const bbox  = ['DX','DY','DZ'];
+  const other = Object.keys(params).filter(k => !bbox.includes(k));
+  const lines = [];
+  const bLine = bbox.filter(k => params[k] != null).map(k => `${k}=${params[k]}`).join('  ');
+  if (bLine) lines.push(bLine);
+  if (other.length) lines.push(other.map(k => `${k}=${params[k]}`).join('  '));
+  return lines.join('\n');
+}
 const detEnabled     = { tile: true, hec: true, lar: true };
 
 // ──────────────────────────────────────────────────────────
@@ -526,6 +562,7 @@ let cellZPositions = null;
 //  Build / tear down InstancedMesh
 // ──────────────────────────────────────────────────────────
 let activeMesh = null;
+let rootWireObj = null; // ROOT wireframe LineSegments (separate from activeMesh)
 let cellCount = 0; // total de células do evento atual
 
 // ── Variável global: vértices ARB8 de cada célula (metros, flat array) ───────
@@ -912,20 +949,33 @@ function showTooltip(id, screenX, screenY) {
   hoveredId = id;
   shaderUniforms.u_highlight.value = id;
 
-  if (cellNormEnergies && cellNormEnergies[id] != null) {
-    const normE   = cellNormEnergies[id];
-    const actualE = minE + normE * (maxE - minE);
-    ctEnergy.textContent = fmtE(actualE);
-  } else { ctEnergy.textContent = '—'; }
+  if (_isRootMode && _rootCellMeta && _rootCellMeta[id]) {
+    // ── ROOT geometry: show path / shape type / dimensions ────────────────
+    const meta = _rootCellMeta[id];
+    ctRootPath.textContent   = meta.path || '—';
+    ctRootType.textContent   = meta.type || '—';
+    ctRootParams.textContent = formatShapeParams(meta.params);
+    ctXmlRows.style.display  = 'none';
+    ctRootRows.style.display = '';
+  } else {
+    // ── XML / event data: show energy / layer / η / φ ────────────────────
+    if (cellNormEnergies && cellNormEnergies[id] != null) {
+      const normE   = cellNormEnergies[id];
+      const actualE = minE + normE * (maxE - minE);
+      ctEnergy.textContent = fmtE(actualE);
+    } else { ctEnergy.textContent = '—'; }
 
-  if (cellLayerIds && cellLayerIds[id] != null) {
-    const layer  = cellLayerIds[id];
-    const detIdx = LAYER_DET[Math.min(layer, 25)];
-    ctLayer.textContent = `${layer}\u00a0(${DET_NAMES[detIdx] ?? '?'})`;
-  } else { ctLayer.textContent = '—'; }
+    if (cellLayerIds && cellLayerIds[id] != null) {
+      const layer  = cellLayerIds[id];
+      const detIdx = LAYER_DET[Math.min(layer, 25)];
+      ctLayer.textContent = `${layer}\u00a0(${DET_NAMES[detIdx] ?? '?'})`;
+    } else { ctLayer.textContent = '—'; }
 
-  ctEta.textContent = (cellEtaIds && cellEtaIds[id] != null) ? String(cellEtaIds[id]) : '—';
-  ctPhi.textContent = (cellPhiIds && cellPhiIds[id] != null) ? String(cellPhiIds[id]) : '—';
+    ctEta.textContent = (cellEtaIds && cellEtaIds[id] != null) ? String(cellEtaIds[id]) : '—';
+    ctPhi.textContent = (cellPhiIds && cellPhiIds[id] != null) ? String(cellPhiIds[id]) : '—';
+    ctXmlRows.style.display  = '';
+    ctRootRows.style.display = 'none';
+  }
 
   cellTooltip.classList.add('visible');
   positionTooltip(screenX, screenY);
@@ -1134,6 +1184,8 @@ async function loadFile(file, xmlTextOverride = null) {
     showLoading(t('loading_done'), 92);
     await new Promise(r => setTimeout(r, 16));
 
+    _isRootMode   = false;
+    _rootCellMeta = null;
     buildMesh(result);
 
     const n = result.count;
@@ -1157,112 +1209,300 @@ async function loadFile(file, xmlTextOverride = null) {
 }
 
 // ──────────────────────────────────────────────────────────
+//  ROOT hierarchy extractor + viewer
+// ──────────────────────────────────────────────────────────
+
+let _rootHierarchyData = null; // { filename, tree }
+
+/**
+ * Walk a TGeoManager's volume tree and build a plain JS hierarchy.
+ * Shared volumes are expanded fully but capped at MAX_DEPTH/MAX_CHILDREN
+ * to keep the result manageable for large detectors.
+ */
+function extractGeoHierarchy(manager) {
+  const topVol = manager.fMasterVolume || manager.fTopVolume;
+  if (!topVol) return { n: 'Unknown', k: '', c: [] };
+
+  const MAX_DEPTH    = 25;
+  const MAX_CHILDREN = 120;
+
+  function walk(vol, depth) {
+    if (!vol || depth > MAX_DEPTH) return null;
+    const volName  = vol.fName  || '(unnamed)';
+    const volClass = (vol._typename || '').replace(/^TGeo/, '');
+    const node = { n: volName, k: volClass, c: [] };
+
+    const arr = vol.fNodes?.arr || vol.fNodes?.fArray || [];
+    const total = arr.length;
+    const shown = Math.min(total, MAX_CHILDREN);
+    for (let i = 0; i < shown; i++) {
+      const geoNode = arr[i];
+      if (!geoNode?.fVolume) continue;
+      const child = walk(geoNode.fVolume, depth + 1);
+      if (child) {
+        child.p = geoNode.fName || ''; // placement/node name
+        node.c.push(child);
+      }
+    }
+    if (total > MAX_CHILDREN) node.more = total - MAX_CHILDREN;
+    return node;
+  }
+
+  return walk(topVol, 0);
+}
+
+/** Open a self-contained tree-viewer page in a new tab. */
+function openRootHierarchyViewer() {
+  if (!_rootHierarchyData) return;
+  const { filename, tree } = _rootHierarchyData;
+
+  const dataJson = JSON.stringify(tree);
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ROOT Hierarchy — ${filename}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07090d;--bg2:#0b0f16;--bg3:#0f1520;
+  --border:rgba(255,255,255,0.07);--border-hi:rgba(255,255,255,0.12);
+  --accent:#0891b2;--accent-dim:rgba(8,145,178,0.12);
+  --text:#e2e8f0;--text2:#94a3b8;--text3:#475569;
+  --font:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono','Fira Code',monospace;
+  --r:6px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.5}
+header{
+  position:sticky;top:0;z-index:10;
+  background:rgba(7,9,13,0.92);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);
+  padding:12px 20px;display:flex;align-items:center;gap:14px;
+}
+.hdr-badge{
+  padding:2px 9px;border-radius:100px;
+  background:var(--accent-dim);border:1px solid rgba(8,145,178,0.28);
+  font-size:0.65rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);
+}
+.hdr-title{font-size:0.9rem;font-weight:600;color:var(--text)}
+.hdr-file{font-family:var(--mono);font-size:0.75rem;color:var(--text2);margin-left:4px}
+.hdr-count{margin-left:auto;font-family:var(--mono);font-size:0.72rem;color:var(--text3)}
+#search{
+  padding:5px 10px;border-radius:var(--r);
+  border:1px solid var(--border-hi);background:rgba(255,255,255,0.04);
+  color:var(--text);font-size:0.8rem;outline:none;width:200px;
+  transition:border-color .15s;
+}
+#search:focus{border-color:var(--accent)}
+main{padding:16px 20px;max-width:1100px}
+.info{font-size:0.78rem;color:var(--text3);margin-bottom:14px}
+/* Tree */
+.tree{font-size:0.82rem}
+.node{border-left:1px solid var(--border);margin-left:12px;padding-left:0}
+.node-root{border-left:none;margin-left:0}
+.row{
+  display:flex;align-items:center;gap:0;
+  padding:3px 0 3px 8px;border-radius:4px;cursor:pointer;
+  transition:background .12s;user-select:none;
+}
+.row:hover{background:rgba(255,255,255,0.04)}
+.row.highlight{background:rgba(8,145,178,0.12)}
+.toggle{
+  width:18px;height:18px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:0.65rem;color:var(--text3);
+  border:1px solid var(--border);border-radius:3px;margin-right:6px;
+  background:rgba(255,255,255,0.02);transition:background .12s,color .12s;
+}
+.toggle:hover{background:rgba(255,255,255,0.06);color:var(--text)}
+.leaf-dot{
+  width:18px;height:18px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  margin-right:6px;color:var(--text3);font-size:9px;
+}
+.vol-name{color:var(--text);font-weight:500}
+.vol-name.dim{color:var(--text2);font-weight:400}
+.placement{color:var(--text3);font-family:var(--mono);font-size:0.72rem;margin-left:6px}
+.vol-type{
+  margin-left:7px;padding:1px 6px;border-radius:3px;
+  font-family:var(--mono);font-size:0.67rem;
+  background:rgba(255,255,255,0.04);border:1px solid var(--border);
+  color:var(--text3);
+}
+.child-count{margin-left:6px;font-size:0.7rem;color:var(--text3);font-family:var(--mono)}
+.children{display:block}
+.children.collapsed{display:none}
+.more-row{
+  padding:3px 8px;color:var(--text3);font-size:0.75rem;
+  border-left:1px solid var(--border);margin-left:12px;padding-left:14px;
+}
+.empty{padding:60px 20px;text-align:center;color:var(--text3);font-size:0.9rem}
+</style>
+</head>
+<body>
+<header>
+  <div class="hdr-badge">ROOT</div>
+  <span class="hdr-title">Geometry Hierarchy</span>
+  <span class="hdr-file">${filename}</span>
+  <input id="search" type="search" placeholder="Filter volumes…" autocomplete="off" spellcheck="false">
+  <span class="hdr-count" id="hdr-count"></span>
+</header>
+<main>
+  <div class="info">Click a row to expand/collapse. Use the search box to filter by volume name.</div>
+  <div id="tree-root" class="tree"></div>
+</main>
+<script>
+const DATA = ${dataJson};
+
+let totalNodes = 0;
+
+function countNodes(node) {
+  totalNodes++;
+  (node.c || []).forEach(countNodes);
+}
+countNodes(DATA);
+document.getElementById('hdr-count').textContent = totalNodes.toLocaleString() + ' volumes';
+
+function buildNode(node, isRoot) {
+  const hasChildren = node.c && node.c.length > 0;
+  const hasMore     = !!node.more;
+  const div = document.createElement('div');
+  div.className = 'node' + (isRoot ? ' node-root' : '');
+
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.dataset.name = (node.n || '').toLowerCase();
+
+  if (hasChildren || hasMore) {
+    const tog = document.createElement('span');
+    tog.className = 'toggle';
+    tog.textContent = '▶';
+    row.appendChild(tog);
+  } else {
+    const dot = document.createElement('span');
+    dot.className = 'leaf-dot';
+    dot.textContent = '·';
+    row.appendChild(dot);
+  }
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'vol-name';
+  nameSpan.textContent = node.n || '(unnamed)';
+  row.appendChild(nameSpan);
+
+  if (node.p) {
+    const pl = document.createElement('span');
+    pl.className = 'placement';
+    pl.textContent = node.p;
+    row.appendChild(pl);
+  }
+
+  if (node.k) {
+    const kt = document.createElement('span');
+    kt.className = 'vol-type';
+    kt.textContent = node.k;
+    row.appendChild(kt);
+  }
+
+  if (hasChildren) {
+    const cc = document.createElement('span');
+    cc.className = 'child-count';
+    cc.textContent = node.c.length + (hasMore ? '+' : '') + ' children';
+    row.appendChild(cc);
+  }
+
+  div.appendChild(row);
+
+  if (hasChildren || hasMore) {
+    const childrenDiv = document.createElement('div');
+    childrenDiv.className = 'children collapsed';
+
+    (node.c || []).forEach(child => {
+      childrenDiv.appendChild(buildNode(child, false));
+    });
+
+    if (hasMore) {
+      const moreDiv = document.createElement('div');
+      moreDiv.className = 'more-row';
+      moreDiv.textContent = '… ' + node.more.toLocaleString() + ' more children (truncated)';
+      childrenDiv.appendChild(moreDiv);
+    }
+
+    div.appendChild(childrenDiv);
+
+    row.addEventListener('click', () => {
+      const collapsed = childrenDiv.classList.toggle('collapsed');
+      row.querySelector('.toggle').textContent = collapsed ? '▶' : '▼';
+    });
+  }
+
+  return div;
+}
+
+const root = document.getElementById('tree-root');
+root.appendChild(buildNode(DATA, true));
+
+// Auto-expand root
+const firstRow = root.querySelector('.row');
+if (firstRow) firstRow.click();
+
+// Search/filter
+let searchTimer;
+document.getElementById('search').addEventListener('input', function() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    const q = this.value.trim().toLowerCase();
+    const allRows = root.querySelectorAll('.row');
+    if (!q) {
+      allRows.forEach(r => { r.parentElement.style.display = ''; r.classList.remove('highlight'); });
+      return;
+    }
+    allRows.forEach(r => {
+      const name = r.dataset.name || '';
+      const match = name.includes(q);
+      r.classList.toggle('highlight', match);
+      // Ensure visible by expanding parents
+      if (match) {
+        let el = r.parentElement;
+        while (el && el !== root) {
+          if (el.classList.contains('children')) {
+            el.classList.remove('collapsed');
+            const togEl = el.previousSibling?.querySelector?.('.toggle');
+            if (togEl) togEl.textContent = '▼';
+          }
+          el = el.parentElement;
+        }
+      }
+    });
+  }, 180);
+});
+<\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  const url  = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  // Revoke after a delay to free memory once the tab has loaded
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+rootHierBtn?.addEventListener('click', openRootHierarchyViewer);
+
+// ──────────────────────────────────────────────────────────
 //  ROOT geometry loader
-//  Uses JSRoot (CDN) to parse the binary .root file, tessellate
-//  each TGeo volume into triangles, then passes the raw mesh
-//  data to the Rust/WASM process_root_geometry() for GPU buffer
-//  preparation.  The result is fed directly into buildMesh(),
-//  so all shaders, post-processing, and controls work unchanged.
 // ──────────────────────────────────────────────────────────
 
 // Module-level cache so JSROOT is imported only once per session.
-let _jsrootIO  = null;
-let _jsrootGeo = null;
+let _jsrootIO = null;
 
 async function _getJSROOT() {
-  if (!_jsrootIO)  _jsrootIO  = await import('https://root.cern/js/latest/modules/io.mjs');
-  if (!_jsrootGeo) _jsrootGeo = await import('https://root.cern/js/latest/modules/geom/TGeoPainter.mjs');
-  return { openFile: _jsrootIO.openFile, build: _jsrootGeo.build };
-}
-
-/**
- * Walk a THREE.js-like object tree returned by JSROOT's build() and
- * collect all mesh vertex/index data per volume (= "cell").
- *
- * Returns:
- *   positions  Float32Array  nv*3 — world-space positions in mm
- *   indices    Uint32Array   ni   — globally-offset triangle indices
- *   vcounts    Uint32Array   nc   — vertex count per cell
- *   centers    Float32Array  nc*3 — AABB centre per cell (mm)
- *   types      Uint8Array    nc   — detector type: 0=TileCal,1=HEC,2=LAr,3=other
- */
-function extractRootMeshData(obj3d) {
-  // Ensure world matrices are up-to-date before traversal
-  if (typeof obj3d.updateMatrixWorld === 'function') obj3d.updateMatrixWorld(true);
-
-  const allPos  = [];
-  const allIdx  = [];
-  const vcounts = [];
-  const centers = [];
-  const types   = [];
-  let   vOffset = 0;
-
-  obj3d.traverse(child => {
-    const geo = child.geometry;
-    if (!geo) return;
-    const posAttr = geo.attributes?.position;
-    if (!posAttr || posAttr.count < 3) return;
-
-    const nv  = posAttr.count;
-    const src = posAttr.array;
-
-    // World transform (column-major Float32Array — same in every THREE.js version)
-    const me = child.matrixWorld?.elements;
-
-    let mnX=Infinity, mnY=Infinity, mnZ=Infinity;
-    let mxX=-Infinity, mxY=-Infinity, mxZ=-Infinity;
-
-    for (let i = 0; i < nv; i++) {
-      let px = src[i*3], py = src[i*3+1], pz = src[i*3+2];
-      if (me) {
-        const w  = me[3]*px + me[7]*py + me[11]*pz + me[15];
-        const wx = (me[0]*px + me[4]*py + me[8]*pz  + me[12]) / w;
-        const wy = (me[1]*px + me[5]*py + me[9]*pz  + me[13]) / w;
-        const wz = (me[2]*px + me[6]*py + me[10]*pz + me[14]) / w;
-        px = wx; py = wy; pz = wz;
-      }
-      allPos.push(px, py, pz);
-      if (px < mnX) mnX = px; if (px > mxX) mxX = px;
-      if (py < mnY) mnY = py; if (py > mxY) mxY = py;
-      if (pz < mnZ) mnZ = pz; if (pz > mxZ) mxZ = pz;
-    }
-
-    // Indices (apply per-cell vertex offset so they're globally referenced)
-    const idx = geo.index;
-    if (idx) {
-      const ia = idx.array;
-      for (let i = 0; i < ia.length; i++) allIdx.push(ia[i] + vOffset);
-    } else {
-      for (let i = 0; i < nv; i++) allIdx.push(i + vOffset);
-    }
-
-    vcounts.push(nv);
-    centers.push((mnX+mxX)*0.5, (mnY+mxY)*0.5, (mnZ+mxZ)*0.5);
-
-    // Detect sub-detector from TGeo volume name
-    const volName = (
-      child.userData?.volume?.fName ||
-      child.userData?.name          ||
-      child.name                    || ''
-    ).toLowerCase();
-
-    let type = 3; // unknown
-    if (/tile|scint|gap|crack|mbts/.test(volName))       type = 0; // TileCal
-    else if (/\bhec\b/.test(volName))                    type = 1; // HEC
-    else if (/lar|emb|emec|emf|fcal|cryo|liq/.test(volName)) type = 2; // LAr
-
-    types.push(type);
-    vOffset += nv;
-  });
-
-  return {
-    positions: new Float32Array(allPos),
-    indices:   new Uint32Array(allIdx),
-    vcounts:   new Uint32Array(vcounts),
-    centers:   new Float32Array(centers),
-    types:     new Uint8Array(types),
-    count:     vcounts.length,
-  };
+  if (!_jsrootIO) _jsrootIO = await import('https://root.cern/js/latest/modules/io.mjs');
+  // Import geom module for build()
+  const geoMod = await import('https://root.cern/js/latest/modules/geom/TGeoPainter.mjs');
+  return { openFile: _jsrootIO.openFile, build: geoMod.build };
 }
 
 async function loadRootFile(file) {
@@ -1325,51 +1565,126 @@ async function loadRootFile(file) {
 
     if (!manager) throw new Error('No geometry object found in ROOT file');
 
-    // ── 4. Tessellate geometry via JSROOT ─────────────────────────────────
-    showLoading(t('loading_parsing_root'), 50);
+    // ── 3b. Extract volume hierarchy for the explorer button ──────────────
+    try {
+      _rootHierarchyData = { filename: fname, tree: extractGeoHierarchy(manager) };
+      if (rootHierRow) rootHierRow.style.display = '';
+      if (window.lucide) lucide.createIcons({ nodes: [rootHierBtn] });
+    } catch (e) {
+      console.warn('[CGV ROOT] hierarchy extraction failed:', e);
+    }
+
+    // ── 4. Hide ALL volumes, then enable ONLY Calo→Tile1p_0→Tile1p0_0→cell_* ─
+    showLoading('Preparing geometry…', 42);
     await new Promise(r => setTimeout(r, 16));
-    let obj3d = build(manager, {
-      numfaces:   500000,
-      numnodes:   100000,
-      vislevel:   99,
-      doubleside: true,
-    });
-    // build() may be sync or async depending on JSROOT version
+    {
+      const kVisNone = 2, kVisThis = 4, kVisDaughters = 8;
+
+      // 4a. Hide every volume — flat iteration, no recursion
+      const allVols = manager.fVolumes?.arr || [];
+      for (let i = 0; i < allVols.length; i++) {
+        if (allVols[i]) allVols[i].fGeoAtt = kVisNone;
+      }
+      const topVol = manager.fMasterVolume || manager.fTopVolume;
+      if (topVol) topVol.fGeoAtt = kVisNone;
+
+      // 4b. Enable the specific path: top → Tile1p_0 → Tile1p0_0 → 64 cells
+      topVol.fGeoAtt = kVisDaughters;
+      const L1 = topVol.fNodes?.arr || topVol.fNodes?.fArray || [];
+      const nd1 = L1.find(n => /^Tile1p/i.test(n?.fName)) || L1[0];
+      let enabledCells = 0;
+      if (nd1?.fVolume) {
+        nd1.fVolume.fGeoAtt = kVisDaughters;
+        const L2 = nd1.fVolume.fNodes?.arr || nd1.fVolume.fNodes?.fArray || [];
+        const nd2 = L2.find(n => /^Tile1p0/i.test(n?.fName)) || L2[0];
+        if (nd2?.fVolume) {
+          nd2.fVolume.fGeoAtt = kVisDaughters;
+          const cells = nd2.fVolume.fNodes?.arr || nd2.fVolume.fNodes?.fArray || [];
+          for (let i = 0; i < cells.length; i++) {
+            if (cells[i]?.fVolume) { cells[i].fVolume.fGeoAtt = kVisThis; enabledCells++; }
+          }
+        }
+      }
+      manager.fVisLevel  = 5;
+      manager.fVisOption = 0;
+      console.log('[CGV ROOT] enabled', enabledCells, 'cells');
+    }
+
+    // ── 5. Tessellate — tight limits for ~64 cells only ───────────────────
+    showLoading(t('loading_parsing_root'), 55);
+    await new Promise(r => setTimeout(r, 16));
+    let obj3d = build(manager, { numfaces: 50000, numnodes: 200, vislevel: 5, doubleside: false });
     if (obj3d && typeof obj3d.then === 'function') obj3d = await obj3d;
     if (!obj3d) throw new Error('JSROOT build() returned no geometry');
 
-    // ── 5. Extract mesh data from the THREE.js scene tree ─────────────────
-    showLoading(t('loading_building_root'), 65);
-    await new Promise(r => setTimeout(r, 16));
-    const meshData = extractRootMeshData(obj3d);
-    if (meshData.count === 0) throw new Error('No visible volumes found in ROOT geometry');
-
-    // ── 6. Build GPU buffers in Rust/WASM ─────────────────────────────────
-    showLoading(t('loading_building_root'), 80);
-    await new Promise(r => setTimeout(r, 16));
-    const result = process_root_geometry(
-      meshData.positions,
-      meshData.indices,
-      meshData.vcounts,
-      meshData.centers,
-      meshData.types,
-    );
-    if (result instanceof Error || !result) throw result || new Error('process_root_geometry failed');
-
-    showLoading(t('loading_done'), 93);
+    // ── 6-7. Apply outline material, keep obj3d tree intact for correct transforms ─
+    showLoading(t('loading_done'), 85);
     await new Promise(r => setTimeout(r, 16));
 
-    // ── 7. Build scene — same pipeline as XML ─────────────────────────────
-    buildMesh(result);
-    const n = result.count;
-    setPanel(result.minEnergy, result.maxEnergy);
-    applyThreshold(0);
+    if (activeMesh) { scene.remove(activeMesh); activeMesh.geometry?.dispose(); activeMesh.material?.dispose(); activeMesh = null; }
+    if (rootWireObj) { scene.remove(rootWireObj); rootWireObj = null; }
+    if (wireLinesObj) { scene.remove(wireLinesObj); wireLinesObj.geometry?.dispose(); wireLinesObj.material?.dispose(); wireLinesObj = null; }
 
+    // Collect all meshes first (snapshot), then attach outlines — avoids
+    // mutating children while iterating (which caused infinite recursion).
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x2a9fd6, transparent: true, opacity: 0.6 });
+    const meshes = [];
+    const stack = [obj3d];
+    while (stack.length) {
+      const obj = stack.pop();
+      if (obj.geometry?.attributes?.position) meshes.push(obj);
+      for (let i = obj.children.length - 1; i >= 0; i--) stack.push(obj.children[i]);
+    }
+    for (const m of meshes) {
+      m.material.visible = false;
+      const edges = new THREE.EdgesGeometry(m.geometry, 15);
+      m.add(new THREE.LineSegments(edges, edgeMat));
+    }
+
+    rootWireObj = obj3d;   // keep full hierarchy for correct transforms
+    scene.add(rootWireObj);
+
+    // ── Auto-fit camera to the bounding box of the rendered cells ─────────
+    {
+      const box = new THREE.Box3();
+      for (const m of meshes) {
+        m.updateWorldMatrix(true, false);
+        const geo = m.geometry;
+        if (!geo.boundingBox) geo.computeBoundingBox();
+        const b = geo.boundingBox.clone().applyMatrix4(m.matrixWorld);
+        box.union(b);
+      }
+      const center = box.getCenter(new THREE.Vector3());
+      const size   = box.getSize(new THREE.Vector3());
+      const radius = size.length() * 0.5;
+      const dist   = radius / Math.tan((camera.fov * Math.PI / 180) * 0.5) * 1.3;
+      camera.position.set(center.x + dist * 0.5, center.y + dist * 0.3, center.z + dist);
+      camera.near = dist * 0.01;
+      camera.far  = dist * 10;
+      camera.updateProjectionMatrix();
+      controls.target.copy(center);
+      controls.update();
+      console.log('[CGV ROOT] camera fit — center:', center, 'radius:', radius.toFixed(1));
+    }
+
+    // Store metadata
+    _isRootMode   = true;
+    _rootCellMeta = [];
+    cellCount     = meshes.length;
+
+    // No energy panel
+    energyPanel?.classList.remove('on');
+
+    showLoading(t('loading_done'), 95);
+    await new Promise(r => setTimeout(r, 16));
+
+    const n = meshes.length;
     cellCountEl.textContent = n.toLocaleString();
     if (xmlDateEl) xmlDateEl.textContent = '—';
+    if (energyRangeEl) energyRangeEl.textContent = `${n.toLocaleString()} volumes`;
 
     hideLoading();
-    toast(`${n.toLocaleString()} volumes loaded`, false);
+    toast(`${n.toLocaleString()} cells loaded`, false);
     toastTimer = setTimeout(hideToast, 2800);
     controls.autoRotate = false;
 
@@ -1528,6 +1843,12 @@ btnReset.addEventListener('click', () => {
     wireLinesObj.material.dispose();
     wireLinesObj = null;
   }
+  if (rootWireObj) {
+    scene.remove(rootWireObj);
+    rootWireObj.geometry.dispose();
+    rootWireObj.material.dispose();
+    rootWireObj = null;
+  }
   wireActive = false;
   modeSolidBtn?.classList.add('active');
   modeWireBtn?.classList.remove('active');
@@ -1544,6 +1865,10 @@ btnReset.addEventListener('click', () => {
   if (xmlDateEl)     xmlDateEl.textContent      = '—';
   if (activeBlocksEl) activeBlocksEl.textContent = '—';
   if (metaFilename) metaFilename.textContent     = '—';
+  _rootHierarchyData = null;
+  _isRootMode        = false;
+  _rootCellMeta      = null;
+  if (rootHierRow) rootHierRow.style.display = 'none';
   threshDisp.textContent    = t('threshold_all');
   epMax.textContent         = '—';
   epMin.textContent         = '—';
