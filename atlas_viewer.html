@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TileCal Viewer</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#060810; color:#dde; font:12px monospace; overflow:hidden; }
+canvas { display:block; }
+
+#overlay {
+  position:fixed; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  background:#060810; gap:12px; color:#6ab; font-size:13px; z-index:10;
+}
+#bar  { width:260px; height:3px; background:#111a2e; border-radius:2px; overflow:hidden; }
+#fill { height:100%; background:linear-gradient(90deg,#1e5adf,#6ab); width:0; transition:width .2s; }
+
+#hud {
+  position:fixed; top:14px; left:14px;
+  background:rgba(4,6,14,.88); border:1px solid #1a3660;
+  border-radius:6px; padding:12px 16px; min-width:230px;
+  backdrop-filter:blur(6px);
+}
+#hud h1 { font-size:12px; color:#6ab; letter-spacing:.1em; margin-bottom:8px; }
+.r { display:flex; justify-content:space-between; gap:16px; margin:3px 0; color:#445; }
+.r b { color:#bcd; }
+
+#evt {
+  position:fixed; bottom:14px; left:14px;
+  background:rgba(4,6,14,.88); border:1px solid #1a3660;
+  border-radius:6px; padding:12px 16px; min-width:230px;
+  backdrop-filter:blur(6px);
+}
+#evt h2 { font-size:11px; color:#6ab; letter-spacing:.08em; margin-bottom:8px; }
+.er { display:flex; justify-content:space-between; gap:16px; margin:3px 0; color:#445; font-size:11px; }
+.er b { color:#bcd; }
+
+button {
+  background:#0b1e3e; border:1px solid #1e5adf; color:#6ab;
+  padding:4px 10px; border-radius:3px; cursor:pointer; font:11px monospace;
+}
+button:hover { background:#152e5a; }
+
+#hint { position:fixed; bottom:14px; right:14px; color:#223; font-size:10px; pointer-events:none; }
+</style>
+</head>
+<body>
+
+<!-- ── Loading overlay ─────────────────────────────────────────────────────── -->
+<div id="overlay">
+  <div style="font-size:16px;letter-spacing:.12em">⬡ TileCal Viewer</div>
+  <div id="msg">Iniciando…</div>
+  <div id="bar"><div id="fill"></div></div>
+</div>
+
+<!-- ── HUD stats ───────────────────────────────────────────────────────────── -->
+<div id="hud" style="display:none">
+  <h1>⬡ ATLAS TileCal</h1>
+  <div class="r">Células totais  <b id="s-total">–</b></div>
+  <div class="r">Células ativas  <b id="s-active">–</b></div>
+  <div class="r">E min / max     <b id="s-erange">–</b></div>
+  <div class="r">FPS             <b id="s-fps">–</b></div>
+  <div style="margin-top:10px;display:flex;gap:6px">
+    <button id="wf-btn" onclick="toggleWf()">Wireframe</button>
+    <button onclick="controls.reset()">Reset</button>
+    <button onclick="clearEvt()">Limpar</button>
+  </div>
+  <div style="color:#223;margin-top:8px;font-size:10px">
+    L-drag: orbit · scroll: zoom · R-drag: pan
+  </div>
+</div>
+
+<!-- ── Event panel ─────────────────────────────────────────────────────────── -->
+<div id="evt" style="display:none">
+  <h2>EVENTO DE COLISÃO</h2>
+  <div style="margin-bottom:8px">
+    <button onclick="document.getElementById('fi').click()">Carregar XML</button>
+    <input id="fi" type="file" accept=".xml" style="display:none">
+  </div>
+  <div class="er">Arquivo         <b id="ep-name">–</b></div>
+  <div class="er">count declarado <b id="ep-cdecl">–</b></div>
+  <div class="er">count real      <b id="ep-cact">–</b></div>
+  <div class="er">match           <b id="ep-match">–</b></div>
+</div>
+
+<div id="hint">L-drag: orbit · scroll: zoom · R-drag: pan</div>
+
+<!-- ── Importmap Three.js r162 ─────────────────────────────────────────────── -->
+<script type="importmap">
+{
+  "imports": {
+    "three":          "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE        from 'three';
+import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import init, { load_cgv, process_event } from './wasm/pkg/tile_viz.js';
+
+// ── Renderer ──────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+// ── Scene ─────────────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x060810);
+scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(1, 2, 1.5);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8899ff, 0.4);
+fill.position.set(-1, -1, -1);
+scene.add(fill);
+
+// ── Camera + Controls ─────────────────────────────────────────────────────────
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1e6);
+camera.position.set(0, 2000, 6000);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+
+// expose para os onclick inline
+window.controls = controls;
+
+// ── Estado ────────────────────────────────────────────────────────────────────
+const meshIndex = {};  // path (string com tabs) → THREE.Mesh
+let   hitMats   = [];  // materiais dos hits ativos (para toggle wireframe)
+let   wfMode    = false;
+
+// Material base: todas as células ficam invisíveis até receber um evento
+const baseMat = new THREE.MeshStandardMaterial({
+  color: 0x334466, roughness: 0.7, metalness: 0.1,
+  side: THREE.DoubleSide,
+});
+
+window.toggleWf = () => {
+  wfMode = !wfMode;
+  hitMats.forEach(m => m.wireframe = wfMode);
+  document.getElementById('wf-btn').textContent = wfMode ? 'Solid' : 'Wireframe';
+};
+
+window.clearEvt = () => {
+  Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
+  hitMats = [];
+  document.getElementById('s-active').textContent = '0';
+  document.getElementById('s-erange').textContent = '–';
+  document.getElementById('ep-name').textContent  = '–';
+  document.getElementById('ep-cdecl').textContent = '–';
+  document.getElementById('ep-cact').textContent  = '–';
+  document.getElementById('ep-match').textContent = '–';
+};
+
+// ── Inicialização ─────────────────────────────────────────────────────────────
+async function initApp() {
+  const msg  = document.getElementById('msg');
+  const bar  = document.getElementById('fill');
+
+  // 1. WASM
+  msg.textContent = 'Carregando WASM…';
+  await init();
+  bar.style.width = '20%';
+
+  // 2. GLB + CGV em paralelo
+  msg.textContent = 'Carregando GLB e CGV…';
+  const [glbBuf, cgvText] = await Promise.all([
+    fetch('./root_file/CaloGeometry.glb').then(r => r.arrayBuffer()),
+    fetch('./root_file/CaloGeometry.cgv').then(r => r.text()),
+  ]);
+  bar.style.width = '60%';
+
+  // 3. CGV → WASM (indexação de células)
+  msg.textContent = 'Indexando células…';
+  const cellCount = load_cgv(cgvText);
+  bar.style.width = '70%';
+
+  // 4. GLB → Three.js (constrói meshIndex)
+  msg.textContent = 'Construindo cena…';
+  const gltf = await new Promise((res, rej) =>
+    new GLTFLoader().parse(glbBuf, '', res, rej)
+  );
+
+  gltf.scene.traverse(obj => {
+    if (!obj.isMesh) return;
+    obj.material = baseMat;
+    obj.visible  = false;
+    // userData.name = nome original do GLTF (antes de sanitizeNodeName)
+    // obj.name      = sanitizado (\t → '_'); não confiável como chave
+    const key = obj.userData.name ?? obj.name;
+    meshIndex[key] = obj;
+  });
+  scene.add(gltf.scene);
+  bar.style.width = '90%';
+
+  // Enquadra câmera
+  const box    = new THREE.Box3().setFromObject(gltf.scene);
+  const size   = box.getSize(new THREE.Vector3()).length();
+  const center = box.getCenter(new THREE.Vector3());
+  controls.target.copy(center);
+  camera.position.copy(center).addScalar(size * 0.9);
+  camera.near = size * 0.001;
+  camera.far  = size * 20;
+  camera.updateProjectionMatrix();
+  controls.update();
+
+  bar.style.width = '100%';
+  await new Promise(r => setTimeout(r, 150));
+
+  document.getElementById('s-total').textContent  = cellCount.toLocaleString();
+  document.getElementById('s-active').textContent = '0';
+  document.getElementById('overlay').style.display = 'none';
+  document.getElementById('hud').style.display     = 'block';
+  document.getElementById('evt').style.display     = 'block';
+}
+
+// ── Upload evento XML ─────────────────────────────────────────────────────────
+document.getElementById('fi').onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  document.getElementById('ep-name').textContent = file.name;
+
+  const xml    = await file.text();
+  const result = JSON.parse(process_event(xml));
+
+  if (!result.ok) {
+    alert('Erro: ' + result.error);
+    return;
+  }
+
+  // Painel de validação
+  document.getElementById('ep-cdecl').textContent = result.count_declared;
+  document.getElementById('ep-cact').textContent  = result.count_actual;
+  document.getElementById('ep-match').textContent = result.count_ok ? '✔ sim' : '✖ não';
+  document.getElementById('s-erange').textContent =
+    `${result.e_min.toFixed(1)} / ${result.e_max.toFixed(1)}`;
+
+  // Reseta estado anterior
+  Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
+  hitMats = [];
+
+  // Acende células atingidas
+  let hits = 0;
+  for (const h of result.hits) {
+    // WASM devolve paths com \t→\t (formato CGV); GLB usa → sem tabs
+    const meshKey = h.path.replace(/\t→\t/g, '→');
+    const mesh = meshIndex[meshKey] ?? meshIndex[h.path];
+    if (!mesh) continue;
+    mesh.visible = true;
+    const mat = new THREE.MeshStandardMaterial({
+      color:    new THREE.Color(h.r, h.g, h.b),
+      emissive: new THREE.Color(h.r * 0.35, h.g * 0.35, h.b * 0.35),
+      roughness: 0.4,
+      metalness: 0.1,
+      side: THREE.DoubleSide,
+    });
+    mesh.material = mat;
+    hitMats.push(mat);
+    hits++;
+  }
+
+  document.getElementById('s-active').textContent = hits.toLocaleString();
+};
+
+// ── Resize + render loop ──────────────────────────────────────────────────────
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+let fc = 0, ft = 0;
+(function animate(t) {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+  fc++;
+  if (t - ft >= 1000) {
+    document.getElementById('s-fps').textContent = fc;
+    fc = 0; ft = t;
+  }
+})(0);
+
+initApp().catch(err => {
+  document.getElementById('msg').textContent = 'Erro: ' + err.message;
+  console.error(err);
+});
+</script>
+</body>
+</html>

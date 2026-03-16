@@ -76,6 +76,7 @@ function parseCliArgs() {
       out:            { type: 'string'  },
       'max-faces':    { type: 'string'  },
       depth:          { type: 'string'  },
+      subtree:        { type: 'string'  },   // prefixo dos filhos diretos do root a manter
       'visible-only': { type: 'boolean', default: false },
       'no-gltf':      { type: 'boolean', default: false },
       'no-cgv':       { type: 'boolean', default: false },
@@ -106,6 +107,7 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
     outDir:      values.out ? resolve(values.out) : dirname(rootPath),
     maxFaces:    parseInt(values['max-faces'] ?? '0', 10),
     maxDepth:    parseInt(values['depth']     ?? '0', 10),
+    subtree:     values['subtree'] ?? null,
     visibleOnly: values['visible-only'],
     noGltf:      values['no-gltf'],
     noCgv:       values['no-cgv'],
@@ -238,6 +240,34 @@ function nodeToMatrix4(node) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// SHAPE SIGNATURE — chave para deduplicação de geometrias no GLB
+// ═════════════════════════════════════════════════════════════════════════════
+
+const r4 = v => Math.round((+v) * 1e4) / 1e4;
+
+function shapeSignature(shape) {
+  if (!shape) return null;
+  const t = shape._typename ?? '';
+  switch (t) {
+    case 'TGeoTrd1':
+      return `Trd1_${r4(shape.fDx1)}_${r4(shape.fDx2)}_${r4(shape.fDy)}_${r4(shape.fDZ)}`;
+    case 'TGeoTrd2':
+      return `Trd2_${r4(shape.fDx1)}_${r4(shape.fDx2)}_${r4(shape.fDy1)}_${r4(shape.fDy2)}_${r4(shape.fDZ)}`;
+    case 'TGeoBBox':
+      return `BBox_${r4(shape.fDX)}_${r4(shape.fDY)}_${r4(shape.fDZ)}`;
+    case 'TGeoTube':
+      return `Tube_${r4(shape.fRmin)}_${r4(shape.fRmax)}_${r4(shape.fDZ)}`;
+    case 'TGeoTubeSeg':
+      return `TSeg_${r4(shape.fRmin)}_${r4(shape.fRmax)}_${r4(shape.fDZ)}_${r4(shape.fPhi1)}_${r4(shape.fPhi2)}`;
+    case 'TGeoCone':
+      return `Cone_${r4(shape.fRmin1)}_${r4(shape.fRmax1)}_${r4(shape.fRmin2)}_${r4(shape.fRmax2)}_${r4(shape.fDZ)}`;
+    default:
+      // Shapes complexas ou raras: sem compartilhamento (chave única)
+      return `${t}_rnd_${Math.random()}`;
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // HELPERS CGV
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -335,35 +365,22 @@ function shapeAttrs(shape) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// GERAÇÃO DO .CGV  — iterativo (sem recursão, sem risco de stack overflow)
+// GERAÇÃO DO .CGV  — formato flat, um caminho por linha
+//
+//   name TAB → TAB name TAB → TAB … TAB → TAB leaf
+//
+// Separador: → (U+2192, implicação material da lógica proposicional)
 // ═════════════════════════════════════════════════════════════════════════════
-
-/**
- * Constrói o arquivo .cgv usando uma pilha explícita em vez de recursão.
- * Cada item da pilha é:
- *   { type:'node',  node, depth, path }  → processar nó e seus filhos
- *   { type:'close', tag }                → emitir tag de fechamento </node>
- */
 function buildCgv(geoResult, allKeys, rootPath, opts) {
-  const rootColors = getRootColors();
-  const now        = new Date().toISOString();
-  const srcName    = basename(rootPath);
-  let   idCounter  = 0;
+  const now     = new Date().toISOString();
+  const srcName = basename(rootPath);
+  const lines   = [];
 
-  // Usamos um array de chunks e depois join() uma única vez no final.
-  // Evita o limite de argumentos do Function.apply que ocorre com ...spread.
-  const chunks = [];
-
-  chunks.push(
-    `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<!--\n` +
-    `  CGV — Compressed Geometry Vocabulary\n` +
-    `  Gerado por root2scene.mjs\n` +
-    `  Fonte  : ${xmlEsc(srcName)}\n` +
-    `  Data   : ${now}\n` +
-    `-->\n` +
-    `<cgv version="1.0" source="${xmlEsc(srcName)}" generated="${now}">\n\n`
-  );
+  lines.push(`# Calorimeter Geometry Viewer (CGVWEB)`);
+  lines.push(`# source   : ${srcName}`);
+  lines.push(`# generated: ${now}`);
+  lines.push(`# format   : name \\t → \\t name \\t → \\t … \\t → \\t leaf`);
+  lines.push('');
 
   if (geoResult) {
     const { obj, key } = geoResult;
@@ -379,144 +396,71 @@ function buildCgv(geoResult, allKeys, rootPath, opts) {
         }
       : obj;
 
-    chunks.push(
-      `  <!-- ==== Geometria: "${xmlEsc(key.fName)}" (${xmlEsc(key.fClassName)}) ==== -->\n` +
-      `  <geometry name="${xmlEsc(key.fName)}" class="${xmlEsc(key.fClassName)}">\n`
-    );
-
-    // ── pilha explícita ───────────────────────────────────────────────────────
-    // ATENÇÃO: empilhamos em ordem reversa para que o primeiro filho seja
-    // processado primeiro (LIFO). O item 'close' é empilhado ANTES dos filhos
-    // para que a tag de fechamento seja emitida DEPOIS de todos os filhos.
-    const stack = [{ type: 'node', node: topNode, depth: 2, path: `/${key.fName}` }];
+    // pilha: { node, ancestors[] }
+    const stack = [{ node: topNode, ancestors: [] }];
 
     while (stack.length > 0) {
-      const item = stack.pop();
+      const { node, ancestors } = stack.pop();
 
-      // ── emitir fechamento ──────────────────────────────────────────────────
-      if (item.type === 'close') {
-        chunks.push(item.tag);
-        continue;
-      }
+      const volume = node.fVolume ?? node;
+      const geoAtt = node.fGeoAtt ?? volume?.fGeoAtt ?? 0xFF;
+      if (opts.visibleOnly && !Boolean(geoAtt & 0x08)) continue;
 
-      const { node, depth, path } = item;
-      const volume  = node.fVolume ?? node;
-      const shape   = volume?.fShape ?? null;
-      const id      = idCounter++;
-      const pad     = '  '.repeat(depth);
+      const name = node.fName ?? volume?.fName ?? '?';
+      const segments = [...ancestors, name];
+      lines.push(segments.join('\t→\t'));
 
-      // ── visibilidade ────────────────────────────────────────────────────────
-      const geoAtt  = node.fGeoAtt ?? volume?.fGeoAtt ?? 0xFF;
-      const visible = Boolean(geoAtt & 0x08);
-      if (opts.visibleOnly && !visible) continue;
-
-      // ── atributos ───────────────────────────────────────────────────────────
-      const name    = xmlEsc(node.fName    ?? volume?.fName  ?? '?');
-      const title   = xmlEsc(node.fTitle   ?? volume?.fTitle ?? '');
-      const nodeCls = xmlEsc(node._typename   ?? '');
-      const volCls  = xmlEsc(volume?._typename ?? '');
-      const { hex, opacity } = volumeColorCss(volume, rootColors);
-      const matName  = xmlEsc(volume?.fMedium?.fName                ?? '');
-      const matCls   = xmlEsc(volume?.fMedium?.fMaterial?._typename ?? '');
-      const density  = volume?.fMedium?.fMaterial?.fDensity;
-
-      let nfaces = 0;
-      if (shape) { try { nfaces = numGeometryFaces(shape) ?? 0; } catch (_) {} }
-
-      // ── emitir tag de abertura ───────────────────────────────────────────────
-      chunks.push(
-        `${pad}<node` +
-        ` id="${id}"` +
-        ` name="${name}"` +
-        ` title="${title}"` +
-        ` class="${nodeCls}"` +
-        ` volClass="${volCls}"` +
-        ` path="${xmlEsc(path)}"` +
-        ` fillcolor="${hex}"` +
-        ` opacity="${opacity.toFixed(4)}"` +
-        ` visible="${visible}"` +
-        ` material="${matName}"` +
-        ` matClass="${matCls}"` +
-        (density != null ? ` density="${density}"` : '') +
-        ` nfaces="${nfaces}"` +
-        shapeAttrs(shape) +
-        `>\n` +
-        matrixXml(node, pad + '  ') + `\n`
-      );
-
-      // ── empilhar fechamento (processado DEPOIS dos filhos) ──────────────────
-      stack.push({ type: 'close', tag: `${pad}</node>\n` });
-
-      // ── empilhar filhos em ordem reversa ────────────────────────────────────
       const children = volume?.fNodes?.arr ?? node.fElements?.arr ?? [];
-      if (children.length > 0) {
-        if (opts.maxDepth === 0 || depth < opts.maxDepth) {
-          for (let i = children.length - 1; i >= 0; i--) {
-            const child     = children[i];
-            const childPath = `${path}/${xmlEsc(child.fName ?? '?')}`;
-            stack.push({ type: 'node', node: child, depth: depth + 1, path: childPath });
-          }
-        } else {
-          chunks.push(
-            `${pad}  <!-- ${children.length} filho(s) omitido(s) — limite --depth ${opts.maxDepth} -->\n`
-          );
+      const depth    = ancestors.length;
+      if (children.length > 0 && (opts.maxDepth === 0 || depth < opts.maxDepth)) {
+        for (let i = children.length - 1; i >= 0; i--) {
+          stack.push({ node: children[i], ancestors: segments });
         }
       }
     }
-
-    chunks.push(`  </geometry>\n\n`);
   } else {
-    chunks.push(`  <!-- Nenhum TGeoManager/TGeoVolume encontrado neste arquivo -->\n\n`);
+    lines.push(`# (nenhum TGeoManager/TGeoVolume encontrado)`);
   }
 
-  // ── índice de chaves ────────────────────────────────────────────────────────
-  chunks.push(`  <!-- ==== Índice de chaves (${allKeys.length} total) ==== -->\n`);
-  chunks.push(`  <keys count="${allKeys.length}">\n`);
-  for (const k of allKeys) {
-    chunks.push(
-      `    <key` +
-      ` name="${xmlEsc(k.fName)}"` +
-      ` title="${xmlEsc(k.fTitle)}"` +
-      ` class="${xmlEsc(k.fClassName)}"` +
-      ` cycle="${k.fCycle}"/>\n`
-    );
-  }
-  chunks.push(`  </keys>\n\n</cgv>\n`);
-
-  return chunks.join('');
+  return lines.join('\n') + '\n';
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// GERAÇÃO DO .GLTF — iterativo
+// GERAÇÃO DO .GLB — um mesh nomeado por célula, geometrias compartilhadas
+//
+// Cada nó com geometria vira um THREE.Mesh cujo nome é o caminho CGV completo
+// (separador \t→\t), permitindo lookup direto no viewer pelo path do .cgv.
+//
+// Otimização: nós com a mesma assinatura de shape compartilham a mesma
+// instância BufferGeometry → o GLTFExporter deduplica e emite o dado
+// binário uma única vez no .glb (múltiplos nodes GLTF → mesmo mesh GLTF).
+//
+// Pilha: { node, worldMat, ancestorPath, depth }
+//   worldMat — Matrix4 acumulada (composta iterativamente, nunca mutada)
 // ═════════════════════════════════════════════════════════════════════════════
 
 class MaterialCache {
   #map = new Map();
-
   get(color, opacity) {
     const key = `${color.getHexString()}_${opacity.toFixed(3)}`;
-    if (this.#map.has(key)) return this.#map.get(key);
-
-    const mat = new THREE.MeshStandardMaterial({
-      color,
-      opacity,
-      transparent : opacity < 1.0,
-      roughness   : 0.55,
-      metalness   : 0.05,
-      side        : THREE.DoubleSide,
-    });
-    this.#map.set(key, mat);
-    return mat;
+    if (!this.#map.has(key)) {
+      this.#map.set(key, new THREE.MeshStandardMaterial({
+        color,
+        opacity,
+        transparent : opacity < 1.0,
+        roughness   : 0.55,
+        metalness   : 0.05,
+        side        : THREE.DoubleSide,
+      }));
+    }
+    return this.#map.get(key);
   }
 }
 
-/**
- * Constrói a THREE.Scene de forma iterativa.
- * Pilha: { node, parentObj3d, depth }
- */
 async function buildGltf(geoResult, rootPath, opts) {
   const rootColors = getRootColors();
   const matCache   = new MaterialCache();
+  const geoCache   = new Map();   // shapeSignature → BufferGeometry (compartilhada)
 
   const scene = new THREE.Scene();
   scene.name  = basename(rootPath, extname(rootPath));
@@ -534,93 +478,83 @@ async function buildGltf(geoResult, rootPath, opts) {
         }
       : obj;
 
-    info('Construindo grafo de cena Three.js...');
+    info('Construindo meshes nomeados por célula...');
 
-    const stack = [{ node: topNode, parentObj3d: scene, depth: 0 }];
+    const identity = new THREE.Matrix4();
+    const stack    = [{ node: topNode, worldMat: identity, ancestorPath: '', depth: 0 }];
+    let   nMesh = 0, nUniq = 0;
 
     while (stack.length > 0) {
-      const { node, parentObj3d, depth } = stack.pop();
+      const { node, worldMat, ancestorPath, depth } = stack.pop();
 
       const volume  = node.fVolume ?? node;
-      const name    = node.fName ?? volume?.fName ?? 'node';
       const shape   = volume?.fShape ?? null;
-
       const geoAtt  = node.fGeoAtt ?? volume?.fGeoAtt ?? 0xFF;
       const visible = Boolean(geoAtt & 0x08);
       if (opts.visibleOnly && !visible) continue;
 
-      let bufGeo = null;
+      const name    = node.fName ?? volume?.fName ?? '?';
+      // Sem tabs: sanitizeNodeName do GLTFLoader substitui \s por '_'
+      const path    = ancestorPath ? `${ancestorPath}→${name}` : name;
+
+      // Compõe transform acumulado (sem mutar worldMat)
+      const local   = nodeToMatrix4(node);
+      const nodeMat = local ? worldMat.clone().multiply(local) : worldMat;
+
       if (shape) {
-        try {
-          bufGeo = createGeometry(shape, opts.maxFaces);
-        } catch (e) {
-          dbg(`createGeometry falhou "${name}" (${shape?._typename}): ${e.message}`);
+        const sig = shapeSignature(shape);
+
+        // Reutiliza geometria se já criada para este shape
+        let bufGeo = sig ? geoCache.get(sig) : null;
+        if (!bufGeo) {
+          try {
+            bufGeo = createGeometry(shape, opts.maxFaces);
+          } catch (e) {
+            dbg(`createGeometry falhou "${name}" (${shape._typename}): ${e.message}`);
+          }
+          if (bufGeo && sig) { geoCache.set(sig, bufGeo); nUniq++; }
+        }
+
+        if (bufGeo) {
+          const { color, opacity } = volumeColorThree(volume, rootColors);
+          const mat  = matCache.get(color, opacity);
+          const mesh = new THREE.Mesh(bufGeo, mat);
+
+          // Nome = caminho CGV completo (usado como chave no viewer)
+          mesh.name = path;
+
+          // Transform mundo → TRS do mesh (filho direto da scene = espaço mundo)
+          const pos  = new THREE.Vector3();
+          const quat = new THREE.Quaternion();
+          const scl  = new THREE.Vector3(1, 1, 1);
+          nodeMat.decompose(pos, quat, scl);
+          mesh.position.copy(pos);
+          mesh.quaternion.copy(quat);
+          mesh.scale.copy(scl);
+
+          scene.add(mesh);
+          nMesh++;
         }
       }
-
-      const { color, opacity } = volumeColorThree(volume, rootColors);
-      const material = matCache.get(color, opacity);
-
-      const obj3d = bufGeo
-        ? new THREE.Mesh(bufGeo, material)
-        : new THREE.Group();
-
-      obj3d.name    = name;
-      obj3d.visible = visible;
-
-      const mat4 = nodeToMatrix4(node);
-      if (mat4) {
-        const pos  = new THREE.Vector3();
-        const quat = new THREE.Quaternion();
-        const scl  = new THREE.Vector3();
-        mat4.decompose(pos, quat, scl);
-        obj3d.position.copy(pos);
-        obj3d.quaternion.copy(quat);
-        obj3d.scale.copy(scl);
-      }
-
-      obj3d.userData = {
-        rootNodeClass : node._typename     ?? '',
-        rootVolClass  : volume?._typename  ?? '',
-        rootShapeType : shape?._typename   ?? '',
-        rootNFaces    : bufGeo
-          ? Math.round((bufGeo.attributes.position?.count ?? 0) / 3)
-          : 0,
-      };
-
-      parentObj3d.add(obj3d);
 
       const children = volume?.fNodes?.arr ?? node.fElements?.arr ?? [];
       if (children.length > 0 && (opts.maxDepth === 0 || depth < opts.maxDepth)) {
-        // Reverso para manter a ordem original (LIFO)
         for (let i = children.length - 1; i >= 0; i--) {
-          stack.push({ node: children[i], parentObj3d: obj3d, depth: depth + 1 });
+          const child     = children[i];
+          const childName = child.fName ?? child.fVolume?.fName ?? '';
+          // --subtree filtra filhos DIRETOS do root (depth=0)
+          if (opts.subtree && depth === 0 && !childName.startsWith(opts.subtree)) continue;
+          stack.push({ node: child, worldMat: nodeMat, ancestorPath: path, depth: depth + 1 });
         }
       }
     }
+
+    ok(`GLB: ${nMesh} meshes · ${nUniq} geometrias únicas`);
   }
 
-  // ── estatísticas (iterativo — evita stack overflow em hierarquias profundas) ─
-  let nMesh = 0, nVert = 0, nTri = 0;
-  {
-    const q = [scene];
-    while (q.length > 0) {
-      const o = q.pop();
-      if (o.isMesh) {
-        nMesh++;
-        const pos = o.geometry?.attributes?.position;
-        if (pos) { nVert += pos.count; nTri += Math.round(pos.count / 3); }
-      }
-      for (const child of o.children) q.push(child);
-    }
-  }
-  info(`Cena: ${nMesh} mesh(es) · ${nVert.toLocaleString('pt-BR')} vértices · ${nTri.toLocaleString('pt-BR')} triângulos`);
-
-  // Exporta como GLB binário — evita JSON.stringify em strings de centenas de MB.
-  // Three.js lê .glb com GLTFLoader exatamente igual ao .gltf.
-  const exporter = new GLTFExporter();
+  const exporter      = new GLTFExporter();
   const glbArrayBuffer = await exporter.parseAsync(scene, {
-    binary      : true,   // ← GLB (binário), não GLTF JSON
+    binary      : true,
     embedImages : false,
     onlyVisible : false,
   });
