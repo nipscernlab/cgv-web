@@ -3,90 +3,263 @@
 <head>
 <meta charset="UTF-8">
 <title>TileCal Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Space+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#060810; color:#dde; font:12px monospace; overflow:hidden; }
+body {
+  background:#020b16; color:#c0d4e8;
+  font-family:'Inter', sans-serif;
+  font-size:12px; overflow:hidden;
+}
 canvas { display:block; }
 
+/* ── Loading ────────────────────────────────────────────────────────────── */
 #overlay {
   position:fixed; inset:0; display:flex; flex-direction:column;
   align-items:center; justify-content:center;
-  background:#060810; gap:12px; color:#6ab; font-size:13px; z-index:10;
+  background:#020b16; gap:14px; z-index:10;
 }
-#bar  { width:260px; height:3px; background:#111a2e; border-radius:2px; overflow:hidden; }
-#fill { height:100%; background:linear-gradient(90deg,#1e5adf,#6ab); width:0; transition:width .2s; }
-
-#hud {
-  position:fixed; top:14px; left:14px;
-  background:rgba(4,6,14,.88); border:1px solid #1a3660;
-  border-radius:6px; padding:12px 16px; min-width:230px;
-  backdrop-filter:blur(6px);
+#overlay-title {
+  display:flex; align-items:center; gap:9px;
+  font-family:'Space Mono', monospace;
+  font-size:13px; letter-spacing:.22em; color:#8ab0d0;
 }
-#hud h1 { font-size:12px; color:#6ab; letter-spacing:.1em; margin-bottom:8px; }
-.r { display:flex; justify-content:space-between; gap:16px; margin:3px 0; color:#445; }
-.r b { color:#bcd; }
+#overlay-title .material-icons-round { font-size:17px; color:#3a70b0; }
+#overlay-msg { font-size:11px; color:#2a4a68; letter-spacing:.1em; font-family:'Space Mono', monospace; }
+#bar { width:240px; height:2px; background:#071628; border-radius:1px; overflow:hidden; }
+#prog { height:100%; background:linear-gradient(90deg,#0e2e60,#3a80d4); width:0; transition:width .25s ease; }
 
-#evt {
-  position:fixed; bottom:14px; left:14px;
-  background:rgba(4,6,14,.88); border:1px solid #1a3660;
-  border-radius:6px; padding:12px 16px; min-width:230px;
-  backdrop-filter:blur(6px);
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+.card {
+  position:fixed;
+  background:rgba(2,10,22,.93);
+  border:1px solid #0c1e38;
+  border-radius:8px;
+  min-width:216px;
+  backdrop-filter:blur(12px);
+  transition:border-color .3s, box-shadow .3s;
 }
-#evt h2 { font-size:11px; color:#6ab; letter-spacing:.08em; margin-bottom:8px; }
-.er { display:flex; justify-content:space-between; gap:16px; margin:3px 0; color:#445; font-size:11px; }
-.er b { color:#bcd; }
-
-button {
-  background:#0b1e3e; border:1px solid #1e5adf; color:#6ab;
-  padding:4px 10px; border-radius:3px; cursor:pointer; font:11px monospace;
+.card:hover {
+  border-color:#16305a;
+  box-shadow:0 4px 28px rgba(10,40,100,.2);
 }
-button:hover { background:#152e5a; }
+.card-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 13px; cursor:pointer; user-select:none;
+}
+.card-title {
+  display:flex; align-items:center; gap:7px;
+  font-family:'Space Mono', monospace;
+  font-size:9px; letter-spacing:.18em; color:#305878; font-weight:700;
+}
+.card-title .material-icons-round { font-size:13px; color:#223e58; }
+.card-chevron {
+  display:flex; color:#162a42;
+  transition:transform .32s ease, color .2s;
+}
+.card-chevron .material-icons-round { font-size:16px; }
+.card-chevron.open { transform:rotate(180deg); }
+.card-header:hover .card-chevron { color:#3a6898; }
 
-#hint { position:fixed; bottom:14px; right:14px; color:#223; font-size:10px; pointer-events:none; }
+.card-body {
+  max-height:500px; opacity:1;
+  padding:0 13px 13px;
+  transition:max-height .35s ease, opacity .3s ease, padding-bottom .35s ease;
+  overflow:hidden;
+}
+.card-body.collapsed {
+  max-height:0; opacity:0; padding-bottom:0;
+}
+
+/* ── Rows ───────────────────────────────────────────────────────────────── */
+.r {
+  display:flex; justify-content:space-between; align-items:center;
+  gap:14px; padding:4px 0;
+  font-size:11px; color:#1e3852;
+  border-bottom:1px solid #071628;
+}
+.r:last-of-type { border-bottom:none; }
+.r b {
+  color:#7aaec8; font-weight:400;
+  font-family:'Space Mono', monospace; font-size:10px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.btns { display:flex; gap:6px; padding-top:10px; }
+.btn {
+  display:inline-flex; align-items:center; gap:4px;
+  background:transparent; border:1px solid #0c2040;
+  color:#335878; padding:5px 9px; border-radius:4px;
+  cursor:pointer; font:11px 'Inter', sans-serif;
+  transition:background .2s, border-color .2s, color .2s;
+}
+.btn .material-icons-round { font-size:12px; }
+.btn:hover { background:#071628; border-color:#1a3a68; color:#6898c0; }
+.nav-hint {
+  margin-top:9px; font-size:9px; color:#0f2236;
+  letter-spacing:.07em; font-family:'Space Mono', monospace;
+}
+
+/* ── Tooltip ────────────────────────────────────────────────────────────── */
+#tooltip {
+  position:fixed; pointer-events:none; z-index:30;
+  background:rgba(2,10,22,.97);
+  border:1px solid #1a3a6a;
+  border-radius:6px; padding:9px 13px;
+  font-family:'Space Mono', monospace;
+  opacity:0; transition:opacity .14s ease;
+  backdrop-filter:blur(10px);
+  white-space:nowrap;
+}
+#tooltip.show { opacity:1; }
+.tt-elabel { font-size:8px; letter-spacing:.12em; color:#284a68; margin-bottom:2px; }
+.tt-energy { font-size:13px; color:#9ac8e0; font-weight:700; }
+.tt-sep { height:1px; background:#0c2038; margin:7px 0; }
+.tt-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px 16px; }
+.tt-field label { display:block; font-size:8px; letter-spacing:.1em; color:#284a68; margin-bottom:1px; }
+.tt-field span { font-size:11px; color:#7aaec8; }
+
+/* ── Threshold panel ────────────────────────────────────────────────────── */
+#thr-panel {
+  position:fixed; right:20px; top:50%; transform:translateY(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:10px;
+  opacity:.14; transition:opacity .45s ease;
+  z-index:5; padding:8px 4px;
+}
+#thr-panel:hover { opacity:1; }
+.thr-label {
+  font-family:'Space Mono', monospace;
+  font-size:8px; letter-spacing:.14em; color:#2a5070;
+  writing-mode:vertical-rl; transform:rotate(180deg);
+}
+/* vertical slider via rotation */
+.slider-container {
+  height:210px; width:32px;
+  position:relative; flex-shrink:0;
+}
+#thr-slider {
+  width:210px;
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%,-50%) rotate(-90deg);
+  -webkit-appearance:none; appearance:none;
+  height:4px; border-radius:2px; outline:none; cursor:pointer;
+  background:linear-gradient(90deg,#0a2040,#3a80d4);
+}
+#thr-slider::-webkit-slider-thumb {
+  -webkit-appearance:none;
+  width:15px; height:15px; border-radius:50%;
+  background:#3278c8;
+  border:2px solid #020b16;
+  box-shadow:0 0 8px rgba(50,120,200,.55);
+  cursor:pointer;
+}
+#thr-slider::-moz-range-thumb {
+  width:15px; height:15px; border-radius:50%;
+  background:#3278c8; border:2px solid #020b16;
+  box-shadow:0 0 8px rgba(50,120,200,.55);
+  cursor:pointer;
+}
+#thr-val {
+  font-family:'Space Mono', monospace;
+  font-size:8px; color:#2a5070;
+  writing-mode:vertical-rl; transform:rotate(180deg);
+  max-width:20px; overflow:hidden; text-overflow:ellipsis;
+}
 </style>
 </head>
 <body>
 
-<!-- ── Loading overlay ─────────────────────────────────────────────────────── -->
+<!-- ── Loading overlay ──────────────────────────────────────────────────── -->
 <div id="overlay">
-  <div style="font-size:16px;letter-spacing:.12em">⬡ TileCal Viewer</div>
-  <div id="msg">Iniciando…</div>
-  <div id="bar"><div id="fill"></div></div>
+  <div id="overlay-title">
+    <span class="material-icons-round">radar</span>
+    TILECAL VIEWER
+  </div>
+  <div id="overlay-msg">Iniciando…</div>
+  <div id="bar"><div id="prog"></div></div>
 </div>
 
-<!-- ── HUD stats ───────────────────────────────────────────────────────────── -->
-<div id="hud" style="display:none">
-  <h1>⬡ ATLAS TileCal</h1>
-  <div class="r">Células totais  <b id="s-total">–</b></div>
-  <div class="r">Células ativas  <b id="s-active">–</b></div>
-  <div class="r">E min / max     <b id="s-erange">–</b></div>
-  <div class="r">FPS             <b id="s-fps">–</b></div>
-  <div style="margin-top:10px;display:flex;gap:6px">
-    <button id="wf-btn" onclick="toggleWf()">Wireframe</button>
-    <button onclick="controls.reset()">Reset</button>
-    <button onclick="clearEvt()">Limpar</button>
+<!-- ── HUD card ─────────────────────────────────────────────────────────── -->
+<div id="hud" class="card" style="top:14px;left:14px;display:none">
+  <div class="card-header" onclick="toggleCard('hud')">
+    <div class="card-title">
+      <span class="material-icons-round">analytics</span>
+      ATLAS TILECAL
+    </div>
+    <div class="card-chevron open" id="hud-chev">
+      <span class="material-icons-round">expand_more</span>
+    </div>
   </div>
-  <div style="color:#223;margin-top:8px;font-size:10px">
-    L-drag: orbit · scroll: zoom · R-drag: pan
+  <div class="card-body" id="hud-body">
+    <div class="r">Células totais  <b id="s-total">–</b></div>
+    <div class="r">Células ativas  <b id="s-active">–</b></div>
+    <div class="r">E min / max     <b id="s-erange">–</b></div>
+    <div class="r">FPS             <b id="s-fps">–</b></div>
+    <div class="btns">
+      <button class="btn" id="wf-btn" onclick="toggleWf()">
+        <span class="material-icons-round">grid_on</span>Wireframe
+      </button>
+      <button class="btn" onclick="controls.reset()" title="Reset câmera">
+        <span class="material-icons-round">center_focus_strong</span>
+      </button>
+      <button class="btn" onclick="clearEvt()" title="Limpar evento">
+        <span class="material-icons-round">clear_all</span>
+      </button>
+    </div>
+    <div class="nav-hint">drag: orbit · scroll: zoom · R-drag: pan</div>
   </div>
 </div>
 
-<!-- ── Event panel ─────────────────────────────────────────────────────────── -->
-<div id="evt" style="display:none">
-  <h2>EVENTO DE COLISÃO</h2>
-  <div style="margin-bottom:8px">
-    <button onclick="document.getElementById('fi').click()">Carregar XML</button>
-    <input id="fi" type="file" accept=".xml" style="display:none">
+<!-- ── Event card ───────────────────────────────────────────────────────── -->
+<div id="evt" class="card" style="bottom:14px;left:14px;display:none">
+  <div class="card-header" onclick="toggleCard('evt')">
+    <div class="card-title">
+      <span class="material-icons-round">bolt</span>
+      EVENTO DE COLISÃO
+    </div>
+    <div class="card-chevron open" id="evt-chev">
+      <span class="material-icons-round">expand_more</span>
+    </div>
   </div>
-  <div class="er">Arquivo         <b id="ep-name">–</b></div>
-  <div class="er">count declarado <b id="ep-cdecl">–</b></div>
-  <div class="er">count real      <b id="ep-cact">–</b></div>
-  <div class="er">match           <b id="ep-match">–</b></div>
+  <div class="card-body" id="evt-body">
+    <div style="padding-bottom:9px">
+      <button class="btn" onclick="document.getElementById('fi').click()">
+        <span class="material-icons-round">upload_file</span>Carregar XML
+      </button>
+      <input id="fi" type="file" accept=".xml" style="display:none">
+    </div>
+    <div class="r">Arquivo         <b id="ep-name">–</b></div>
+    <div class="r">count declarado <b id="ep-cdecl">–</b></div>
+    <div class="r">count real      <b id="ep-cact">–</b></div>
+    <div class="r">match           <b id="ep-match">–</b></div>
+  </div>
 </div>
 
-<div id="hint">L-drag: orbit · scroll: zoom · R-drag: pan</div>
+<!-- ── Cell tooltip ─────────────────────────────────────────────────────── -->
+<div id="tooltip">
+  <div class="tt-elabel">ENERGIA</div>
+  <div class="tt-energy" id="tt-energy">–</div>
+  <div class="tt-sep"></div>
+  <div class="tt-grid">
+    <div class="tt-field"><label>ETA</label><span id="tt-eta">–</span></div>
+    <div class="tt-field"><label>PHI</label><span id="tt-phi">–</span></div>
+    <div class="tt-field"><label>SUB</label><span id="tt-sub">–</span></div>
+  </div>
+</div>
 
-<!-- ── Importmap Three.js r162 ─────────────────────────────────────────────── -->
+<!-- ── Threshold slider ─────────────────────────────────────────────────── -->
+<div id="thr-panel">
+  <div class="thr-label">THRESHOLD</div>
+  <div class="slider-container">
+    <input type="range" id="thr-slider" min="0" max="1" step="0.0001" value="0">
+  </div>
+  <div id="thr-val">–</div>
+</div>
+
+<!-- ── Importmap ────────────────────────────────────────────────────────── -->
 <script type="importmap">
 {
   "imports": {
@@ -102,105 +275,195 @@ import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import init, { load_cgv, process_event } from './wasm/pkg/tile_viz.js';
 
-// ── Renderer ──────────────────────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+// ── Renderer ──────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setPixelRatio(devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// ── Scene ─────────────────────────────────────────────────────────────────────
+// ── Scene ─────────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x060810);
+scene.background = new THREE.Color(0x020b16);
 scene.add(new THREE.AmbientLight(0xffffff, 1.2));
 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
 sun.position.set(1, 2, 1.5);
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0x8899ff, 0.4);
-fill.position.set(-1, -1, -1);
-scene.add(fill);
+const fillLight = new THREE.DirectionalLight(0x8899ff, 0.4);
+fillLight.position.set(-1, -1, -1);
+scene.add(fillLight);
 
-// ── Camera + Controls ─────────────────────────────────────────────────────────
+// ── Camera + Controls ──────────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1e6);
 camera.position.set(0, 2000, 6000);
-
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
-
-// expose para os onclick inline
 window.controls = controls;
 
-// ── Estado ────────────────────────────────────────────────────────────────────
-const meshIndex = {};  // path (string com tabs) → THREE.Mesh
-let   hitMats   = [];  // materiais dos hits ativos (para toggle wireframe)
-let   wfMode    = false;
+// ── State ──────────────────────────────────────────────────────────────────
+const meshIndex  = {};
+let   hitMats    = [];
+let   wfMode     = false;
+const meshHitData = new Map();   // mesh → {energy, eta, phi, sub}
+let   allHits     = [];          // [{mesh, energy}]
+let   visibleMeshList = [];
+let   eMin = 0, eMax = 1;
 
-// Material base: todas as células ficam invisíveis até receber um evento
 const baseMat = new THREE.MeshStandardMaterial({
-  color: 0x334466, roughness: 0.7, metalness: 0.1,
-  side: THREE.DoubleSide,
+  color:0x1a2a40, roughness:0.7, metalness:0.1, side:THREE.DoubleSide,
 });
 
+// ── Stellar colormap: wine red (low) → orange → warm-white → pale-blue → intense blue (high) ──
+function stellarColor(e) {
+  const range = eMax - eMin;
+  const t = range > 1e-10 ? Math.max(0, Math.min(1, (e - eMin) / range)) : 0.5;
+  const stops = [
+    { t:0.00, r:0.36, g:0.00, b:0.06 },
+    { t:0.25, r:0.90, g:0.32, b:0.00 },
+    { t:0.50, r:1.00, g:0.92, b:0.56 },
+    { t:0.75, r:0.62, g:0.80, b:1.00 },
+    { t:1.00, r:0.04, g:0.20, b:1.00 },
+  ];
+  let i = 0;
+  while (i < stops.length - 2 && t > stops[i + 1].t) i++;
+  const a = stops[i], b = stops[i + 1];
+  const s = (b.t - a.t) > 1e-10 ? (t - a.t) / (b.t - a.t) : 0;
+  return {
+    r: a.r + s * (b.r - a.r),
+    g: a.g + s * (b.g - a.g),
+    b: a.b + s * (b.b - a.b),
+  };
+}
+
+// ── Card toggle ────────────────────────────────────────────────────────────
+window.toggleCard = id => {
+  document.getElementById(id + '-body').classList.toggle('collapsed');
+  document.getElementById(id + '-chev').classList.toggle('open');
+};
+
+// ── Wireframe ──────────────────────────────────────────────────────────────
 window.toggleWf = () => {
   wfMode = !wfMode;
   hitMats.forEach(m => m.wireframe = wfMode);
-  document.getElementById('wf-btn').textContent = wfMode ? 'Solid' : 'Wireframe';
+  const btn = document.getElementById('wf-btn');
+  btn.innerHTML = wfMode
+    ? '<span class="material-icons-round">view_in_ar</span>Solid'
+    : '<span class="material-icons-round">grid_on</span>Wireframe';
 };
 
+// ── Clear event ────────────────────────────────────────────────────────────
 window.clearEvt = () => {
   Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
-  hitMats = [];
-  document.getElementById('s-active').textContent = '0';
-  document.getElementById('s-erange').textContent = '–';
-  document.getElementById('ep-name').textContent  = '–';
-  document.getElementById('ep-cdecl').textContent = '–';
-  document.getElementById('ep-cact').textContent  = '–';
-  document.getElementById('ep-match').textContent = '–';
+  meshHitData.clear();
+  allHits = []; hitMats = []; visibleMeshList = [];
+  tooltip.classList.remove('show');
+  document.getElementById('s-active').textContent  = '0';
+  document.getElementById('s-erange').textContent  = '–';
+  document.getElementById('ep-name').textContent   = '–';
+  document.getElementById('ep-cdecl').textContent  = '–';
+  document.getElementById('ep-cact').textContent   = '–';
+  document.getElementById('ep-match').textContent  = '–';
+  document.getElementById('thr-val').textContent   = '–';
+  const sl = document.getElementById('thr-slider');
+  sl.min = 0; sl.max = 1; sl.value = 0;
 };
 
-// ── Inicialização ─────────────────────────────────────────────────────────────
-async function initApp() {
-  const msg  = document.getElementById('msg');
-  const bar  = document.getElementById('fill');
+// ── Threshold ──────────────────────────────────────────────────────────────
+function applyThreshold(thr) {
+  for (const h of allHits) h.mesh.visible = h.energy >= thr;
+  visibleMeshList = allHits.filter(h => h.mesh.visible).map(h => h.mesh);
+  mouseDirty = true;
+  document.getElementById('s-active').textContent =
+    visibleMeshList.length.toLocaleString();
+}
 
-  // 1. WASM
+const thrSlider = document.getElementById('thr-slider');
+const thrVal    = document.getElementById('thr-val');
+thrSlider.addEventListener('input', () => {
+  const v = parseFloat(thrSlider.value);
+  thrVal.textContent = v.toExponential(2);
+  applyThreshold(v);
+});
+
+// ── Raycaster / tooltip ───────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse     = new THREE.Vector2(-9999, -9999);
+const tooltip   = document.getElementById('tooltip');
+let mouseX = 0, mouseY = 0, mouseDirty = false;
+
+window.addEventListener('mousemove', e => {
+  mouse.x  =  (e.clientX / innerWidth)  * 2 - 1;
+  mouse.y  = -(e.clientY / innerHeight) * 2 + 1;
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  mouseDirty = true;
+});
+
+function updateTooltip() {
+  if (!mouseDirty) return;
+  mouseDirty = false;
+
+  if (visibleMeshList.length === 0) { tooltip.classList.remove('show'); return; }
+
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(visibleMeshList, false);
+  if (hits.length > 0) {
+    const data = meshHitData.get(hits[0].object);
+    if (data) {
+      document.getElementById('tt-energy').textContent =
+        data.energy.toExponential(4) + ' GeV';
+      document.getElementById('tt-eta').textContent = data.eta.toFixed(4);
+      document.getElementById('tt-phi').textContent = data.phi.toFixed(4);
+      document.getElementById('tt-sub').textContent = data.sub.toFixed(0);
+
+      // position: prefer right of cursor, flip left near right edge
+      const ttW = 190;
+      const x = mouseX + ttW + 16 > innerWidth ? mouseX - ttW - 16 : mouseX + 16;
+      tooltip.style.left = x + 'px';
+      tooltip.style.top  = mouseY + 'px';
+      tooltip.style.transform = 'translateY(-50%)';
+      tooltip.classList.add('show');
+      return;
+    }
+  }
+  tooltip.classList.remove('show');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+async function initApp() {
+  const msg  = document.getElementById('overlay-msg');
+  const prog = document.getElementById('prog');
+
   msg.textContent = 'Carregando WASM…';
   await init();
-  bar.style.width = '20%';
+  prog.style.width = '20%';
 
-  // 2. GLB + CGV em paralelo
-  msg.textContent = 'Carregando GLB e CGV…';
+  msg.textContent = 'Carregando geometria…';
   const [glbBuf, cgvText] = await Promise.all([
     fetch('./root_file/CaloGeometry.glb').then(r => r.arrayBuffer()),
     fetch('./root_file/CaloGeometry.cgv').then(r => r.text()),
   ]);
-  bar.style.width = '60%';
+  prog.style.width = '60%';
 
-  // 3. CGV → WASM (indexação de células)
   msg.textContent = 'Indexando células…';
   const cellCount = load_cgv(cgvText);
-  bar.style.width = '70%';
+  prog.style.width = '70%';
 
-  // 4. GLB → Three.js (constrói meshIndex)
   msg.textContent = 'Construindo cena…';
   const gltf = await new Promise((res, rej) =>
     new GLTFLoader().parse(glbBuf, '', res, rej)
   );
-
   gltf.scene.traverse(obj => {
     if (!obj.isMesh) return;
     obj.material = baseMat;
     obj.visible  = false;
-    // userData.name = nome original do GLTF (antes de sanitizeNodeName)
-    // obj.name      = sanitizado (\t → '_'); não confiável como chave
     const key = obj.userData.name ?? obj.name;
     meshIndex[key] = obj;
   });
   scene.add(gltf.scene);
-  bar.style.width = '90%';
+  prog.style.width = '90%';
 
-  // Enquadra câmera
   const box    = new THREE.Box3().setFromObject(gltf.scene);
   const size   = box.getSize(new THREE.Vector3()).length();
   const center = box.getCenter(new THREE.Vector3());
@@ -211,8 +474,8 @@ async function initApp() {
   camera.updateProjectionMatrix();
   controls.update();
 
-  bar.style.width = '100%';
-  await new Promise(r => setTimeout(r, 150));
+  prog.style.width = '100%';
+  await new Promise(r => setTimeout(r, 200));
 
   document.getElementById('s-total').textContent  = cellCount.toLocaleString();
   document.getElementById('s-active').textContent = '0';
@@ -221,66 +484,74 @@ async function initApp() {
   document.getElementById('evt').style.display     = 'block';
 }
 
-// ── Upload evento XML ─────────────────────────────────────────────────────────
+// ── XML upload ─────────────────────────────────────────────────────────────
 document.getElementById('fi').onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
-
   document.getElementById('ep-name').textContent = file.name;
 
   const xml    = await file.text();
   const result = JSON.parse(process_event(xml));
+  if (!result.ok) { alert('Erro: ' + result.error); return; }
 
-  if (!result.ok) {
-    alert('Erro: ' + result.error);
-    return;
-  }
-
-  // Painel de validação
   document.getElementById('ep-cdecl').textContent = result.count_declared;
   document.getElementById('ep-cact').textContent  = result.count_actual;
-  document.getElementById('ep-match').textContent = result.count_ok ? '✔ sim' : '✖ não';
+  document.getElementById('ep-match').textContent = result.count_ok ? 'sim' : 'não';
+
+  eMin = result.e_min;
+  eMax = result.e_max;
   document.getElementById('s-erange').textContent =
-    `${result.e_min.toFixed(1)} / ${result.e_max.toFixed(1)}`;
+    `${eMin.toExponential(2)} / ${eMax.toExponential(2)}`;
 
-  // Reseta estado anterior
+  // Reset previous state
   Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
-  hitMats = [];
+  meshHitData.clear();
+  allHits = []; hitMats = []; visibleMeshList = [];
+  tooltip.classList.remove('show');
 
-  // Acende células atingidas
-  let hits = 0;
+  // Init threshold slider to full range (show all)
+  thrSlider.min   = eMin;
+  thrSlider.max   = eMax;
+  thrSlider.value = eMin;
+  thrSlider.step  = (eMax - eMin) / 1000;
+  thrVal.textContent = eMin.toExponential(2);
+
+  // Apply hits with stellar colormap
   for (const h of result.hits) {
-    // WASM devolve paths com \t→\t (formato CGV); GLB usa → sem tabs
     const meshKey = h.path.replace(/\t→\t/g, '→');
-    const mesh = meshIndex[meshKey] ?? meshIndex[h.path];
+    const mesh    = meshIndex[meshKey] ?? meshIndex[h.path];
     if (!mesh) continue;
+
     mesh.visible = true;
+    const col = stellarColor(h.energy);
     const mat = new THREE.MeshStandardMaterial({
-      color:    new THREE.Color(h.r, h.g, h.b),
-      emissive: new THREE.Color(h.r * 0.35, h.g * 0.35, h.b * 0.35),
-      roughness: 0.4,
-      metalness: 0.1,
-      side: THREE.DoubleSide,
+      color:    new THREE.Color(col.r, col.g, col.b),
+      emissive: new THREE.Color(col.r * 0.28, col.g * 0.28, col.b * 0.28),
+      roughness: 0.38, metalness: 0.15, side: THREE.DoubleSide,
     });
     mesh.material = mat;
     hitMats.push(mat);
-    hits++;
+    meshHitData.set(mesh, { energy: h.energy, eta: h.eta, phi: h.phi, sub: h.sub });
+    allHits.push({ mesh, energy: h.energy });
   }
 
-  document.getElementById('s-active').textContent = hits.toLocaleString();
+  visibleMeshList = allHits.map(h => h.mesh);
+  document.getElementById('s-active').textContent = visibleMeshList.length.toLocaleString();
 };
 
-// ── Resize + render loop ──────────────────────────────────────────────────────
+// ── Resize ─────────────────────────────────────────────────────────────────
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
 
+// ── Render loop ────────────────────────────────────────────────────────────
 let fc = 0, ft = 0;
 (function animate(t) {
   requestAnimationFrame(animate);
   controls.update();
+  updateTooltip();
   renderer.render(scene, camera);
   fc++;
   if (t - ft >= 1000) {
@@ -290,7 +561,7 @@ let fc = 0, ft = 0;
 })(0);
 
 initApp().catch(err => {
-  document.getElementById('msg').textContent = 'Erro: ' + err.message;
+  document.getElementById('overlay-msg').textContent = 'Erro: ' + err.message;
   console.error(err);
 });
 </script>
