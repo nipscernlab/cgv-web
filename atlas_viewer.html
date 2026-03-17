@@ -5,230 +5,310 @@
 <title>TileCal Viewer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
-/* ── Reset & base ──────────────────────────────────────────────────────── */
+/* ── Reset ──────────────────────────────────────────────────────────────── */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
+:root {
+  --bg:          #030b17;
+  --surface:     rgba(6,16,32,0.97);
+  --border:      rgba(28,58,100,0.45);
+  --border-h:    rgba(50,100,170,0.65);
+  --accent:      #3b8fd4;
+  --accent-dim:  #1d5a96;
+  --txt-hi:      #ddeaf6;
+  --txt-md:      #7ba8c8;
+  --txt-lo:      #3a6080;
+  --txt-xlo:     #1e3a52;
+  --mono:        'JetBrains Mono', 'Fira Code', monospace;
+  --sans:        'Inter', system-ui, sans-serif;
+  --r:           10px;
+  --r-sm:        7px;
+  --shadow:      0 12px 48px rgba(0,0,0,.55);
+}
+
 body {
-  background:#030c18;
-  color:#c8daea;
-  font-family:'Inter', system-ui, sans-serif;
-  font-size:13px;
-  line-height:1.55;
-  overflow:hidden;
-  -webkit-font-smoothing:antialiased;
+  background: var(--bg);
+  color: var(--txt-hi);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 canvas { display:block; }
 
-/* ── Loading overlay ───────────────────────────────────────────────────── */
+/* ── Loading ────────────────────────────────────────────────────────────── */
 #overlay {
-  position:fixed; inset:0;
-  display:flex; flex-direction:column;
-  align-items:center; justify-content:center;
-  background:#030c18; gap:18px; z-index:10;
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  background: var(--bg); gap: 20px; z-index: 10;
 }
 #overlay-title {
-  display:flex; align-items:center; gap:10px;
-  font-family:'Space Mono', monospace;
-  font-size:15px; font-weight:700; letter-spacing:.22em; color:#7aa8cc;
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--mono);
+  font-size: 13px; font-weight: 500;
+  letter-spacing: .2em; color: var(--accent);
 }
-#overlay-title .material-icons-round { font-size:20px; color:#2e6098; }
+#overlay-title .material-icons-round { font-size: 22px; }
 #overlay-msg {
-  font-size:11px; color:#274460;
-  letter-spacing:.1em; font-family:'Space Mono', monospace;
+  font-size: 12px; color: var(--txt-lo);
+  letter-spacing: .08em; font-family: var(--mono);
 }
-#bar { width:240px; height:1px; background:#06141f; overflow:hidden; }
-#prog { height:100%; background:linear-gradient(90deg,#0c2a54,#3680d4); width:0; transition:width .25s ease; }
+#bar {
+  width: 260px; height: 2px;
+  background: var(--txt-xlo); overflow: hidden; border-radius: 2px;
+}
+#prog {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  width: 0; transition: width .3s ease;
+}
 
-/* ── Card shell ────────────────────────────────────────────────────────── */
+/* ── Card ───────────────────────────────────────────────────────────────── */
 .card {
-  position:fixed;
-  background:rgba(3,11,22,.96);
-  border:1px solid #0c1e38;
-  border-radius:10px;
-  min-width:246px;
-  backdrop-filter:blur(18px);
-  -webkit-backdrop-filter:blur(18px);
-  transition:border-color .3s ease, box-shadow .3s ease, opacity .7s ease;
+  position: fixed;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  min-width: 256px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--shadow);
+  transition: border-color .25s, box-shadow .25s, opacity .6s;
 }
 .card:hover {
-  border-color:#18305c;
-  box-shadow:0 8px 40px rgba(4,18,48,.55);
+  border-color: var(--border-h);
+  box-shadow: 0 16px 56px rgba(0,0,0,.7);
 }
 
 .card-header {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:13px 16px;
-  cursor:pointer; user-select:none;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer; user-select: none;
 }
 .card-title {
-  display:flex; align-items:center; gap:8px;
-  font-family:'Space Mono', monospace;
-  font-size:9px; font-weight:700;
-  letter-spacing:.22em; text-transform:uppercase;
-  color:#274a68;
+  display: flex; align-items: center; gap: 9px;
+  font-family: var(--mono);
+  font-size: 10px; font-weight: 500;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--txt-lo);
 }
-.card-title .material-icons-round { font-size:14px; color:#1e3e58; }
+.card-title .material-icons-round { font-size: 15px; color: var(--accent-dim); }
 .card-chevron {
-  display:flex; align-items:center;
-  color:#122438;
-  transition:transform .32s ease, color .2s;
+  color: var(--txt-xlo);
+  transition: transform .3s ease, color .2s;
+  display: flex; align-items: center;
 }
-.card-chevron .material-icons-round { font-size:17px; }
-.card-chevron.open { transform:rotate(180deg); }
-.card-header:hover .card-chevron { color:#3a6a98; }
+.card-chevron .material-icons-round { font-size: 18px; }
+.card-chevron.open { transform: rotate(180deg); }
+.card-header:hover .card-chevron { color: var(--accent); }
 
 .card-body {
-  max-height:600px; opacity:1;
-  padding:2px 16px 16px;
-  transition:max-height .38s ease, opacity .3s ease, padding-bottom .38s ease;
-  overflow:hidden;
+  max-height: 600px; opacity: 1;
+  padding: 0 18px 18px;
+  transition: max-height .35s ease, opacity .25s ease, padding-bottom .35s ease;
+  overflow: hidden;
 }
-.card-body.collapsed { max-height:0; opacity:0; padding-bottom:0; }
+.card-body.collapsed { max-height: 0; opacity: 0; padding-bottom: 0; }
 
-/* ── Row ───────────────────────────────────────────────────────────────── */
+/* ── Data rows ──────────────────────────────────────────────────────────── */
 .row {
-  display:flex; justify-content:space-between; align-items:baseline;
-  padding:6px 0;
-  border-bottom:1px solid #071426;
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--txt-xlo);
 }
-.row:last-of-type { border-bottom:none; }
+.row:last-of-type { border-bottom: none; }
 .row .lbl {
-  font-size:12px; color:#2e506a;
-  font-weight:400; letter-spacing:.01em;
+  font-size: 13px; color: var(--txt-lo);
+  font-weight: 400;
 }
 .row .val {
-  font-family:'Space Mono', monospace;
-  font-size:12px; color:#7ab0cc; font-weight:400;
+  font-family: var(--mono);
+  font-size: 13px; color: var(--txt-md);
+  font-weight: 400;
 }
 
-/* ── Card divider ──────────────────────────────────────────────────────── */
-.cdiv { height:1px; background:#071426; margin:10px 0 8px; }
+.cdiv { height: 1px; background: var(--txt-xlo); margin: 12px 0 10px; }
 
-/* ── Buttons ───────────────────────────────────────────────────────────── */
-.btns { display:flex; flex-wrap:wrap; gap:6px; }
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.btns { display: flex; flex-wrap: wrap; gap: 7px; }
 .btn {
-  display:inline-flex; align-items:center; gap:5px;
-  background:transparent; border:1px solid #0e2442;
-  color:#2e5878; padding:6px 11px; border-radius:6px;
-  cursor:pointer;
-  font:500 12px/1 'Inter', sans-serif;
-  letter-spacing:.01em;
-  transition:background .2s, border-color .2s, color .2s;
-  white-space:nowrap;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent;
+  border: 1px solid var(--txt-xlo);
+  color: var(--txt-lo);
+  padding: 7px 13px; border-radius: var(--r-sm);
+  cursor: pointer;
+  font: 500 13px/1 var(--sans);
+  letter-spacing: .01em;
+  transition: background .18s, border-color .18s, color .18s;
+  white-space: nowrap;
 }
-.btn .material-icons-round { font-size:14px; }
-.btn:hover { background:#071628; border-color:#1e3e70; color:#6898c0; }
+.btn .material-icons-round { font-size: 15px; }
+.btn:hover {
+  background: rgba(59,143,212,.08);
+  border-color: var(--accent-dim);
+  color: var(--txt-md);
+}
 .btn.active {
-  background:#081e3c; border-color:#2a5888;
-  color:#78aace;
+  background: rgba(59,143,212,.12);
+  border-color: var(--accent);
+  color: var(--accent);
 }
-.btn.active:hover { background:#0c2848; }
+.btn.active:hover { background: rgba(59,143,212,.18); }
 
 .nav-hint {
-  margin-top:11px;
-  font-size:10px; color:#0e2036; letter-spacing:.07em;
-  font-family:'Space Mono', monospace; font-style:italic;
+  margin-top: 12px;
+  font-size: 11px; color: var(--txt-xlo);
+  letter-spacing: .06em;
+  font-family: var(--mono);
 }
 
-/* ── Cell info tooltip ─────────────────────────────────────────────────── */
+/* ── Tooltip ────────────────────────────────────────────────────────────── */
 #cell-tip {
-  position:fixed; pointer-events:none; z-index:30;
-  background:rgba(3,11,22,.98);
-  border:1px solid #1a3c6c;
-  border-radius:9px;
-  padding:14px 18px;
-  opacity:0; transition:opacity .14s ease;
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  white-space:nowrap;
-  min-width:200px;
+  position: fixed; pointer-events: none; z-index: 30;
+  background: var(--surface);
+  border: 1px solid var(--border-h);
+  border-radius: var(--r);
+  padding: 16px 20px;
+  opacity: 0; transition: opacity .12s ease;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  white-space: nowrap;
+  min-width: 210px;
+  box-shadow: var(--shadow);
 }
-#cell-tip.show { opacity:1; }
+#cell-tip.show { opacity: 1; }
 
-.tip-sect { font-size:9px; letter-spacing:.16em; color:#234a6a; text-transform:uppercase; margin-bottom:4px; }
-.tip-energy-val { font-family:'Space Mono', monospace; font-size:22px; font-weight:700; color:#90c4e0; line-height:1.1; }
-.tip-energy-unit { font-family:'Space Mono', monospace; font-size:11px; color:#2e5878; margin-top:2px; margin-bottom:12px; }
-.tip-div { height:1px; background:#0c2040; margin:10px 0; }
-.tip-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px 10px; }
-.tip-field label { display:block; font-size:9px; letter-spacing:.12em; color:#234a6a; text-transform:uppercase; margin-bottom:3px; }
-.tip-field span { font-family:'Space Mono', monospace; font-size:13px; color:#7ab0cc; }
+.tip-label {
+  font-size: 10px; letter-spacing: .14em; color: var(--txt-lo);
+  text-transform: uppercase; margin-bottom: 6px;
+  font-family: var(--mono);
+}
+.tip-energy-val {
+  font-family: var(--mono);
+  font-size: 26px; font-weight: 500;
+  color: var(--txt-hi); line-height: 1.1;
+}
+.tip-energy-unit {
+  font-family: var(--mono);
+  font-size: 11px; color: var(--txt-lo);
+  margin-top: 3px; margin-bottom: 14px;
+}
+.tip-div { height: 1px; background: var(--txt-xlo); margin: 12px 0; }
+.tip-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px 12px; }
+.tip-field label {
+  display: block;
+  font-size: 10px; letter-spacing: .12em;
+  color: var(--txt-lo); text-transform: uppercase;
+  margin-bottom: 4px; font-family: var(--mono);
+}
+.tip-field span {
+  font-family: var(--mono);
+  font-size: 14px; color: var(--txt-md);
+}
 
-/* ── Threshold panel ───────────────────────────────────────────────────── */
+/* ── Threshold panel ────────────────────────────────────────────────────── */
 #thr-panel {
-  position:fixed; right:22px; top:50%; transform:translateY(-50%);
-  display:flex; flex-direction:column; align-items:center; gap:12px;
-  opacity:.11; transition:opacity .5s ease;
-  z-index:5; padding:12px 6px;
+  position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  opacity: .1; transition: opacity .4s ease;
+  z-index: 5; padding: 14px 8px;
 }
-#thr-panel:hover { opacity:1; }
+#thr-panel:hover { opacity: 1; }
 
 .thr-lbl {
-  font-family:'Space Mono', monospace;
-  font-size:8px; letter-spacing:.16em; color:#274460; text-transform:uppercase;
-  writing-mode:vertical-rl; transform:rotate(180deg);
+  font-family: var(--mono);
+  font-size: 9px; letter-spacing: .16em; color: var(--txt-lo);
+  text-transform: uppercase;
+  writing-mode: vertical-rl; transform: rotate(180deg);
 }
 .slider-wrap {
-  height:220px; width:34px;
-  position:relative; flex-shrink:0;
+  height: 240px; width: 36px;
+  position: relative; flex-shrink: 0;
 }
 #thr-slider {
-  width:220px;
-  position:absolute; left:50%; top:50%;
-  transform:translate(-50%,-50%) rotate(-90deg);
-  -webkit-appearance:none; appearance:none;
-  height:3px; border-radius:2px; outline:none; cursor:pointer;
-  background:linear-gradient(90deg,#091e3e,#3680d4);
+  width: 240px;
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%,-50%) rotate(-90deg);
+  -webkit-appearance: none; appearance: none;
+  height: 3px; border-radius: 2px; outline: none; cursor: pointer;
+  background: linear-gradient(90deg, var(--txt-xlo), var(--accent));
 }
 #thr-slider::-webkit-slider-thumb {
-  -webkit-appearance:none;
-  width:17px; height:17px; border-radius:50%;
-  background:#2e78c8; border:2px solid #030c18;
-  box-shadow:0 0 12px rgba(46,120,200,.65);
-  cursor:pointer;
+  -webkit-appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 14px rgba(59,143,212,.7);
+  cursor: pointer;
+  transition: transform .15s ease;
 }
+#thr-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
 #thr-slider::-moz-range-thumb {
-  width:17px; height:17px; border-radius:50%;
-  background:#2e78c8; border:2px solid #030c18;
-  box-shadow:0 0 12px rgba(46,120,200,.65);
-  cursor:pointer;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg);
+  box-shadow: 0 0 14px rgba(59,143,212,.7);
+  cursor: pointer;
 }
 #thr-val {
-  font-family:'Space Mono', monospace;
-  font-size:9px; color:#274460;
-  writing-mode:vertical-rl; transform:rotate(180deg);
+  font-family: var(--mono);
+  font-size: 9px; color: var(--txt-lo);
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  letter-spacing: .03em;
 }
 
-/* ── Threshold cursor (follows mouse during drag) ──────────────────────── */
+/* ── Threshold cursor ───────────────────────────────────────────────────── */
 #thr-cursor {
-  position:fixed; pointer-events:none; z-index:50;
-  background:rgba(3,11,22,.98);
-  border:1px solid #2a5a8c;
-  border-radius:6px;
-  padding:6px 11px;
-  font-family:'Space Mono', monospace;
-  font-size:13px; color:#7ab4d4;
-  opacity:0; transition:opacity .08s;
-  white-space:nowrap; letter-spacing:.03em;
+  position: fixed; pointer-events: none; z-index: 50;
+  background: var(--surface);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--r-sm);
+  padding: 7px 13px;
+  font-family: var(--mono);
+  font-size: 13px; color: var(--txt-md);
+  opacity: 0; transition: opacity .08s;
+  white-space: nowrap; letter-spacing: .03em;
+  box-shadow: var(--shadow);
 }
-#thr-cursor.show { opacity:1; }
+#thr-cursor.show { opacity: 1; }
 
-/* ── Cinema exit ───────────────────────────────────────────────────────── */
+/* ── Fine-step hint ─────────────────────────────────────────────────────── */
+#thr-hint {
+  font-family: var(--mono);
+  font-size: 9px; color: var(--txt-xlo);
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  letter-spacing: .05em; text-align: center;
+  transition: color .2s;
+}
+#thr-panel:hover #thr-hint { color: var(--txt-lo); }
+
+/* ── Cinema exit ────────────────────────────────────────────────────────── */
 #cinema-exit {
-  position:fixed; bottom:24px; right:24px;
-  z-index:20;
-  opacity:0; pointer-events:none;
-  transition:opacity .5s ease;
+  position: fixed; bottom: 26px; right: 26px;
+  z-index: 20;
+  opacity: 0; pointer-events: none;
+  transition: opacity .5s ease;
 }
 
-/* ── Cinema mode ───────────────────────────────────────────────────────── */
+/* ── Cinema mode ────────────────────────────────────────────────────────── */
 body.cinema .card,
-body.cinema #thr-panel { opacity:0 !important; pointer-events:none; }
-body.cinema #cell-tip  { opacity:0 !important; }
-body.cinema #cinema-exit { opacity:.22; pointer-events:auto; }
-body.cinema #cinema-exit:hover { opacity:1; }
+body.cinema #thr-panel  { opacity: 0 !important; pointer-events: none; }
+body.cinema #cell-tip   { opacity: 0 !important; }
+body.cinema #cinema-exit { opacity: .22; pointer-events: auto; }
+body.cinema #cinema-exit:hover { opacity: 1; }
+
+/* ── Subtle separator ───────────────────────────────────────────────────── */
+.sep {
+  font-size: 10px; letter-spacing: .08em; color: var(--txt-xlo);
+  font-family: var(--mono); padding: 4px 0 2px;
+}
 </style>
 </head>
 <body>
@@ -244,10 +324,10 @@ body.cinema #cinema-exit:hover { opacity:1; }
 </div>
 
 <!-- ── HUD card ───────────────────────────────────────────────────────────── -->
-<div id="hud" class="card" style="top:16px;left:16px;display:none">
+<div id="hud" class="card" style="top:18px;left:18px;display:none">
   <div class="card-header" onclick="toggleCard('hud')">
     <div class="card-title">
-      <span class="material-icons-round">analytics</span>ATLAS TileCal
+      <span class="material-icons-round">sensors</span>ATLAS TileCal
     </div>
     <div class="card-chevron open" id="hud-chev">
       <span class="material-icons-round">expand_more</span>
@@ -281,7 +361,7 @@ body.cinema #cinema-exit:hover { opacity:1; }
 </div>
 
 <!-- ── Event card ─────────────────────────────────────────────────────────── -->
-<div id="evt" class="card" style="bottom:16px;left:16px;display:none">
+<div id="evt" class="card" style="bottom:18px;left:18px;display:none">
   <div class="card-header" onclick="toggleCard('evt')">
     <div class="card-title">
       <span class="material-icons-round">bolt</span>Evento de Colisão
@@ -291,22 +371,22 @@ body.cinema #cinema-exit:hover { opacity:1; }
     </div>
   </div>
   <div class="card-body" id="evt-body">
-    <div style="margin-bottom:12px">
+    <div style="margin-bottom:14px">
       <button class="btn" onclick="document.getElementById('fi').click()">
         <span class="material-icons-round">upload_file</span>Carregar XML
       </button>
       <input id="fi" type="file" accept=".xml" style="display:none">
     </div>
-    <div class="row"><span class="lbl">Arquivo</span>        <span class="val" id="ep-name">–</span></div>
-    <div class="row"><span class="lbl">count declarado</span><span class="val" id="ep-cdecl">–</span></div>
-    <div class="row"><span class="lbl">count real</span>     <span class="val" id="ep-cact">–</span></div>
-    <div class="row"><span class="lbl">match</span>          <span class="val" id="ep-match">–</span></div>
+    <div class="row"><span class="lbl">Arquivo</span>         <span class="val" id="ep-name" style="max-width:130px;overflow:hidden;text-overflow:ellipsis">–</span></div>
+    <div class="row"><span class="lbl">count declarado</span> <span class="val" id="ep-cdecl">–</span></div>
+    <div class="row"><span class="lbl">count real</span>      <span class="val" id="ep-cact">–</span></div>
+    <div class="row"><span class="lbl">match</span>           <span class="val" id="ep-match">–</span></div>
   </div>
 </div>
 
-<!-- ── Cell info tooltip ──────────────────────────────────────────────────── -->
+<!-- ── Cell tooltip ───────────────────────────────────────────────────────── -->
 <div id="cell-tip">
-  <div class="tip-sect">Energia depositada</div>
+  <div class="tip-label">Energia depositada</div>
   <div class="tip-energy-val" id="tt-e">–</div>
   <div class="tip-energy-unit">GeV</div>
   <div class="tip-div"></div>
@@ -321,12 +401,11 @@ body.cinema #cinema-exit:hover { opacity:1; }
 <div id="thr-panel">
   <div class="thr-lbl">Threshold</div>
   <div class="slider-wrap">
-    <input type="range" id="thr-slider" min="0" max="1" step="0.0001" value="0">
+    <input type="range" id="thr-slider" min="0" max="1" step="any" value="0">
   </div>
   <div id="thr-val">–</div>
+  <div id="thr-hint">scroll = fine</div>
 </div>
-
-<!-- Cursor value label while dragging -->
 <div id="thr-cursor"></div>
 
 <!-- ── Cinema exit ────────────────────────────────────────────────────────── -->
@@ -353,7 +432,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import init, { load_cgv, process_event } from './wasm/pkg/tile_viz.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ antialias:true });
+const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -361,7 +440,7 @@ document.body.appendChild(renderer.domElement);
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x030c18);
+scene.background = new THREE.Color(0x030b17);
 scene.add(new THREE.AmbientLight(0xffffff, 1.3));
 const sun = new THREE.DirectionalLight(0xffffff, 1.7);
 sun.position.set(1, 2, 1.5); scene.add(sun);
@@ -377,48 +456,43 @@ controls.dampingFactor = 0.06;
 window.controls = controls;
 
 // ── Global state ───────────────────────────────────────────────────────────────
-const meshIndex   = {};
-let   hitMats     = [];
-let   wfMode      = false;
-let   infoEnabled = true;   // whether hover shows tooltip + outline
+const meshIndex  = {};
+let hitMats      = [];
+let wfMode       = false;
+let infoEnabled  = true;
 
 const meshHitData = new Map();  // mesh → {e_mev, eta, phi, sub}
-let   allHits     = [];         // [{mesh, e_mev}]
-let   visibleList = [];         // currently visible hit meshes (post-threshold)
-let   eMin_mev = 0, eMax_mev = 1;
+let allHits       = [];         // [{mesh, e_mev}]
+let visibleList   = [];
+let eMin_mev = 0, eMax_mev = 1;
 
-// Per-hover state
 let hoveredMesh  = null;
-let outlineClone = null;    // BackSide child of hovered mesh
+let outlineClone = null;
 
 const baseMat = new THREE.MeshStandardMaterial({
-  color:0x0e1c2e, roughness:0.72, metalness:0.08, side:THREE.DoubleSide,
+  color: 0x0a1828, roughness: 0.72, metalness: 0.08, side: THREE.DoubleSide,
 });
 
-// Outline material: vivid cyan (#00E5FF) – outside the red/blue stellar palette
-const outlineMat = new THREE.MeshBasicMaterial({ color:0x00E5FF, side:THREE.BackSide });
+const outlineMat = new THREE.MeshBasicMaterial({
+  color: 0x00e5ff, side: THREE.BackSide,
+});
 
-// ── Saturated stellar colormap ─────────────────────────────────────────────────
-// Energies are in MeV; normalization is on raw MeV values.
+// ── Colormap (stellar) ────────────────────────────────────────────────────────
 function stellarColor(e_mev) {
   const range = eMax_mev - eMin_mev;
   const t = range > 1e-10 ? Math.max(0, Math.min(1, (e_mev - eMin_mev) / range)) : 0.5;
   const stops = [
-    { t:0.00, r:0.60, g:0.00, b:0.08 },  // deep wine red
-    { t:0.26, r:1.00, g:0.42, b:0.00 },  // vivid orange
-    { t:0.50, r:1.00, g:0.96, b:0.55 },  // warm bright yellow-white
-    { t:0.74, r:0.38, g:0.68, b:1.00 },  // vivid sky blue
-    { t:1.00, r:0.00, g:0.08, b:1.00 },  // intense electric blue
+    { t: 0.00, r: 0.60, g: 0.00, b: 0.08 },
+    { t: 0.26, r: 1.00, g: 0.42, b: 0.00 },
+    { t: 0.50, r: 1.00, g: 0.96, b: 0.55 },
+    { t: 0.74, r: 0.38, g: 0.68, b: 1.00 },
+    { t: 1.00, r: 0.00, g: 0.08, b: 1.00 },
   ];
   let i = 0;
   while (i < stops.length - 2 && t > stops[i + 1].t) i++;
   const a = stops[i], b = stops[i + 1];
   const s = (b.t - a.t) > 1e-10 ? (t - a.t) / (b.t - a.t) : 0;
-  return {
-    r: a.r + s * (b.r - a.r),
-    g: a.g + s * (b.g - a.g),
-    b: a.b + s * (b.b - a.b),
-  };
+  return { r: a.r + s*(b.r-a.r), g: a.g + s*(b.g-a.g), b: a.b + s*(b.b-a.b) };
 }
 
 // ── Card collapse ──────────────────────────────────────────────────────────────
@@ -454,35 +528,26 @@ window.clearEvt = () => {
   sl.min = 0; sl.max = 1; sl.value = 0;
 };
 
-// ── Toggle hover info ──────────────────────────────────────────────────────────
+// ── Toggle info ────────────────────────────────────────────────────────────────
 window.toggleInfo = () => {
   infoEnabled = !infoEnabled;
   const btn = document.getElementById('info-btn');
   const ico = btn.querySelector('.material-icons-round');
-  if (infoEnabled) {
-    btn.classList.add('active');
-    ico.textContent = 'info';
-    // if hovering, switch to tooltip+outline mode
-    if (hoveredMesh && meshHitData.has(hoveredMesh)) {
-      if (hoveredMesh.material !== baseMat) hoveredMesh.material.emissiveIntensity = 1;
-      showOutline(hoveredMesh);
-      fillTooltip(meshHitData.get(hoveredMesh));
-      placeTooltip(mouseX, mouseY);
-      cellTip.classList.add('show');
-    }
-  } else {
-    btn.classList.remove('active');
-    ico.textContent = 'info_outline';
-    // if hovering, switch to brighten mode
-    if (hoveredMesh) {
-      clearOutline();
-      cellTip.classList.remove('show');
-      if (hoveredMesh.material !== baseMat) hoveredMesh.material.emissiveIntensity = 3.0;
-    }
+  btn.classList.toggle('active', infoEnabled);
+  ico.textContent = infoEnabled ? 'info' : 'info_outline';
+
+  if (!infoEnabled) {
+    clearOutline();
+    cellTip.classList.remove('show');
+  } else if (hoveredMesh && meshHitData.has(hoveredMesh)) {
+    showOutline(hoveredMesh);
+    fillTooltip(meshHitData.get(hoveredMesh));
+    placeTooltip(mouseX, mouseY);
+    cellTip.classList.add('show');
   }
 };
 
-// ── Cinema mode ────────────────────────────────────────────────────────────────
+// ── Cinema ─────────────────────────────────────────────────────────────────────
 window.enterCinema = () => {
   setHovered(null);
   document.body.classList.add('cinema');
@@ -494,12 +559,12 @@ window.exitCinema = () => {
   controls.autoRotate = false;
 };
 
-// ── Outline helpers ────────────────────────────────────────────────────────────
+// ── Outline ────────────────────────────────────────────────────────────────────
 function showOutline(mesh) {
   clearOutline();
   outlineClone = new THREE.Mesh(mesh.geometry, outlineMat);
-  outlineClone.scale.setScalar(1.035);
-  outlineClone.layers.set(1); // layer 1 → excluded from raycaster
+  outlineClone.scale.setScalar(1.04);
+  outlineClone.layers.set(1);
   mesh.add(outlineClone);
 }
 function clearOutline() {
@@ -509,14 +574,15 @@ function clearOutline() {
   }
 }
 
-// ── Hover state machine ────────────────────────────────────────────────────────
+// ── Hover state ────────────────────────────────────────────────────────────────
 function setHovered(mesh) {
   if (mesh === hoveredMesh) return;
 
-  // un-hover previous
+  // restore previous
   if (hoveredMesh) {
     clearOutline();
-    if (hoveredMesh.material !== baseMat) hoveredMesh.material.emissiveIntensity = 1;
+    if (hoveredMesh.material !== baseMat)
+      hoveredMesh.material.emissiveIntensity = 1;
     cellTip.classList.remove('show');
   }
 
@@ -526,18 +592,20 @@ function setHovered(mesh) {
   const data = meshHitData.get(mesh);
   if (!data) return;
 
+  // Always illuminate on hover
+  if (mesh.material !== baseMat)
+    mesh.material.emissiveIntensity = 3.5;
+
+  // Outline + tooltip only when info is enabled
   if (infoEnabled) {
     showOutline(mesh);
     fillTooltip(data);
     placeTooltip(mouseX, mouseY);
     cellTip.classList.add('show');
-  } else {
-    // just brighten
-    if (mesh.material !== baseMat) mesh.material.emissiveIntensity = 3.0;
   }
 }
 
-// ── Tooltip helpers ────────────────────────────────────────────────────────────
+// ── Tooltip ────────────────────────────────────────────────────────────────────
 const cellTip = document.getElementById('cell-tip');
 
 function fillTooltip(data) {
@@ -547,42 +615,63 @@ function fillTooltip(data) {
   document.getElementById('tt-sub').textContent = data.sub.toFixed(0);
 }
 function placeTooltip(x, y) {
-  const ttW = 230;
-  const flip = x + ttW + 22 > innerWidth;
-  cellTip.style.left      = (flip ? x - ttW - 22 : x + 22) + 'px';
+  const w    = cellTip.offsetWidth || 220;
+  const flip = x + w + 26 > innerWidth;
+  cellTip.style.left      = (flip ? x - w - 22 : x + 22) + 'px';
   cellTip.style.top       = y + 'px';
   cellTip.style.transform = 'translateY(-50%)';
 }
 
 // ── Threshold ──────────────────────────────────────────────────────────────────
-const thrSlider = document.getElementById('thr-slider');
-const thrValEl  = document.getElementById('thr-val');
-const thrCursor = document.getElementById('thr-cursor');
+const thrSlider  = document.getElementById('thr-slider');
+const thrValEl   = document.getElementById('thr-val');
+const thrCursor  = document.getElementById('thr-cursor');
 let   thrDragging = false;
 
 function applyThreshold(thr_mev) {
   for (const h of allHits) h.mesh.visible = h.e_mev >= thr_mev;
   visibleList = allHits.filter(h => h.mesh.visible).map(h => h.mesh);
-  // if currently hovered cell is now hidden, unhover
   if (hoveredMesh && !hoveredMesh.visible) setHovered(null);
   mouseDirty = true;
   document.getElementById('s-active').textContent = visibleList.length.toLocaleString();
 }
 
-thrSlider.addEventListener('mousedown', () => { thrDragging = true; thrCursor.classList.add('show'); });
+function formatThrDisplay(mev) {
+  const gev = mev / 1000;
+  thrValEl.textContent = gev < 0.001 ? gev.toExponential(2) : gev.toFixed(4);
+}
+
+thrSlider.addEventListener('mousedown', () => {
+  thrDragging = true;
+  thrCursor.classList.add('show');
+});
 document.addEventListener('mouseup', () => {
   if (thrDragging) { thrDragging = false; thrCursor.classList.remove('show'); }
 });
 
 thrSlider.addEventListener('input', () => {
   const mev = parseFloat(thrSlider.value);
-  const gev = mev / 1000;
-  thrValEl.textContent  = gev.toExponential(2);
-  thrCursor.textContent = gev.toFixed(5) + ' GeV';
+  formatThrDisplay(mev);
+  thrCursor.textContent = (mev / 1000).toFixed(6) + ' GeV';
   applyThreshold(mev);
 });
 
-// ── Raycasting ─────────────────────────────────────────────────────────────────
+// Scroll wheel on the panel for fine-grained control
+document.getElementById('thr-panel').addEventListener('wheel', e => {
+  e.preventDefault();
+  if (!allHits.length) return;
+  const range  = eMax_mev - eMin_mev;
+  // shift = coarse (1%), default = fine (0.05%)
+  const step   = e.shiftKey ? range * 0.01 : range * 0.0005;
+  const cur    = parseFloat(thrSlider.value);
+  const next   = Math.min(eMax_mev, Math.max(eMin_mev, cur + (e.deltaY > 0 ? step : -step)));
+  thrSlider.value = next;
+  formatThrDisplay(next);
+  thrCursor.textContent = (next / 1000).toFixed(6) + ' GeV';
+  applyThreshold(next);
+}, { passive: false });
+
+// ── Mouse / raycasting ──────────────────────────────────────────────────────────
 const raycaster = new THREE.Raycaster();
 const mouseNDC  = new THREE.Vector2(-9999, -9999);
 let   mouseX    = 0, mouseY = 0, mouseDirty = false;
@@ -593,29 +682,25 @@ window.addEventListener('mousemove', e => {
   mouseX = e.clientX; mouseY = e.clientY;
   mouseDirty = true;
 
-  // keep tooltip following cursor over same mesh
-  if (hoveredMesh && infoEnabled && !document.body.classList.contains('cinema')) {
+  if (hoveredMesh && infoEnabled && !document.body.classList.contains('cinema'))
     placeTooltip(mouseX, mouseY);
-  }
-  // keep cursor label following during drag
+
   if (thrDragging) {
-    thrCursor.style.left = (mouseX + 18) + 'px';
-    thrCursor.style.top  = (mouseY - 12) + 'px';
+    thrCursor.style.left = (mouseX + 20) + 'px';
+    thrCursor.style.top  = (mouseY - 14) + 'px';
   }
 });
 
 function updateHover() {
   if (!mouseDirty || document.body.classList.contains('cinema')) return;
   mouseDirty = false;
-
   if (!visibleList.length) { setHovered(null); return; }
-
   raycaster.setFromCamera(mouseNDC, camera);
   const hits = raycaster.intersectObjects(visibleList, false);
   setHovered(hits.length ? hits[0].object : null);
 }
 
-// ── Initialisation ─────────────────────────────────────────────────────────────
+// ── Init ───────────────────────────────────────────────────────────────────────
 async function initApp() {
   const msg  = document.getElementById('overlay-msg');
   const prog = document.getElementById('prog');
@@ -666,7 +751,7 @@ async function initApp() {
   document.getElementById('evt').style.display     = 'block';
 }
 
-// ── XML event upload ───────────────────────────────────────────────────────────
+// ── XML upload ─────────────────────────────────────────────────────────────────
 document.getElementById('fi').onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -679,35 +764,42 @@ document.getElementById('fi').onchange = async e => {
   document.getElementById('ep-cact').textContent  = result.count_actual;
   document.getElementById('ep-match').textContent = result.count_ok ? 'sim' : 'não';
 
-  // result.e_min / e_max are in MeV (raw from XML)
   eMin_mev = result.e_min;
   eMax_mev = result.e_max;
   document.getElementById('s-erange').textContent =
-    `${(eMin_mev / 1000).toFixed(2)} / ${(eMax_mev / 1000).toFixed(2)} GeV`;
+    `${(eMin_mev/1000).toFixed(2)} / ${(eMax_mev/1000).toFixed(2)} GeV`;
 
-  // Reset
+  // Reset scene
   setHovered(null);
   Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
   meshHitData.clear(); allHits = []; hitMats = []; visibleList = [];
 
-  // Configure slider (internal values in MeV, display in GeV)
+  // Slider range (MeV internally, display GeV)
   thrSlider.min   = eMin_mev;
   thrSlider.max   = eMax_mev;
   thrSlider.value = eMin_mev;
-  thrSlider.step  = Math.max(0.001, (eMax_mev - eMin_mev) / 5000);
-  thrValEl.textContent = (eMin_mev / 1000).toExponential(2);
+  formatThrDisplay(eMin_mev);
 
   // Build hit meshes
+  let _found = 0, _miss = 0;
+  const _missEx = {};   // count missing by Tile volume prefix
   for (const h of result.hits) {
     const key  = h.path.replace(/\t→\t/g, '→');
     const mesh = meshIndex[key] ?? meshIndex[h.path];
-    if (!mesh) continue;
+    if (!mesh) {
+      _miss++;
+      const vol = key.split('→')[1] ?? 'unknown';
+      _missEx[vol] = (_missEx[vol] ?? 0) + 1;
+      continue;
+    }
+    _found++;
 
     mesh.visible = true;
-    const col = stellarColor(h.energy); // h.energy in MeV
+    const col = stellarColor(h.energy);
     const mat = new THREE.MeshStandardMaterial({
       color:     new THREE.Color(col.r, col.g, col.b),
-      emissive:  new THREE.Color(col.r * 0.38, col.g * 0.38, col.b * 0.38),
+      emissive:  new THREE.Color(col.r * 0.4, col.g * 0.4, col.b * 0.4),
+      emissiveIntensity: 1,
       roughness: 0.32, metalness: 0.18, side: THREE.DoubleSide,
     });
     mesh.material = mat;
@@ -718,6 +810,11 @@ document.getElementById('fi').onchange = async e => {
 
   visibleList = allHits.map(h => h.mesh);
   document.getElementById('s-active').textContent = visibleList.length.toLocaleString();
+  console.log(`[mesh] found=${_found}  missing=${_miss}`);
+  if (_miss > 0) console.log('[mesh] missing by volume:', _missEx);
+  // Log first example of a missing and found path for quick visual check
+  const _eg = result.hits.find(h => !meshIndex[h.path.replace(/\t→\t/g,'→')] && !meshIndex[h.path]);
+  if (_eg) console.log('[mesh] example MISSING path:', JSON.stringify(_eg.path));
 };
 
 // ── Resize ─────────────────────────────────────────────────────────────────────

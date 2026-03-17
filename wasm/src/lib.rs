@@ -1,57 +1,212 @@
 use wasm_bindgen::prelude::*;
-use std::cell::RefCell;
+use std::f32::consts::PI;
+use std::collections::HashMap;
 
-thread_local! {
-    /// Paths das células folha do CGV, em ordem de aparição.
-    /// Índice i corresponde ao índice i das arrays energy/eta/phi/sub do XML.
-    static CELL_PATHS: RefCell<Vec<String>> = RefCell::new(Vec::new());
+// ─── Célula TileCal ───────────────────────────────────────────────────────────
+
+struct TileCell {
+    sub:       u8,            // coincide com encoding do XML (partição, não amostragem)
+    eta_c:     f32,           // centro η da célula
+    tile_vol:  &'static str,  // ex.: "Tile1p", "Tile23n"
+    eta_i:     u8,            // índice η dentro do volume
+    phi_n:     u8,            // módulos em φ (normalmente 64)
+    cell_name: &'static str,  // referência (A1, BC3, D2, ...)
+}
+
+// ─── Tabela estática ──────────────────────────────────────────────────────────
+//
+// ENCODING DO XML (sub = partição, não amostragem):
+//   sub=0  EBC regular  : A12-A16 (Tile5n), B12-B15 (Tile6n), D4 (Tile8n), D5/D6 (Tile7n)
+//   sub=1  EBC especial : B11 (Tile6n), C10 (Tile9n), E1-E4 (Tile10-13n)
+//   sub=2  LBC          : A1-A10 (Tile1n), BC1-B9 (Tile23n), D1-D3 (Tile4n) — sem D0
+//   sub=3  LBA          : A1-A10 (Tile1p), BC1-B9 (Tile23p), D0-D3 (Tile4p)
+//   sub=4  EBA especial : B11 (Tile6p), C10 (Tile9p), E1-E4 (Tile10-13p)
+//   sub=5  EBA regular  : A12-A16 (Tile5p), B12-B15 (Tile6p), D4 (Tile8p), D5/D6 (Tile7p)
+//
+// Dentro de cada sub há múltiplas amostras radiais (A, BC, D) com centros η
+// coincidentes. O lookup usa nearest-neighbour + contador de ocorrências para
+// distribuir hits entre células empatadas.
+
+static TILE_CELLS: &[TileCell] = &[
+    // ── sub=3: LBA (η > 0) ───────────────────────────────────────────────────
+    // Sampling A — Tile1p (A antes de BC para tie-break)
+    TileCell { sub:3, eta_c: 0.05, tile_vol:"Tile1p",  eta_i:0, phi_n:64, cell_name:"A1"  },
+    TileCell { sub:3, eta_c: 0.15, tile_vol:"Tile1p",  eta_i:1, phi_n:64, cell_name:"A2"  },
+    TileCell { sub:3, eta_c: 0.25, tile_vol:"Tile1p",  eta_i:2, phi_n:64, cell_name:"A3"  },
+    TileCell { sub:3, eta_c: 0.35, tile_vol:"Tile1p",  eta_i:3, phi_n:64, cell_name:"A4"  },
+    TileCell { sub:3, eta_c: 0.45, tile_vol:"Tile1p",  eta_i:4, phi_n:64, cell_name:"A5"  },
+    TileCell { sub:3, eta_c: 0.55, tile_vol:"Tile1p",  eta_i:5, phi_n:64, cell_name:"A6"  },
+    TileCell { sub:3, eta_c: 0.65, tile_vol:"Tile1p",  eta_i:6, phi_n:64, cell_name:"A7"  },
+    TileCell { sub:3, eta_c: 0.75, tile_vol:"Tile1p",  eta_i:7, phi_n:64, cell_name:"A8"  },
+    TileCell { sub:3, eta_c: 0.85, tile_vol:"Tile1p",  eta_i:8, phi_n:64, cell_name:"A9"  },
+    TileCell { sub:3, eta_c: 0.95, tile_vol:"Tile1p",  eta_i:9, phi_n:64, cell_name:"A10" },
+    // Sampling BC — Tile23p
+    TileCell { sub:3, eta_c: 0.05, tile_vol:"Tile23p", eta_i:0, phi_n:64, cell_name:"BC1" },
+    TileCell { sub:3, eta_c: 0.15, tile_vol:"Tile23p", eta_i:1, phi_n:64, cell_name:"BC2" },
+    TileCell { sub:3, eta_c: 0.25, tile_vol:"Tile23p", eta_i:2, phi_n:64, cell_name:"BC3" },
+    TileCell { sub:3, eta_c: 0.35, tile_vol:"Tile23p", eta_i:3, phi_n:64, cell_name:"BC4" },
+    TileCell { sub:3, eta_c: 0.45, tile_vol:"Tile23p", eta_i:4, phi_n:64, cell_name:"BC5" },
+    TileCell { sub:3, eta_c: 0.55, tile_vol:"Tile23p", eta_i:5, phi_n:64, cell_name:"BC6" },
+    TileCell { sub:3, eta_c: 0.65, tile_vol:"Tile23p", eta_i:6, phi_n:64, cell_name:"BC7" },
+    TileCell { sub:3, eta_c: 0.75, tile_vol:"Tile23p", eta_i:7, phi_n:64, cell_name:"BC8" },
+    TileCell { sub:3, eta_c: 0.85, tile_vol:"Tile23p", eta_i:8, phi_n:64, cell_name:"B9"  },
+    // Sampling D — Tile4p (centros diferentes → distinguíveis por η)
+    TileCell { sub:3, eta_c: 0.10, tile_vol:"Tile4p",  eta_i:0, phi_n:64, cell_name:"D0"  },
+    TileCell { sub:3, eta_c: 0.30, tile_vol:"Tile4p",  eta_i:1, phi_n:64, cell_name:"D1"  },
+    TileCell { sub:3, eta_c: 0.50, tile_vol:"Tile4p",  eta_i:2, phi_n:64, cell_name:"D2"  },
+    TileCell { sub:3, eta_c: 0.70, tile_vol:"Tile4p",  eta_i:3, phi_n:64, cell_name:"D3"  },
+
+    // ── sub=2: LBC (η < 0) — sem D0 ──────────────────────────────────────────
+    // Sampling A — Tile1n
+    TileCell { sub:2, eta_c:-0.05, tile_vol:"Tile1n",  eta_i:0, phi_n:64, cell_name:"A1"  },
+    TileCell { sub:2, eta_c:-0.15, tile_vol:"Tile1n",  eta_i:1, phi_n:64, cell_name:"A2"  },
+    TileCell { sub:2, eta_c:-0.25, tile_vol:"Tile1n",  eta_i:2, phi_n:64, cell_name:"A3"  },
+    TileCell { sub:2, eta_c:-0.35, tile_vol:"Tile1n",  eta_i:3, phi_n:64, cell_name:"A4"  },
+    TileCell { sub:2, eta_c:-0.45, tile_vol:"Tile1n",  eta_i:4, phi_n:64, cell_name:"A5"  },
+    TileCell { sub:2, eta_c:-0.55, tile_vol:"Tile1n",  eta_i:5, phi_n:64, cell_name:"A6"  },
+    TileCell { sub:2, eta_c:-0.65, tile_vol:"Tile1n",  eta_i:6, phi_n:64, cell_name:"A7"  },
+    TileCell { sub:2, eta_c:-0.75, tile_vol:"Tile1n",  eta_i:7, phi_n:64, cell_name:"A8"  },
+    TileCell { sub:2, eta_c:-0.85, tile_vol:"Tile1n",  eta_i:8, phi_n:64, cell_name:"A9"  },
+    TileCell { sub:2, eta_c:-0.95, tile_vol:"Tile1n",  eta_i:9, phi_n:64, cell_name:"A10" },
+    // Sampling BC — Tile23n
+    TileCell { sub:2, eta_c:-0.05, tile_vol:"Tile23n", eta_i:0, phi_n:64, cell_name:"BC1" },
+    TileCell { sub:2, eta_c:-0.15, tile_vol:"Tile23n", eta_i:1, phi_n:64, cell_name:"BC2" },
+    TileCell { sub:2, eta_c:-0.25, tile_vol:"Tile23n", eta_i:2, phi_n:64, cell_name:"BC3" },
+    TileCell { sub:2, eta_c:-0.35, tile_vol:"Tile23n", eta_i:3, phi_n:64, cell_name:"BC4" },
+    TileCell { sub:2, eta_c:-0.45, tile_vol:"Tile23n", eta_i:4, phi_n:64, cell_name:"BC5" },
+    TileCell { sub:2, eta_c:-0.55, tile_vol:"Tile23n", eta_i:5, phi_n:64, cell_name:"BC6" },
+    TileCell { sub:2, eta_c:-0.65, tile_vol:"Tile23n", eta_i:6, phi_n:64, cell_name:"BC7" },
+    TileCell { sub:2, eta_c:-0.75, tile_vol:"Tile23n", eta_i:7, phi_n:64, cell_name:"BC8" },
+    TileCell { sub:2, eta_c:-0.85, tile_vol:"Tile23n", eta_i:8, phi_n:64, cell_name:"B9"  },
+    // Sampling D — Tile4n (D1-D3, D0 está em sub=3/LBA)
+    TileCell { sub:2, eta_c:-0.30, tile_vol:"Tile4n",  eta_i:1, phi_n:64, cell_name:"D1"  },
+    TileCell { sub:2, eta_c:-0.50, tile_vol:"Tile4n",  eta_i:2, phi_n:64, cell_name:"D2"  },
+    TileCell { sub:2, eta_c:-0.70, tile_vol:"Tile4n",  eta_i:3, phi_n:64, cell_name:"D3"  },
+
+    // ── sub=5: EBA regular (η > 0) ────────────────────────────────────────────
+    // Sampling A — Tile5p
+    TileCell { sub:5, eta_c: 1.05, tile_vol:"Tile5p",  eta_i:0, phi_n:64, cell_name:"A12" },
+    TileCell { sub:5, eta_c: 1.15, tile_vol:"Tile5p",  eta_i:1, phi_n:64, cell_name:"A13" },
+    TileCell { sub:5, eta_c: 1.25, tile_vol:"Tile5p",  eta_i:2, phi_n:64, cell_name:"A14" },
+    TileCell { sub:5, eta_c: 1.35, tile_vol:"Tile5p",  eta_i:3, phi_n:64, cell_name:"A15" },
+    TileCell { sub:5, eta_c: 1.45, tile_vol:"Tile5p",  eta_i:4, phi_n:64, cell_name:"A16" },
+    // Sampling B — Tile6p (B12-B15, B11 está em sub=4)
+    TileCell { sub:5, eta_c: 1.05, tile_vol:"Tile6p",  eta_i:1, phi_n:64, cell_name:"B12" },
+    TileCell { sub:5, eta_c: 1.15, tile_vol:"Tile6p",  eta_i:2, phi_n:64, cell_name:"B13" },
+    TileCell { sub:5, eta_c: 1.25, tile_vol:"Tile6p",  eta_i:3, phi_n:64, cell_name:"B14" },
+    TileCell { sub:5, eta_c: 1.35, tile_vol:"Tile6p",  eta_i:4, phi_n:64, cell_name:"B15" },
+    // D4, D5, D6 — Tile8p, Tile7p
+    TileCell { sub:5, eta_c: 1.00, tile_vol:"Tile8p",  eta_i:0, phi_n:64, cell_name:"D4"  },
+    TileCell { sub:5, eta_c: 1.25, tile_vol:"Tile7p",  eta_i:0, phi_n:64, cell_name:"D5"  },
+    TileCell { sub:5, eta_c: 1.50, tile_vol:"Tile7p",  eta_i:1, phi_n:64, cell_name:"D6"  },
+
+    // ── sub=0: EBC regular (η < 0) ────────────────────────────────────────────
+    // Sampling A — Tile5n
+    TileCell { sub:0, eta_c:-1.05, tile_vol:"Tile5n",  eta_i:0, phi_n:64, cell_name:"A12" },
+    TileCell { sub:0, eta_c:-1.15, tile_vol:"Tile5n",  eta_i:1, phi_n:64, cell_name:"A13" },
+    TileCell { sub:0, eta_c:-1.25, tile_vol:"Tile5n",  eta_i:2, phi_n:64, cell_name:"A14" },
+    TileCell { sub:0, eta_c:-1.35, tile_vol:"Tile5n",  eta_i:3, phi_n:64, cell_name:"A15" },
+    TileCell { sub:0, eta_c:-1.45, tile_vol:"Tile5n",  eta_i:4, phi_n:64, cell_name:"A16" },
+    // Sampling B — Tile6n (B12-B15, B11 está em sub=1)
+    TileCell { sub:0, eta_c:-1.05, tile_vol:"Tile6n",  eta_i:1, phi_n:64, cell_name:"B12" },
+    TileCell { sub:0, eta_c:-1.15, tile_vol:"Tile6n",  eta_i:2, phi_n:64, cell_name:"B13" },
+    TileCell { sub:0, eta_c:-1.25, tile_vol:"Tile6n",  eta_i:3, phi_n:64, cell_name:"B14" },
+    TileCell { sub:0, eta_c:-1.35, tile_vol:"Tile6n",  eta_i:4, phi_n:64, cell_name:"B15" },
+    // D4, D5, D6 — Tile8n, Tile7n
+    TileCell { sub:0, eta_c:-1.00, tile_vol:"Tile8n",  eta_i:0, phi_n:64, cell_name:"D4"  },
+    TileCell { sub:0, eta_c:-1.25, tile_vol:"Tile7n",  eta_i:0, phi_n:64, cell_name:"D5"  },
+    TileCell { sub:0, eta_c:-1.50, tile_vol:"Tile7n",  eta_i:1, phi_n:64, cell_name:"D6"  },
+
+    // ── sub=4: EBA especial (η > 0) ───────────────────────────────────────────
+    TileCell { sub:4, eta_c: 0.95, tile_vol:"Tile6p",  eta_i:0, phi_n:64, cell_name:"B11" },
+    TileCell { sub:4, eta_c: 0.90, tile_vol:"Tile9p",  eta_i:0, phi_n:64, cell_name:"C10" },
+    TileCell { sub:4, eta_c: 1.05, tile_vol:"Tile10p", eta_i:0, phi_n:64, cell_name:"E1"  },
+    TileCell { sub:4, eta_c: 1.20, tile_vol:"Tile11p", eta_i:0, phi_n:64, cell_name:"E2"  },
+    TileCell { sub:4, eta_c: 1.35, tile_vol:"Tile12p", eta_i:0, phi_n:64, cell_name:"E3"  },
+    TileCell { sub:4, eta_c: 1.55, tile_vol:"Tile13p", eta_i:0, phi_n:64, cell_name:"E4"  },
+
+    // ── sub=1: EBC especial (η < 0) ───────────────────────────────────────────
+    TileCell { sub:1, eta_c:-0.95, tile_vol:"Tile6n",  eta_i:0, phi_n:64, cell_name:"B11" },
+    TileCell { sub:1, eta_c:-0.90, tile_vol:"Tile9n",  eta_i:0, phi_n:64, cell_name:"C10" },
+    TileCell { sub:1, eta_c:-1.05, tile_vol:"Tile10n", eta_i:0, phi_n:64, cell_name:"E1"  },
+    TileCell { sub:1, eta_c:-1.20, tile_vol:"Tile11n", eta_i:0, phi_n:64, cell_name:"E2"  },
+    TileCell { sub:1, eta_c:-1.35, tile_vol:"Tile12n", eta_i:0, phi_n:64, cell_name:"E3"  },
+    TileCell { sub:1, eta_c:-1.55, tile_vol:"Tile13n", eta_i:0, phi_n:64, cell_name:"E4"  },
+];
+
+// ─── Lookup: (eta, phi, sub) → caminho CGV ────────────────────────────────────
+//
+// Retorna (caminho, phi_j, índice_do_candidato_escolhido, total_candidatos).
+// O chamador passa `nth` para resolver empates entre células no mesmo η
+// (ex: A1 e BC1 têm o mesmo eta_c=0.05 em sub=3).
+
+fn lookup_tile_cell_nth(
+    hit_eta: f32,
+    hit_phi: f32,
+    hit_sub: u8,
+    nth: usize,
+) -> Option<String> {
+    // 1. Distância mínima em η para este sub
+    let min_dist = TILE_CELLS
+        .iter()
+        .filter(|c| c.sub == hit_sub)
+        .map(|c| (c.eta_c - hit_eta).abs())
+        .fold(f32::INFINITY, f32::min);
+
+    if min_dist.is_infinite() {
+        return None;
+    }
+
+    // 2. Todos os candidatos dentro de min_dist + 5 mm em η
+    let tol = min_dist + 0.005_f32;
+    let candidates: Vec<&TileCell> = TILE_CELLS
+        .iter()
+        .filter(|c| c.sub == hit_sub && (c.eta_c - hit_eta).abs() <= tol)
+        .collect();
+
+    // 3. Selecciona o nth candidato (cíclico)
+    let cell = candidates[nth % candidates.len()];
+
+    // 4. Módulo φ
+    let phi_n = cell.phi_n as f32;
+    let raw   = ((hit_phi + PI) * phi_n / (2.0 * PI)).floor() as i32;
+    let j     = raw.rem_euclid(cell.phi_n as i32) as usize;
+
+    let vol = cell.tile_vol;
+    let i   = cell.eta_i as usize;
+    Some(format!(
+        "Calorimeter\t\u{2192}\t{vol}_0\t\u{2192}\t{vol}{i}_{i}\t\u{2192}\tcell_{j}"
+    ))
 }
 
 // ─── API pública ──────────────────────────────────────────────────────────────
 
-/// Carrega o .cgv e extrai os paths das células folha (segmento final = "cell*").
-/// Retorna o número de células encontradas.
 #[wasm_bindgen]
 pub fn load_cgv(cgv_text: &str) -> usize {
-    let mut paths: Vec<String> = Vec::new();
-
-    for line in cgv_text.lines() {
-        let t = line.trim();
-        if t.is_empty() || t.starts_with('#') {
-            continue;
-        }
-        // Último token que não seja vazio nem "→"
-        let last = t.split('\t')
-            .filter(|s| !s.trim().is_empty() && *s != "→")
-            .last();
-        if let Some(seg) = last {
-            if seg.starts_with("cell") {
-                paths.push(line.to_string());
+    cgv_text.lines()
+        .filter(|l| {
+            let t = l.trim();
+            !t.is_empty() && !t.starts_with('#') && {
+                let last = t.split('\t')
+                    .filter(|s| !s.trim().is_empty() && *s != "\u{2192}")
+                    .last();
+                last.map(|s| s.starts_with("cell")).unwrap_or(false)
             }
-        }
-    }
-
-    let n = paths.len();
-    CELL_PATHS.with(|c| *c.borrow_mut() = paths);
-    n
+        })
+        .count()
 }
 
-/// Processa o XML do evento, extrai o bloco <TILE>, valida o count,
-/// mapeia por índice para os paths do CGV e retorna JSON com os hits.
 #[wasm_bindgen]
 pub fn process_event(xml_text: &str) -> String {
-    // ── localiza <TILE ───────────────────────────────────────────────────────
+    // ── localiza <TILE> ───────────────────────────────────────────────────────
     let tile_pos = match find_tag(xml_text, "TILE") {
         Some(p) => p,
         None    => return err_json("Tag <TILE> não encontrada no XML"),
     };
-
     let count_declared: usize = match attr_usize(&xml_text[tile_pos..], "count") {
         Some(n) => n,
         None    => return err_json("Atributo count ausente em <TILE>"),
     };
-
-    // Conteúdo entre o fim de <TILE ...> e </TILE>
     let inner_start = match xml_text[tile_pos..].find('>') {
         Some(p) => tile_pos + p + 1,
         None    => return err_json("<TILE> malformada (sem >)"),
@@ -62,7 +217,7 @@ pub fn process_event(xml_text: &str) -> String {
     };
     let inner = &xml_text[inner_start..inner_end];
 
-    // ── extrai as quatro arrays ──────────────────────────────────────────────
+    // ── extrai arrays ─────────────────────────────────────────────────────────
     let energy = match extract_array(inner, "energy") {
         Some(v) => v,
         None    => return err_json("<energy> não encontrada dentro de <TILE>"),
@@ -81,45 +236,92 @@ pub fn process_event(xml_text: &str) -> String {
     };
 
     let count_actual = energy.len();
-    let count_ok     = count_actual == count_declared
+    let count_ok = count_actual == count_declared
         && count_actual == eta.len()
         && count_actual == phi.len()
         && count_actual == sub.len();
 
-    // ── normaliza energia para o colormap ────────────────────────────────────
+    // ── normaliza energia ─────────────────────────────────────────────────────
     let e_min = energy.iter().cloned().fold(f32::INFINITY,     f32::min);
     let e_max = energy.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
 
-    // ── monta hits por índice ────────────────────────────────────────────────
-    let cell_paths = CELL_PATHS.with(|c| c.borrow().clone());
-    let n          = count_actual.min(cell_paths.len());
+    // ── estado para desambiguar células com mesmo η ───────────────────────────
+    // Chave: (eta_arredondado×1000, phi_j, sub) → contagem de ocorrências
+    let mut seen: HashMap<(i32, u8, u8), usize> = HashMap::new();
 
-    let mut hits = String::new();
-    for i in 0..n {
-        let (r, g, b) = jet(energy[i], e_min, e_max);
-        if !hits.is_empty() { hits.push(','); }
-        hits.push_str(&format!(
-            r#"{{"path":{},"energy":{:.4},"eta":{:.4},"phi":{:.4},"sub":{:.0},"r":{:.4},"g":{:.4},"b":{:.4}}}"#,
-            js(&cell_paths[i]),
-            energy[i], eta[i], phi[i], sub[i],
-            r, g, b
-        ));
+    // ── diagnóstico ───────────────────────────────────────────────────────────
+    let mut sub_hist_mapped   = [0u32; 16];
+    let mut sub_hist_unmapped = [0u32; 16];
+    let mut sub_eta_min = [f32::INFINITY;     16];
+    let mut sub_eta_max = [f32::NEG_INFINITY; 16];
+
+    // ── monta hits ────────────────────────────────────────────────────────────
+    let mut hits     = String::new();
+    let mut mapped   = 0usize;
+    let mut unmapped = 0usize;
+
+    for i in 0..count_actual {
+        let hit_sub  = sub[i].round() as u8;
+        let hit_eta  = eta[i];
+        let hit_phi  = phi[i];
+        let hidx     = (hit_sub as usize).min(15);
+
+        sub_eta_min[hidx] = sub_eta_min[hidx].min(hit_eta);
+        sub_eta_max[hidx] = sub_eta_max[hidx].max(hit_eta);
+
+        // Calcula phi_j antecipado para usar na chave de desambiguação
+        let phi_j_key = {
+            let raw = ((hit_phi + PI) * 64.0 / (2.0 * PI)).floor() as i32;
+            raw.rem_euclid(64) as u8
+        };
+        let eta_key  = (hit_eta * 1000.0).round() as i32;
+        let seen_key = (eta_key, phi_j_key, hit_sub);
+        let nth      = *seen.get(&seen_key).unwrap_or(&0);
+        seen.insert(seen_key, nth + 1);
+
+        match lookup_tile_cell_nth(hit_eta, hit_phi, hit_sub, nth) {
+            Some(path) => {
+                let (r, g, b) = jet(energy[i], e_min, e_max);
+                if !hits.is_empty() { hits.push(','); }
+                hits.push_str(&format!(
+                    r#"{{"path":{},"energy":{:.4},"eta":{:.4},"phi":{:.4},"sub":{:.0},"r":{:.4},"g":{:.4},"b":{:.4}}}"#,
+                    js(&path), energy[i], hit_eta, hit_phi, sub[i], r, g, b
+                ));
+                mapped += 1;
+                sub_hist_mapped[hidx] += 1;
+            }
+            None => {
+                unmapped += 1;
+                sub_hist_unmapped[hidx] += 1;
+            }
+        }
+    }
+
+    // ── serializa diagnóstico ─────────────────────────────────────────────────
+    let mut sub_diag = String::new();
+    for s in 0..16usize {
+        let m = sub_hist_mapped[s];
+        let u = sub_hist_unmapped[s];
+        if m + u > 0 {
+            if !sub_diag.is_empty() { sub_diag.push(','); }
+            sub_diag.push_str(&format!(
+                r#"{{"sub":{},"mapped":{},"unmapped":{},"eta_min":{:.3},"eta_max":{:.3}}}"#,
+                s, m, u, sub_eta_min[s], sub_eta_max[s]
+            ));
+        }
     }
 
     format!(
-        r#"{{"ok":true,"count_declared":{},"count_actual":{},"count_ok":{},"cells_mapped":{},"e_min":{:.4},"e_max":{:.4},"hits":[{}]}}"#,
-        count_declared, count_actual, count_ok, n,
-        e_min, e_max, hits
+        r#"{{"ok":true,"count_declared":{},"count_actual":{},"count_ok":{},"cells_mapped":{},"cells_unmapped":{},"e_min":{:.4},"e_max":{:.4},"sub_diag":[{}],"hits":[{}]}}"#,
+        count_declared, count_actual, count_ok, mapped, unmapped,
+        e_min, e_max, sub_diag, hits
     )
 }
 
-// ─── helpers internos ─────────────────────────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
-fn err_json(msg: &str) -> String {
-    format!(r#"{{"ok":false,"error":{}}}"#, js(msg))
-}
+fn err_json(msg: &str) -> String { format!(r#"{{"ok":false,"error":{}}}"#, js(msg)) }
 
-/// Serializa uma string Rust como literal JSON (com aspas e escapes).
 fn js(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -153,31 +355,15 @@ fn extract_array(content: &str, tag: &str) -> Option<Vec<f32>> {
     let close = format!("</{}>", tag);
     let s = content.find(&open)?  + open.len();
     let e = content[s..].find(&close)? + s;
-    let v: Vec<f32> = content[s..e]
-        .split_whitespace()
-        .filter_map(|tok| tok.parse().ok())
-        .collect();
-    Some(v)
+    Some(content[s..e].split_whitespace().filter_map(|t| t.parse().ok()).collect())
 }
 
-/// Jet colormap: blue → cyan → green → yellow → red
 fn jet(e: f32, e_min: f32, e_max: f32) -> (f32, f32, f32) {
     let t = if (e_max - e_min).abs() > 1e-10 {
         ((e - e_min) / (e_max - e_min)).clamp(0.0, 1.0)
-    } else {
-        0.5
-    };
-    if t < 0.25 {
-        let s = t / 0.25;
-        (0.0, s, 1.0)
-    } else if t < 0.5 {
-        let s = (t - 0.25) / 0.25;
-        (0.0, 1.0, 1.0 - s)
-    } else if t < 0.75 {
-        let s = (t - 0.5) / 0.25;
-        (s, 1.0, 0.0)
-    } else {
-        let s = (t - 0.75) / 0.25;
-        (1.0, 1.0 - s, 0.0)
-    }
+    } else { 0.5 };
+    if t < 0.25      { let s = t / 0.25;           (0.0, s, 1.0)       }
+    else if t < 0.5  { let s = (t - 0.25) / 0.25;  (0.0, 1.0, 1.0 - s) }
+    else if t < 0.75 { let s = (t - 0.5)  / 0.25;  (s,   1.0, 0.0)     }
+    else             { let s = (t - 0.75) / 0.25;   (1.0, 1.0 - s, 0.0) }
 }
