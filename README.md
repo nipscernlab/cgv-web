@@ -7,7 +7,7 @@ Converte arquivos CERN `.root` em cenas 3-D interativas no navegador.
 
 ```
 cgv-web/
-├── atlas_viewer.html   # Visualizador principal (abrir no navegador)
+├── index.html   # Visualizador principal (abrir no navegador)
 ├── root2scene.mjs      # CLI: converte .root → .cgv + .gltf
 ├── setup.mjs           # Pós-instalação: corrige imports do jsroot
 ├── wasm/               # Módulo Rust/WASM (tile_viz)
@@ -83,13 +83,13 @@ Gera `output\atlas.cgv` e `output\atlas.gltf`.
 
 ## 4. Visualizar no navegador
 
-Abra `atlas_viewer.html` em um servidor HTTP local (necessário por restrições de CORS ao carregar WASM e GLTF):
+Abra `index.html` em um servidor HTTP local (necessário por restrições de CORS ao carregar WASM e GLTF):
 
 ```bat
 npx serve .
 ```
 
-Acesse `http://localhost:3000/atlas_viewer.html` e carregue os arquivos gerados.
+Acesse `http://localhost:3000/index.html` e carregue os arquivos gerados.
 
 ---
 
