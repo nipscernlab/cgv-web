@@ -191,8 +191,8 @@ import init, { load_cgv, process_event } from './wasm/pkg/tile_viz.js';
 // GLB is large (300+ MB) and must be hosted outside the git repo.
 // Upload CaloGeometry.glb as an asset to a GitHub Release and set the URL here:
 //   https://github.com/nipscernlab/cgv-web/releases/download/<tag>/CaloGeometry.glb
-const GLB_URL = './root_file/CaloGeometry.glb';   // ← update to release URL
-const CGV_URL = './root_file/CaloGeometry.cgv';
+const GLB_URL = 'https://github.com/nipscernlab/cgv-web/releases/download/geometry-v1/CaloGeometry.glb';   // ← update to release URL
+const CGV_URL = 'https://github.com/nipscernlab/cgv-web/releases/download/geometry-v1/CaloGeometry.cgv';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
