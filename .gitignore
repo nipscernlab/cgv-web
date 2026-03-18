@@ -1,1 +1,3 @@
 /node_modules
+wasm/target/
+root_file/CaloGeometry.glb

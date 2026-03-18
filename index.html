@@ -187,6 +187,13 @@ import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import init, { load_cgv, process_event } from './wasm/pkg/tile_viz.js';
 
+// ── Geometry URLs ─────────────────────────────────────────────────────────────
+// GLB is large (300+ MB) and must be hosted outside the git repo.
+// Upload CaloGeometry.glb as an asset to a GitHub Release and set the URL here:
+//   https://github.com/nipscernlab/cgv-web/releases/download/<tag>/CaloGeometry.glb
+const GLB_URL = './root_file/CaloGeometry.glb';   // ← update to release URL
+const CGV_URL = './root_file/CaloGeometry.cgv';
+
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -556,8 +563,8 @@ async function initApp(){
 
   msg.textContent='Carregando geometria…';
   const [glbBuf,cgvText]=await Promise.all([
-    fetch('./root_file/CaloGeometry.glb').then(r=>r.arrayBuffer()),
-    fetch('./root_file/CaloGeometry.cgv').then(r=>r.text()),
+    fetch(GLB_URL).then(r=>r.arrayBuffer()),
+    fetch(CGV_URL).then(r=>r.text()),
   ]);
   prog.style.width='55%';
 
