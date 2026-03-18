@@ -5,343 +5,266 @@
 <title>TileCal Viewer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
-/* ── Reset ──────────────────────────────────────────────────────────────── */
-*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 
-:root {
-  --bg:          #030b17;
-  --surface:     rgba(6,16,32,0.97);
-  --border:      rgba(28,58,100,0.45);
-  --border-h:    rgba(50,100,170,0.65);
-  --accent:      #3b8fd4;
-  --accent-dim:  #1d5a96;
-  --txt-hi:      #ddeaf6;
-  --txt-md:      #7ba8c8;
-  --txt-lo:      #3a6080;
-  --txt-xlo:     #1e3a52;
-  --mono:        'JetBrains Mono', 'Fira Code', monospace;
-  --sans:        'Inter', system-ui, sans-serif;
-  --r:           10px;
-  --r-sm:        7px;
-  --shadow:      0 12px 48px rgba(0,0,0,.55);
-}
-
-body {
-  background: var(--bg);
-  color: var(--txt-hi);
-  font-family: var(--sans);
-  font-size: 14px;
-  line-height: 1.6;
-  overflow: hidden;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-canvas { display:block; }
-
-/* ── Loading ────────────────────────────────────────────────────────────── */
-#overlay {
-  position: fixed; inset: 0;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  background: var(--bg); gap: 20px; z-index: 10;
-}
-#overlay-title {
-  display: flex; align-items: center; gap: 12px;
-  font-family: var(--mono);
-  font-size: 13px; font-weight: 500;
-  letter-spacing: .2em; color: var(--accent);
-}
-#overlay-title .material-icons-round { font-size: 22px; }
-#overlay-msg {
-  font-size: 12px; color: var(--txt-lo);
-  letter-spacing: .08em; font-family: var(--mono);
-}
-#bar {
-  width: 260px; height: 2px;
-  background: var(--txt-xlo); overflow: hidden; border-radius: 2px;
-}
-#prog {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
-  width: 0; transition: width .3s ease;
+:root{
+  --bg:      #040c1a;
+  --surf:    rgba(5,13,28,0.97);
+  --b0:      rgba(22,50,95,0.35);
+  --b1:      rgba(50,110,200,0.60);
+  --ac:      #3d9ef0;
+  --ac2:     #00d4ff;
+  --ac-dim:  #1a5fa0;
+  --hi:      #ddeaf8;
+  --md:      #618fbb;
+  --lo:      #2a5070;
+  --xlo:     #12243a;
+  --mono:    'JetBrains Mono',monospace;
+  --sans:    'Inter',system-ui,sans-serif;
+  --r:       12px;
+  --rsm:     8px;
+  --shadow:  0 16px 56px rgba(0,0,0,.65);
 }
 
-/* ── Card ───────────────────────────────────────────────────────────────── */
-.card {
-  position: fixed;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  min-width: 256px;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: var(--shadow);
-  transition: border-color .25s, box-shadow .25s, opacity .6s;
+body{
+  background:var(--bg);
+  color:var(--hi);
+  font-family:var(--sans);
+  font-size:14px;
+  line-height:1.5;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
 }
-.card:hover {
-  border-color: var(--border-h);
-  box-shadow: 0 16px 56px rgba(0,0,0,.7);
-}
+canvas{display:block}
 
-.card-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px;
-  cursor: pointer; user-select: none;
+/* ── Loading ── */
+#overlay{
+  position:fixed;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:var(--bg);gap:18px;z-index:10;
 }
-.card-title {
-  display: flex; align-items: center; gap: 9px;
-  font-family: var(--mono);
-  font-size: 10px; font-weight: 500;
-  letter-spacing: .18em; text-transform: uppercase;
-  color: var(--txt-lo);
+#ov-logo{
+  font-family:var(--mono);font-size:11px;font-weight:600;
+  letter-spacing:.28em;text-transform:uppercase;color:var(--ac);
+  display:flex;align-items:center;gap:10px;
 }
-.card-title .material-icons-round { font-size: 15px; color: var(--accent-dim); }
-.card-chevron {
-  color: var(--txt-xlo);
-  transition: transform .3s ease, color .2s;
-  display: flex; align-items: center;
-}
-.card-chevron .material-icons-round { font-size: 18px; }
-.card-chevron.open { transform: rotate(180deg); }
-.card-header:hover .card-chevron { color: var(--accent); }
+#ov-logo .material-icons-round{font-size:20px}
+#ov-msg{font-size:11px;color:var(--lo);letter-spacing:.1em;font-family:var(--mono)}
+#bar{width:240px;height:2px;background:var(--xlo);border-radius:2px;overflow:hidden}
+#prog{height:100%;background:linear-gradient(90deg,var(--ac-dim),var(--ac),var(--ac2));width:0;transition:width .3s ease}
 
-.card-body {
-  max-height: 600px; opacity: 1;
-  padding: 0 18px 18px;
-  transition: max-height .35s ease, opacity .25s ease, padding-bottom .35s ease;
-  overflow: hidden;
+/* ── Card ── */
+.card{
+  position:fixed;
+  background:var(--surf);
+  border:1px solid var(--b0);
+  border-radius:var(--r);
+  min-width:260px;
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  box-shadow:var(--shadow);
+  transition:border-color .2s,box-shadow .2s;
 }
-.card-body.collapsed { max-height: 0; opacity: 0; padding-bottom: 0; }
+.card:hover{border-color:var(--b1);box-shadow:0 20px 64px rgba(0,0,0,.75)}
 
-/* ── Data rows ──────────────────────────────────────────────────────────── */
-.row {
-  display: flex; justify-content: space-between; align-items: baseline;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--txt-xlo);
+.card-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:13px 16px;cursor:pointer;user-select:none;
 }
-.row:last-of-type { border-bottom: none; }
-.row .lbl {
-  font-size: 13px; color: var(--txt-lo);
-  font-weight: 400;
+.card-title{
+  display:flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:10px;font-weight:600;
+  letter-spacing:.22em;text-transform:uppercase;color:var(--lo);
 }
-.row .val {
-  font-family: var(--mono);
-  font-size: 13px; color: var(--txt-md);
-  font-weight: 400;
-}
+.card-title .material-icons-round{font-size:14px;color:var(--ac-dim)}
+.chev{color:var(--xlo);transition:transform .3s,color .2s;display:flex;align-items:center}
+.chev .material-icons-round{font-size:18px}
+.chev.open{transform:rotate(180deg)}
+.card-hdr:hover .chev{color:var(--ac)}
 
-.cdiv { height: 1px; background: var(--txt-xlo); margin: 12px 0 10px; }
+.card-body{
+  max-height:560px;opacity:1;
+  padding:0 16px 16px;
+  transition:max-height .3s ease,opacity .2s ease,padding-bottom .3s ease;
+  overflow:hidden;
+}
+.card-body.col{max-height:0;opacity:0;padding-bottom:0}
 
-/* ── Buttons ────────────────────────────────────────────────────────────── */
-.btns { display: flex; flex-wrap: wrap; gap: 7px; }
-.btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: transparent;
-  border: 1px solid var(--txt-xlo);
-  color: var(--txt-lo);
-  padding: 7px 13px; border-radius: var(--r-sm);
-  cursor: pointer;
-  font: 500 13px/1 var(--sans);
-  letter-spacing: .01em;
-  transition: background .18s, border-color .18s, color .18s;
-  white-space: nowrap;
+/* ── Rows ── */
+.row{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:6px 0;border-bottom:1px solid var(--xlo);
 }
-.btn .material-icons-round { font-size: 15px; }
-.btn:hover {
-  background: rgba(59,143,212,.08);
-  border-color: var(--accent-dim);
-  color: var(--txt-md);
-}
-.btn.active {
-  background: rgba(59,143,212,.12);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.btn.active:hover { background: rgba(59,143,212,.18); }
+.row:last-of-type{border-bottom:none}
+.row .lbl{font-size:12px;color:var(--lo);font-weight:500}
+.row .val{font-family:var(--mono);font-size:13px;color:var(--md);font-weight:500}
 
-.nav-hint {
-  margin-top: 12px;
-  font-size: 11px; color: var(--txt-xlo);
-  letter-spacing: .06em;
-  font-family: var(--mono);
-}
+.cdiv{height:1px;background:var(--xlo);margin:10px 0 9px}
 
-/* ── Tooltip ────────────────────────────────────────────────────────────── */
-#cell-tip {
-  position: fixed; pointer-events: none; z-index: 30;
-  background: var(--surface);
-  border: 1px solid var(--border-h);
-  border-radius: var(--r);
-  padding: 16px 20px;
-  opacity: 0; transition: opacity .12s ease;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  white-space: nowrap;
-  min-width: 210px;
-  box-shadow: var(--shadow);
+/* ── Buttons ── */
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.btn{
+  display:inline-flex;align-items:center;gap:5px;
+  background:transparent;
+  border:1px solid var(--xlo);
+  color:var(--lo);
+  padding:6px 11px;border-radius:var(--rsm);
+  cursor:pointer;
+  font:600 12px/1 var(--sans);letter-spacing:.01em;
+  transition:background .15s,border-color .15s,color .15s,box-shadow .15s;
+  white-space:nowrap;
 }
-#cell-tip.show { opacity: 1; }
+.btn .material-icons-round{font-size:14px}
+.btn:hover{background:rgba(61,158,240,.08);border-color:var(--ac-dim);color:var(--md)}
+.btn.active{
+  background:rgba(61,158,240,.12);
+  border-color:var(--ac);color:var(--ac);
+  box-shadow:0 0 12px rgba(61,158,240,.18);
+}
+.btn.active:hover{background:rgba(61,158,240,.18)}
 
-.tip-label {
-  font-size: 10px; letter-spacing: .14em; color: var(--txt-lo);
-  text-transform: uppercase; margin-bottom: 6px;
-  font-family: var(--mono);
-}
-.tip-energy-val {
-  font-family: var(--mono);
-  font-size: 26px; font-weight: 500;
-  color: var(--txt-hi); line-height: 1.1;
-}
-.tip-energy-unit {
-  font-family: var(--mono);
-  font-size: 11px; color: var(--txt-lo);
-  margin-top: 3px; margin-bottom: 14px;
-}
-.tip-div { height: 1px; background: var(--txt-xlo); margin: 12px 0; }
-.tip-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px 12px; }
-.tip-field label {
-  display: block;
-  font-size: 10px; letter-spacing: .12em;
-  color: var(--txt-lo); text-transform: uppercase;
-  margin-bottom: 4px; font-family: var(--mono);
-}
-.tip-field span {
-  font-family: var(--mono);
-  font-size: 14px; color: var(--txt-md);
-}
+.nav-hint{margin-top:10px;font-size:10px;color:var(--xlo);letter-spacing:.06em;font-family:var(--mono)}
 
-/* ── Threshold panel ────────────────────────────────────────────────────── */
-#thr-panel {
-  position: fixed; right: 24px; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 14px;
-  opacity: .1; transition: opacity .4s ease;
-  z-index: 5; padding: 14px 8px;
+/* ── Tooltip ── */
+#cell-tip{
+  position:fixed;pointer-events:none;z-index:30;
+  background:var(--surf);
+  border:1px solid var(--b1);
+  border-radius:var(--r);
+  padding:14px 18px;
+  opacity:0;transition:opacity .1s ease;
+  backdrop-filter:blur(24px);
+  -webkit-backdrop-filter:blur(24px);
+  white-space:nowrap;
+  min-width:220px;
+  box-shadow:var(--shadow);
 }
-#thr-panel:hover { opacity: 1; }
+#cell-tip.show{opacity:1}
 
-.thr-lbl {
-  font-family: var(--mono);
-  font-size: 9px; letter-spacing: .16em; color: var(--txt-lo);
-  text-transform: uppercase;
-  writing-mode: vertical-rl; transform: rotate(180deg);
+.tip-cellname{
+  font-family:var(--sans);font-size:22px;font-weight:700;
+  color:var(--hi);line-height:1;margin-bottom:10px;letter-spacing:.01em;
 }
-.slider-wrap {
-  height: 240px; width: 36px;
-  position: relative; flex-shrink: 0;
+.tip-eline{display:flex;align-items:baseline;gap:6px;margin-bottom:12px}
+.tip-eval{
+  font-family:var(--mono);font-size:28px;font-weight:600;
+  color:var(--ac2);line-height:1;
 }
-#thr-slider {
-  width: 240px;
-  position: absolute; left: 50%; top: 50%;
-  transform: translate(-50%,-50%) rotate(-90deg);
-  -webkit-appearance: none; appearance: none;
-  height: 3px; border-radius: 2px; outline: none; cursor: pointer;
-  background: linear-gradient(90deg, var(--txt-xlo), var(--accent));
+.tip-eunit{font-family:var(--mono);font-size:11px;color:var(--lo);font-weight:500}
+.tip-div{height:1px;background:var(--xlo);margin:0 0 10px}
+.tip-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 10px}
+.tip-field label{
+  display:block;font-size:10px;letter-spacing:.12em;
+  color:var(--lo);text-transform:uppercase;margin-bottom:3px;
+  font-family:var(--mono);font-weight:600;
 }
-#thr-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--bg);
-  box-shadow: 0 0 14px rgba(59,143,212,.7);
-  cursor: pointer;
-  transition: transform .15s ease;
-}
-#thr-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
-#thr-slider::-moz-range-thumb {
-  width: 18px; height: 18px; border-radius: 50%;
-  background: var(--accent);
-  border: 2px solid var(--bg);
-  box-shadow: 0 0 14px rgba(59,143,212,.7);
-  cursor: pointer;
-}
-#thr-val {
-  font-family: var(--mono);
-  font-size: 9px; color: var(--txt-lo);
-  writing-mode: vertical-rl; transform: rotate(180deg);
-  letter-spacing: .03em;
-}
+.tip-field span{font-family:var(--mono);font-size:13px;color:var(--md);font-weight:500}
 
-/* ── Threshold cursor ───────────────────────────────────────────────────── */
-#thr-cursor {
-  position: fixed; pointer-events: none; z-index: 50;
-  background: var(--surface);
-  border: 1px solid var(--accent-dim);
-  border-radius: var(--r-sm);
-  padding: 7px 13px;
-  font-family: var(--mono);
-  font-size: 13px; color: var(--txt-md);
-  opacity: 0; transition: opacity .08s;
-  white-space: nowrap; letter-spacing: .03em;
-  box-shadow: var(--shadow);
+/* ── Threshold panel ── */
+#thr-panel{
+  position:fixed;right:22px;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  opacity:.18;transition:opacity .3s ease;
+  z-index:5;padding:12px 8px;
 }
-#thr-cursor.show { opacity: 1; }
+#thr-panel:hover{opacity:1}
 
-/* ── Fine-step hint ─────────────────────────────────────────────────────── */
-#thr-hint {
-  font-family: var(--mono);
-  font-size: 9px; color: var(--txt-xlo);
-  writing-mode: vertical-rl; transform: rotate(180deg);
-  letter-spacing: .05em; text-align: center;
-  transition: color .2s;
+.thr-lbl{
+  font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--lo);
+  text-transform:uppercase;writing-mode:vertical-rl;transform:rotate(180deg);
+  font-weight:600;
 }
-#thr-panel:hover #thr-hint { color: var(--txt-lo); }
-
-/* ── Cinema exit ────────────────────────────────────────────────────────── */
-#cinema-exit {
-  position: fixed; bottom: 26px; right: 26px;
-  z-index: 20;
-  opacity: 0; pointer-events: none;
-  transition: opacity .5s ease;
+.slider-wrap{height:240px;width:36px;position:relative;flex-shrink:0}
+#thr-slider{
+  width:240px;
+  position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%) rotate(-90deg);
+  -webkit-appearance:none;appearance:none;
+  height:4px;border-radius:2px;outline:none;cursor:pointer;
+  background:linear-gradient(90deg,var(--xlo),var(--ac));
 }
+#thr-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:20px;height:20px;border-radius:50%;
+  background:var(--ac);
+  border:2.5px solid var(--bg);
+  box-shadow:0 0 16px rgba(61,158,240,.7);
+  cursor:pointer;transition:transform .12s ease,box-shadow .12s ease;
+}
+#thr-slider::-webkit-slider-thumb:hover{transform:scale(1.2);box-shadow:0 0 22px rgba(61,158,240,.9)}
+#thr-slider::-moz-range-thumb{
+  width:20px;height:20px;border-radius:50%;
+  background:var(--ac);border:2.5px solid var(--bg);
+  box-shadow:0 0 16px rgba(61,158,240,.7);cursor:pointer;
+}
+#thr-val{
+  font-family:var(--mono);font-size:9px;color:var(--lo);font-weight:500;
+  writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.02em;
+}
+#thr-hint{
+  font-family:var(--mono);font-size:9px;color:var(--xlo);
+  writing-mode:vertical-rl;transform:rotate(180deg);
+  letter-spacing:.05em;text-align:center;transition:color .2s;
+  font-weight:500;
+}
+#thr-panel:hover #thr-hint{color:var(--lo)}
 
-/* ── Cinema mode ────────────────────────────────────────────────────────── */
+/* ── Threshold cursor (float label) ── */
+#thr-cursor{
+  position:fixed;pointer-events:none;z-index:50;
+  background:var(--surf);
+  border:1px solid var(--ac-dim);
+  border-radius:var(--rsm);
+  padding:6px 11px;
+  font-family:var(--mono);font-size:12px;font-weight:500;color:var(--md);
+  opacity:0;transition:opacity .08s;
+  white-space:nowrap;letter-spacing:.03em;
+  box-shadow:var(--shadow);
+}
+#thr-cursor.show{opacity:1}
+
+/* ── Cinema exit ── */
+#cinema-exit{
+  position:fixed;bottom:24px;right:24px;z-index:20;
+  opacity:0;pointer-events:none;transition:opacity .4s ease;
+}
 body.cinema .card,
-body.cinema #thr-panel  { opacity: 0 !important; pointer-events: none; }
-body.cinema #cell-tip   { opacity: 0 !important; }
-body.cinema #cinema-exit { opacity: .22; pointer-events: auto; }
-body.cinema #cinema-exit:hover { opacity: 1; }
-
-/* ── Subtle separator ───────────────────────────────────────────────────── */
-.sep {
-  font-size: 10px; letter-spacing: .08em; color: var(--txt-xlo);
-  font-family: var(--mono); padding: 4px 0 2px;
-}
+body.cinema #thr-panel{opacity:0!important;pointer-events:none}
+body.cinema #cell-tip{opacity:0!important}
+body.cinema #cinema-exit{opacity:.2;pointer-events:auto}
+body.cinema #cinema-exit:hover{opacity:1}
 </style>
 </head>
 <body>
 
-<!-- ── Loading ────────────────────────────────────────────────────────────── -->
+<!-- Loading -->
 <div id="overlay">
-  <div id="overlay-title">
-    <span class="material-icons-round">radar</span>
-    TILECAL VIEWER
-  </div>
-  <div id="overlay-msg">Iniciando…</div>
+  <div id="ov-logo"><span class="material-icons-round">radar</span>TILECAL VIEWER</div>
+  <div id="ov-msg">Iniciando…</div>
   <div id="bar"><div id="prog"></div></div>
 </div>
 
-<!-- ── HUD card ───────────────────────────────────────────────────────────── -->
+<!-- HUD card -->
 <div id="hud" class="card" style="top:18px;left:18px;display:none">
-  <div class="card-header" onclick="toggleCard('hud')">
-    <div class="card-title">
-      <span class="material-icons-round">sensors</span>ATLAS TileCal
-    </div>
-    <div class="card-chevron open" id="hud-chev">
-      <span class="material-icons-round">expand_more</span>
-    </div>
+  <div class="card-hdr" onclick="toggleCard('hud')">
+    <div class="card-title"><span class="material-icons-round">sensors</span>ATLAS TileCal</div>
+    <div class="chev open" id="hud-chev"><span class="material-icons-round">expand_more</span></div>
   </div>
   <div class="card-body" id="hud-body">
     <div class="row"><span class="lbl">Células totais</span><span class="val" id="s-total">–</span></div>
     <div class="row"><span class="lbl">Células ativas</span><span class="val" id="s-active">–</span></div>
-    <div class="row"><span class="lbl">E min / max</span>   <span class="val" id="s-erange">–</span></div>
-    <div class="row"><span class="lbl">FPS</span>           <span class="val" id="s-fps">–</span></div>
+    <div class="row"><span class="lbl">E min / max</span>  <span class="val" id="s-erange">–</span></div>
+    <div class="row"><span class="lbl">FPS</span>          <span class="val" id="s-fps">–</span></div>
     <div class="cdiv"></div>
     <div class="btns">
       <button class="btn" id="wf-btn" onclick="toggleWf()">
         <span class="material-icons-round">grid_on</span>Wireframe
+      </button>
+      <button class="btn active" id="ol-btn" onclick="toggleOutline()" title="Contorno das células">
+        <span class="material-icons-round">border_style</span>Contorno
       </button>
       <button class="btn" onclick="controls.reset()" title="Reset câmera">
         <span class="material-icons-round">filter_center_focus</span>
@@ -355,40 +278,41 @@ body.cinema #cinema-exit:hover { opacity: 1; }
       <button class="btn" onclick="enterCinema()" title="Modo cinema">
         <span class="material-icons-round">theaters</span>
       </button>
+      <button class="btn" onclick="downloadScreenshot8K()" title="Download 8K PNG">
+        <span class="material-icons-round">photo_camera</span>8K
+      </button>
     </div>
     <div class="nav-hint">drag · scroll · R-drag</div>
   </div>
 </div>
 
-<!-- ── Event card ─────────────────────────────────────────────────────────── -->
+<!-- Event card -->
 <div id="evt" class="card" style="bottom:18px;left:18px;display:none">
-  <div class="card-header" onclick="toggleCard('evt')">
-    <div class="card-title">
-      <span class="material-icons-round">bolt</span>Evento de Colisão
-    </div>
-    <div class="card-chevron open" id="evt-chev">
-      <span class="material-icons-round">expand_more</span>
-    </div>
+  <div class="card-hdr" onclick="toggleCard('evt')">
+    <div class="card-title"><span class="material-icons-round">bolt</span>Evento de Colisão</div>
+    <div class="chev open" id="evt-chev"><span class="material-icons-round">expand_more</span></div>
   </div>
   <div class="card-body" id="evt-body">
-    <div style="margin-bottom:14px">
+    <div style="margin-bottom:12px">
       <button class="btn" onclick="document.getElementById('fi').click()">
         <span class="material-icons-round">upload_file</span>Carregar XML
       </button>
       <input id="fi" type="file" accept=".xml" style="display:none">
     </div>
-    <div class="row"><span class="lbl">Arquivo</span>         <span class="val" id="ep-name" style="max-width:130px;overflow:hidden;text-overflow:ellipsis">–</span></div>
+    <div class="row"><span class="lbl">Arquivo</span>         <span class="val" id="ep-name" style="max-width:140px;overflow:hidden;text-overflow:ellipsis">–</span></div>
     <div class="row"><span class="lbl">count declarado</span> <span class="val" id="ep-cdecl">–</span></div>
     <div class="row"><span class="lbl">count real</span>      <span class="val" id="ep-cact">–</span></div>
     <div class="row"><span class="lbl">match</span>           <span class="val" id="ep-match">–</span></div>
   </div>
 </div>
 
-<!-- ── Cell tooltip ───────────────────────────────────────────────────────── -->
+<!-- Cell tooltip -->
 <div id="cell-tip">
-  <div class="tip-label">Energia depositada</div>
-  <div class="tip-energy-val" id="tt-e">–</div>
-  <div class="tip-energy-unit">GeV</div>
+  <div class="tip-cellname" id="tt-cell">–</div>
+  <div class="tip-eline">
+    <span class="tip-eval" id="tt-e">–</span>
+    <span class="tip-eunit">MeV</span>
+  </div>
   <div class="tip-div"></div>
   <div class="tip-grid">
     <div class="tip-field"><label>Eta</label><span id="tt-eta">–</span></div>
@@ -397,30 +321,29 @@ body.cinema #cinema-exit:hover { opacity: 1; }
   </div>
 </div>
 
-<!-- ── Threshold panel ────────────────────────────────────────────────────── -->
+<!-- Threshold panel -->
 <div id="thr-panel">
   <div class="thr-lbl">Threshold</div>
   <div class="slider-wrap">
     <input type="range" id="thr-slider" min="0" max="1" step="any" value="0">
   </div>
   <div id="thr-val">–</div>
-  <div id="thr-hint">scroll = fine</div>
+  <div id="thr-hint">scroll·fine  shift·coarse</div>
 </div>
 <div id="thr-cursor"></div>
 
-<!-- ── Cinema exit ────────────────────────────────────────────────────────── -->
+<!-- Cinema exit -->
 <div id="cinema-exit">
   <button class="btn" onclick="exitCinema()">
     <span class="material-icons-round">close</span>Sair do cinema
   </button>
 </div>
 
-<!-- ── Three.js importmap ─────────────────────────────────────────────────── -->
 <script type="importmap">
 {
   "imports": {
-    "three":          "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
-    "three/addons/":  "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    "three":         "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
   }
 }
 </script>
@@ -440,14 +363,14 @@ document.body.appendChild(renderer.domElement);
 
 // ── Scene ─────────────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x030b17);
+scene.background = new THREE.Color(0x040c1a);
 scene.add(new THREE.AmbientLight(0xffffff, 1.3));
 const sun = new THREE.DirectionalLight(0xffffff, 1.7);
 sun.position.set(1, 2, 1.5); scene.add(sun);
 const fill = new THREE.DirectionalLight(0x8899ff, 0.5);
 fill.position.set(-1, -1, -1); scene.add(fill);
 
-// ── Camera + Controls ──────────────────────────────────────────────────────────
+// ── Camera + Controls ─────────────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1e6);
 camera.position.set(0, 2000, 6000);
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -455,27 +378,32 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 window.controls = controls;
 
-// ── Global state ───────────────────────────────────────────────────────────────
-const meshIndex  = {};
-let hitMats      = [];
-let wfMode       = false;
-let infoEnabled  = true;
+// ── Global state ──────────────────────────────────────────────────────────────
+const meshIndex   = {};
+let   hitMats     = [];
+let   wfMode      = false;
+let   infoEnabled = true;
+let   outlineEnabled = true;
 
-const meshHitData = new Map();  // mesh → {e_mev, eta, phi, sub}
-let allHits       = [];         // [{mesh, e_mev}]
-let visibleList   = [];
-let eMin_mev = 0, eMax_mev = 1;
+const meshHitData = new Map();  // mesh → {e_mev, eta, phi, sub, cell}
+let   allHits     = [];
+let   visibleList = [];
+let   eMin_mev = 0, eMax_mev = 1;
 
 let hoveredMesh  = null;
 let outlineClone = null;
 
+// Per-cell edge overlays for outline mode
+const cellEdgeLines = new Map();            // mesh → LineSegments
+const edgesGeoCache = new Map();            // geo.uuid → EdgesGeometry
+const edgesMat = new THREE.LineBasicMaterial({
+  color: 0xffffff, transparent: true, opacity: 0.40, depthWrite: false,
+});
+
 const baseMat = new THREE.MeshStandardMaterial({
   color: 0x0a1828, roughness: 0.72, metalness: 0.08, side: THREE.DoubleSide,
 });
-
-const outlineMat = new THREE.MeshBasicMaterial({
-  color: 0x00e5ff, side: THREE.BackSide,
-});
+const outlineMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, side: THREE.BackSide });
 
 // ── Colormap (stellar) ────────────────────────────────────────────────────────
 function stellarColor(e_mev) {
@@ -495,25 +423,51 @@ function stellarColor(e_mev) {
   return { r: a.r + s*(b.r-a.r), g: a.g + s*(b.g-a.g), b: a.b + s*(b.b-a.b) };
 }
 
-// ── Card collapse ──────────────────────────────────────────────────────────────
+// ── Card collapse ─────────────────────────────────────────────────────────────
 window.toggleCard = id => {
-  document.getElementById(id + '-body').classList.toggle('collapsed');
+  document.getElementById(id + '-body').classList.toggle('col');
   document.getElementById(id + '-chev').classList.toggle('open');
 };
 
-// ── Wireframe ──────────────────────────────────────────────────────────────────
+// ── Wireframe ─────────────────────────────────────────────────────────────────
 window.toggleWf = () => {
   wfMode = !wfMode;
   hitMats.forEach(m => m.wireframe = wfMode);
-  const btn = document.getElementById('wf-btn');
-  btn.innerHTML = wfMode
+  document.getElementById('wf-btn').innerHTML = wfMode
     ? '<span class="material-icons-round">view_in_ar</span>Solid'
     : '<span class="material-icons-round">grid_on</span>Wireframe';
+  // Outline only in solid mode
+  cellEdgeLines.forEach(line => { line.visible = outlineEnabled && !wfMode; });
 };
 
-// ── Clear event ────────────────────────────────────────────────────────────────
+// ── Cell outline toggle ───────────────────────────────────────────────────────
+window.toggleOutline = () => {
+  outlineEnabled = !outlineEnabled;
+  const btn = document.getElementById('ol-btn');
+  btn.classList.toggle('active', outlineEnabled);
+  cellEdgeLines.forEach(line => { line.visible = outlineEnabled && !wfMode; });
+};
+
+function addCellEdge(mesh) {
+  const geo = mesh.geometry;
+  if (!edgesGeoCache.has(geo.uuid)) {
+    edgesGeoCache.set(geo.uuid, new THREE.EdgesGeometry(geo, 12));
+  }
+  const line = new THREE.LineSegments(edgesGeoCache.get(geo.uuid), edgesMat);
+  line.visible = outlineEnabled && !wfMode;
+  mesh.add(line);
+  cellEdgeLines.set(mesh, line);
+}
+
+function removeAllCellEdges() {
+  cellEdgeLines.forEach((line, mesh) => mesh.remove(line));
+  cellEdgeLines.clear();
+}
+
+// ── Clear event ───────────────────────────────────────────────────────────────
 window.clearEvt = () => {
   setHovered(null);
+  removeAllCellEdges();
   Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
   meshHitData.clear(); allHits = []; hitMats = []; visibleList = [];
   eMin_mev = 0; eMax_mev = 1;
@@ -528,104 +482,119 @@ window.clearEvt = () => {
   sl.min = 0; sl.max = 1; sl.value = 0;
 };
 
-// ── Toggle info ────────────────────────────────────────────────────────────────
+// ── Toggle info ───────────────────────────────────────────────────────────────
 window.toggleInfo = () => {
   infoEnabled = !infoEnabled;
   const btn = document.getElementById('info-btn');
-  const ico = btn.querySelector('.material-icons-round');
   btn.classList.toggle('active', infoEnabled);
-  ico.textContent = infoEnabled ? 'info' : 'info_outline';
-
+  btn.querySelector('.material-icons-round').textContent = infoEnabled ? 'info' : 'info_outline';
   if (!infoEnabled) {
-    clearOutline();
+    clearHoverOutline();
     cellTip.classList.remove('show');
   } else if (hoveredMesh && meshHitData.has(hoveredMesh)) {
-    showOutline(hoveredMesh);
+    showHoverOutline(hoveredMesh);
     fillTooltip(meshHitData.get(hoveredMesh));
     placeTooltip(mouseX, mouseY);
     cellTip.classList.add('show');
   }
 };
 
-// ── Cinema ─────────────────────────────────────────────────────────────────────
+// ── 8K Screenshot ─────────────────────────────────────────────────────────────
+window.downloadScreenshot8K = () => {
+  const W = 7680, H = 4320;
+  const offRenderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  offRenderer.setPixelRatio(1);
+  offRenderer.setSize(W, H);
+  offRenderer.outputColorSpace = THREE.SRGBColorSpace;
+  offRenderer.setClearColor(renderer.getClearColor(new THREE.Color()), renderer.getClearAlpha());
+  const offCam = camera.clone();
+  offCam.aspect = W / H;
+  offCam.updateProjectionMatrix();
+  offRenderer.render(scene, offCam);
+  offRenderer.domElement.toBlob(blob => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    a.download = `TileCal_${ts}.png`;
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+    offRenderer.dispose();
+  }, 'image/png');
+};
+
+// ── Cinema ────────────────────────────────────────────────────────────────────
 window.enterCinema = () => {
   setHovered(null);
   document.body.classList.add('cinema');
-  controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.85;
+  controls.autoRotate = true; controls.autoRotateSpeed = 0.85;
 };
 window.exitCinema = () => {
   document.body.classList.remove('cinema');
   controls.autoRotate = false;
 };
 
-// ── Outline ────────────────────────────────────────────────────────────────────
-function showOutline(mesh) {
-  clearOutline();
+// ── Hover outline (hover highlight, separate from cell-edge outline) ───────────
+function showHoverOutline(mesh) {
+  clearHoverOutline();
   outlineClone = new THREE.Mesh(mesh.geometry, outlineMat);
   outlineClone.scale.setScalar(1.04);
   outlineClone.layers.set(1);
   mesh.add(outlineClone);
 }
-function clearOutline() {
+function clearHoverOutline() {
   if (outlineClone) {
     if (outlineClone.parent) outlineClone.parent.remove(outlineClone);
     outlineClone = null;
   }
 }
 
-// ── Hover state ────────────────────────────────────────────────────────────────
+// ── Hover state ───────────────────────────────────────────────────────────────
 function setHovered(mesh) {
   if (mesh === hoveredMesh) return;
-
-  // restore previous
   if (hoveredMesh) {
-    clearOutline();
-    if (hoveredMesh.material !== baseMat)
-      hoveredMesh.material.emissiveIntensity = 1;
+    clearHoverOutline();
+    if (hoveredMesh.material !== baseMat) hoveredMesh.material.emissiveIntensity = 1;
     cellTip.classList.remove('show');
   }
-
   hoveredMesh = mesh;
   if (!mesh) return;
-
   const data = meshHitData.get(mesh);
   if (!data) return;
-
-  // Always illuminate on hover
-  if (mesh.material !== baseMat)
-    mesh.material.emissiveIntensity = 3.5;
-
-  // Outline + tooltip only when info is enabled
+  if (mesh.material !== baseMat) mesh.material.emissiveIntensity = 3.5;
   if (infoEnabled) {
-    showOutline(mesh);
+    showHoverOutline(mesh);
     fillTooltip(data);
     placeTooltip(mouseX, mouseY);
     cellTip.classList.add('show');
   }
 }
 
-// ── Tooltip ────────────────────────────────────────────────────────────────────
+// ── Tooltip ───────────────────────────────────────────────────────────────────
 const cellTip = document.getElementById('cell-tip');
 
 function fillTooltip(data) {
-  document.getElementById('tt-e').textContent   = (data.e_mev / 1000).toFixed(4);
-  document.getElementById('tt-eta').textContent = data.eta.toFixed(4);
-  document.getElementById('tt-phi').textContent = data.phi.toFixed(4);
-  document.getElementById('tt-sub').textContent = data.sub.toFixed(0);
+  document.getElementById('tt-cell').textContent = data.cell || '–';
+  document.getElementById('tt-e').textContent    = data.e_mev.toFixed(2);
+  document.getElementById('tt-eta').textContent  = data.eta.toFixed(4);
+  document.getElementById('tt-phi').textContent  = data.phi.toFixed(4);
+  document.getElementById('tt-sub').textContent  = data.sub.toFixed(0);
 }
+
 function placeTooltip(x, y) {
-  const w    = cellTip.offsetWidth || 220;
-  const flip = x + w + 26 > innerWidth;
-  cellTip.style.left      = (flip ? x - w - 22 : x + 22) + 'px';
+  const w   = cellTip.offsetWidth || 230;
+  const flip = x + w + 28 > innerWidth;
+  cellTip.style.left      = (flip ? x - w - 24 : x + 24) + 'px';
   cellTip.style.top       = y + 'px';
   cellTip.style.transform = 'translateY(-50%)';
 }
 
-// ── Threshold ──────────────────────────────────────────────────────────────────
-const thrSlider  = document.getElementById('thr-slider');
-const thrValEl   = document.getElementById('thr-val');
-const thrCursor  = document.getElementById('thr-cursor');
+// ── Threshold ─────────────────────────────────────────────────────────────────
+const thrSlider = document.getElementById('thr-slider');
+const thrValEl  = document.getElementById('thr-val');
+const thrCursor = document.getElementById('thr-cursor');
 let   thrDragging = false;
 
 function applyThreshold(thr_mev) {
@@ -637,57 +606,57 @@ function applyThreshold(thr_mev) {
 }
 
 function formatThrDisplay(mev) {
-  const gev = mev / 1000;
-  thrValEl.textContent = gev < 0.001 ? gev.toExponential(2) : gev.toFixed(4);
+  thrValEl.textContent = mev < 0.01 ? mev.toExponential(2) + ' MeV'
+                        : mev < 1   ? mev.toFixed(3) + ' MeV'
+                        :             mev.toFixed(1) + ' MeV';
 }
 
 thrSlider.addEventListener('mousedown', () => {
-  thrDragging = true;
-  thrCursor.classList.add('show');
+  thrDragging = true; thrCursor.classList.add('show');
 });
 document.addEventListener('mouseup', () => {
   if (thrDragging) { thrDragging = false; thrCursor.classList.remove('show'); }
 });
-
 thrSlider.addEventListener('input', () => {
   const mev = parseFloat(thrSlider.value);
   formatThrDisplay(mev);
-  thrCursor.textContent = (mev / 1000).toFixed(6) + ' GeV';
+  thrCursor.textContent = mev.toFixed(4) + ' MeV';
   applyThreshold(mev);
 });
 
-// Scroll wheel on the panel for fine-grained control
+// Scroll: very fine by default; shift = coarse; ctrl = ultra-fine
 document.getElementById('thr-panel').addEventListener('wheel', e => {
   e.preventDefault();
   if (!allHits.length) return;
-  const range  = eMax_mev - eMin_mev;
-  // shift = coarse (1%), default = fine (0.05%)
-  const step   = e.shiftKey ? range * 0.01 : range * 0.0005;
-  const cur    = parseFloat(thrSlider.value);
-  const next   = Math.min(eMax_mev, Math.max(eMin_mev, cur + (e.deltaY > 0 ? step : -step)));
+  const range = eMax_mev - eMin_mev;
+  const step  = e.ctrlKey  ? range * 0.00001
+              : e.shiftKey ? range * 0.005
+              :               range * 0.0001;
+  const cur  = parseFloat(thrSlider.value);
+  const next = Math.min(eMax_mev, Math.max(eMin_mev, cur + (e.deltaY > 0 ? step : -step)));
   thrSlider.value = next;
   formatThrDisplay(next);
-  thrCursor.textContent = (next / 1000).toFixed(6) + ' GeV';
+  thrCursor.textContent = next.toFixed(4) + ' MeV';
   applyThreshold(next);
 }, { passive: false });
 
-// ── Mouse / raycasting ──────────────────────────────────────────────────────────
+// ── Mouse / raycasting ────────────────────────────────────────────────────────
 const raycaster = new THREE.Raycaster();
 const mouseNDC  = new THREE.Vector2(-9999, -9999);
-let   mouseX    = 0, mouseY = 0, mouseDirty = false;
+let   mouseX = 0, mouseY = 0, mouseDirty = false;
 
 window.addEventListener('mousemove', e => {
   mouseNDC.x =  (e.clientX / innerWidth)  * 2 - 1;
   mouseNDC.y = -(e.clientY / innerHeight) * 2 + 1;
   mouseX = e.clientX; mouseY = e.clientY;
   mouseDirty = true;
-
   if (hoveredMesh && infoEnabled && !document.body.classList.contains('cinema'))
     placeTooltip(mouseX, mouseY);
-
   if (thrDragging) {
-    thrCursor.style.left = (mouseX + 20) + 'px';
-    thrCursor.style.top  = (mouseY - 14) + 'px';
+    // Cursor to the LEFT of the mouse
+    const cw = thrCursor.offsetWidth || 110;
+    thrCursor.style.left = (mouseX - cw - 14) + 'px';
+    thrCursor.style.top  = (mouseY - 12) + 'px';
   }
 });
 
@@ -700,9 +669,9 @@ function updateHover() {
   setHovered(hits.length ? hits[0].object : null);
 }
 
-// ── Init ───────────────────────────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
 async function initApp() {
-  const msg  = document.getElementById('overlay-msg');
+  const msg  = document.getElementById('ov-msg');
   const prog = document.getElementById('prog');
 
   msg.textContent = 'Carregando WASM…';
@@ -742,7 +711,7 @@ async function initApp() {
   controls.update();
 
   prog.style.width = '100%';
-  await new Promise(r => setTimeout(r, 200));
+  await new Promise(r => setTimeout(r, 180));
 
   document.getElementById('s-total').textContent  = cellCount.toLocaleString();
   document.getElementById('s-active').textContent = '0';
@@ -751,7 +720,7 @@ async function initApp() {
   document.getElementById('evt').style.display     = 'block';
 }
 
-// ── XML upload ─────────────────────────────────────────────────────────────────
+// ── XML upload ────────────────────────────────────────────────────────────────
 document.getElementById('fi').onchange = async e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -767,22 +736,23 @@ document.getElementById('fi').onchange = async e => {
   eMin_mev = result.e_min;
   eMax_mev = result.e_max;
   document.getElementById('s-erange').textContent =
-    `${(eMin_mev/1000).toFixed(2)} / ${(eMax_mev/1000).toFixed(2)} GeV`;
+    `${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
 
   // Reset scene
   setHovered(null);
+  removeAllCellEdges();
   Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
   meshHitData.clear(); allHits = []; hitMats = []; visibleList = [];
 
-  // Slider range (MeV internally, display GeV)
+  // Slider range in MeV
   thrSlider.min   = eMin_mev;
   thrSlider.max   = eMax_mev;
   thrSlider.value = eMin_mev;
   formatThrDisplay(eMin_mev);
 
   // Build hit meshes
-  let _found = 0, _miss = 0;
-  const _missEx = {};   // count missing by Tile volume prefix
+  let _miss = 0;
+  const _missEx = {};
   for (const h of result.hits) {
     const key  = h.path.replace(/\t→\t/g, '→');
     const mesh = meshIndex[key] ?? meshIndex[h.path];
@@ -792,54 +762,51 @@ document.getElementById('fi').onchange = async e => {
       _missEx[vol] = (_missEx[vol] ?? 0) + 1;
       continue;
     }
-    _found++;
 
     mesh.visible = true;
     const col = stellarColor(h.energy);
     const mat = new THREE.MeshStandardMaterial({
-      color:     new THREE.Color(col.r, col.g, col.b),
-      emissive:  new THREE.Color(col.r * 0.4, col.g * 0.4, col.b * 0.4),
+      color:    new THREE.Color(col.r, col.g, col.b),
+      emissive: new THREE.Color(col.r * 0.4, col.g * 0.4, col.b * 0.4),
       emissiveIntensity: 1,
       roughness: 0.32, metalness: 0.18, side: THREE.DoubleSide,
     });
     mesh.material = mat;
     hitMats.push(mat);
-    meshHitData.set(mesh, { e_mev: h.energy, eta: h.eta, phi: h.phi, sub: h.sub });
+    meshHitData.set(mesh, { e_mev: h.energy, eta: h.eta, phi: h.phi, sub: h.sub, cell: h.cell });
     allHits.push({ mesh, e_mev: h.energy });
+    addCellEdge(mesh);
   }
 
   visibleList = allHits.map(h => h.mesh);
   document.getElementById('s-active').textContent = visibleList.length.toLocaleString();
-  console.log(`[mesh] found=${_found}  missing=${_miss}`);
   if (_miss > 0) console.log('[mesh] missing by volume:', _missEx);
-  // Log first example of a missing and found path for quick visual check
   const _eg = result.hits.find(h => !meshIndex[h.path.replace(/\t→\t/g,'→')] && !meshIndex[h.path]);
   if (_eg) console.log('[mesh] example MISSING path:', JSON.stringify(_eg.path));
 };
 
-// ── Resize ─────────────────────────────────────────────────────────────────────
+// ── Resize ────────────────────────────────────────────────────────────────────
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// ── Render loop ────────────────────────────────────────────────────────────────
+// ── Render loop ───────────────────────────────────────────────────────────────
 let fc = 0, ft = 0;
 (function animate(t) {
   requestAnimationFrame(animate);
   controls.update();
   updateHover();
   renderer.render(scene, camera);
-  fc++;
-  if (t - ft >= 1000) {
+  if (++fc, t - ft >= 1000) {
     document.getElementById('s-fps').textContent = fc;
     fc = 0; ft = t;
   }
 })(0);
 
 initApp().catch(err => {
-  document.getElementById('overlay-msg').textContent = 'Erro: ' + err.message;
+  document.getElementById('ov-msg').textContent = 'Erro: ' + err.message;
   console.error(err);
 });
 </script>

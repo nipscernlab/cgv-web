@@ -17,11 +17,12 @@ struct TileCell {
 //
 // ENCODING DO XML (sub = partição, não amostragem):
 //   sub=0  EBC regular  : A12-A16 (Tile5n), B12-B15 (Tile6n), D4 (Tile8n), D5/D6 (Tile7n)
-//   sub=1  EBC especial : B11 (Tile6n), C10 (Tile9n), E1-E4 (Tile10-13n)
-//   sub=2  LBC          : A1-A10 (Tile1n), BC1-B9 (Tile23n), D1-D3 (Tile4n) — sem D0
+//   sub=1  EBC especial : C10 (Tile9n), B11 (Tile6n), D4 (Tile8n), E1-E4 (Tile10-13n), D5/D6 (Tile7n)
+//   sub=2  LBC          : A1-A10 (Tile1n), BC1-B9 (Tile23n), D0-D3 (Tile4n)
 //   sub=3  LBA          : A1-A10 (Tile1p), BC1-B9 (Tile23p), D0-D3 (Tile4p)
-//   sub=4  EBA especial : B11 (Tile6p), C10 (Tile9p), E1-E4 (Tile10-13p)
+//   sub=4  EBA especial : C10 (Tile9p), B11 (Tile6p), D4 (Tile8p), E1-E4 (Tile10-13p), D5/D6 (Tile7p)
 //   sub=5  EBA regular  : A12-A16 (Tile5p), B12-B15 (Tile6p), D4 (Tile8p), D5/D6 (Tile7p)
+// D4/D5/D6 mapeados em ambos sub especial e regular para máxima compatibilidade.
 //
 // Dentro de cada sub há múltiplas amostras radiais (A, BC, D) com centros η
 // coincidentes. O lookup usa nearest-neighbour + contador de ocorrências para
@@ -78,7 +79,8 @@ static TILE_CELLS: &[TileCell] = &[
     TileCell { sub:2, eta_c:-0.65, tile_vol:"Tile23n", eta_i:6, phi_n:64, cell_name:"BC7" },
     TileCell { sub:2, eta_c:-0.75, tile_vol:"Tile23n", eta_i:7, phi_n:64, cell_name:"BC8" },
     TileCell { sub:2, eta_c:-0.85, tile_vol:"Tile23n", eta_i:8, phi_n:64, cell_name:"B9"  },
-    // Sampling D — Tile4n (D1-D3, D0 está em sub=3/LBA)
+    // Sampling D — Tile4n (D0-D3; D0 espelhado do LBA pois Tile4n0_0 existe)
+    TileCell { sub:2, eta_c:-0.10, tile_vol:"Tile4n",  eta_i:0, phi_n:64, cell_name:"D0"  },
     TileCell { sub:2, eta_c:-0.30, tile_vol:"Tile4n",  eta_i:1, phi_n:64, cell_name:"D1"  },
     TileCell { sub:2, eta_c:-0.50, tile_vol:"Tile4n",  eta_i:2, phi_n:64, cell_name:"D2"  },
     TileCell { sub:2, eta_c:-0.70, tile_vol:"Tile4n",  eta_i:3, phi_n:64, cell_name:"D3"  },
@@ -118,20 +120,35 @@ static TILE_CELLS: &[TileCell] = &[
     TileCell { sub:0, eta_c:-1.50, tile_vol:"Tile7n",  eta_i:1, phi_n:64, cell_name:"D6"  },
 
     // ── sub=4: EBA especial (η > 0) ───────────────────────────────────────────
-    TileCell { sub:4, eta_c: 0.95, tile_vol:"Tile6p",  eta_i:0, phi_n:64, cell_name:"B11" },
     TileCell { sub:4, eta_c: 0.90, tile_vol:"Tile9p",  eta_i:0, phi_n:64, cell_name:"C10" },
+    TileCell { sub:4, eta_c: 0.95, tile_vol:"Tile6p",  eta_i:0, phi_n:64, cell_name:"B11" },
+    TileCell { sub:4, eta_c: 1.00, tile_vol:"Tile8p",  eta_i:0, phi_n:64, cell_name:"D4"  },
     TileCell { sub:4, eta_c: 1.05, tile_vol:"Tile10p", eta_i:0, phi_n:64, cell_name:"E1"  },
     TileCell { sub:4, eta_c: 1.20, tile_vol:"Tile11p", eta_i:0, phi_n:64, cell_name:"E2"  },
+    TileCell { sub:4, eta_c: 1.25, tile_vol:"Tile7p",  eta_i:0, phi_n:64, cell_name:"D5"  },
     TileCell { sub:4, eta_c: 1.35, tile_vol:"Tile12p", eta_i:0, phi_n:64, cell_name:"E3"  },
+    TileCell { sub:4, eta_c: 1.50, tile_vol:"Tile7p",  eta_i:1, phi_n:64, cell_name:"D6"  },
     TileCell { sub:4, eta_c: 1.55, tile_vol:"Tile13p", eta_i:0, phi_n:64, cell_name:"E4"  },
 
     // ── sub=1: EBC especial (η < 0) ───────────────────────────────────────────
-    TileCell { sub:1, eta_c:-0.95, tile_vol:"Tile6n",  eta_i:0, phi_n:64, cell_name:"B11" },
     TileCell { sub:1, eta_c:-0.90, tile_vol:"Tile9n",  eta_i:0, phi_n:64, cell_name:"C10" },
+    TileCell { sub:1, eta_c:-0.95, tile_vol:"Tile6n",  eta_i:0, phi_n:64, cell_name:"B11" },
+    TileCell { sub:1, eta_c:-1.00, tile_vol:"Tile8n",  eta_i:0, phi_n:64, cell_name:"D4"  },
     TileCell { sub:1, eta_c:-1.05, tile_vol:"Tile10n", eta_i:0, phi_n:64, cell_name:"E1"  },
     TileCell { sub:1, eta_c:-1.20, tile_vol:"Tile11n", eta_i:0, phi_n:64, cell_name:"E2"  },
+    TileCell { sub:1, eta_c:-1.25, tile_vol:"Tile7n",  eta_i:0, phi_n:64, cell_name:"D5"  },
     TileCell { sub:1, eta_c:-1.35, tile_vol:"Tile12n", eta_i:0, phi_n:64, cell_name:"E3"  },
+    TileCell { sub:1, eta_c:-1.50, tile_vol:"Tile7n",  eta_i:1, phi_n:64, cell_name:"D6"  },
     TileCell { sub:1, eta_c:-1.55, tile_vol:"Tile13n", eta_i:0, phi_n:64, cell_name:"E4"  },
+
+    // ── sub=6: MBTS-A (η > 0, φ_n=8) ─────────────────────────────────────────
+    // Outer ring (larger R → smaller η), Inner ring (smaller R → larger η)
+    TileCell { sub:6, eta_c: 1.60, tile_vol:"Tile14p", eta_i:0, phi_n:8, cell_name:"MBTS2" },
+    TileCell { sub:6, eta_c: 2.10, tile_vol:"Tile15p", eta_i:0, phi_n:8, cell_name:"MBTS1" },
+
+    // ── sub=7: MBTS-C (η < 0, φ_n=8) ─────────────────────────────────────────
+    TileCell { sub:7, eta_c:-1.60, tile_vol:"Tile14n", eta_i:0, phi_n:8, cell_name:"MBTS2" },
+    TileCell { sub:7, eta_c:-2.10, tile_vol:"Tile15n", eta_i:0, phi_n:8, cell_name:"MBTS1" },
 ];
 
 // ─── Lookup: (eta, phi, sub) → caminho CGV ────────────────────────────────────
@@ -145,7 +162,7 @@ fn lookup_tile_cell_nth(
     hit_phi: f32,
     hit_sub: u8,
     nth: usize,
-) -> Option<String> {
+) -> Option<(String, &'static str)> {
     // 1. Distância mínima em η para este sub
     let min_dist = TILE_CELLS
         .iter()
@@ -174,8 +191,9 @@ fn lookup_tile_cell_nth(
 
     let vol = cell.tile_vol;
     let i   = cell.eta_i as usize;
-    Some(format!(
-        "Calorimeter\t\u{2192}\t{vol}_0\t\u{2192}\t{vol}{i}_{i}\t\u{2192}\tcell_{j}"
+    Some((
+        format!("Calorimeter\t\u{2192}\t{vol}_0\t\u{2192}\t{vol}{i}_{i}\t\u{2192}\tcell_{j}"),
+        cell.cell_name,
     ))
 }
 
@@ -280,12 +298,12 @@ pub fn process_event(xml_text: &str) -> String {
         seen.insert(seen_key, nth + 1);
 
         match lookup_tile_cell_nth(hit_eta, hit_phi, hit_sub, nth) {
-            Some(path) => {
+            Some((path, cell_name)) => {
                 let (r, g, b) = jet(energy[i], e_min, e_max);
                 if !hits.is_empty() { hits.push(','); }
                 hits.push_str(&format!(
-                    r#"{{"path":{},"energy":{:.4},"eta":{:.4},"phi":{:.4},"sub":{:.0},"r":{:.4},"g":{:.4},"b":{:.4}}}"#,
-                    js(&path), energy[i], hit_eta, hit_phi, sub[i], r, g, b
+                    r#"{{"path":{},"energy":{:.4},"eta":{:.4},"phi":{:.4},"sub":{:.0},"cell":{},"r":{:.4},"g":{:.4},"b":{:.4}}}"#,
+                    js(&path), energy[i], hit_eta, hit_phi, sub[i], js(cell_name), r, g, b
                 ));
                 mapped += 1;
                 sub_hist_mapped[hidx] += 1;
