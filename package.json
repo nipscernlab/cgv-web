@@ -9,5 +9,9 @@
   },
   "dependencies": {
     "jsroot": "^7.10.3"
+  },
+  "devDependencies": {
+    "@gltf-transform/core": "^4.3.0",
+    "@gltf-transform/functions": "^4.3.0"
   }
 }
