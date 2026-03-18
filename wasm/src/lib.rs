@@ -308,6 +308,57 @@ pub fn process_event(xml_text: &str) -> String {
         }
     }
 
+    // ── processa bloco <MBTS> (bloco separado do <TILE>) ─────────────────────
+    let mut mbts_count = 0usize;
+    let mut e_min_combined = e_min;
+    let mut e_max_combined = e_max;
+
+    if let Some(mbts_pos) = find_tag(xml_text, "MBTS") {
+        if let (Some(inner_s), Some(inner_e)) = (
+            xml_text[mbts_pos..].find('>').map(|p| mbts_pos + p + 1),
+            xml_text[mbts_pos..].find("</MBTS>").map(|p| mbts_pos + p),
+        ) {
+            let mi = &xml_text[inner_s..inner_e];
+            if let (Some(me), Some(mch), Some(mmd), Some(meta), Some(mph)) = (
+                extract_array(mi, "energy"),
+                extract_array(mi, "channel"),
+                extract_array(mi, "module"),
+                extract_array(mi, "eta"),
+                extract_array(mi, "phi"),
+            ) {
+                // Combine energy range (TILE + MBTS)
+                for &v in &me {
+                    e_min_combined = e_min_combined.min(v);
+                    e_max_combined = e_max_combined.max(v);
+                }
+                let n = me.len().min(mch.len()).min(mmd.len()).min(meta.len());
+                for i in 0..n {
+                    let ch   = mch[i].round() as i32;   // 0=Tile14/MBTS2, 1=Tile15/MBTS1
+                    let md   = mmd[i].round() as usize;  // phi sector 0-7 → cell_j
+                    let side = if meta[i] >= 0.0 { "p" } else { "n" };
+                    let sub_out: u8 = if meta[i] >= 0.0 { 6 } else { 7 };
+                    let (vol, cell_name, eta_out) = match ch {
+                        0 => (format!("Tile14{side}"), "MBTS2",
+                              if meta[i] >= 0.0 { 2.40f32 } else { -2.40f32 }),
+                        1 => (format!("Tile15{side}"), "MBTS1",
+                              if meta[i] >= 0.0 { 3.20f32 } else { -3.20f32 }),
+                        _ => continue,
+                    };
+                    let phi_out = if i < mph.len() { mph[i] } else { 0.0 };
+                    let path = format!("Calorimeter→{vol}_0→{vol}0_0→cell_{md}");
+                    let (r, g, b) = jet(me[i], e_min_combined, e_max_combined);
+                    if !hits.is_empty() { hits.push(','); }
+                    hits.push_str(&format!(
+                        r#"{{"path":{},"energy":{:.4},"eta":{:.4},"phi":{:.4},"sub":{},"cell":{},"r":{:.4},"g":{:.4},"b":{:.4}}}"#,
+                        js(&path), me[i], eta_out, phi_out, sub_out, js(cell_name), r, g, b
+                    ));
+                    mbts_count += 1;
+                    mapped += 1;
+                }
+            }
+        }
+    }
+
     // ── serializa diagnóstico ─────────────────────────────────────────────────
     let mut sub_diag = String::new();
     for s in 0..16usize {
@@ -323,9 +374,9 @@ pub fn process_event(xml_text: &str) -> String {
     }
 
     format!(
-        r#"{{"ok":true,"count_declared":{},"count_actual":{},"count_ok":{},"cells_mapped":{},"cells_unmapped":{},"e_min":{:.4},"e_max":{:.4},"sub_diag":[{}],"hits":[{}]}}"#,
-        count_declared, count_actual, count_ok, mapped, unmapped,
-        e_min, e_max, sub_diag, hits
+        r#"{{"ok":true,"count_declared":{},"count_actual":{},"count_ok":{},"cells_mapped":{},"cells_unmapped":{},"mbts_mapped":{},"e_min":{:.4},"e_max":{:.4},"sub_diag":[{}],"hits":[{}]}}"#,
+        count_declared, count_actual, count_ok, mapped, unmapped, mbts_count,
+        e_min_combined, e_max_combined, sub_diag, hits
     )
 }
 

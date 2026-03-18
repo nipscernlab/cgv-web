@@ -141,6 +141,7 @@ body.cinema #cinema-exit:hover{opacity:1}
     <div class="row"><span class="lbl">count declarado</span> <span class="val" id="ep-cdecl">–</span></div>
     <div class="row"><span class="lbl">count real</span>      <span class="val" id="ep-cact">–</span></div>
     <div class="row"><span class="lbl">match</span>           <span class="val" id="ep-match">–</span></div>
+    <div class="row"><span class="lbl">MBTS mapeadas</span>   <span class="val" id="ep-mbts">–</span></div>
   </div>
 </div>
 
@@ -616,6 +617,7 @@ document.getElementById('fi').onchange=async e=>{
   document.getElementById('ep-cdecl').textContent=result.count_declared;
   document.getElementById('ep-cact').textContent=result.count_actual;
   document.getElementById('ep-match').textContent=result.count_ok?'sim':'não';
+  document.getElementById('ep-mbts').textContent=result.mbts_mapped??0;
   eMin_mev=result.e_min; eMax_mev=result.e_max;
   document.getElementById('s-erange').textContent=`${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
 
