@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 struct TileCell {
     sub:       u8,            // coincide com encoding do XML (partição, não amostragem)
-    eta_c:     f32,           // centro η da célula
+    eta_c:     f32,           // centro η da célula (valor exato do JiveXML)
     tile_vol:  &'static str,  // ex.: "Tile1p", "Tile23n"
     eta_i:     u8,            // índice η dentro do volume
     phi_n:     u8,            // módulos em φ (normalmente 64)
@@ -17,20 +17,19 @@ struct TileCell {
 //
 // ENCODING DO XML (sub = partição, não amostragem):
 //   sub=0  EBC regular  : A12-A16 (Tile5n), B12-B15 (Tile6n), D4 (Tile8n), D5/D6 (Tile7n)
-//   sub=1  EBC especial : C10 (Tile9n), B11 (Tile6n), D4 (Tile8n), E1-E4 (Tile10-13n), D5/D6 (Tile7n)
-//   sub=2  LBC          : A1-A10 (Tile1n), BC1-B9 (Tile23n), D0-D3 (Tile4n)
+//   sub=1  EBC especial : C10 (Tile9n), B11 (Tile6n), E1-E4 (Tile10-13n)
+//   sub=2  LBC          : A1-A10 (Tile1n), BC1-B9 (Tile23n), D1-D3 (Tile4n)
 //   sub=3  LBA          : A1-A10 (Tile1p), BC1-B9 (Tile23p), D0-D3 (Tile4p)
-//   sub=4  EBA especial : C10 (Tile9p), B11 (Tile6p), D4 (Tile8p), E1-E4 (Tile10-13p), D5/D6 (Tile7p)
+//   sub=4  EBA especial : C10 (Tile9p), B11 (Tile6p), E1-E4 (Tile10-13p)
 //   sub=5  EBA regular  : A12-A16 (Tile5p), B12-B15 (Tile6p), D4 (Tile8p), D5/D6 (Tile7p)
-// D4/D5/D6 mapeados em ambos sub especial e regular para máxima compatibilidade.
 //
-// Dentro de cada sub há múltiplas amostras radiais (A, BC, D) com centros η
-// coincidentes. O lookup usa nearest-neighbour + contador de ocorrências para
-// distribuir hits entre células empatadas.
+// Centros η extraídos de JiveXML reais (verificados em 4 arquivos).
+// Barrel: A/BC compartilham η exato → desambiguação via nth counter.
+// Extended/Special: cada célula tem η único → nearest-neighbour direto.
 
 static TILE_CELLS: &[TileCell] = &[
     // ── sub=3: LBA (η > 0) ───────────────────────────────────────────────────
-    // Sampling A — Tile1p (A antes de BC para tie-break)
+    // Sampling A — Tile1p  (A antes de BC para tie-break)
     TileCell { sub:3, eta_c: 0.05, tile_vol:"Tile1p",  eta_i:0, phi_n:64, cell_name:"A1"  },
     TileCell { sub:3, eta_c: 0.15, tile_vol:"Tile1p",  eta_i:1, phi_n:64, cell_name:"A2"  },
     TileCell { sub:3, eta_c: 0.25, tile_vol:"Tile1p",  eta_i:2, phi_n:64, cell_name:"A3"  },
@@ -51,13 +50,13 @@ static TILE_CELLS: &[TileCell] = &[
     TileCell { sub:3, eta_c: 0.65, tile_vol:"Tile23p", eta_i:6, phi_n:64, cell_name:"BC7" },
     TileCell { sub:3, eta_c: 0.75, tile_vol:"Tile23p", eta_i:7, phi_n:64, cell_name:"BC8" },
     TileCell { sub:3, eta_c: 0.85, tile_vol:"Tile23p", eta_i:8, phi_n:64, cell_name:"B9"  },
-    // Sampling D — Tile4p (centros diferentes → distinguíveis por η)
-    TileCell { sub:3, eta_c: 0.10, tile_vol:"Tile4p",  eta_i:0, phi_n:64, cell_name:"D0"  },
-    TileCell { sub:3, eta_c: 0.30, tile_vol:"Tile4p",  eta_i:1, phi_n:64, cell_name:"D1"  },
-    TileCell { sub:3, eta_c: 0.50, tile_vol:"Tile4p",  eta_i:2, phi_n:64, cell_name:"D2"  },
-    TileCell { sub:3, eta_c: 0.70, tile_vol:"Tile4p",  eta_i:3, phi_n:64, cell_name:"D3"  },
+    // Sampling D — Tile4p  (centros: 0.00, 0.20, 0.40, 0.60 — NÃO 0.10,0.30,0.50,0.70)
+    TileCell { sub:3, eta_c: 0.00, tile_vol:"Tile4p",  eta_i:0, phi_n:64, cell_name:"D0"  },
+    TileCell { sub:3, eta_c: 0.20, tile_vol:"Tile4p",  eta_i:1, phi_n:64, cell_name:"D1"  },
+    TileCell { sub:3, eta_c: 0.40, tile_vol:"Tile4p",  eta_i:2, phi_n:64, cell_name:"D2"  },
+    TileCell { sub:3, eta_c: 0.60, tile_vol:"Tile4p",  eta_i:3, phi_n:64, cell_name:"D3"  },
 
-    // ── sub=2: LBC (η < 0) — sem D0 ──────────────────────────────────────────
+    // ── sub=2: LBC (η < 0) — sem D0 (D0 pertence a sub=3) ───────────────────
     // Sampling A — Tile1n
     TileCell { sub:2, eta_c:-0.05, tile_vol:"Tile1n",  eta_i:0, phi_n:64, cell_name:"A1"  },
     TileCell { sub:2, eta_c:-0.15, tile_vol:"Tile1n",  eta_i:1, phi_n:64, cell_name:"A2"  },
@@ -79,76 +78,70 @@ static TILE_CELLS: &[TileCell] = &[
     TileCell { sub:2, eta_c:-0.65, tile_vol:"Tile23n", eta_i:6, phi_n:64, cell_name:"BC7" },
     TileCell { sub:2, eta_c:-0.75, tile_vol:"Tile23n", eta_i:7, phi_n:64, cell_name:"BC8" },
     TileCell { sub:2, eta_c:-0.85, tile_vol:"Tile23n", eta_i:8, phi_n:64, cell_name:"B9"  },
-    // Sampling D — Tile4n (D0-D3; D0 espelhado do LBA pois Tile4n0_0 existe)
-    TileCell { sub:2, eta_c:-0.10, tile_vol:"Tile4n",  eta_i:0, phi_n:64, cell_name:"D0"  },
-    TileCell { sub:2, eta_c:-0.30, tile_vol:"Tile4n",  eta_i:1, phi_n:64, cell_name:"D1"  },
-    TileCell { sub:2, eta_c:-0.50, tile_vol:"Tile4n",  eta_i:2, phi_n:64, cell_name:"D2"  },
-    TileCell { sub:2, eta_c:-0.70, tile_vol:"Tile4n",  eta_i:3, phi_n:64, cell_name:"D3"  },
+    // Sampling D — Tile4n  (D1-D3; D0 não aparece em LBC no JiveXML)
+    TileCell { sub:2, eta_c:-0.20, tile_vol:"Tile4n",  eta_i:1, phi_n:64, cell_name:"D1"  },
+    TileCell { sub:2, eta_c:-0.40, tile_vol:"Tile4n",  eta_i:2, phi_n:64, cell_name:"D2"  },
+    TileCell { sub:2, eta_c:-0.60, tile_vol:"Tile4n",  eta_i:3, phi_n:64, cell_name:"D3"  },
 
-    // ── sub=5: EBA regular (η > 0) ────────────────────────────────────────────
+    // ── sub=5: EBA regular (η > 0) — cada célula tem η único ─────────────────
     // Sampling A — Tile5p
-    TileCell { sub:5, eta_c: 1.05, tile_vol:"Tile5p",  eta_i:0, phi_n:64, cell_name:"A12" },
-    TileCell { sub:5, eta_c: 1.15, tile_vol:"Tile5p",  eta_i:1, phi_n:64, cell_name:"A13" },
-    TileCell { sub:5, eta_c: 1.25, tile_vol:"Tile5p",  eta_i:2, phi_n:64, cell_name:"A14" },
-    TileCell { sub:5, eta_c: 1.35, tile_vol:"Tile5p",  eta_i:3, phi_n:64, cell_name:"A15" },
-    TileCell { sub:5, eta_c: 1.45, tile_vol:"Tile5p",  eta_i:4, phi_n:64, cell_name:"A16" },
-    // Sampling B — Tile6p (B12-B15, B11 está em sub=4)
-    TileCell { sub:5, eta_c: 1.05, tile_vol:"Tile6p",  eta_i:1, phi_n:64, cell_name:"B12" },
-    TileCell { sub:5, eta_c: 1.15, tile_vol:"Tile6p",  eta_i:2, phi_n:64, cell_name:"B13" },
-    TileCell { sub:5, eta_c: 1.25, tile_vol:"Tile6p",  eta_i:3, phi_n:64, cell_name:"B14" },
-    TileCell { sub:5, eta_c: 1.35, tile_vol:"Tile6p",  eta_i:4, phi_n:64, cell_name:"B15" },
-    // D4, D5, D6 — Tile8p, Tile7p
-    TileCell { sub:5, eta_c: 1.00, tile_vol:"Tile8p",  eta_i:0, phi_n:64, cell_name:"D4"  },
-    TileCell { sub:5, eta_c: 1.25, tile_vol:"Tile7p",  eta_i:0, phi_n:64, cell_name:"D5"  },
-    TileCell { sub:5, eta_c: 1.50, tile_vol:"Tile7p",  eta_i:1, phi_n:64, cell_name:"D6"  },
+    TileCell { sub:5, eta_c: 1.0587, tile_vol:"Tile5p",  eta_i:0, phi_n:64, cell_name:"A12" },
+    TileCell { sub:5, eta_c: 1.1594, tile_vol:"Tile5p",  eta_i:1, phi_n:64, cell_name:"A13" },
+    TileCell { sub:5, eta_c: 1.2587, tile_vol:"Tile5p",  eta_i:2, phi_n:64, cell_name:"A14" },
+    TileCell { sub:5, eta_c: 1.3579, tile_vol:"Tile5p",  eta_i:3, phi_n:64, cell_name:"A15" },
+    TileCell { sub:5, eta_c: 1.4573, tile_vol:"Tile5p",  eta_i:4, phi_n:64, cell_name:"A16" },
+    // Sampling B — Tile6p (B12-B15; B11 em sub=4)
+    TileCell { sub:5, eta_c: 1.1580, tile_vol:"Tile6p",  eta_i:1, phi_n:64, cell_name:"B12" },
+    TileCell { sub:5, eta_c: 1.2574, tile_vol:"Tile6p",  eta_i:2, phi_n:64, cell_name:"B13" },
+    TileCell { sub:5, eta_c: 1.3568, tile_vol:"Tile6p",  eta_i:3, phi_n:64, cell_name:"B14" },
+    TileCell { sub:5, eta_c: 1.4562, tile_vol:"Tile6p",  eta_i:4, phi_n:64, cell_name:"B15" },
+    // D4, D5, D6
+    TileCell { sub:5, eta_c: 1.0074, tile_vol:"Tile8p",  eta_i:0, phi_n:64, cell_name:"D4"  },
+    TileCell { sub:5, eta_c: 1.2064, tile_vol:"Tile7p",  eta_i:0, phi_n:64, cell_name:"D5"  },
+    TileCell { sub:5, eta_c: 1.5566, tile_vol:"Tile7p",  eta_i:1, phi_n:64, cell_name:"D6"  },
 
-    // ── sub=0: EBC regular (η < 0) ────────────────────────────────────────────
+    // ── sub=0: EBC regular (η < 0) — cada célula tem η único ─────────────────
     // Sampling A — Tile5n
-    TileCell { sub:0, eta_c:-1.05, tile_vol:"Tile5n",  eta_i:0, phi_n:64, cell_name:"A12" },
-    TileCell { sub:0, eta_c:-1.15, tile_vol:"Tile5n",  eta_i:1, phi_n:64, cell_name:"A13" },
-    TileCell { sub:0, eta_c:-1.25, tile_vol:"Tile5n",  eta_i:2, phi_n:64, cell_name:"A14" },
-    TileCell { sub:0, eta_c:-1.35, tile_vol:"Tile5n",  eta_i:3, phi_n:64, cell_name:"A15" },
-    TileCell { sub:0, eta_c:-1.45, tile_vol:"Tile5n",  eta_i:4, phi_n:64, cell_name:"A16" },
-    // Sampling B — Tile6n (B12-B15, B11 está em sub=1)
-    TileCell { sub:0, eta_c:-1.05, tile_vol:"Tile6n",  eta_i:1, phi_n:64, cell_name:"B12" },
-    TileCell { sub:0, eta_c:-1.15, tile_vol:"Tile6n",  eta_i:2, phi_n:64, cell_name:"B13" },
-    TileCell { sub:0, eta_c:-1.25, tile_vol:"Tile6n",  eta_i:3, phi_n:64, cell_name:"B14" },
-    TileCell { sub:0, eta_c:-1.35, tile_vol:"Tile6n",  eta_i:4, phi_n:64, cell_name:"B15" },
-    // D4, D5, D6 — Tile8n, Tile7n
-    TileCell { sub:0, eta_c:-1.00, tile_vol:"Tile8n",  eta_i:0, phi_n:64, cell_name:"D4"  },
-    TileCell { sub:0, eta_c:-1.25, tile_vol:"Tile7n",  eta_i:0, phi_n:64, cell_name:"D5"  },
-    TileCell { sub:0, eta_c:-1.50, tile_vol:"Tile7n",  eta_i:1, phi_n:64, cell_name:"D6"  },
+    TileCell { sub:0, eta_c:-1.0565, tile_vol:"Tile5n",  eta_i:0, phi_n:64, cell_name:"A12" },
+    TileCell { sub:0, eta_c:-1.1570, tile_vol:"Tile5n",  eta_i:1, phi_n:64, cell_name:"A13" },
+    TileCell { sub:0, eta_c:-1.2565, tile_vol:"Tile5n",  eta_i:2, phi_n:64, cell_name:"A14" },
+    TileCell { sub:0, eta_c:-1.3559, tile_vol:"Tile5n",  eta_i:3, phi_n:64, cell_name:"A15" },
+    TileCell { sub:0, eta_c:-1.4554, tile_vol:"Tile5n",  eta_i:4, phi_n:64, cell_name:"A16" },
+    // Sampling B — Tile6n (B12-B15; B11 em sub=1)
+    TileCell { sub:0, eta_c:-1.1560, tile_vol:"Tile6n",  eta_i:1, phi_n:64, cell_name:"B12" },
+    TileCell { sub:0, eta_c:-1.2555, tile_vol:"Tile6n",  eta_i:2, phi_n:64, cell_name:"B13" },
+    TileCell { sub:0, eta_c:-1.3551, tile_vol:"Tile6n",  eta_i:3, phi_n:64, cell_name:"B14" },
+    TileCell { sub:0, eta_c:-1.4546, tile_vol:"Tile6n",  eta_i:4, phi_n:64, cell_name:"B15" },
+    // D4, D5, D6
+    TileCell { sub:0, eta_c:-1.0056, tile_vol:"Tile8n",  eta_i:0, phi_n:64, cell_name:"D4"  },
+    TileCell { sub:0, eta_c:-1.2048, tile_vol:"Tile7n",  eta_i:0, phi_n:64, cell_name:"D5"  },
+    TileCell { sub:0, eta_c:-1.5550, tile_vol:"Tile7n",  eta_i:1, phi_n:64, cell_name:"D6"  },
 
-    // ── sub=4: EBA especial (η > 0) ───────────────────────────────────────────
-    TileCell { sub:4, eta_c: 0.90, tile_vol:"Tile9p",  eta_i:0, phi_n:64, cell_name:"C10" },
-    TileCell { sub:4, eta_c: 0.95, tile_vol:"Tile6p",  eta_i:0, phi_n:64, cell_name:"B11" },
-    TileCell { sub:4, eta_c: 1.00, tile_vol:"Tile8p",  eta_i:0, phi_n:64, cell_name:"D4"  },
-    TileCell { sub:4, eta_c: 1.05, tile_vol:"Tile10p", eta_i:0, phi_n:64, cell_name:"E1"  },
-    TileCell { sub:4, eta_c: 1.20, tile_vol:"Tile11p", eta_i:0, phi_n:64, cell_name:"E2"  },
-    TileCell { sub:4, eta_c: 1.25, tile_vol:"Tile7p",  eta_i:0, phi_n:64, cell_name:"D5"  },
-    TileCell { sub:4, eta_c: 1.35, tile_vol:"Tile12p", eta_i:0, phi_n:64, cell_name:"E3"  },
-    TileCell { sub:4, eta_c: 1.50, tile_vol:"Tile7p",  eta_i:1, phi_n:64, cell_name:"D6"  },
-    TileCell { sub:4, eta_c: 1.55, tile_vol:"Tile13p", eta_i:0, phi_n:64, cell_name:"E4"  },
+    // ── sub=4: EBA especial (η > 0) — sem D4/D5/D6 ──────────────────────────
+    TileCell { sub:4, eta_c: 0.8580, tile_vol:"Tile9p",  eta_i:0, phi_n:64, cell_name:"C10" },
+    TileCell { sub:4, eta_c: 0.9584, tile_vol:"Tile6p",  eta_i:0, phi_n:64, cell_name:"B11" },
+    TileCell { sub:4, eta_c: 1.0589, tile_vol:"Tile10p", eta_i:0, phi_n:64, cell_name:"E1"  },
+    TileCell { sub:4, eta_c: 1.1593, tile_vol:"Tile11p", eta_i:0, phi_n:64, cell_name:"E2"  },
+    TileCell { sub:4, eta_c: 1.3098, tile_vol:"Tile12p", eta_i:0, phi_n:64, cell_name:"E3"  },
+    TileCell { sub:4, eta_c: 1.5104, tile_vol:"Tile13p", eta_i:0, phi_n:64, cell_name:"E4"  },
 
-    // ── sub=1: EBC especial (η < 0) ───────────────────────────────────────────
-    TileCell { sub:1, eta_c:-0.90, tile_vol:"Tile9n",  eta_i:0, phi_n:64, cell_name:"C10" },
-    TileCell { sub:1, eta_c:-0.95, tile_vol:"Tile6n",  eta_i:0, phi_n:64, cell_name:"B11" },
-    TileCell { sub:1, eta_c:-1.00, tile_vol:"Tile8n",  eta_i:0, phi_n:64, cell_name:"D4"  },
-    TileCell { sub:1, eta_c:-1.05, tile_vol:"Tile10n", eta_i:0, phi_n:64, cell_name:"E1"  },
-    TileCell { sub:1, eta_c:-1.20, tile_vol:"Tile11n", eta_i:0, phi_n:64, cell_name:"E2"  },
-    TileCell { sub:1, eta_c:-1.25, tile_vol:"Tile7n",  eta_i:0, phi_n:64, cell_name:"D5"  },
-    TileCell { sub:1, eta_c:-1.35, tile_vol:"Tile12n", eta_i:0, phi_n:64, cell_name:"E3"  },
-    TileCell { sub:1, eta_c:-1.50, tile_vol:"Tile7n",  eta_i:1, phi_n:64, cell_name:"D6"  },
-    TileCell { sub:1, eta_c:-1.55, tile_vol:"Tile13n", eta_i:0, phi_n:64, cell_name:"E4"  },
+    // ── sub=1: EBC especial (η < 0) — sem D4/D5/D6 ──────────────────────────
+    TileCell { sub:1, eta_c:-0.8560, tile_vol:"Tile9n",  eta_i:0, phi_n:64, cell_name:"C10" },
+    TileCell { sub:1, eta_c:-0.9563, tile_vol:"Tile6n",  eta_i:0, phi_n:64, cell_name:"B11" },
+    TileCell { sub:1, eta_c:-1.0567, tile_vol:"Tile10n", eta_i:0, phi_n:64, cell_name:"E1"  },
+    TileCell { sub:1, eta_c:-1.1570, tile_vol:"Tile11n", eta_i:0, phi_n:64, cell_name:"E2"  },
+    TileCell { sub:1, eta_c:-1.3074, tile_vol:"Tile12n", eta_i:0, phi_n:64, cell_name:"E3"  },
+    TileCell { sub:1, eta_c:-1.5078, tile_vol:"Tile13n", eta_i:0, phi_n:64, cell_name:"E4"  },
 
     // ── sub=6: MBTS-A (η > 0, φ_n=8) ─────────────────────────────────────────
-    // Outer ring (larger R → smaller η), Inner ring (smaller R → larger η)
-    TileCell { sub:6, eta_c: 1.60, tile_vol:"Tile14p", eta_i:0, phi_n:8, cell_name:"MBTS2" },
-    TileCell { sub:6, eta_c: 2.10, tile_vol:"Tile15p", eta_i:0, phi_n:8, cell_name:"MBTS1" },
+    // R_mid(Tile14)=651mm, R_mid(Tile15)=289.5mm, z=3566mm
+    // η = -ln(tan(atan2(R_mid,z)/2))
+    TileCell { sub:6, eta_c: 2.40, tile_vol:"Tile14p", eta_i:0, phi_n:8, cell_name:"MBTS2" },
+    TileCell { sub:6, eta_c: 3.20, tile_vol:"Tile15p", eta_i:0, phi_n:8, cell_name:"MBTS1" },
 
     // ── sub=7: MBTS-C (η < 0, φ_n=8) ─────────────────────────────────────────
-    TileCell { sub:7, eta_c:-1.60, tile_vol:"Tile14n", eta_i:0, phi_n:8, cell_name:"MBTS2" },
-    TileCell { sub:7, eta_c:-2.10, tile_vol:"Tile15n", eta_i:0, phi_n:8, cell_name:"MBTS1" },
+    TileCell { sub:7, eta_c:-2.40, tile_vol:"Tile14n", eta_i:0, phi_n:8, cell_name:"MBTS2" },
+    TileCell { sub:7, eta_c:-3.20, tile_vol:"Tile15n", eta_i:0, phi_n:8, cell_name:"MBTS1" },
 ];
 
 // ─── Lookup: (eta, phi, sub) → caminho CGV ────────────────────────────────────
@@ -175,7 +168,7 @@ fn lookup_tile_cell_nth(
     }
 
     // 2. Todos os candidatos dentro de min_dist + 5 mm em η
-    let tol = min_dist + 0.005_f32;
+    let tol = min_dist + 0.0005_f32;
     let candidates: Vec<&TileCell> = TILE_CELLS
         .iter()
         .filter(|c| c.sub == hit_sub && (c.eta_c - hit_eta).abs() <= tol)
@@ -192,7 +185,7 @@ fn lookup_tile_cell_nth(
     let vol = cell.tile_vol;
     let i   = cell.eta_i as usize;
     Some((
-        format!("Calorimeter\t\u{2192}\t{vol}_0\t\u{2192}\t{vol}{i}_{i}\t\u{2192}\tcell_{j}"),
+        format!("Calorimeter→{vol}_0→{vol}{i}_{i}→cell_{j}"),
         cell.cell_name,
     ))
 }

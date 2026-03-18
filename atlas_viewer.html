@@ -9,230 +9,68 @@
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-
 :root{
-  --bg:      #040c1a;
-  --surf:    rgba(5,13,28,0.97);
-  --b0:      rgba(22,50,95,0.35);
-  --b1:      rgba(50,110,200,0.60);
-  --ac:      #3d9ef0;
-  --ac2:     #00d4ff;
-  --ac-dim:  #1a5fa0;
-  --hi:      #ddeaf8;
-  --md:      #618fbb;
-  --lo:      #2a5070;
-  --xlo:     #12243a;
-  --mono:    'JetBrains Mono',monospace;
-  --sans:    'Inter',system-ui,sans-serif;
-  --r:       12px;
-  --rsm:     8px;
-  --shadow:  0 16px 56px rgba(0,0,0,.65);
+  --bg:#040c1a;--surf:rgba(5,13,28,0.97);--b0:rgba(22,50,95,0.35);--b1:rgba(50,110,200,0.60);
+  --ac:#3d9ef0;--ac2:#00d4ff;--ac-dim:#1a5fa0;--hi:#ddeaf8;--md:#618fbb;--lo:#2a5070;--xlo:#12243a;
+  --mono:'JetBrains Mono',monospace;--sans:'Inter',system-ui,sans-serif;
+  --r:12px;--rsm:8px;--shadow:0 16px 56px rgba(0,0,0,.65);
 }
-
-body{
-  background:var(--bg);
-  color:var(--hi);
-  font-family:var(--sans);
-  font-size:14px;
-  line-height:1.5;
-  overflow:hidden;
-  -webkit-font-smoothing:antialiased;
-}
+body{background:var(--bg);color:var(--hi);font-family:var(--sans);font-size:14px;line-height:1.5;overflow:hidden;-webkit-font-smoothing:antialiased}
 canvas{display:block}
-
-/* ── Loading ── */
-#overlay{
-  position:fixed;inset:0;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:var(--bg);gap:18px;z-index:10;
-}
-#ov-logo{
-  font-family:var(--mono);font-size:11px;font-weight:600;
-  letter-spacing:.28em;text-transform:uppercase;color:var(--ac);
-  display:flex;align-items:center;gap:10px;
-}
+#overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);gap:18px;z-index:10}
+#ov-logo{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.28em;text-transform:uppercase;color:var(--ac);display:flex;align-items:center;gap:10px}
 #ov-logo .material-icons-round{font-size:20px}
 #ov-msg{font-size:11px;color:var(--lo);letter-spacing:.1em;font-family:var(--mono)}
 #bar{width:240px;height:2px;background:var(--xlo);border-radius:2px;overflow:hidden}
 #prog{height:100%;background:linear-gradient(90deg,var(--ac-dim),var(--ac),var(--ac2));width:0;transition:width .3s ease}
-
-/* ── Card ── */
-.card{
-  position:fixed;
-  background:var(--surf);
-  border:1px solid var(--b0);
-  border-radius:var(--r);
-  min-width:260px;
-  backdrop-filter:blur(24px);
-  -webkit-backdrop-filter:blur(24px);
-  box-shadow:var(--shadow);
-  transition:border-color .2s,box-shadow .2s;
-}
+.card{position:fixed;background:var(--surf);border:1px solid var(--b0);border-radius:var(--r);min-width:260px;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:var(--shadow);transition:border-color .2s,box-shadow .2s}
 .card:hover{border-color:var(--b1);box-shadow:0 20px 64px rgba(0,0,0,.75)}
-
-.card-hdr{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:13px 16px;cursor:pointer;user-select:none;
-}
-.card-title{
-  display:flex;align-items:center;gap:8px;
-  font-family:var(--mono);font-size:10px;font-weight:600;
-  letter-spacing:.22em;text-transform:uppercase;color:var(--lo);
-}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;user-select:none}
+.card-title{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.22em;text-transform:uppercase;color:var(--lo)}
 .card-title .material-icons-round{font-size:14px;color:var(--ac-dim)}
 .chev{color:var(--xlo);transition:transform .3s,color .2s;display:flex;align-items:center}
 .chev .material-icons-round{font-size:18px}
 .chev.open{transform:rotate(180deg)}
 .card-hdr:hover .chev{color:var(--ac)}
-
-.card-body{
-  max-height:560px;opacity:1;
-  padding:0 16px 16px;
-  transition:max-height .3s ease,opacity .2s ease,padding-bottom .3s ease;
-  overflow:hidden;
-}
+.card-body{max-height:560px;opacity:1;padding:0 16px 16px;transition:max-height .3s ease,opacity .2s ease,padding-bottom .3s ease;overflow:hidden}
 .card-body.col{max-height:0;opacity:0;padding-bottom:0}
-
-/* ── Rows ── */
-.row{
-  display:flex;justify-content:space-between;align-items:baseline;
-  padding:6px 0;border-bottom:1px solid var(--xlo);
-}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--xlo)}
 .row:last-of-type{border-bottom:none}
 .row .lbl{font-size:12px;color:var(--lo);font-weight:500}
 .row .val{font-family:var(--mono);font-size:13px;color:var(--md);font-weight:500}
-
 .cdiv{height:1px;background:var(--xlo);margin:10px 0 9px}
-
-/* ── Buttons ── */
 .btns{display:flex;flex-wrap:wrap;gap:6px}
-.btn{
-  display:inline-flex;align-items:center;gap:5px;
-  background:transparent;
-  border:1px solid var(--xlo);
-  color:var(--lo);
-  padding:6px 11px;border-radius:var(--rsm);
-  cursor:pointer;
-  font:600 12px/1 var(--sans);letter-spacing:.01em;
-  transition:background .15s,border-color .15s,color .15s,box-shadow .15s;
-  white-space:nowrap;
-}
+.btn{display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid var(--xlo);color:var(--lo);padding:6px 11px;border-radius:var(--rsm);cursor:pointer;font:600 12px/1 var(--sans);letter-spacing:.01em;transition:background .15s,border-color .15s,color .15s,box-shadow .15s;white-space:nowrap}
 .btn .material-icons-round{font-size:14px}
 .btn:hover{background:rgba(61,158,240,.08);border-color:var(--ac-dim);color:var(--md)}
-.btn.active{
-  background:rgba(61,158,240,.12);
-  border-color:var(--ac);color:var(--ac);
-  box-shadow:0 0 12px rgba(61,158,240,.18);
-}
+.btn.active{background:rgba(61,158,240,.12);border-color:var(--ac);color:var(--ac);box-shadow:0 0 12px rgba(61,158,240,.18)}
 .btn.active:hover{background:rgba(61,158,240,.18)}
-
 .nav-hint{margin-top:10px;font-size:10px;color:var(--xlo);letter-spacing:.06em;font-family:var(--mono)}
-
-/* ── Tooltip ── */
-#cell-tip{
-  position:fixed;pointer-events:none;z-index:30;
-  background:var(--surf);
-  border:1px solid var(--b1);
-  border-radius:var(--r);
-  padding:14px 18px;
-  opacity:0;transition:opacity .1s ease;
-  backdrop-filter:blur(24px);
-  -webkit-backdrop-filter:blur(24px);
-  white-space:nowrap;
-  min-width:220px;
-  box-shadow:var(--shadow);
-}
+#cell-tip{position:fixed;pointer-events:none;z-index:30;background:var(--surf);border:1px solid var(--b1);border-radius:var(--r);padding:14px 18px;opacity:0;transition:opacity .1s ease;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);white-space:nowrap;min-width:220px;box-shadow:var(--shadow)}
 #cell-tip.show{opacity:1}
-
-.tip-cellname{
-  font-family:var(--sans);font-size:22px;font-weight:700;
-  color:var(--hi);line-height:1;margin-bottom:10px;letter-spacing:.01em;
-}
+.tip-cellname{font-family:var(--sans);font-size:22px;font-weight:700;color:var(--hi);line-height:1;margin-bottom:10px;letter-spacing:.01em}
 .tip-eline{display:flex;align-items:baseline;gap:6px;margin-bottom:12px}
-.tip-eval{
-  font-family:var(--mono);font-size:28px;font-weight:600;
-  color:var(--ac2);line-height:1;
-}
+.tip-eval{font-family:var(--mono);font-size:28px;font-weight:600;color:var(--ac2);line-height:1}
 .tip-eunit{font-family:var(--mono);font-size:11px;color:var(--lo);font-weight:500}
 .tip-div{height:1px;background:var(--xlo);margin:0 0 10px}
 .tip-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 10px}
-.tip-field label{
-  display:block;font-size:10px;letter-spacing:.12em;
-  color:var(--lo);text-transform:uppercase;margin-bottom:3px;
-  font-family:var(--mono);font-weight:600;
-}
+.tip-field label{display:block;font-size:10px;letter-spacing:.12em;color:var(--lo);text-transform:uppercase;margin-bottom:3px;font-family:var(--mono);font-weight:600}
 .tip-field span{font-family:var(--mono);font-size:13px;color:var(--md);font-weight:500}
-
-/* ── Threshold panel ── */
-#thr-panel{
-  position:fixed;right:22px;top:50%;transform:translateY(-50%);
-  display:flex;flex-direction:column;align-items:center;gap:12px;
-  opacity:.18;transition:opacity .3s ease;
-  z-index:5;padding:12px 8px;
-}
+#thr-panel{position:fixed;right:22px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:12px;opacity:.18;transition:opacity .3s ease;z-index:5;padding:12px 8px}
 #thr-panel:hover{opacity:1}
-
-.thr-lbl{
-  font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--lo);
-  text-transform:uppercase;writing-mode:vertical-rl;transform:rotate(180deg);
-  font-weight:600;
-}
+.thr-lbl{font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:var(--lo);text-transform:uppercase;writing-mode:vertical-rl;transform:rotate(180deg);font-weight:600}
 .slider-wrap{height:240px;width:36px;position:relative;flex-shrink:0}
-#thr-slider{
-  width:240px;
-  position:absolute;left:50%;top:50%;
-  transform:translate(-50%,-50%) rotate(-90deg);
-  -webkit-appearance:none;appearance:none;
-  height:4px;border-radius:2px;outline:none;cursor:pointer;
-  background:linear-gradient(90deg,var(--xlo),var(--ac));
-}
-#thr-slider::-webkit-slider-thumb{
-  -webkit-appearance:none;
-  width:20px;height:20px;border-radius:50%;
-  background:var(--ac);
-  border:2.5px solid var(--bg);
-  box-shadow:0 0 16px rgba(61,158,240,.7);
-  cursor:pointer;transition:transform .12s ease,box-shadow .12s ease;
-}
+#thr-slider{width:240px;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-90deg);-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;outline:none;cursor:pointer;background:linear-gradient(90deg,var(--xlo),var(--ac))}
+#thr-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--ac);border:2.5px solid var(--bg);box-shadow:0 0 16px rgba(61,158,240,.7);cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
 #thr-slider::-webkit-slider-thumb:hover{transform:scale(1.2);box-shadow:0 0 22px rgba(61,158,240,.9)}
-#thr-slider::-moz-range-thumb{
-  width:20px;height:20px;border-radius:50%;
-  background:var(--ac);border:2.5px solid var(--bg);
-  box-shadow:0 0 16px rgba(61,158,240,.7);cursor:pointer;
-}
-#thr-val{
-  font-family:var(--mono);font-size:9px;color:var(--lo);font-weight:500;
-  writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.02em;
-}
-#thr-hint{
-  font-family:var(--mono);font-size:9px;color:var(--xlo);
-  writing-mode:vertical-rl;transform:rotate(180deg);
-  letter-spacing:.05em;text-align:center;transition:color .2s;
-  font-weight:500;
-}
+#thr-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--ac);border:2.5px solid var(--bg);box-shadow:0 0 16px rgba(61,158,240,.7);cursor:pointer}
+#thr-val{font-family:var(--mono);font-size:9px;color:var(--lo);font-weight:500;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.02em}
+#thr-hint{font-family:var(--mono);font-size:9px;color:var(--xlo);writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.05em;text-align:center;transition:color .2s;font-weight:500}
 #thr-panel:hover #thr-hint{color:var(--lo)}
-
-/* ── Threshold cursor (float label) ── */
-#thr-cursor{
-  position:fixed;pointer-events:none;z-index:50;
-  background:var(--surf);
-  border:1px solid var(--ac-dim);
-  border-radius:var(--rsm);
-  padding:6px 11px;
-  font-family:var(--mono);font-size:12px;font-weight:500;color:var(--md);
-  opacity:0;transition:opacity .08s;
-  white-space:nowrap;letter-spacing:.03em;
-  box-shadow:var(--shadow);
-}
+#thr-cursor{position:fixed;pointer-events:none;z-index:50;background:var(--surf);border:1px solid var(--ac-dim);border-radius:var(--rsm);padding:6px 11px;font-family:var(--mono);font-size:12px;font-weight:500;color:var(--md);opacity:0;transition:opacity .08s;white-space:nowrap;letter-spacing:.03em;box-shadow:var(--shadow)}
 #thr-cursor.show{opacity:1}
-
-/* ── Cinema exit ── */
-#cinema-exit{
-  position:fixed;bottom:24px;right:24px;z-index:20;
-  opacity:0;pointer-events:none;transition:opacity .4s ease;
-}
-body.cinema .card,
-body.cinema #thr-panel{opacity:0!important;pointer-events:none}
+#cinema-exit{position:fixed;bottom:24px;right:24px;z-index:20;opacity:0;pointer-events:none;transition:opacity .4s ease}
+body.cinema .card,body.cinema #thr-panel{opacity:0!important;pointer-events:none}
 body.cinema #cell-tip{opacity:0!important}
 body.cinema #cinema-exit{opacity:.2;pointer-events:auto}
 body.cinema #cinema-exit:hover{opacity:1}
@@ -240,14 +78,12 @@ body.cinema #cinema-exit:hover{opacity:1}
 </head>
 <body>
 
-<!-- Loading -->
 <div id="overlay">
   <div id="ov-logo"><span class="material-icons-round">radar</span>TILECAL VIEWER</div>
   <div id="ov-msg">Iniciando…</div>
   <div id="bar"><div id="prog"></div></div>
 </div>
 
-<!-- HUD card -->
 <div id="hud" class="card" style="top:18px;left:18px;display:none">
   <div class="card-hdr" onclick="toggleCard('hud')">
     <div class="card-title"><span class="material-icons-round">sensors</span>ATLAS TileCal</div>
@@ -263,8 +99,11 @@ body.cinema #cinema-exit:hover{opacity:1}
       <button class="btn" id="wf-btn" onclick="toggleWf()">
         <span class="material-icons-round">grid_on</span>Wireframe
       </button>
-      <button class="btn active" id="ol-btn" onclick="toggleOutline()" title="Contorno das células">
+      <button class="btn active" id="ol-btn" onclick="toggleOutline()" title="Contorno ao hover">
         <span class="material-icons-round">border_style</span>Contorno
+      </button>
+      <button class="btn active" id="bound-btn" onclick="toggleBound()" title="Ghost ATLAS">
+        <span class="material-icons-round">radio_button_unchecked</span>Bound
       </button>
       <button class="btn" onclick="controls.reset()" title="Reset câmera">
         <span class="material-icons-round">filter_center_focus</span>
@@ -286,7 +125,6 @@ body.cinema #cinema-exit:hover{opacity:1}
   </div>
 </div>
 
-<!-- Event card -->
 <div id="evt" class="card" style="bottom:18px;left:18px;display:none">
   <div class="card-hdr" onclick="toggleCard('evt')">
     <div class="card-title"><span class="material-icons-round">bolt</span>Evento de Colisão</div>
@@ -306,13 +144,9 @@ body.cinema #cinema-exit:hover{opacity:1}
   </div>
 </div>
 
-<!-- Cell tooltip -->
 <div id="cell-tip">
   <div class="tip-cellname" id="tt-cell">–</div>
-  <div class="tip-eline">
-    <span class="tip-eval" id="tt-e">–</span>
-    <span class="tip-eunit">MeV</span>
-  </div>
+  <div class="tip-eline"><span class="tip-eval" id="tt-e">–</span><span class="tip-eunit">MeV</span></div>
   <div class="tip-div"></div>
   <div class="tip-grid">
     <div class="tip-field"><label>Eta</label><span id="tt-eta">–</span></div>
@@ -321,7 +155,6 @@ body.cinema #cinema-exit:hover{opacity:1}
   </div>
 </div>
 
-<!-- Threshold panel -->
 <div id="thr-panel">
   <div class="thr-lbl">Threshold</div>
   <div class="slider-wrap">
@@ -332,7 +165,6 @@ body.cinema #cinema-exit:hover{opacity:1}
 </div>
 <div id="thr-cursor"></div>
 
-<!-- Cinema exit -->
 <div id="cinema-exit">
   <button class="btn" onclick="exitCinema()">
     <span class="material-icons-round">close</span>Sair do cinema
@@ -355,131 +187,195 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import init, { load_cgv, process_event } from './wasm/pkg/tile_viz.js';
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// ── Scene ─────────────────────────────────────────────────────────────────────
+// ── Scene / lights ────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x040c1a);
 scene.add(new THREE.AmbientLight(0xffffff, 1.3));
-const sun = new THREE.DirectionalLight(0xffffff, 1.7);
-sun.position.set(1, 2, 1.5); scene.add(sun);
-const fill = new THREE.DirectionalLight(0x8899ff, 0.5);
-fill.position.set(-1, -1, -1); scene.add(fill);
+const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.position.set(1, 2, 1.5); scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8899ff, 0.5); fill.position.set(-1,-1,-1);  scene.add(fill);
 
 // ── Camera + Controls ─────────────────────────────────────────────────────────
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1e6);
-camera.position.set(0, 2000, 6000);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 1, 1e6);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.06;
+controls.enableDamping = true; controls.dampingFactor = 0.06;
 window.controls = controls;
 
-// ── Global state ──────────────────────────────────────────────────────────────
-const meshIndex   = {};
-let   hitMats     = [];
-let   wfMode      = false;
-let   infoEnabled = true;
-let   outlineEnabled = true;
+// ── Shared materials ──────────────────────────────────────────────────────────
+const baseMat    = new THREE.MeshStandardMaterial({ color:0x0a1828, roughness:0.72, metalness:0.08, side:THREE.DoubleSide });
+const outlineMat = new THREE.MeshBasicMaterial({ color:0x00d4ff, side:THREE.BackSide });
+const _zero      = new THREE.Matrix4().makeScale(0,0,0);  // hides threshold-filtered instances
 
-const meshHitData = new Map();  // mesh → {e_mev, eta, phi, sub, cell}
-let   allHits     = [];
-let   visibleList = [];
-let   eMin_mev = 0, eMax_mev = 1;
+// ── State ─────────────────────────────────────────────────────────────────────
+const meshIndex  = {};   // path → Mesh (geometry/transform source; NOT added to scene)
+let wfMode       = false;
+let infoEnabled  = true;
+let outlineEnabled = true;
+let ghostEnabled = true;
 
-let hoveredMesh  = null;
-let outlineClone = null;
+// Instanced rendering: one InstancedMesh per unique cell geometry shape
+// instGroups: [{im:InstancedMesh, mat:Material, hits:[{e_mev,eta,phi,sub,cell,mat4,visible}]}]
+let instGroups  = [];
+let allHits     = [];   // flat [{gIdx,iIdx,e_mev}]
+let visibleList = [];   // [InstancedMesh] for raycaster
+let eMin_mev = 0, eMax_mev = 1;
 
-// Per-cell edge overlays for outline mode
-const cellEdgeLines = new Map();            // mesh → LineSegments
-const edgesGeoCache = new Map();            // geo.uuid → EdgesGeometry
-const edgesMat = new THREE.LineBasicMaterial({
-  color: 0xffffff, transparent: true, opacity: 0.40, depthWrite: false,
-});
+// Hover
+let hovGIdx = -1, hovIIdx = -1, outlineClone = null;
 
-const baseMat = new THREE.MeshStandardMaterial({
-  color: 0x0a1828, roughness: 0.72, metalness: 0.08, side: THREE.DoubleSide,
-});
-const outlineMat = new THREE.MeshBasicMaterial({ color: 0x00d4ff, side: THREE.BackSide });
+// ── Ghost ATLAS ───────────────────────────────────────────────────────────────
+// Procedural reference geometry — built once, no network needed.
+// scale: GLB_units_per_mm (1.0 if GLB is in mm, 0.1 if in cm, etc.)
+let ghostGroup = null;
+
+function buildGhostAtlas(scale) {
+  if (ghostGroup) { scene.remove(ghostGroup); }
+  ghostGroup = new THREE.Group();
+
+  const faceM = new THREE.MeshBasicMaterial({
+    color:0x0a2038, transparent:true, opacity:0.05, side:THREE.DoubleSide, depthWrite:false
+  });
+  const wireM = new THREE.LineBasicMaterial({
+    color:0x1e5888, transparent:true, opacity:0.22, depthWrite:false
+  });
+  const wireHec = new THREE.LineBasicMaterial({
+    color:0x1a4a70, transparent:true, opacity:0.18, depthWrite:false
+  });
+  const wireMbts = new THREE.LineBasicMaterial({
+    color:0x2a70b8, transparent:true, opacity:0.35, depthWrite:false
+  });
+
+  // Open cylinder shell along Z-axis (beam axis)
+  // phi = radial segments; hSegs = height segments (creates horizontal rings)
+  function cyl(r, zMin, zMax, phi, mat) {
+    const wm = mat || wireM;
+    const h = (zMax - zMin) * scale, zc = ((zMin + zMax) / 2) * scale, rs = r * scale;
+    const g = new THREE.CylinderGeometry(rs, rs, h, phi, 1, true);
+    g.rotateX(Math.PI / 2);
+    const m = new THREE.Mesh(g, faceM); m.position.z = zc; ghostGroup.add(m);
+    const l = new THREE.LineSegments(new THREE.EdgesGeometry(g), wm); l.position.z = zc; ghostGroup.add(l);
+  }
+
+  // Annular disc perpendicular to Z (cap / endplate)
+  function ring(rIn, rOut, z, phi, mat) {
+    const wm = mat || wireM;
+    const g = new THREE.RingGeometry(rIn * scale, rOut * scale, phi, 1);
+    const m = new THREE.Mesh(g, faceM); m.position.z = z * scale; ghostGroup.add(m);
+    const l = new THREE.LineSegments(new THREE.EdgesGeometry(g), wm); l.position.z = z * scale; ghostGroup.add(l);
+  }
+
+  const P64=64, P32=32, P8=8;
+
+  // ── TileCal Barrel ── R 2300-3820 mm, z ±2820 mm (CaloBuild.C exact) ──────
+  // Layers: A(2300-2600), BC(2600-3440), D(3440-3820) — 64 phi for cell beds
+  cyl(2300, -2820,  2820, P64);   // inner wall
+  cyl(2600, -2820,  2820, P64);   // A / BC layer boundary
+  cyl(3440, -2820,  2820, P64);   // BC / D  layer boundary
+  cyl(3820, -2820,  2820, P64);   // outer wall
+  ring(2300, 3820,  2820, P64);   // +z endplate
+  ring(2300, 3820, -2820, P64);   // -z endplate
+
+  // ── TileCal Extended Barrel A (z>0) ── z 3559.5–6150 mm ──────────────────
+  // Layers: A(2300-2600), B(2600-3140), D(3140-3820)
+  cyl(2300,  3559.5, 6150, P64);
+  cyl(2600,  3559.5, 6150, P64);  // A / B boundary
+  cyl(3140,  3559.5, 6150, P64);  // B / D boundary
+  cyl(3820,  3559.5, 6150, P64);
+  ring(2300, 3820,  6150, P64);
+  ring(2300, 3820,  3559.5, P64);
+
+  // ── TileCal Extended Barrel C (z<0) ── z -6150 to -3559.5 mm ─────────────
+  cyl(2300, -6150, -3559.5, P64);
+  cyl(2600, -6150, -3559.5, P64);
+  cyl(3140, -6150, -3559.5, P64);
+  cyl(3820, -6150, -3559.5, P64);
+  ring(2300, 3820, -6150, P64);
+  ring(2300, 3820, -3559.5, P64);
+
+  // ── MBTS discs ── z = ±3566 mm, 8 phi sectors (CaloBuild.C exact) ─────────
+  // Tile14 (MBTS2): R 426-876 mm, Tile15 (MBTS1): R 153-426 mm
+  ring( 153,  426,  3566, P8, wireMbts);
+  ring( 426,  876,  3566, P8, wireMbts);
+  ring( 153,  426, -3566, P8, wireMbts);
+  ring( 426,  876, -3566, P8, wireMbts);
+
+  // ── HEC ── R 372-2290 mm, z ±4350 to ±6050 mm, 32 phi ────────────────────
+  cyl( 372,  4350,  6050, P32, wireHec);
+  cyl(2290,  4350,  6050, P32, wireHec);
+  ring( 372, 2290,  6050, P32, wireHec);
+  ring( 372, 2290,  4350, P32, wireHec);
+  cyl( 372, -6050, -4350, P32, wireHec);
+  cyl(2290, -6050, -4350, P32, wireHec);
+  ring( 372, 2290, -6050, P32, wireHec);
+  ring( 372, 2290, -4350, P32, wireHec);
+
+  // ── LAr Electromagnetic Barrel ── R 1421-1984 mm, z ±3250 mm, 32 phi ──────
+  cyl(1421, -3250,  3250, P32, wireHec);
+  cyl(1984, -3250,  3250, P32, wireHec);
+  ring(1421, 1984,  3250, P32, wireHec);
+  ring(1421, 1984, -3250, P32, wireHec);
+
+  // ── LAr Endcap (EMEC) ── R 303-2290 mm, z ±3560 to ±4350 mm, 32 phi ──────
+  cyl( 303,  3560,  4350, P32, wireHec);
+  cyl(2290,  3560,  4350, P32, wireHec);
+  ring( 303, 2290,  4350, P32, wireHec);
+  ring( 303, 2290,  3560, P32, wireHec);
+  cyl( 303, -4350, -3560, P32, wireHec);
+  cyl(2290, -4350, -3560, P32, wireHec);
+  ring( 303, 2290, -4350, P32, wireHec);
+  ring( 303, 2290, -3560, P32, wireHec);
+
+  ghostGroup.visible = ghostEnabled;
+  scene.add(ghostGroup);
+}
+
+window.toggleBound = () => {
+  ghostEnabled = !ghostEnabled;
+  if (ghostGroup) ghostGroup.visible = ghostEnabled;
+  document.getElementById('bound-btn').classList.toggle('active', ghostEnabled);
+};
 
 // ── Colormap (stellar) ────────────────────────────────────────────────────────
 function stellarColor(e_mev) {
   const range = eMax_mev - eMin_mev;
   const t = range > 1e-10 ? Math.max(0, Math.min(1, (e_mev - eMin_mev) / range)) : 0.5;
   const stops = [
-    { t: 0.00, r: 0.60, g: 0.00, b: 0.08 },
-    { t: 0.26, r: 1.00, g: 0.42, b: 0.00 },
-    { t: 0.50, r: 1.00, g: 0.96, b: 0.55 },
-    { t: 0.74, r: 0.38, g: 0.68, b: 1.00 },
-    { t: 1.00, r: 0.00, g: 0.08, b: 1.00 },
+    {t:0.00,r:0.60,g:0.00,b:0.08},{t:0.26,r:1.00,g:0.42,b:0.00},
+    {t:0.50,r:1.00,g:0.96,b:0.55},{t:0.74,r:0.38,g:0.68,b:1.00},{t:1.00,r:0.00,g:0.08,b:1.00}
   ];
   let i = 0;
-  while (i < stops.length - 2 && t > stops[i + 1].t) i++;
-  const a = stops[i], b = stops[i + 1];
-  const s = (b.t - a.t) > 1e-10 ? (t - a.t) / (b.t - a.t) : 0;
-  return { r: a.r + s*(b.r-a.r), g: a.g + s*(b.g-a.g), b: a.b + s*(b.b-a.b) };
+  while (i < stops.length-2 && t > stops[i+1].t) i++;
+  const a = stops[i], b = stops[i+1];
+  const s = (b.t-a.t) > 1e-10 ? (t-a.t)/(b.t-a.t) : 0;
+  return {r:a.r+s*(b.r-a.r), g:a.g+s*(b.g-a.g), b:a.b+s*(b.b-a.b)};
 }
 
 // ── Card collapse ─────────────────────────────────────────────────────────────
 window.toggleCard = id => {
-  document.getElementById(id + '-body').classList.toggle('col');
-  document.getElementById(id + '-chev').classList.toggle('open');
+  document.getElementById(id+'-body').classList.toggle('col');
+  document.getElementById(id+'-chev').classList.toggle('open');
 };
 
 // ── Wireframe ─────────────────────────────────────────────────────────────────
 window.toggleWf = () => {
   wfMode = !wfMode;
-  hitMats.forEach(m => m.wireframe = wfMode);
+  instGroups.forEach(g => { g.mat.wireframe = wfMode; });
   document.getElementById('wf-btn').innerHTML = wfMode
     ? '<span class="material-icons-round">view_in_ar</span>Solid'
     : '<span class="material-icons-round">grid_on</span>Wireframe';
-  // Outline only in solid mode
-  cellEdgeLines.forEach(line => { line.visible = outlineEnabled && !wfMode; });
 };
 
-// ── Cell outline toggle ───────────────────────────────────────────────────────
+// ── Hover outline toggle ──────────────────────────────────────────────────────
 window.toggleOutline = () => {
   outlineEnabled = !outlineEnabled;
-  const btn = document.getElementById('ol-btn');
-  btn.classList.toggle('active', outlineEnabled);
-  cellEdgeLines.forEach(line => { line.visible = outlineEnabled && !wfMode; });
-};
-
-function addCellEdge(mesh) {
-  const geo = mesh.geometry;
-  if (!edgesGeoCache.has(geo.uuid)) {
-    edgesGeoCache.set(geo.uuid, new THREE.EdgesGeometry(geo, 12));
-  }
-  const line = new THREE.LineSegments(edgesGeoCache.get(geo.uuid), edgesMat);
-  line.visible = outlineEnabled && !wfMode;
-  mesh.add(line);
-  cellEdgeLines.set(mesh, line);
-}
-
-function removeAllCellEdges() {
-  cellEdgeLines.forEach((line, mesh) => mesh.remove(line));
-  cellEdgeLines.clear();
-}
-
-// ── Clear event ───────────────────────────────────────────────────────────────
-window.clearEvt = () => {
-  setHovered(null);
-  removeAllCellEdges();
-  Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
-  meshHitData.clear(); allHits = []; hitMats = []; visibleList = [];
-  eMin_mev = 0; eMax_mev = 1;
-  document.getElementById('s-active').textContent  = '0';
-  document.getElementById('s-erange').textContent  = '–';
-  document.getElementById('ep-name').textContent   = '–';
-  document.getElementById('ep-cdecl').textContent  = '–';
-  document.getElementById('ep-cact').textContent   = '–';
-  document.getElementById('ep-match').textContent  = '–';
-  document.getElementById('thr-val').textContent   = '–';
-  const sl = document.getElementById('thr-slider');
-  sl.min = 0; sl.max = 1; sl.value = 0;
+  document.getElementById('ol-btn').classList.toggle('active', outlineEnabled);
+  if (!outlineEnabled) clearHoverOutline();
+  else if (hovGIdx >= 0) showHoverOutline(hovGIdx, hovIIdx);
 };
 
 // ── Toggle info ───────────────────────────────────────────────────────────────
@@ -488,85 +384,40 @@ window.toggleInfo = () => {
   const btn = document.getElementById('info-btn');
   btn.classList.toggle('active', infoEnabled);
   btn.querySelector('.material-icons-round').textContent = infoEnabled ? 'info' : 'info_outline';
-  if (!infoEnabled) {
-    clearHoverOutline();
-    cellTip.classList.remove('show');
-  } else if (hoveredMesh && meshHitData.has(hoveredMesh)) {
-    showHoverOutline(hoveredMesh);
-    fillTooltip(meshHitData.get(hoveredMesh));
+  if (!infoEnabled) { clearHoverOutline(); cellTip.classList.remove('show'); }
+  else if (hovGIdx >= 0) {
+    showHoverOutline(hovGIdx, hovIIdx);
+    fillTooltip(instGroups[hovGIdx].hits[hovIIdx]);
     placeTooltip(mouseX, mouseY);
     cellTip.classList.add('show');
   }
 };
 
-// ── 8K Screenshot ─────────────────────────────────────────────────────────────
-window.downloadScreenshot8K = () => {
-  const W = 7680, H = 4320;
-  const offRenderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-  offRenderer.setPixelRatio(1);
-  offRenderer.setSize(W, H);
-  offRenderer.outputColorSpace = THREE.SRGBColorSpace;
-  offRenderer.setClearColor(renderer.getClearColor(new THREE.Color()), renderer.getClearAlpha());
-  const offCam = camera.clone();
-  offCam.aspect = W / H;
-  offCam.updateProjectionMatrix();
-  offRenderer.render(scene, offCam);
-  offRenderer.domElement.toBlob(blob => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const now = new Date();
-    const pad = n => String(n).padStart(2,'0');
-    const ts = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-    a.download = `TileCal_${ts}.png`;
-    a.href = url;
-    a.click();
-    URL.revokeObjectURL(url);
-    offRenderer.dispose();
-  }, 'image/png');
-};
-
-// ── Cinema ────────────────────────────────────────────────────────────────────
-window.enterCinema = () => {
-  setHovered(null);
-  document.body.classList.add('cinema');
-  controls.autoRotate = true; controls.autoRotateSpeed = 0.85;
-};
-window.exitCinema = () => {
-  document.body.classList.remove('cinema');
-  controls.autoRotate = false;
-};
-
-// ── Hover outline (hover highlight, separate from cell-edge outline) ───────────
-function showHoverOutline(mesh) {
+// ── Hover outline ─────────────────────────────────────────────────────────────
+function showHoverOutline(gIdx, iIdx) {
   clearHoverOutline();
-  outlineClone = new THREE.Mesh(mesh.geometry, outlineMat);
-  outlineClone.scale.setScalar(1.04);
-  outlineClone.layers.set(1);
-  mesh.add(outlineClone);
+  if (!outlineEnabled) return;
+  const mat4 = new THREE.Matrix4();
+  instGroups[gIdx].im.getMatrixAt(iIdx, mat4);
+  outlineClone = new THREE.Mesh(instGroups[gIdx].im.geometry, outlineMat);
+  outlineClone.applyMatrix4(mat4);
+  outlineClone.scale.multiplyScalar(1.04);
+  scene.add(outlineClone);
 }
 function clearHoverOutline() {
-  if (outlineClone) {
-    if (outlineClone.parent) outlineClone.parent.remove(outlineClone);
-    outlineClone = null;
-  }
+  if (outlineClone) { scene.remove(outlineClone); outlineClone = null; }
 }
 
 // ── Hover state ───────────────────────────────────────────────────────────────
-function setHovered(mesh) {
-  if (mesh === hoveredMesh) return;
-  if (hoveredMesh) {
-    clearHoverOutline();
-    if (hoveredMesh.material !== baseMat) hoveredMesh.material.emissiveIntensity = 1;
-    cellTip.classList.remove('show');
-  }
-  hoveredMesh = mesh;
-  if (!mesh) return;
-  const data = meshHitData.get(mesh);
-  if (!data) return;
-  if (mesh.material !== baseMat) mesh.material.emissiveIntensity = 3.5;
+function setHovered(gIdx, iIdx) {
+  if (gIdx === hovGIdx && iIdx === hovIIdx) return;
+  hovGIdx = gIdx; hovIIdx = iIdx;
+  clearHoverOutline();
+  cellTip.classList.remove('show');
+  if (gIdx < 0) return;
   if (infoEnabled) {
-    showHoverOutline(mesh);
-    fillTooltip(data);
+    showHoverOutline(gIdx, iIdx);
+    fillTooltip(instGroups[gIdx].hits[iIdx]);
     placeTooltip(mouseX, mouseY);
     cellTip.classList.add('show');
   }
@@ -574,239 +425,271 @@ function setHovered(mesh) {
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
 const cellTip = document.getElementById('cell-tip');
-
-function fillTooltip(data) {
-  document.getElementById('tt-cell').textContent = data.cell || '–';
-  document.getElementById('tt-e').textContent    = data.e_mev.toFixed(2);
-  document.getElementById('tt-eta').textContent  = data.eta.toFixed(4);
-  document.getElementById('tt-phi').textContent  = data.phi.toFixed(4);
-  document.getElementById('tt-sub').textContent  = data.sub.toFixed(0);
+function fillTooltip(d) {
+  document.getElementById('tt-cell').textContent = d.cell || '–';
+  document.getElementById('tt-e').textContent    = d.e_mev.toFixed(2);
+  document.getElementById('tt-eta').textContent  = d.eta.toFixed(4);
+  document.getElementById('tt-phi').textContent  = d.phi.toFixed(4);
+  document.getElementById('tt-sub').textContent  = d.sub.toFixed(0);
 }
-
 function placeTooltip(x, y) {
-  const w   = cellTip.offsetWidth || 230;
-  const flip = x + w + 28 > innerWidth;
-  cellTip.style.left      = (flip ? x - w - 24 : x + 24) + 'px';
-  cellTip.style.top       = y + 'px';
+  const w = cellTip.offsetWidth || 230, flip = x+w+28 > innerWidth;
+  cellTip.style.left = (flip ? x-w-24 : x+24)+'px';
+  cellTip.style.top  = y+'px';
   cellTip.style.transform = 'translateY(-50%)';
 }
 
+// ── 8K Screenshot ─────────────────────────────────────────────────────────────
+window.downloadScreenshot8K = () => {
+  const W=7680, H=4320;
+  const offR = new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+  offR.setPixelRatio(1); offR.setSize(W,H); offR.outputColorSpace=THREE.SRGBColorSpace;
+  offR.setClearColor(renderer.getClearColor(new THREE.Color()), renderer.getClearAlpha());
+  const offCam = camera.clone(); offCam.aspect=W/H; offCam.updateProjectionMatrix();
+  offR.render(scene,offCam);
+  offR.domElement.toBlob(blob=>{
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    const now=new Date(), pad=n=>String(n).padStart(2,'0');
+    a.download=`TileCal_${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}.png`;
+    a.href=url; a.click(); URL.revokeObjectURL(url); offR.dispose();
+  },'image/png');
+};
+
+// ── Cinema ────────────────────────────────────────────────────────────────────
+window.enterCinema = () => {
+  setHovered(-1,-1); document.body.classList.add('cinema');
+  controls.autoRotate=true; controls.autoRotateSpeed=0.85;
+};
+window.exitCinema = () => { document.body.classList.remove('cinema'); controls.autoRotate=false; };
+
+// ── Clear event ───────────────────────────────────────────────────────────────
+window.clearEvt = () => {
+  setHovered(-1,-1);
+  instGroups.forEach(g=>{scene.remove(g.im);g.im.dispose();g.mat.dispose();});
+  instGroups=[];allHits=[];visibleList=[];
+  eMin_mev=0;eMax_mev=1;
+  ['s-active','s-erange','ep-name','ep-cdecl','ep-cact','ep-match','thr-val'].forEach(id=>{
+    document.getElementById(id).textContent='–';
+  });
+  document.getElementById('s-active').textContent='0';
+  const sl=document.getElementById('thr-slider'); sl.min=0;sl.max=1;sl.value=0;
+};
+
 // ── Threshold ─────────────────────────────────────────────────────────────────
-const thrSlider = document.getElementById('thr-slider');
-const thrValEl  = document.getElementById('thr-val');
-const thrCursor = document.getElementById('thr-cursor');
-let   thrDragging = false;
+const thrSlider=document.getElementById('thr-slider');
+const thrValEl =document.getElementById('thr-val');
+const thrCursor=document.getElementById('thr-cursor');
+let thrDragging=false;
 
 function applyThreshold(thr_mev) {
-  for (const h of allHits) h.mesh.visible = h.e_mev >= thr_mev;
-  visibleList = allHits.filter(h => h.mesh.visible).map(h => h.mesh);
-  if (hoveredMesh && !hoveredMesh.visible) setHovered(null);
-  mouseDirty = true;
-  document.getElementById('s-active').textContent = visibleList.length.toLocaleString();
+  let n=0;
+  for (const g of instGroups) {
+    let ch=false;
+    for (let i=0;i<g.hits.length;i++) {
+      const d=g.hits[i], show=d.e_mev>=thr_mev;
+      if (show!==d.visible) { d.visible=show; g.im.setMatrixAt(i,show?d.mat4:_zero); ch=true; }
+      if (d.visible) n++;
+    }
+    if (ch) g.im.instanceMatrix.needsUpdate=true;
+  }
+  if (hovGIdx>=0 && !instGroups[hovGIdx]?.hits[hovIIdx]?.visible) setHovered(-1,-1);
+  mouseDirty=true;
+  document.getElementById('s-active').textContent=n.toLocaleString();
 }
 
-function formatThrDisplay(mev) {
-  thrValEl.textContent = mev < 0.01 ? mev.toExponential(2) + ' MeV'
-                        : mev < 1   ? mev.toFixed(3) + ' MeV'
-                        :             mev.toFixed(1) + ' MeV';
+function formatThr(mev) {
+  thrValEl.textContent = mev<0.01?mev.toExponential(2)+' MeV':mev<1?mev.toFixed(3)+' MeV':mev.toFixed(1)+' MeV';
 }
 
-thrSlider.addEventListener('mousedown', () => {
-  thrDragging = true; thrCursor.classList.add('show');
+thrSlider.addEventListener('mousedown',()=>{thrDragging=true;thrCursor.classList.add('show');});
+document.addEventListener('mouseup',()=>{ if(thrDragging){thrDragging=false;thrCursor.classList.remove('show');} });
+thrSlider.addEventListener('input',()=>{
+  const mev=parseFloat(thrSlider.value); formatThr(mev);
+  thrCursor.textContent=mev.toFixed(4)+' MeV'; applyThreshold(mev);
 });
-document.addEventListener('mouseup', () => {
-  if (thrDragging) { thrDragging = false; thrCursor.classList.remove('show'); }
-});
-thrSlider.addEventListener('input', () => {
-  const mev = parseFloat(thrSlider.value);
-  formatThrDisplay(mev);
-  thrCursor.textContent = mev.toFixed(4) + ' MeV';
-  applyThreshold(mev);
-});
-
-// Scroll: very fine by default; shift = coarse; ctrl = ultra-fine
-document.getElementById('thr-panel').addEventListener('wheel', e => {
-  e.preventDefault();
-  if (!allHits.length) return;
-  const range = eMax_mev - eMin_mev;
-  const step  = e.ctrlKey  ? range * 0.00001
-              : e.shiftKey ? range * 0.005
-              :               range * 0.0001;
-  const cur  = parseFloat(thrSlider.value);
-  const next = Math.min(eMax_mev, Math.max(eMin_mev, cur + (e.deltaY > 0 ? step : -step)));
-  thrSlider.value = next;
-  formatThrDisplay(next);
-  thrCursor.textContent = next.toFixed(4) + ' MeV';
-  applyThreshold(next);
-}, { passive: false });
+document.getElementById('thr-panel').addEventListener('wheel',e=>{
+  e.preventDefault(); if(!allHits.length) return;
+  const range=eMax_mev-eMin_mev;
+  const step=e.ctrlKey?range*0.00001:e.shiftKey?range*0.005:range*0.0001;
+  const next=Math.min(eMax_mev,Math.max(eMin_mev,parseFloat(thrSlider.value)+(e.deltaY>0?step:-step)));
+  thrSlider.value=next; formatThr(next); thrCursor.textContent=next.toFixed(4)+' MeV'; applyThreshold(next);
+},{passive:false});
 
 // ── Mouse / raycasting ────────────────────────────────────────────────────────
-const raycaster = new THREE.Raycaster();
-const mouseNDC  = new THREE.Vector2(-9999, -9999);
-let   mouseX = 0, mouseY = 0, mouseDirty = false;
+const raycaster=new THREE.Raycaster();
+const mouseNDC=new THREE.Vector2(-9999,-9999);
+let mouseX=0,mouseY=0,mouseDirty=false;
 
-window.addEventListener('mousemove', e => {
-  mouseNDC.x =  (e.clientX / innerWidth)  * 2 - 1;
-  mouseNDC.y = -(e.clientY / innerHeight) * 2 + 1;
-  mouseX = e.clientX; mouseY = e.clientY;
-  mouseDirty = true;
-  if (hoveredMesh && infoEnabled && !document.body.classList.contains('cinema'))
-    placeTooltip(mouseX, mouseY);
-  if (thrDragging) {
-    // Cursor to the LEFT of the mouse
-    const cw = thrCursor.offsetWidth || 110;
-    thrCursor.style.left = (mouseX - cw - 14) + 'px';
-    thrCursor.style.top  = (mouseY - 12) + 'px';
+window.addEventListener('mousemove',e=>{
+  mouseNDC.x=(e.clientX/innerWidth)*2-1;
+  mouseNDC.y=-(e.clientY/innerHeight)*2+1;
+  mouseX=e.clientX; mouseY=e.clientY; mouseDirty=true;
+  if(hovGIdx>=0&&infoEnabled&&!document.body.classList.contains('cinema')) placeTooltip(mouseX,mouseY);
+  if(thrDragging){
+    const cw=thrCursor.offsetWidth||110;
+    thrCursor.style.left=(mouseX-cw-14)+'px'; thrCursor.style.top=(mouseY-12)+'px';
   }
 });
 
-function updateHover() {
-  if (!mouseDirty || document.body.classList.contains('cinema')) return;
-  mouseDirty = false;
-  if (!visibleList.length) { setHovered(null); return; }
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits = raycaster.intersectObjects(visibleList, false);
-  setHovered(hits.length ? hits[0].object : null);
+function updateHover(){
+  if(!mouseDirty||document.body.classList.contains('cinema')) return;
+  mouseDirty=false;
+  if(!visibleList.length){setHovered(-1,-1);return;}
+  raycaster.setFromCamera(mouseNDC,camera);
+  const hits=raycaster.intersectObjects(visibleList,false);
+  for(const hit of hits){
+    const gIdx=hit.object.userData.gIdx, iIdx=hit.instanceId??0;
+    if(gIdx==null) continue;
+    if(!instGroups[gIdx].hits[iIdx].visible) continue;  // skip zero-scale hidden instances
+    setHovered(gIdx,iIdx); return;
+  }
+  setHovered(-1,-1);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
-async function initApp() {
-  const msg  = document.getElementById('ov-msg');
-  const prog = document.getElementById('prog');
+async function initApp(){
+  const msg=document.getElementById('ov-msg');
+  const prog=document.getElementById('prog');
 
-  msg.textContent = 'Carregando WASM…';
-  await init();
-  prog.style.width = '20%';
+  msg.textContent='Carregando WASM…'; await init(); prog.style.width='20%';
 
-  msg.textContent = 'Carregando geometria…';
-  const [glbBuf, cgvText] = await Promise.all([
-    fetch('./root_file/CaloGeometry.glb').then(r => r.arrayBuffer()),
-    fetch('./root_file/CaloGeometry.cgv').then(r => r.text()),
+  msg.textContent='Carregando geometria…';
+  const [glbBuf,cgvText]=await Promise.all([
+    fetch('./root_file/CaloGeometry.glb').then(r=>r.arrayBuffer()),
+    fetch('./root_file/CaloGeometry.cgv').then(r=>r.text()),
   ]);
-  prog.style.width = '60%';
+  prog.style.width='55%';
 
-  msg.textContent = 'Indexando células…';
-  const cellCount = load_cgv(cgvText);
-  prog.style.width = '70%';
+  msg.textContent='Indexando células…';
+  const cellCount=load_cgv(cgvText);
+  prog.style.width='65%';
 
-  msg.textContent = 'Construindo cena…';
-  const gltf = await new Promise((res, rej) => new GLTFLoader().parse(glbBuf, '', res, rej));
-  gltf.scene.traverse(obj => {
-    if (!obj.isMesh) return;
-    obj.material = baseMat;
-    obj.visible  = false;
-    meshIndex[obj.userData.name ?? obj.name] = obj;
+  msg.textContent='Construindo cena…';
+  const gltf=await new Promise((res,rej)=>new GLTFLoader().parse(glbBuf,'',res,rej));
+
+  // Compute bounding box BEFORE traversal (to derive ghost scale)
+  // We do a quick traversal first just to get bounds
+  gltf.scene.traverse(o=>{ if(o.isMesh){ o.matrixAutoUpdate=false; o.updateMatrix(); } });
+  gltf.scene.updateWorldMatrix(true,true);  // pre-compute all worldMatrices at once
+
+  const box=new THREE.Box3().setFromObject(gltf.scene);
+  const size=box.getSize(new THREE.Vector3()).length();
+  const center=box.getCenter(new THREE.Vector3());
+
+  // Derive ghost scale: compare GLB outer radius (XY extent) vs nominal 3820 mm
+  const glbOuterR=Math.max(Math.abs(box.max.x),Math.abs(box.max.y),Math.abs(box.min.x),Math.abs(box.min.y));
+  const ghostScale=glbOuterR/3820;  // 1.0 if mm, 0.1 if cm
+  buildGhostAtlas(ghostScale);
+
+  // Build meshIndex — gltf.scene is NOT added to THREE scene (avoids 11k+ scene objects)
+  gltf.scene.traverse(o=>{
+    if(!o.isMesh) return;
+    o.material=baseMat; o.visible=false;
+    meshIndex[o.userData.name??o.name]=o;
   });
-  scene.add(gltf.scene);
-  prog.style.width = '90%';
+  // gltf.scene deliberately NOT added to scene — meshes used only as geometry reference
+  prog.style.width='90%';
 
-  const box    = new THREE.Box3().setFromObject(gltf.scene);
-  const size   = box.getSize(new THREE.Vector3()).length();
-  const center = box.getCenter(new THREE.Vector3());
   controls.target.copy(center);
-  camera.position.copy(center).addScalar(size * 0.9);
-  camera.near = size * 0.001;
-  camera.far  = size * 20;
+  camera.position.copy(center).addScalar(size*0.9);
+  camera.near=size*0.001; camera.far=size*20;
   camera.updateProjectionMatrix();
   controls.update();
 
-  prog.style.width = '100%';
-  await new Promise(r => setTimeout(r, 180));
-
-  document.getElementById('s-total').textContent  = cellCount.toLocaleString();
-  document.getElementById('s-active').textContent = '0';
-  document.getElementById('overlay').style.display = 'none';
-  document.getElementById('hud').style.display     = 'block';
-  document.getElementById('evt').style.display     = 'block';
+  prog.style.width='100%';
+  await new Promise(r=>setTimeout(r,150));
+  document.getElementById('s-total').textContent=cellCount.toLocaleString();
+  document.getElementById('s-active').textContent='0';
+  document.getElementById('overlay').style.display='none';
+  document.getElementById('hud').style.display='block';
+  document.getElementById('evt').style.display='block';
 }
 
 // ── XML upload ────────────────────────────────────────────────────────────────
-document.getElementById('fi').onchange = async e => {
-  const file = e.target.files[0];
-  if (!file) return;
-  document.getElementById('ep-name').textContent = file.name;
+document.getElementById('fi').onchange=async e=>{
+  const file=e.target.files[0]; if(!file) return;
+  document.getElementById('ep-name').textContent=file.name;
 
-  const result = JSON.parse(process_event(await file.text()));
-  if (!result.ok) { alert('Erro: ' + result.error); return; }
+  const result=JSON.parse(process_event(await file.text()));
+  if(!result.ok){alert('Erro: '+result.error);return;}
 
-  document.getElementById('ep-cdecl').textContent = result.count_declared;
-  document.getElementById('ep-cact').textContent  = result.count_actual;
-  document.getElementById('ep-match').textContent = result.count_ok ? 'sim' : 'não';
+  document.getElementById('ep-cdecl').textContent=result.count_declared;
+  document.getElementById('ep-cact').textContent=result.count_actual;
+  document.getElementById('ep-match').textContent=result.count_ok?'sim':'não';
+  eMin_mev=result.e_min; eMax_mev=result.e_max;
+  document.getElementById('s-erange').textContent=`${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
 
-  eMin_mev = result.e_min;
-  eMax_mev = result.e_max;
-  document.getElementById('s-erange').textContent =
-    `${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
+  // Reset
+  setHovered(-1,-1);
+  instGroups.forEach(g=>{scene.remove(g.im);g.im.dispose();g.mat.dispose();});
+  instGroups=[];allHits=[];visibleList=[];
+  thrSlider.min=eMin_mev;thrSlider.max=eMax_mev;thrSlider.value=eMin_mev;
+  formatThr(eMin_mev);
 
-  // Reset scene
-  setHovered(null);
-  removeAllCellEdges();
-  Object.values(meshIndex).forEach(m => { m.visible = false; m.material = baseMat; });
-  meshHitData.clear(); allHits = []; hitMats = []; visibleList = [];
-
-  // Slider range in MeV
-  thrSlider.min   = eMin_mev;
-  thrSlider.max   = eMax_mev;
-  thrSlider.value = eMin_mev;
-  formatThrDisplay(eMin_mev);
-
-  // Build hit meshes
-  let _miss = 0;
-  const _missEx = {};
-  for (const h of result.hits) {
-    const key  = h.path.replace(/\t→\t/g, '→');
-    const mesh = meshIndex[key] ?? meshIndex[h.path];
-    if (!mesh) {
+  // Group hits by geometry uuid → one InstancedMesh per unique cell shape
+  const geoGroups=new Map();
+  let _miss=0; const _missEx={};
+  for(const h of result.hits){
+    const mesh=meshIndex[h.path]??meshIndex[h.path.replace(/\t→\t/g,'→')];
+    if(!mesh){
       _miss++;
-      const vol = key.split('→')[1] ?? 'unknown';
-      _missEx[vol] = (_missEx[vol] ?? 0) + 1;
+      const vol=h.path.split('→')[1]??'?';
+      _missEx[vol]=(_missEx[vol]??0)+1;
       continue;
     }
-
-    mesh.visible = true;
-    const col = stellarColor(h.energy);
-    const mat = new THREE.MeshStandardMaterial({
-      color:    new THREE.Color(col.r, col.g, col.b),
-      emissive: new THREE.Color(col.r * 0.4, col.g * 0.4, col.b * 0.4),
-      emissiveIntensity: 1,
-      roughness: 0.32, metalness: 0.18, side: THREE.DoubleSide,
-    });
-    mesh.material = mat;
-    hitMats.push(mat);
-    meshHitData.set(mesh, { e_mev: h.energy, eta: h.eta, phi: h.phi, sub: h.sub, cell: h.cell });
-    allHits.push({ mesh, e_mev: h.energy });
-    addCellEdge(mesh);
+    const uuid=mesh.geometry.uuid;
+    if(!geoGroups.has(uuid)) geoGroups.set(uuid,[]);
+    geoGroups.get(uuid).push({mesh,h});
   }
 
-  visibleList = allHits.map(h => h.mesh);
-  document.getElementById('s-active').textContent = visibleList.length.toLocaleString();
-  if (_miss > 0) console.log('[mesh] missing by volume:', _missEx);
-  const _eg = result.hits.find(h => !meshIndex[h.path.replace(/\t→\t/g,'→')] && !meshIndex[h.path]);
-  if (_eg) console.log('[mesh] example MISSING path:', JSON.stringify(_eg.path));
+  // Build InstancedMesh per group — reduces draw calls from ~5000 to ~80
+  for(const [,group] of geoGroups){
+    const geo=group[0].mesh.geometry, count=group.length;
+    const mat=new THREE.MeshPhongMaterial({side:THREE.DoubleSide,shininess:80});
+    const im=new THREE.InstancedMesh(geo,mat,count);
+    im.frustumCulled=false;
+    im.userData.gIdx=instGroups.length;
+
+    const hits=[];
+    for(let i=0;i<count;i++){
+      const {mesh,h}=group[i];
+      const mat4=mesh.matrixWorld.clone();  // pre-computed in initApp
+      im.setMatrixAt(i,mat4);
+      const col=stellarColor(h.energy);
+      im.setColorAt(i,new THREE.Color(col.r,col.g,col.b));
+      hits.push({e_mev:h.energy,eta:h.eta,phi:h.phi,sub:h.sub,cell:h.cell,mat4,visible:true});
+      allHits.push({gIdx:instGroups.length,iIdx:i,e_mev:h.energy});
+    }
+    im.instanceMatrix.needsUpdate=true;
+    if(im.instanceColor) im.instanceColor.needsUpdate=true;
+    scene.add(im);
+    instGroups.push({im,hits,mat});
+    visibleList.push(im);
+  }
+
+  document.getElementById('s-active').textContent=allHits.length.toLocaleString();
+  if(_miss>0) console.warn('[mesh] missing:',_missEx);
 };
 
 // ── Resize ────────────────────────────────────────────────────────────────────
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(innerWidth,innerHeight);
 });
 
 // ── Render loop ───────────────────────────────────────────────────────────────
-let fc = 0, ft = 0;
-(function animate(t) {
+let fc=0,ft=0,rf=0;
+(function animate(t){
   requestAnimationFrame(animate);
   controls.update();
-  updateHover();
-  renderer.render(scene, camera);
-  if (++fc, t - ft >= 1000) {
-    document.getElementById('s-fps').textContent = fc;
-    fc = 0; ft = t;
-  }
+  if(++rf%3===0) updateHover();   // raycast every 3rd frame
+  renderer.render(scene,camera);
+  if(++fc,t-ft>=1000){ document.getElementById('s-fps').textContent=fc; fc=0;ft=t; }
 })(0);
 
-initApp().catch(err => {
-  document.getElementById('ov-msg').textContent = 'Erro: ' + err.message;
+initApp().catch(err=>{
+  document.getElementById('ov-msg').textContent='Erro: '+err.message;
   console.error(err);
 });
 </script>
