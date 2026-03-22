@@ -222,12 +222,27 @@ canvas{display:block}
 .tt-eval{font-family:var(--fm);font-size:28px;font-weight:600;color:var(--gold-hi);line-height:1}
 .tt-unit{font-family:var(--fm);font-size:11px;color:var(--t3);font-weight:500}
 .tt-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.det-toggle{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:12px;color:var(--t);cursor:pointer;user-select:none;transition:opacity .15s}
+.det-toggle:hover{opacity:.85}
+.det-toggle input{display:none}
+.det-swatch{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+.toggle-track{
+  position:relative;width:34px;height:18px;border-radius:9px;flex-shrink:0;
+  background:var(--t4);border:1px solid transparent;transition:background .2s,border-color .2s;
+}
+.toggle-track::after{
+  content:'';position:absolute;top:1px;left:1px;width:14px;height:14px;
+  border-radius:50%;background:var(--t2);transition:transform .2s,background .2s;
+  box-shadow:0 1px 3px rgba(0,0,0,0.3);
+}
+.det-toggle input:checked + .toggle-track{background:var(--gold-dim);border-color:rgba(201,168,76,0.3)}
+.det-toggle input:checked + .toggle-track::after{transform:translateX(16px);background:var(--gold)}
 .tt-field label{display:block;font-size:9px;letter-spacing:.18em;color:var(--t3);text-transform:uppercase;margin-bottom:3px;font-weight:600}
 .tt-field span{font-family:var(--fm);font-size:13px;color:var(--t2);font-weight:500}
 
 /* ── Cinema ────────────────────────────────────────────────── */
 #cinema-exit{position:fixed;bottom:24px;right:24px;z-index:20;opacity:0;pointer-events:none;transition:opacity .4s}
-body.cinema .panel,body.cinema #thr-panel,body.cinema #toolbar,body.cinema #lang-btn-wrap,body.cinema #settings-popup,body.cinema #deletion-panel{opacity:0!important;pointer-events:none}
+body.cinema .panel,body.cinema #thr-panel,body.cinema #toolbar,body.cinema #lang-btn-wrap,body.cinema #settings-popup,body.cinema #deletion-panel,body.cinema #det-panel{opacity:0!important;pointer-events:none}
 body.cinema #cell-tip{opacity:0!important}
 body.cinema #cinema-exit{opacity:.2;pointer-events:auto}
 body.cinema #cinema-exit:hover{opacity:1}
@@ -271,20 +286,11 @@ body.cinema #toast{bottom:26px}
 .tb-sep{width:1px;height:22px;background:var(--border);flex-shrink:0;margin:0 4px}
 
 /* ── Language ──────────────────────────────────────────────── */
-#lang-btn-wrap{position:fixed;top:18px;right:18px;z-index:15;display:flex;flex-direction:column;align-items:flex-end;gap:6px;animation:fadeIn .4s ease both .3s;transition:opacity .4s}
-#lang-btn{
-  display:flex;align-items:center;gap:7px;padding:6px 12px;
-  background:var(--surf);border:1px solid var(--border);
-  border-radius:var(--r-pill);cursor:pointer;color:var(--t2);
-  font:500 11px/1 var(--ff);letter-spacing:.08em;transition:background .15s,border-color .15s,color .15s;backdrop-filter:blur(16px);
-}
-#lang-btn:hover{background:rgba(255,255,255,0.04);border-color:var(--border-h);color:var(--t)}
-#lang-btn .fi{width:16px;height:12px;border-radius:2px}
-#lang-caret{font-size:11px;transition:transform .2s}
-#lang-btn-wrap.open #lang-caret{transform:rotate(180deg)}
+#lang-btn-wrap{position:fixed;bottom:82px;left:50%;transform:translateX(-50%);z-index:15;pointer-events:none}
 #lang-panel{
   background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);
-  opacity:0;transform:translateY(-6px) scale(0.97);pointer-events:none;transition:opacity .18s,transform .18s;
+  opacity:0;transform:translateY(6px) scale(0.97);pointer-events:none;transition:opacity .18s,transform .18s;
+  min-width:180px;
 }
 #lang-btn-wrap.open #lang-panel{opacity:1;transform:none;pointer-events:auto}
 .lang-opt{
@@ -393,7 +399,7 @@ kbd{
 
 /* ── Deletion panel ───────────────────────────────────────── */
 #deletion-panel{
-  position:fixed;top:18px;right:18px;margin-top:50px;
+  position:fixed;top:200px;right:90px;
   background:var(--surf);border:1px solid var(--border);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   box-shadow:var(--shadow);min-width:260px;border-radius:var(--r);
@@ -549,11 +555,25 @@ kbd{
     <!-- Event stats -->
     <div style="margin-top:10px">
       <div class="dr"><span class="dk" data-i18n="file">File</span><span class="dv" id="ep-name" style="max-width:155px;overflow:hidden;text-overflow:ellipsis">&ndash;</span></div>
-      <div class="dr"><span class="dk" data-i18n="countDeclared">Count declared</span><span class="dv" id="ep-cdecl">&ndash;</span></div>
-      <div class="dr"><span class="dk" data-i18n="countActual">Count actual</span><span class="dv" id="ep-cact">&ndash;</span></div>
-      <div class="dr"><span class="dk" data-i18n="match">Match</span><span class="dv" id="ep-match">&ndash;</span></div>
-      <div class="dr"><span class="dk" data-i18n="mbtsMapped">MBTS mapped</span><span class="dv" id="ep-mbts">&ndash;</span></div>
+      <div class="dr"><span class="dk">Total cells</span><span class="dv" id="ep-cdecl">&ndash;</span></div>
+      <div class="dr"><span class="dk">Mapped</span><span class="dv" id="ep-cact">&ndash;</span></div>
+      <div class="dr"><span class="dk">Status</span><span class="dv" id="ep-match">&ndash;</span></div>
+      <div class="dr"><span class="dk">MBTS</span><span class="dv" id="ep-mbts">&ndash;</span></div>
     </div>
+  </div>
+</div>
+
+<!-- ── Sub-detector Toggle Panel ───────────────────────────── -->
+<div id="det-panel" class="panel hidden" style="top:18px;right:90px;min-width:210px">
+  <div class="ph" onclick="toggleCard('det')">
+    <div class="ph-title"><i class="ico ti ti-components"></i><span data-i18n="detectors">Detectors</span></div>
+    <div class="ph-chev open" id="det-chev"><i class="ti ti-chevron-down"></i></div>
+  </div>
+  <div class="pb" id="det-body">
+    <label class="det-toggle"><input type="checkbox" checked data-det="TILE" onchange="toggleDetector('TILE',this.checked)"><span class="toggle-track"></span><span class="det-swatch" style="background:#cc7744"></span>TileCal</label>
+    <label class="det-toggle"><input type="checkbox" checked data-det="MBTS" onchange="toggleDetector('MBTS',this.checked)"><span class="toggle-track"></span><span class="det-swatch" style="background:#2a70b8"></span>MBTS</label>
+    <label class="det-toggle"><input type="checkbox" checked data-det="LAr" onchange="toggleDetector('LAr',this.checked)"><span class="toggle-track"></span><span class="det-swatch" style="background:#3388cc"></span>LAr EM</label>
+    <label class="det-toggle"><input type="checkbox" checked data-det="HEC" onchange="toggleDetector('HEC',this.checked)"><span class="toggle-track"></span><span class="det-swatch" style="background:#44aa66"></span>HEC</label>
   </div>
 </div>
 
@@ -564,7 +584,7 @@ kbd{
   <div class="tt-grid">
     <div class="tt-field"><label data-i18n="eta">Eta</label><span id="tt-eta">&ndash;</span></div>
     <div class="tt-field"><label data-i18n="phi">Phi</label><span id="tt-phi">&ndash;</span></div>
-    <div class="tt-field"><label data-i18n="sub">Sub</label><span id="tt-sub">&ndash;</span></div>
+    <div class="tt-field"><label data-i18n="det">Det</label><span id="tt-sub">&ndash;</span></div>
   </div>
 </div>
 
@@ -627,6 +647,9 @@ kbd{
     <i class="ti ti-trash"></i>
   </button>
   <div class="tb-sep"></div>
+  <button class="tb-btn" id="det-btn" onclick="toggleDetPanel()" data-tip="detectors" data-key="V">
+    <i class="ti ti-components"></i>
+  </button>
   <button class="tb-btn on" id="info-btn" onclick="toggleInfo()" data-tip="infoOverlay" data-key="I">
     <i class="ti ti-info-circle"></i>
   </button>
@@ -647,18 +670,16 @@ kbd{
     <i class="ti ti-history"></i>
   </button>
   <div class="tb-sep"></div>
+  <button class="tb-btn" id="lang-tb-btn" onclick="toggleLangPanel()" data-tip="language" data-key="L">
+    <i class="ti ti-language"></i>
+  </button>
   <button class="tb-btn" onclick="openShortcuts()" data-tip="shortcuts" data-key="/">
     <i class="ti ti-keyboard"></i>
   </button>
 </div>
 
-<!-- ── Language Selector ────────────────────────────────────── -->
-<div id="lang-btn-wrap" style="display:none">
-  <button id="lang-btn" onclick="toggleLangPanel()">
-    <span class="fi fi-gb" id="lang-flag"></span>
-    <span id="lang-code">EN</span>
-    <i class="ti ti-chevron-down" id="lang-caret"></i>
-  </button>
+<!-- ── Language Selector (anchored to toolbar) ─────────────── -->
+<div id="lang-btn-wrap">
   <div id="lang-panel">
     <button class="lang-opt active" data-lang="en" onclick="setLanguage('en')">
       <span class="fi fi-gb"></span><span class="lang-name">English</span><i class="ti ti-check lang-check"></i>
@@ -708,6 +729,8 @@ kbd{
       <div class="sc-row"><kbd>E</kbd><span class="sc-label" data-i18n="kEvent">Toggle event panel</span></div>
       <div class="sc-row"><kbd>P</kbd><span class="sc-label" data-i18n="kSettings">Toggle settings</span></div>
       <div class="sc-row"><kbd>H</kbd><span class="sc-label" data-i18n="kHistory">Toggle deletion history</span></div>
+      <div class="sc-row"><kbd>V</kbd><span class="sc-label" data-i18n="kDetectors">Toggle detectors</span></div>
+      <div class="sc-row"><kbd>L</kbd><span class="sc-label" data-i18n="kLanguage">Toggle language</span></div>
 
       <div class="sc-group" data-i18n="scGroupMode">Mode</div>
       <div class="sc-row"><kbd>1</kbd><span class="sc-label" data-i18n="kLive">Switch to live mode</span></div>
@@ -857,7 +880,8 @@ const i18n = {
     kInfo:'Toggle cell info', kReset:'Reset camera', kClear:'Clear current event',
     kCinema:'Enter cinema mode', kScreenshot:'Take screenshot',
     kStats:'Toggle detector stats', kEvent:'Toggle event panel', kSettings:'Toggle settings',
-    kHistory:'Toggle deletion history',
+    kHistory:'Toggle deletion history', kDetectors:'Toggle detectors', kLanguage:'Toggle language',
+    language:'Language', detectors:'Detectors',
     kSelectCell:'Select cell', kDeleteCell:'Delete selected cell',
     kUndo:'Undo deletion', kRedo:'Redo deletion',
     kLive:'Switch to live mode', kOffline:'Switch to offline mode',
@@ -905,7 +929,8 @@ const i18n = {
     kInfo:'Basculer info cellule', kReset:'Reinitialiser camera', kClear:'Effacer evenement',
     kCinema:'Mode cinema', kScreenshot:'Capture',
     kStats:'Basculer stats detecteur', kEvent:'Basculer panneau evenement', kSettings:'Basculer parametres',
-    kHistory:'Historique de suppression',
+    kHistory:'Historique de suppression', kDetectors:'Detecteurs', kLanguage:'Changer langue',
+    language:'Langue', detectors:'Detecteurs',
     kSelectCell:'Selectionner cellule', kDeleteCell:'Supprimer cellule',
     kUndo:'Annuler suppression', kRedo:'Retablir suppression',
     kLive:'Mode direct', kOffline:'Mode hors ligne',
@@ -953,7 +978,8 @@ const i18n = {
     kInfo:'Sla celle-info av/pa', kReset:'Tilbakestill kamera', kClear:'Tom hendelse',
     kCinema:'Kinomodus', kScreenshot:'Skjermbilde',
     kStats:'Detektorstatistikk', kEvent:'Hendelsespanel', kSettings:'Innstillinger',
-    kHistory:'Slettehistorikk',
+    kHistory:'Slettehistorikk', kDetectors:'Detektorer', kLanguage:'Bytt sprak',
+    language:'Sprak', detectors:'Detektorer',
     kSelectCell:'Velg celle', kDeleteCell:'Slett celle',
     kUndo:'Angre sletting', kRedo:'Gjenta sletting',
     kLive:'Direktemodus', kOffline:'Frakoblet modus',
@@ -1001,7 +1027,8 @@ const i18n = {
     kInfo:'Alternar info da celula', kReset:'Resetar camera', kClear:'Limpar evento',
     kCinema:'Modo cinema', kScreenshot:'Captura de tela',
     kStats:'Estatisticas do detector', kEvent:'Painel de evento', kSettings:'Configuracoes',
-    kHistory:'Historico de exclusao',
+    kHistory:'Historico de exclusao', kDetectors:'Detectores', kLanguage:'Idioma',
+    language:'Idioma', detectors:'Detectores',
     kSelectCell:'Selecionar celula', kDeleteCell:'Excluir celula',
     kUndo:'Desfazer exclusao', kRedo:'Refazer exclusao',
     kLive:'Modo ao vivo', kOffline:'Modo offline',
@@ -1009,11 +1036,6 @@ const i18n = {
     kAutoPlay:'Reproducao automatica', kShortcuts:'Mostrar atalhos',
     kEscape:'Sair do cinema / fechar paineis',
   }
-};
-
-const LANG_META = {
-  en:{flag:'fi-gb',code:'EN'}, fr:{flag:'fi-fr',code:'FR'},
-  no:{flag:'fi-no',code:'NO'}, pt:{flag:'fi-br',code:'PT'},
 };
 
 let currentLang = 'en';
@@ -1039,9 +1061,6 @@ function applyLang(code){
     const val = t(key);
     if(val) el.textContent = val;
   });
-  const meta = LANG_META[code];
-  document.getElementById('lang-flag').className = 'fi ' + meta.flag;
-  document.getElementById('lang-code').textContent = meta.code;
   document.querySelectorAll('.lang-opt').forEach(el => {
     el.classList.toggle('active', el.dataset.lang === code);
   });
@@ -1053,7 +1072,8 @@ window.toggleLangPanel = () => { document.getElementById('lang-btn-wrap').classL
 function closeLangPanel(){ document.getElementById('lang-btn-wrap').classList.remove('open'); }
 document.addEventListener('click', e => {
   const wrap = document.getElementById('lang-btn-wrap');
-  if(wrap && !wrap.contains(e.target)) closeLangPanel();
+  const langBtn = document.getElementById('lang-tb-btn');
+  if(wrap && !wrap.contains(e.target) && !langBtn?.contains(e.target)) closeLangPanel();
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1107,248 +1127,7 @@ const deletionHistory = []; // {gIdx, iIdx, cell, e_mev}
 const redoStack = [];
 
 // ═══════════════════════════════════════════════════════════════
-// EXTRA CALORIMETERS (LAr, HEC, FCAL) — geometry + XML parsing
-// ═══════════════════════════════════════════════════════════════
-
-// LAr Barrel geometry: 4 layers (PS, S1, S2, S3)
-// Radii in mm: PS≈1500, S1≈1550-1700, S2≈1700-1900, S3≈1900-2000
-const LAR_BA_LAYERS = [
-  { rIn:1500, rOut:1550, nEta:61,  nPhi:64,  name:'LArBA_PS' },  // Presampler
-  { rIn:1550, rOut:1700, nEta:451, nPhi:64,  name:'LArBA_S1' },  // Strips (fine eta)
-  { rIn:1700, rOut:1900, nEta:57,  nPhi:256, name:'LArBA_S2' },  // Middle
-  { rIn:1900, rOut:2000, nEta:27,  nPhi:256, name:'LArBA_S3' },  // Back
-];
-// LAr Endcap geometry: 4 layers (EMEC PS, S1, S2, S3)
-// Z extent ≈ 3600-4350mm, radii vary
-const LAR_EC_LAYERS = [
-  { zIn:3680, zOut:3714, nEta:12,  nPhi:64,  name:'LArEC_PS' },
-  { zIn:3754, zOut:3800, nEta:216, nPhi:64,  name:'LArEC_S1' },
-  { zIn:3754, zOut:4156, nEta:51,  nPhi:256, name:'LArEC_S2' },
-  { zIn:4156, zOut:4243, nEta:34,  nPhi:256, name:'LArEC_S3' },
-];
-
-// HEC geometry: 4 layers at z≈4350-6050mm
-const HEC_LAYERS = [
-  { zIn:4350, zOut:4810, rIn:475, rOut:2030, nEta:14, nPhi:64, name:'HEC_L0' },
-  { zIn:4810, zOut:5200, rIn:475, rOut:2030, nEta:13, nPhi:64, name:'HEC_L1' },
-  { zIn:5200, zOut:5630, rIn:475, rOut:2030, nEta:12, nPhi:64, name:'HEC_L2' },
-  { zIn:5630, zOut:6050, rIn:475, rOut:2030, nEta:12, nPhi:64, name:'HEC_L3' },
-];
-
-// Reusable geometry cache: cellType → BufferGeometry
-const _geomCache = new Map();
-
-// Build a cell-shaped geometry (cylindrical wedge) from (eta, phi) for barrel calorimeters
-// Returns a BoxGeometry approximation positioned at the right (x,y,z)
-function buildCaloCell(eta, phi, deta, dphi, rIn, rOut, scale){
-  // eta → theta → z mapping: z = r / tan(theta), theta = 2*atan(exp(-eta))
-  const theta1 = 2 * Math.atan(Math.exp(-(eta - deta/2)));
-  const theta2 = 2 * Math.atan(Math.exp(-(eta + deta/2)));
-  const rMid = (rIn + rOut) / 2;
-  const dr = rOut - rIn;
-
-  // Cell center in cylindrical coords
-  const z = rMid / Math.tan(2 * Math.atan(Math.exp(-eta)));
-  const dz = Math.abs(rMid / Math.tan(theta1) - rMid / Math.tan(theta2));
-  const arcLen = rMid * dphi;
-
-  // Create box geometry approximating the cell
-  const key = `${dr.toFixed(0)}_${Math.max(10,dz).toFixed(0)}_${Math.max(5,arcLen).toFixed(0)}`;
-  let geo = _geomCache.get(key);
-  if(!geo){
-    geo = new THREE.BoxGeometry(dr * scale, Math.max(5, arcLen) * scale, Math.max(10, dz) * scale);
-    _geomCache.set(key, geo);
-  }
-
-  // Position: convert cylindrical (r, phi, z) to cartesian
-  const x = rMid * Math.cos(phi) * scale;
-  const y = rMid * Math.sin(phi) * scale;
-  const zPos = z * scale;
-
-  const mat4 = new THREE.Matrix4();
-  // Rotation: align box with radial direction
-  const quat = new THREE.Quaternion();
-  quat.setFromAxisAngle(new THREE.Vector3(0, 0, 1), phi);
-  mat4.compose(new THREE.Vector3(x, y, zPos), quat, new THREE.Vector3(1,1,1));
-
-  return mat4;
-}
-
-// Build cell geometry for endcap calorimeters (discs at specific z)
-function buildEndcapCell(eta, phi, deta, dphi, zPos, dzThick, scale){
-  const theta = 2 * Math.atan(Math.exp(-Math.abs(eta)));
-  const r = Math.abs(zPos) * Math.tan(theta);
-  const theta1 = 2 * Math.atan(Math.exp(-(Math.abs(eta) - deta/2)));
-  const theta2 = 2 * Math.atan(Math.exp(-(Math.abs(eta) + deta/2)));
-  const r1 = Math.abs(zPos) * Math.tan(theta1);
-  const r2 = Math.abs(zPos) * Math.tan(theta2);
-  const dr = Math.abs(r1 - r2);
-  const arcLen = r * dphi;
-
-  const key = `ec_${Math.max(5,dr).toFixed(0)}_${Math.max(5,arcLen).toFixed(0)}_${dzThick.toFixed(0)}`;
-  let geo = _geomCache.get(key);
-  if(!geo){
-    geo = new THREE.BoxGeometry(Math.max(5, dr) * scale, Math.max(5, arcLen) * scale, dzThick * scale);
-    _geomCache.set(key, geo);
-  }
-
-  const x = r * Math.cos(phi) * scale;
-  const y = r * Math.sin(phi) * scale;
-  const z = zPos * scale;
-
-  const mat4 = new THREE.Matrix4();
-  const quat = new THREE.Quaternion();
-  quat.setFromAxisAngle(new THREE.Vector3(0, 0, 1), phi);
-  mat4.compose(new THREE.Vector3(x, y, z), quat, new THREE.Vector3(1,1,1));
-  return mat4;
-}
-
-// Parse a calorimeter section from XML text
-function parseCaloXml(xmlText, tagName){
-  const openTag = '<' + tagName + ' ';
-  const closeTag = '</' + tagName + '>';
-  const startIdx = xmlText.indexOf(openTag);
-  if(startIdx < 0) return null;
-  const countMatch = xmlText.substring(startIdx, startIdx + 200).match(/count="(\d+)"/);
-  const count = countMatch ? parseInt(countMatch[1]) : 0;
-  if(count === 0) return null;
-
-  const contentStart = xmlText.indexOf('>', startIdx) + 1;
-  const contentEnd = xmlText.indexOf(closeTag, contentStart);
-  if(contentEnd < 0) return null;
-  const content = xmlText.substring(contentStart, contentEnd);
-
-  function extractArr(tag){
-    const o = '<' + tag + '>', c = '</' + tag + '>';
-    const s = content.indexOf(o);
-    if(s < 0) return null;
-    const e = content.indexOf(c, s);
-    if(e < 0) return null;
-    return content.substring(s + o.length, e).trim().split(/\s+/).map(Number);
-  }
-
-  return { count, extractArr };
-}
-
-// Build InstancedMesh groups for extra calorimeter cells
-function buildExtraCaloHits(xmlText, scale, center){
-  const extraHits = []; // {e_mev, eta, phi, sub, cell, mat4}
-  let extraEmin = Infinity, extraEmax = -Infinity;
-
-  // ── LAr EM ──────────────────────────────────────────────────
-  const lar = parseCaloXml(xmlText, 'LAr');
-  if(lar){
-    const energy = lar.extractArr('energy');
-    const eta    = lar.extractArr('eta');
-    const phi    = lar.extractArr('phi');
-    const slot   = lar.extractArr('slot');
-    if(energy && eta && phi){
-      const n = Math.min(energy.length, eta.length, phi.length);
-      for(let i = 0; i < n; i++){
-        if(energy[i] === 0) continue; // skip zero-energy cells
-        const absEta = Math.abs(eta[i]);
-        extraEmin = Math.min(extraEmin, energy[i]);
-        extraEmax = Math.max(extraEmax, energy[i]);
-
-        let mat4;
-        if(absEta < 1.52){ // Barrel
-          // Determine layer from slot (approximate mapping)
-          const sl = slot ? (slot[i] || 0) : 0;
-          let rIn, rOut, deta, dphi;
-          if(sl <= 1){ rIn=1500; rOut=1550; deta=0.025; dphi=2*Math.PI/64; }
-          else if(sl <= 3){ rIn=1550; rOut=1700; deta=0.003125; dphi=2*Math.PI/64; }
-          else if(sl <= 7){ rIn=1700; rOut=1900; deta=0.025; dphi=2*Math.PI/256; }
-          else { rIn=1900; rOut=2000; deta=0.05; dphi=2*Math.PI/256; }
-          mat4 = buildCaloCell(eta[i], phi[i], deta, dphi, rIn, rOut, scale);
-        } else { // Endcap
-          const sign = eta[i] > 0 ? 1 : -1;
-          const sl = slot ? (slot[i] || 0) : 0;
-          let zAbs, dzThick, deta, dphi;
-          if(sl <= 1){ zAbs=3697; dzThick=34; deta=0.025; dphi=2*Math.PI/64; }
-          else if(sl <= 3){ zAbs=3777; dzThick=46; deta=0.003125; dphi=2*Math.PI/64; }
-          else if(sl <= 7){ zAbs=3955; dzThick=402; deta=0.025; dphi=2*Math.PI/256; }
-          else { zAbs=4200; dzThick=87; deta=0.05; dphi=2*Math.PI/256; }
-          mat4 = buildEndcapCell(eta[i], phi[i], deta, dphi, sign * zAbs, dzThick, scale);
-        }
-        extraHits.push({e_mev: energy[i], eta: eta[i], phi: phi[i], sub: 'LAr', cell: `LAr_${i}`, mat4});
-      }
-    }
-  }
-
-  // ── HEC ─────────────────────────────────────────────────────
-  const hec = parseCaloXml(xmlText, 'HEC');
-  if(hec){
-    const energy = hec.extractArr('energy');
-    const eta    = hec.extractArr('eta');
-    const phi    = hec.extractArr('phi');
-    const slot   = hec.extractArr('slot');
-    if(energy && eta && phi){
-      const n = Math.min(energy.length, eta.length, phi.length);
-      for(let i = 0; i < n; i++){
-        if(energy[i] === 0) continue;
-        const sign = eta[i] > 0 ? 1 : -1;
-        extraEmin = Math.min(extraEmin, energy[i]);
-        extraEmax = Math.max(extraEmax, energy[i]);
-
-        const sl = slot ? (slot[i] || 0) : 0;
-        let zAbs, dzThick;
-        if(sl <= 1){ zAbs=4580; dzThick=460; }
-        else if(sl <= 3){ zAbs=5005; dzThick=390; }
-        else if(sl <= 5){ zAbs=5415; dzThick=430; }
-        else { zAbs=5840; dzThick=420; }
-        const deta = 0.1, dphi = 2*Math.PI/64;
-        const mat4 = buildEndcapCell(eta[i], phi[i], deta, dphi, sign * zAbs, dzThick, scale);
-        extraHits.push({e_mev: energy[i], eta: eta[i], phi: phi[i], sub: 'HEC', cell: `HEC_${i}`, mat4});
-      }
-    }
-  }
-
-  // ── FCAL ────────────────────────────────────────────────────
-  const fcal = parseCaloXml(xmlText, 'FCAL');
-  if(fcal){
-    const energy = fcal.extractArr('energy');
-    const x      = fcal.extractArr('x');
-    const y      = fcal.extractArr('y');
-    const z      = fcal.extractArr('z');
-    const dx     = fcal.extractArr('dx');
-    const dy     = fcal.extractArr('dy');
-    const dz     = fcal.extractArr('dz');
-    const sub    = fcal.extractArr('sub');
-    if(energy && x && y && z){
-      const n = Math.min(energy.length, x.length, y.length, z.length);
-      // FCAL x,y,z are in cm in JiveXML → convert to mm (*10)
-      for(let i = 0; i < n; i++){
-        if(energy[i] === 0) continue;
-        extraEmin = Math.min(extraEmin, energy[i]);
-        extraEmax = Math.max(extraEmax, energy[i]);
-
-        const cx = x[i] * 10; // cm → mm
-        const cy = y[i] * 10;
-        const cz = z[i] * 10;
-        const cdx = (dx ? dx[i] : 1.5) * 10;
-        const cdy = (dy ? dy[i] : 1.5) * 10;
-        const cdz = (dz ? dz[i] : 45) * 10;
-
-        const gKey = `fcal_${cdx.toFixed(0)}_${cdy.toFixed(0)}_${cdz.toFixed(0)}`;
-        let geo = _geomCache.get(gKey);
-        if(!geo){
-          geo = new THREE.BoxGeometry(cdx * scale, cdy * scale, cdz * scale);
-          _geomCache.set(gKey, geo);
-        }
-
-        const mat4 = new THREE.Matrix4();
-        mat4.setPosition(cx * scale, cy * scale, cz * scale);
-
-        const r = Math.sqrt(cx*cx + cy*cy);
-        const fcalEta = -Math.log(Math.tan(Math.atan2(r, Math.abs(cz)) / 2)) * Math.sign(cz);
-        const fcalPhi = Math.atan2(cy, cx);
-        extraHits.push({e_mev: energy[i], eta: fcalEta, phi: fcalPhi, sub: 'FCAL', cell: `FCAL_${i}`, mat4});
-      }
-    }
-  }
-
-  return { hits: extraHits, eMin: extraEmin, eMax: extraEmax };
-}
+// (Extra calo JS code removed — LAr/HEC now handled by WASM pipeline)
 
 // ═══════════════════════════════════════════════════════════════
 // COLORMAPS
@@ -1476,7 +1255,7 @@ function buildGhostAtlas(scale, center){
   const wS = new THREE.LineBasicMaterial({color:0x1a4a70,transparent:true,opacity:0.12,depthWrite:false});
   const wI = new THREE.LineBasicMaterial({color:0x2255aa,transparent:true,opacity:0.10,depthWrite:false});
   const wMb= new THREE.LineBasicMaterial({color:0x2a70b8,transparent:true,opacity:0.25,depthWrite:false});
-  const wTc= new THREE.LineBasicMaterial({color:0xC9A84C,transparent:true,opacity:0.18,depthWrite:false});
+  const wTc= new THREE.LineBasicMaterial({color:0xcc7744,transparent:true,opacity:0.15,depthWrite:false});
 
   function cyl(r,z0,z1,seg,mat){
     const h=(z1-z0)*scale,zc=((z0+z1)/2)*scale,rs=r*scale,m=mat||wS;
@@ -1495,31 +1274,34 @@ function buildGhostAtlas(scale, center){
   cyl(1100,-3100,3100,P32,wI);
   // Solenoid
   cyl(1275,-2650,2650,P32,wI);
-  // LAr EM Barrel
-  cyl(1500,-3200,3200,P32,wS); cyl(2000,-3200,3200,P32,wS);
-  ring(1500,2000,3200,P32,wS); ring(1500,2000,-3200,P32,wS);
-  // TileCal Barrel (r=2280-3820mm, z=-2820 to 2820mm)
-  cyl(2280,-2820,2820,P64,wTc); cyl(3820,-2820,2820,P64,wTc);
-  ring(2280,3820,2820,P64,wTc); ring(2280,3820,-2820,P64,wTc);
-  // TileCal Extended Barrel (r=2280-3820mm, z=2910-6100mm each side)
-  cyl(2280,2910,6100,P64,wTc); cyl(3820,2910,6100,P64,wTc);
-  ring(2280,3820,6100,P64,wTc); ring(2280,3820,2910,P64,wTc);
-  cyl(2280,-6100,-2910,P64,wTc); cyl(3820,-6100,-2910,P64,wTc);
-  ring(2280,3820,-6100,P64,wTc); ring(2280,3820,-2910,P64,wTc);
-  // MBTS
+  // LAr EM Barrel (from CaloBuild.C: r=1421.73-1984.70mm)
+  const wLAr = new THREE.LineBasicMaterial({color:0x3388cc,transparent:true,opacity:0.15,depthWrite:false});
+  cyl(1422,-3200,3200,P32,wLAr); cyl(1985,-3200,3200,P32,wLAr);
+  ring(1422,1985,3200,P32,wLAr); ring(1422,1985,-3200,P32,wLAr);
+  // TileCal Barrel (from CaloBuild.C: r=2300-3820mm)
+  cyl(2300,-2820,2820,P64,wTc); cyl(3820,-2820,2820,P64,wTc);
+  ring(2300,3820,2820,P64,wTc); ring(2300,3820,-2820,P64,wTc);
+  // TileCal Extended Barrel (r=2300-3820mm, z=2910-6100mm each side)
+  cyl(2300,2910,6100,P64,wTc); cyl(3820,2910,6100,P64,wTc);
+  ring(2300,3820,6100,P64,wTc); ring(2300,3820,2910,P64,wTc);
+  cyl(2300,-6100,-2910,P64,wTc); cyl(3820,-6100,-2910,P64,wTc);
+  ring(2300,3820,-6100,P64,wTc); ring(2300,3820,-2910,P64,wTc);
+  // MBTS (r=153-876mm, z=±3566mm)
   ring(153,426,3566,P8,wMb); ring(426,876,3566,P8,wMb);
   ring(153,426,-3566,P8,wMb); ring(426,876,-3566,P8,wMb);
-  // LAr EM Endcap
-  cyl(330,3600,4350,P32,wS); cyl(2100,3600,4350,P32,wS);
-  ring(330,2100,4350,P32,wS); ring(330,2100,3600,P32,wS);
-  cyl(330,-4350,-3600,P32,wS); cyl(2100,-4350,-3600,P32,wS);
-  ring(330,2100,-4350,P32,wS); ring(330,2100,-3600,P32,wS);
-  // HEC
-  cyl(475,4350,6050,P32,wS); cyl(2030,4350,6050,P32,wS);
-  ring(475,2030,6050,P32,wS); ring(475,2030,4350,P32,wS);
-  cyl(475,-6050,-4350,P32,wS); cyl(2030,-6050,-4350,P32,wS);
-  ring(475,2030,-6050,P32,wS); ring(475,2030,-4350,P32,wS);
-  // FCal
+  // LAr EM Endcap (z=3600-4350mm, from CaloBuild.C)
+  const wEC = new THREE.LineBasicMaterial({color:0x3388cc,transparent:true,opacity:0.12,depthWrite:false});
+  cyl(330,3600,4350,P32,wEC); cyl(2100,3600,4350,P32,wEC);
+  ring(330,2100,4350,P32,wEC); ring(330,2100,3600,P32,wEC);
+  cyl(330,-4350,-3600,P32,wEC); cyl(2100,-4350,-3600,P32,wEC);
+  ring(330,2100,-4350,P32,wEC); ring(330,2100,-3600,P32,wEC);
+  // HEC (from CaloBuild.C: z=4350-6050mm, r=387-2008mm)
+  const wHEC = new THREE.LineBasicMaterial({color:0x44aa66,transparent:true,opacity:0.12,depthWrite:false});
+  cyl(387,4350,6050,P32,wHEC); cyl(2008,4350,6050,P32,wHEC);
+  ring(387,2008,6050,P32,wHEC); ring(387,2008,4350,P32,wHEC);
+  cyl(387,-6050,-4350,P32,wHEC); cyl(2008,-6050,-4350,P32,wHEC);
+  ring(387,2008,-6050,P32,wHEC); ring(387,2008,-4350,P32,wHEC);
+  // FCal (z≈4700-6200mm, r=80-450mm)
   cyl(80,4700,6200,P16,wS); cyl(450,4700,6200,P16,wS);
   ring(80,450,6200,P16,wS); ring(80,450,4700,P16,wS);
   cyl(80,-6200,-4700,P16,wS); cyl(450,-6200,-4700,P16,wS);
@@ -1535,6 +1317,38 @@ window.toggleBound = () => {
   ghostEnabled = !ghostEnabled;
   if(ghostGroup) ghostGroup.visible = ghostEnabled;
   document.getElementById('bound-btn').classList.toggle('on', ghostEnabled);
+};
+
+// ═══════════════════════════════════════════════════════════════
+// SUB-DETECTOR TOGGLE
+// ═══════════════════════════════════════════════════════════════
+const detVisible = { TILE: true, MBTS: true, LAr: true, HEC: true };
+
+window.toggleDetPanel = () => {
+  const panel = document.getElementById('det-panel');
+  const isHidden = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !isHidden);
+  document.getElementById('det-btn').classList.toggle('on', isHidden);
+};
+
+window.toggleDetector = (det, visible) => {
+  detVisible[det] = visible;
+  // Toggle visibility of all cells belonging to this detector
+  for(const g of instGroups){
+    for(let i = 0; i < g.hits.length; i++){
+      const h = g.hits[i];
+      if(h.det === det){
+        h.visible = visible && !h.deletedByUser;
+        const m4 = visible && !h.deletedByUser ? h.mat4 : new THREE.Matrix4().makeScale(0,0,0);
+        g.im.setMatrixAt(i, m4);
+      }
+    }
+    g.im.instanceMatrix.needsUpdate = true;
+  }
+  // Update visible count
+  let visCount = 0;
+  for(const g of instGroups) for(const h of g.hits) if(h.visible) visCount++;
+  document.getElementById('s-visible').textContent = `${visCount.toLocaleString()} / ${allHits.length.toLocaleString()}`;
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -1842,7 +1656,7 @@ function fillTooltip(d){
   document.getElementById('tt-e').textContent = d.e_mev.toFixed(2);
   document.getElementById('tt-eta').textContent = d.eta.toFixed(4);
   document.getElementById('tt-phi').textContent = d.phi.toFixed(4);
-  document.getElementById('tt-sub').textContent = d.sub.toFixed(0);
+  document.getElementById('tt-sub').textContent = d.det || '\u2013';
 }
 function placeTooltip(x, y){
   const w = cellTip.offsetWidth || 240, flip = x + w + 28 > innerWidth;
@@ -2059,7 +1873,6 @@ window.clearEvt = () => {
   deletionHistory.length = 0; redoStack.length = 0;
   if(jetGroup){ scene.remove(jetGroup); jetGroup = null; }
   parsedJets = [];
-  _geomCache.clear();
   eMin_mev = 0; eMax_mev = 1;
   ['s-active','s-erange','ep-name','ep-cdecl','ep-cact','ep-mbts','thr-val'].forEach(id => {
     document.getElementById(id).textContent = '\u2013';
@@ -2112,7 +1925,7 @@ function applyThreshold(thr){
       const d = g.hits[i];
       // Skip user-deleted cells
       if(d.deletedByUser){ if(d.visible){ d.visible = false; g.im.setMatrixAt(i, _zero); ch = true; } continue; }
-      const show = d.e_mev >= thr;
+      const show = d.e_mev >= thr && (detVisible[d.det] !== false);
       if(show !== d.visible){ d.visible = show; g.im.setMatrixAt(i, show ? d.mat4 : _zero); ch = true; }
       if(d.visible) n++;
     }
@@ -2247,14 +2060,16 @@ async function loadXmlContent(xmlText, filename){
   if(!result.ok){ showToast(t('invalidXml')+': '+result.error, true); return false; }
 
   document.getElementById('ep-name').textContent  = filename;
-  document.getElementById('ep-cdecl').textContent = result.count_declared;
-  document.getElementById('ep-cact').textContent  = result.count_actual;
-  document.getElementById('ep-match').innerHTML   = result.count_ok
+  document.getElementById('ep-cdecl').textContent = result.cells_mapped + result.cells_unmapped;
+  document.getElementById('ep-cact').textContent  = result.cells_mapped;
+  document.getElementById('ep-match').innerHTML   = result.cells_unmapped === 0
     ? '<i class="ti ti-circle-check" style="color:var(--ok)"></i>'
-    : '<i class="ti ti-circle-x" style="color:var(--err)"></i>';
+    : `<i class="ti ti-circle-check" style="color:var(--ok)"></i> <span style="color:var(--t3);font-size:10px">(${result.cells_unmapped} unmapped)</span>`;
   document.getElementById('ep-mbts').textContent  = result.mbts_mapped ?? 0;
   eMin_mev = result.e_min; eMax_mev = result.e_max;
   document.getElementById('s-erange').textContent = `${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
+  // Per-detector stats
+  console.log(`[calo] TILE: ${result.tile_mapped}/${result.tile_mapped+result.tile_unmapped}, MBTS: ${result.mbts_mapped}, LAr: ${result.lar_mapped}/${result.lar_mapped+result.lar_unmapped}, HEC: ${result.hec_mapped}/${result.hec_mapped+result.hec_unmapped}`);
 
   setHovered(-1,-1);
   clearSelection();
@@ -2288,7 +2103,7 @@ async function loadXmlContent(xmlText, filename){
       im.setMatrixAt(i, mat4);
       const col = colormapColor(h.energy);
       im.setColorAt(i, new THREE.Color(col.r, col.g, col.b));
-      hits.push({e_mev:h.energy, eta:h.eta, phi:h.phi, sub:h.sub, cell:h.cell, mat4, visible:true, deletedByUser:false});
+      hits.push({e_mev:h.energy, eta:h.eta, phi:h.phi, det:h.det||'TILE', cell:h.cell, mat4, visible:true, deletedByUser:false});
       allHits.push({gIdx:instGroups.length, iIdx:i, e_mev:h.energy});
     }
     im.instanceMatrix.needsUpdate = true;
@@ -2298,71 +2113,20 @@ async function loadXmlContent(xmlText, filename){
     visibleList.push(im);
   }
 
-  // ── Extra calorimeters: LAr, HEC, FCAL ────────────────────────
-  const extraResult = buildExtraCaloHits(xmlText, geoScale, geoCenter);
-  if(extraResult.hits.length > 0){
-    // Extend energy range
-    if(extraResult.eMin < eMin_mev) eMin_mev = extraResult.eMin;
-    if(extraResult.eMax > eMax_mev) eMax_mev = extraResult.eMax;
-    document.getElementById('s-erange').textContent = `${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
-
-    // Group extra cells by geometry key (approximation: group by sub-detector)
-    const extraGroups = new Map(); // subDetector → hits[]
-    for(const h of extraResult.hits){
-      const key = h.sub;
-      if(!extraGroups.has(key)) extraGroups.set(key, []);
-      extraGroups.get(key).push(h);
-    }
-
-    // Create a single shared geometry for each sub-detector
-    for(const [subDet, subHits] of extraGroups){
-      // Use a small shared box geometry per sub-detector type
-      let sharedGeo;
-      if(subDet === 'FCAL'){
-        sharedGeo = new THREE.BoxGeometry(15 * geoScale, 15 * geoScale, 450 * geoScale);
-      } else if(subDet === 'HEC'){
-        sharedGeo = new THREE.BoxGeometry(100 * geoScale, 100 * geoScale, 400 * geoScale);
-      } else {
-        sharedGeo = new THREE.BoxGeometry(50 * geoScale, 50 * geoScale, 30 * geoScale);
-      }
-
-      const mat = new THREE.MeshPhongMaterial({side:THREE.DoubleSide, shininess:80, transparent:true, opacity:0.85});
-      const im  = new THREE.InstancedMesh(sharedGeo, mat, subHits.length);
-      im.frustumCulled = false;
-      im.userData.gIdx = instGroups.length;
-
-      const hits = [];
-      for(let i = 0; i < subHits.length; i++){
-        const h = subHits[i];
-        // Offset mat4 by geoCenter
-        const m = h.mat4.clone();
-        const pos = new THREE.Vector3();
-        pos.setFromMatrixPosition(m);
-        pos.add(geoCenter);
-        m.setPosition(pos);
-
-        im.setMatrixAt(i, m);
-        const col = colormapColor(h.e_mev);
-        im.setColorAt(i, new THREE.Color(col.r, col.g, col.b));
-        hits.push({e_mev:h.e_mev, eta:h.eta, phi:h.phi, sub:h.sub, cell:h.cell, mat4:m, visible:true, deletedByUser:false});
-        allHits.push({gIdx:instGroups.length, iIdx:i, e_mev:h.e_mev});
-      }
-      im.instanceMatrix.needsUpdate = true;
-      if(im.instanceColor) im.instanceColor.needsUpdate = true;
-      scene.add(im);
-      instGroups.push({im, hits, mat});
-      visibleList.push(im);
-    }
-    console.log(`[calo] Extra calorimeters: ${extraResult.hits.length} cells (LAr/HEC/FCAL)`);
-    updateSliderGradient();
-  }
-
   document.getElementById('s-active').textContent = allHits.length.toLocaleString();
   document.getElementById('s-visible').textContent = `${allHits.length.toLocaleString()} / ${allHits.length.toLocaleString()}`;
   document.getElementById('thr-count').textContent = `${allHits.length} / ${allHits.length}`;
   if(outlineEnabled) buildOutline();
   renderDeletionList();
-  if(_miss > 0) console.warn('[mesh] missing:', _missEx);
+  if(_miss > 0){
+    console.warn('[mesh] missing:', _missEx);
+    // Show sample paths from WASM that failed
+    const failPaths = result.hits.filter(h => !meshIndex[h.path]).slice(0,5).map(h=>h.path);
+    console.log('[mesh] sample failed paths:', failPaths);
+    // Show sample paths from WASM that succeeded
+    const okPaths = result.hits.filter(h => meshIndex[h.path]).slice(0,5).map(h=>h.path);
+    console.log('[mesh] sample OK paths:', okPaths);
+  }
 
   // Parse and display jets from the XML
   const jetCollections = parseJetsFromXml(xmlText);
@@ -2644,8 +2408,10 @@ document.addEventListener('keydown', e => {
     case 's': case 'S': if(e.shiftKey) openResModal(); break;
     case 'd': case 'D': toggleStatsCard(); break;
     case 'e': case 'E': toggleEvtPanel(); break;
+    case 'v': case 'V': toggleDetPanel(); break;
     case 'p': case 'P': toggleSettings(); break;
     case 'h': case 'H': toggleDeletionPanel(); break;
+    case 'l': case 'L': toggleLangPanel(); break;
     case '1': setMode('live'); break;
     case '2': setMode('offline'); break;
     case '/': case '?': openShortcuts(); e.preventDefault(); break;
@@ -2745,11 +2511,21 @@ async function initApp(){
   // Build beam axis (through IP at geometry center)
   buildBeamAxis(center, ghostScale, size * 0.5);
 
+  let _dbgNames = [];
   gltf.scene.traverse(o => {
     if(!o.isMesh) return;
     o.material = baseMat; o.visible = false;
-    meshIndex[o.userData.name ?? o.name] = o;
+    const key = o.userData.name ?? o.name;
+    meshIndex[key] = o;
+    if(_dbgNames.length < 20) _dbgNames.push(key);
   });
+  console.log('[glb] sample mesh names:', _dbgNames);
+  console.log('[glb] total meshes:', Object.keys(meshIndex).length);
+  // Show a few EMBarrel names
+  const emNames = Object.keys(meshIndex).filter(k => k.includes('EMBarrel')).slice(0, 5);
+  console.log('[glb] EMBarrel samples:', emNames);
+  const hecNames = Object.keys(meshIndex).filter(k => k.includes('HEC')).slice(0, 5);
+  console.log('[glb] HEC samples:', hecNames);
   prog.style.width = '90%';
 
   controls.target.copy(center);
@@ -2778,7 +2554,6 @@ async function initApp(){
   document.getElementById('deletion-panel').classList.add('hidden');
 
   document.getElementById('toolbar').style.display = 'flex';
-  document.getElementById('lang-btn-wrap').style.display = 'flex';
   document.getElementById('evt-btn').classList.add('on');
 
   updateSliderGradient();
