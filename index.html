@@ -242,7 +242,7 @@ canvas{display:block}
 
 /* ── Cinema ────────────────────────────────────────────────── */
 #cinema-exit{position:fixed;bottom:24px;right:24px;z-index:20;opacity:0;pointer-events:none;transition:opacity .4s}
-body.cinema .panel,body.cinema #thr-panel,body.cinema #toolbar,body.cinema #lang-btn-wrap,body.cinema #settings-popup,body.cinema #deletion-panel,body.cinema #det-panel{opacity:0!important;pointer-events:none}
+body.cinema .panel,body.cinema #thr-panel,body.cinema #toolbar,body.cinema #tb-collapse-orb,body.cinema #lang-btn-wrap,body.cinema #settings-popup,body.cinema #deletion-panel,body.cinema #det-panel{opacity:0!important;pointer-events:none}
 body.cinema #cell-tip{opacity:0!important}
 body.cinema #cinema-exit{opacity:.2;pointer-events:auto}
 body.cinema #cinema-exit:hover{opacity:1}
@@ -264,14 +264,30 @@ body.cinema #toast{bottom:26px}
 
 /* ── Toolbar ───────────────────────────────────────────────── */
 #toolbar{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:24px;left:calc(50% - 20px);transform:translateX(-50%);
   display:flex;align-items:center;gap:4px;padding:8px 14px;
   background:rgba(0,14,32,0.9);border:1px solid var(--border);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border-radius:var(--r-pill);z-index:10;
   box-shadow:0 8px 32px rgba(0,0,0,0.5);
-  animation:fadeUp .5s cubic-bezier(.22,1,.36,1) both .1s;transition:opacity .4s;
+  animation:fadeUp .5s cubic-bezier(.22,1,.36,1) forwards .1s;
+  transition:opacity .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1);
 }
+#toolbar.tb-hiding{animation:none;opacity:0;transform:translateX(-50%) scale(0.92);pointer-events:none}
+/* Collapsed toolbar: small circle, bottom-right under slider */
+#tb-collapse-orb{
+  position:fixed;right:24px;bottom:24px;z-index:10;
+  width:46px;height:46px;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,14,32,0.9);border:1px solid var(--border);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  border-radius:50%;cursor:pointer;
+  box-shadow:0 4px 20px rgba(0,0,0,0.5);
+  opacity:0;pointer-events:none;transform:scale(0.5);
+  transition:opacity .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1),background .15s;
+}
+#tb-collapse-orb:hover{background:rgba(0,20,50,0.95);border-color:var(--border-h)}
+#tb-collapse-orb.visible{opacity:1;pointer-events:auto;transform:scale(1)}
+#tb-collapse-orb i{font-size:18px;color:var(--t2);pointer-events:none}
 .tb-btn{
   display:flex;align-items:center;justify-content:center;width:38px;height:38px;
   border:none;background:transparent;border-radius:10px;cursor:pointer;
@@ -676,6 +692,13 @@ kbd{
   <button class="tb-btn" onclick="openShortcuts()" data-tip="shortcuts" data-key="/">
     <i class="ti ti-keyboard"></i>
   </button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="collapseToolbar()" data-tip="collapse">
+    <i class="ti ti-chevron-right"></i>
+  </button>
+</div>
+<div id="tb-collapse-orb" onclick="expandToolbar()">
+  <i class="ti ti-chevron-left"></i>
 </div>
 
 <!-- ── Language Selector (anchored to toolbar) ─────────────── -->
@@ -851,7 +874,7 @@ const i18n = {
     beamAxis:'Beam axis', jets:'Jets',
     resetCamera:'Reset camera', clearEvent:'Clear event', infoOverlay:'Cell info',
     cinema:'Cinema mode', screenshot:'Screenshot', screenshotRes:'Screenshot',
-    statsCard:'Detector stats', eventPanel:'Event panel', shortcuts:'Keyboard Shortcuts',
+    statsCard:'Detector stats', eventPanel:'Event panel', shortcuts:'Keyboard Shortcuts', collapse:'Collapse toolbar',
     settings:'Settings', colorGradient:'Color Gradient',
     eMinLabel:'E min', eMaxLabel:'E max',
     grad_thermal:'Thermal', grad_cool:'Cool', grad_hot:'Hot', grad_viridis:'Viridis', grad_plasma:'Plasma',
@@ -900,7 +923,7 @@ const i18n = {
     beamAxis:'Axe du faisceau', jets:'Jets',
     resetCamera:'Reinitialiser', clearEvent:'Effacer', infoOverlay:'Info cellule',
     cinema:'Mode cinema', screenshot:'Capture', screenshotRes:'Capture',
-    statsCard:'Stats detecteur', eventPanel:'Panneau evenement', shortcuts:'Raccourcis clavier',
+    statsCard:'Stats detecteur', eventPanel:'Panneau evenement', shortcuts:'Raccourcis clavier', collapse:'Replier barre',
     settings:'Parametres', colorGradient:'Gradient de couleur',
     eMinLabel:'E min', eMaxLabel:'E max',
     grad_thermal:'Thermique', grad_cool:'Froid', grad_hot:'Chaud', grad_viridis:'Viridis', grad_plasma:'Plasma',
@@ -949,7 +972,7 @@ const i18n = {
     beamAxis:'Straleakse', jets:'Jets',
     resetCamera:'Tilbakestill', clearEvent:'Tom', infoOverlay:'Celle-info',
     cinema:'Kinomodus', screenshot:'Skjermbilde', screenshotRes:'Skjermbilde',
-    statsCard:'Detektorstatistikk', eventPanel:'Hendelsespanel', shortcuts:'Tastatursnarveier',
+    statsCard:'Detektorstatistikk', eventPanel:'Hendelsespanel', shortcuts:'Tastatursnarveier', collapse:'Skjul verktoy',
     settings:'Innstillinger', colorGradient:'Fargegradient',
     eMinLabel:'E min', eMaxLabel:'E maks',
     grad_thermal:'Termisk', grad_cool:'Kjole', grad_hot:'Varm', grad_viridis:'Viridis', grad_plasma:'Plasma',
@@ -998,7 +1021,7 @@ const i18n = {
     beamAxis:'Eixo do feixe', jets:'Jets',
     resetCamera:'Resetar camera', clearEvent:'Limpar evento', infoOverlay:'Info da celula',
     cinema:'Modo cinema', screenshot:'Captura', screenshotRes:'Captura de tela',
-    statsCard:'Estatisticas do detector', eventPanel:'Painel de evento', shortcuts:'Atalhos de teclado',
+    statsCard:'Estatisticas do detector', eventPanel:'Painel de evento', shortcuts:'Atalhos de teclado', collapse:'Recolher barra',
     settings:'Configuracoes', colorGradient:'Gradiente de cor',
     eMinLabel:'E min', eMaxLabel:'E max',
     grad_thermal:'Termico', grad_cool:'Frio', grad_hot:'Quente', grad_viridis:'Viridis', grad_plasma:'Plasma',
@@ -1317,6 +1340,22 @@ window.toggleBound = () => {
   ghostEnabled = !ghostEnabled;
   if(ghostGroup) ghostGroup.visible = ghostEnabled;
   document.getElementById('bound-btn').classList.toggle('on', ghostEnabled);
+};
+
+// ═══════════════════════════════════════════════════════════════
+// TOOLBAR COLLAPSE
+// ═══════════════════════════════════════════════════════════════
+window.collapseToolbar = () => {
+  const tb = document.getElementById('toolbar');
+  const orb = document.getElementById('tb-collapse-orb');
+  tb.classList.add('tb-hiding');
+  setTimeout(() => { orb.classList.add('visible'); }, 150);
+};
+window.expandToolbar = () => {
+  const tb = document.getElementById('toolbar');
+  const orb = document.getElementById('tb-collapse-orb');
+  orb.classList.remove('visible');
+  setTimeout(() => { tb.classList.remove('tb-hiding'); }, 150);
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -2085,7 +2124,7 @@ async function loadXmlContent(xmlText, filename){
   const geoGroups = new Map();
   let _miss = 0; const _missEx = {};
   for(const h of result.hits){
-    const mesh = meshIndex[h.path] ?? meshIndex[h.path.replace(/\t\u2192\t/g,'\u2192')];
+    const mesh = meshIndex[h.path];
     if(!mesh){ _miss++; const vol = h.path.split('\u2192')[1] ?? '?'; _missEx[vol] = (_missEx[vol]??0)+1; continue; }
     const uid = mesh.geometry.uuid;
     if(!geoGroups.has(uid)) geoGroups.set(uid, []);
@@ -2097,13 +2136,15 @@ async function loadXmlContent(xmlText, filename){
     const mat = new THREE.MeshPhongMaterial({side:THREE.DoubleSide, shininess:80});
     const im  = new THREE.InstancedMesh(geo, mat, count);
     im.frustumCulled = false; im.userData.gIdx = instGroups.length;
-    const hits = [];
+    const hits = new Array(count);
+    const _c = new THREE.Color();
     for(let i = 0; i < count; i++){
       const {mesh, h} = group[i], mat4 = mesh.matrixWorld.clone();
       im.setMatrixAt(i, mat4);
       const col = colormapColor(h.energy);
-      im.setColorAt(i, new THREE.Color(col.r, col.g, col.b));
-      hits.push({e_mev:h.energy, eta:h.eta, phi:h.phi, det:h.det||'TILE', cell:h.cell, mat4, visible:true, deletedByUser:false});
+      _c.setRGB(col.r, col.g, col.b);
+      im.setColorAt(i, _c);
+      hits[i] = {e_mev:h.energy, eta:h.eta, phi:h.phi, det:h.det||'TILE', cell:h.cell, mat4, visible:true, deletedByUser:false};
       allHits.push({gIdx:instGroups.length, iIdx:i, e_mev:h.energy});
     }
     im.instanceMatrix.needsUpdate = true;
@@ -2118,15 +2159,7 @@ async function loadXmlContent(xmlText, filename){
   document.getElementById('thr-count').textContent = `${allHits.length} / ${allHits.length}`;
   if(outlineEnabled) buildOutline();
   renderDeletionList();
-  if(_miss > 0){
-    console.warn('[mesh] missing:', _missEx);
-    // Show sample paths from WASM that failed
-    const failPaths = result.hits.filter(h => !meshIndex[h.path]).slice(0,5).map(h=>h.path);
-    console.log('[mesh] sample failed paths:', failPaths);
-    // Show sample paths from WASM that succeeded
-    const okPaths = result.hits.filter(h => meshIndex[h.path]).slice(0,5).map(h=>h.path);
-    console.log('[mesh] sample OK paths:', okPaths);
-  }
+  if(_miss > 0) console.warn('[mesh] missing:', _missEx);
 
   // Parse and display jets from the XML
   const jetCollections = parseJetsFromXml(xmlText);
@@ -2500,32 +2533,20 @@ async function initApp(){
   geoCenter.copy(center);
   geoSize = size;
 
-  // Scale: map ATLAS mm to GLB units. TileCal outer radius = 3820mm
-  const glbR = Math.max(Math.abs(box.max.x), Math.abs(box.max.y), Math.abs(box.min.x), Math.abs(box.min.y));
-  const ghostScale = glbR / 3820;
+  // GLB coordinates are in ATLAS mm — scale factor is 1.0
+  const ghostScale = 1.0;
   geoScale = ghostScale;
 
-  // Build ghost with inner detectors only (centered on geometry)
-  buildGhostAtlas(ghostScale, center);
+  // Ghost and beam must be at ATLAS IP (origin), not bounding box center
+  const ip = new THREE.Vector3(0, 0, 0);
+  buildGhostAtlas(ghostScale, ip);
+  buildBeamAxis(ip, ghostScale, size * 0.5);
 
-  // Build beam axis (through IP at geometry center)
-  buildBeamAxis(center, ghostScale, size * 0.5);
-
-  let _dbgNames = [];
   gltf.scene.traverse(o => {
     if(!o.isMesh) return;
     o.material = baseMat; o.visible = false;
-    const key = o.userData.name ?? o.name;
-    meshIndex[key] = o;
-    if(_dbgNames.length < 20) _dbgNames.push(key);
+    meshIndex[o.userData.name ?? o.name] = o;
   });
-  console.log('[glb] sample mesh names:', _dbgNames);
-  console.log('[glb] total meshes:', Object.keys(meshIndex).length);
-  // Show a few EMBarrel names
-  const emNames = Object.keys(meshIndex).filter(k => k.includes('EMBarrel')).slice(0, 5);
-  console.log('[glb] EMBarrel samples:', emNames);
-  const hecNames = Object.keys(meshIndex).filter(k => k.includes('HEC')).slice(0, 5);
-  console.log('[glb] HEC samples:', hecNames);
   prog.style.width = '90%';
 
   controls.target.copy(center);

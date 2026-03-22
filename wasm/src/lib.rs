@@ -139,7 +139,9 @@ fn lookup_tile_cell_nth(
 //  LAr EM BARREL  –  geometria computada de CaloGeoConst.h
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const LABA_SIZES: [usize; 4] = [61, 451, 57, 27];
+// Actual cell counts per side from CaloBuild.C geometry (p-side / n-side differ slightly)
+// Use minimum of both sides to guarantee valid paths.
+const LABA_SIZES: [usize; 4] = [61, 449, 52, 24];
 const LABA_PHI:   [u16;   4] = [64, 64, 256, 256];
 const LABA_NAMES: [&str;  4] = ["PS", "S1", "S2", "S3"];
 
@@ -149,8 +151,9 @@ fn laba_eta(layer: usize, i: usize) -> f32 {
     match layer {
         0 => 0.0125 + 0.025 * i as f32,                      // 61 cells, Δη=0.025
         1 => {
-            if i < 448 { 0.001_562_5 + 0.003_125 * i as f32 } // 448 cells fine
-            else { [1.4125_f32, 1.4375, 1.4625][i - 448] }     // 3 cells coarse
+            // 449 cells: 448 fine (Δη≈0.003125) + 1 coarse at high η
+            if i < 448 { 0.001_562_5 + 0.003_125 * i as f32 }
+            else { 1.4125_f32 }  // index 448 = last cell
         }
         2 => 0.0125 + 0.025 * i as f32,                       // 57 cells, Δη=0.025
         3 => 0.025  + 0.05  * i as f32,                       // 27 cells, Δη=0.05
@@ -194,12 +197,10 @@ fn lookup_lar_barrel(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, 
             let d = (laba_eta(layer, idx) - abs_eta).abs();
             if d < bd { bd = d; bl = idx; }
         }
-        // Layer 1 último trecho irregular
-        if layer == 1 && abs_eta > 1.38 {
-            for idx in 448..451usize.min(size) {
-                let d = (laba_eta(1, idx) - abs_eta).abs();
-                if d < bd { bd = d; bl = idx; }
-            }
+        // Layer 1 last coarse cell
+        if layer == 1 && abs_eta > 1.38 && size > 448 {
+            let d = (laba_eta(1, 448) - abs_eta).abs();
+            if d < bd { bd = d; bl = 448; }
         }
         if bl < size && bd < laba_half_deta(layer) + 0.002 {
             if bd < best_dist { best_dist = bd; }
@@ -338,19 +339,26 @@ static HECZ: [[f32; 14]; 7] = [
     [1916.61, 1726.20, 1556.04, 1403.63, 1266.87, 1143.96, 1033.36, 891.153, 728.228, 595.465, 510.411, 0.0, 0.0, 0.0],
 ];
 /// Nº de células por camada real (0-6)
+#[allow(dead_code)]
 static HEC_SIZES: [usize; 7] = [14, 13, 12, 12, 11, 12, 11];
 
-/// Volumes HEC, seus segmentos (camada real, z_center mm) e nome.
+/// HEC volume definitions matching CaloBuild.C structure.
+/// For BuildHEC volumes: single layer, eta_count = HEC_SIZES[layer].
+/// For MergeHEC volumes: two layers merged, eta_count = 1 + HEC_SIZES[layer2].
+///   eta 0 → outermost cell from layer1
+///   eta i (i≥1) → merged cell using layer1[i] + layer2[i-1]
 struct HecVol {
-    name:     &'static str,
-    segments: &'static [(usize, f32)],   // (real_layer_0based, z_center_mm)
+    name:      &'static str,
+    eta_count: usize,
+    /// (real_layer_0based, z_center_mm) pairs; BuildHEC has 1, MergeHEC has 2
+    segments:  &'static [(usize, f32)],
 }
 
 static HEC_VOLS: [HecVol; 4] = [
-    HecVol { name: "HEC1",  segments: &[(0, 4490.0)] },
-    HecVol { name: "HEC23", segments: &[(1, 4747.5), (2, 4982.5)] },
-    HecVol { name: "HEC45", segments: &[(3, 5245.0), (4, 5475.0)] },
-    HecVol { name: "HEC67", segments: &[(5, 5705.0), (6, 5935.0)] },
+    HecVol { name: "HEC1",  eta_count: 14, segments: &[(0, 4490.0)] },
+    HecVol { name: "HEC23", eta_count: 13, segments: &[(1, 4747.5), (2, 4982.5)] },
+    HecVol { name: "HEC45", eta_count: 12, segments: &[(3, 5245.0), (4, 5475.0)] },
+    HecVol { name: "HEC67", eta_count: 12, segments: &[(5, 5705.0), (6, 5935.0)] },
 ];
 
 /// Computa η a partir de (r, z): η = -ln(tan(atan2(r, z)/2))
@@ -369,18 +377,31 @@ fn lookup_hec(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, String)
     let mut cands: Vec<Cand> = Vec::with_capacity(8);
 
     for (vi, vol) in HEC_VOLS.iter().enumerate() {
-        let mut offset = 0usize;
-        for &(rl, zc) in vol.segments {
-            let n = HEC_SIZES[rl];
-            for ci in 0..n {
-                let cell_eta = r_z_to_eta(HECZ[rl][ci], zc);
-                let d = (cell_eta - abs_eta).abs();
-                if d < 0.06 {
-                    if d < best_dist { best_dist = d; }
-                    cands.push(Cand { vol_idx: vi, eta_i: offset + ci, dist: d });
+        // Compute representative eta for each eta_index in this merged volume.
+        // For BuildHEC (1 segment): eta_i maps directly to HECz[layer][eta_i]
+        // For MergeHEC (2 segments): eta_0 uses layer1[0], eta_i (i≥1) averages layer1[i] + layer2[i-1]
+        let n = vol.eta_count;
+        for ei in 0..n {
+            let cell_eta = if vol.segments.len() == 1 {
+                let (rl, zc) = vol.segments[0];
+                r_z_to_eta(HECZ[rl][ei], zc)
+            } else {
+                let (rl1, zc1) = vol.segments[0];
+                let (rl2, zc2) = vol.segments[1];
+                if ei == 0 {
+                    r_z_to_eta(HECZ[rl1][0], zc1)
+                } else {
+                    // Merged cell: average eta from both layers
+                    let e1 = r_z_to_eta(HECZ[rl1][ei], zc1);
+                    let e2 = r_z_to_eta(HECZ[rl2][ei - 1], zc2);
+                    (e1 + e2) * 0.5
                 }
+            };
+            let d = (cell_eta - abs_eta).abs();
+            if d < 0.08 {
+                if d < best_dist { best_dist = d; }
+                cands.push(Cand { vol_idx: vi, eta_i: ei, dist: d });
             }
-            offset += n;
         }
     }
     if cands.is_empty() { return None; }
@@ -389,14 +410,18 @@ fn lookup_hec(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, String)
     let c = &cands[nth % cands.len()];
 
     let vol_name = HEC_VOLS[c.vol_idx].name;
-    let phi_seg = 64.0_f32;
-    let raw = ((hit_phi + PI) * phi_seg / (2.0 * PI)).floor() as i32;
+    let raw = ((hit_phi + PI) * 64.0 / (2.0 * PI)).floor() as i32;
     let j = raw.rem_euclid(64) as usize;
     let ei = c.eta_i;
     let vol = format!("{}{}", vol_name, side);
     let label = format!("{} η{}", vol_name, ei);
+    // MergeHEC copy number: CaloBuild.C AddNode(etaslice, i) where i=0 for eta 0,
+    // and i=0..N-1 for merged cells (eta 1..N). So copy = max(0, ei-1) for merged.
+    // BuildHEC: copy = ei directly.
+    let is_merged = HEC_VOLS[c.vol_idx].segments.len() > 1;
+    let copy = if is_merged && ei > 0 { ei - 1 } else { ei };
     Some((
-        format!("Calorimeter\u{2192}{vol}_0\u{2192}{vol}{ei}_{ei}\u{2192}cell_{j}"),
+        format!("Calorimeter\u{2192}{vol}_0\u{2192}{vol}{ei}_{copy}\u{2192}cell_{j}"),
         label,
     ))
 }
@@ -581,10 +606,6 @@ fn append_hit(hits: &mut String, path: &str, energy: f32, eta: f32, phi: f32, ce
     ));
 }
 
-fn err_json(msg: &str) -> String {
-    format!(r#"{{"ok":false,"error":{}}}"#, js(msg))
-}
-
 fn js(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
@@ -604,13 +625,6 @@ fn js(s: &str) -> String {
 
 fn find_tag(text: &str, tag: &str) -> Option<usize> {
     text.find(&format!("<{}", tag))
-}
-
-fn attr_usize(text: &str, name: &str) -> Option<usize> {
-    let needle = format!("{}=\"", name);
-    let start = text.find(&needle)? + needle.len();
-    let end = text[start..].find('"')? + start;
-    text[start..end].parse().ok()
 }
 
 fn extract_array(content: &str, tag: &str) -> Option<Vec<f32>> {
@@ -650,12 +664,3 @@ fn parse_mbts_arrays(xml_text: &str) -> Option<(Vec<f32>, Vec<f32>, Vec<f32>, Ve
     ))
 }
 
-fn jet(e: f32, e_min: f32, e_max: f32) -> (f32, f32, f32) {
-    let t = if (e_max - e_min).abs() > 1e-10 {
-        ((e - e_min) / (e_max - e_min)).clamp(0.0, 1.0)
-    } else { 0.5 };
-    if t < 0.25      { let s = t / 0.25;            (0.0, s, 1.0)       }
-    else if t < 0.5  { let s = (t - 0.25) / 0.25;   (0.0, 1.0, 1.0 - s) }
-    else if t < 0.75 { let s = (t - 0.5)  / 0.25;   (s,   1.0, 0.0)     }
-    else             { let s = (t - 0.75) / 0.25;    (1.0, 1.0 - s, 0.0) }
-}
