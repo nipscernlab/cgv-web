@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find c:UserschrysDocumentsGitHubcgv-web -type f \\\\\\(-path */assets/* -o -path */wasm/* -o -path */xml_test/* -o -path */root_file/* \\\\\\) ! -path *node_modules* ! -path *.git*)",
+      "Bash(find c:UserschrysDocumentsGitHubcgv-web/assets -type f ! -path *node_modules* ! -path *.git*)"
+    ]
+  }
+}
