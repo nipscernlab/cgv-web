@@ -856,13 +856,14 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import init, { load_cgv, process_event } from './wasm/pkg/tile_viz.js';
 import { LivePoller }    from './xml_test/live_cern/live_poller.js';
 
-// Para GitHub Pages, o .glb (316MB) deve ser hospedado no GitHub Releases
-// pois o Git LFS não é servido corretamente pelo GitHub Pages.
-// Substitua RELEASE_GLB_URL pela URL real do asset na release do GitHub.
-// Se acessado localmente (file:// ou localhost), usa o caminho local automaticamente.
+// media.githubusercontent.com serve arquivos Git LFS com CORS habilitado —
+// funciona diretamente no GitHub Pages sem nenhum serviço externo.
+// media.githubusercontent.com serve arquivos Git LFS com CORS habilitado.
+// Apenas o .glb está no LFS; o .cgv é texto normal servido pelo GitHub Pages.
 const _isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:';
-const RELEASE_GLB_URL = 'https://github.com/nipscernlab/cgv-web/releases/download/geometry-v2/CaloGeometry.glb';
-const GLB_URL = _isLocal ? './root_file/CaloGeometry.glb' : RELEASE_GLB_URL;
+const GLB_URL = _isLocal
+  ? './root_file/CaloGeometry.glb'
+  : 'https://media.githubusercontent.com/media/nipscernlab/cgv-web/main/root_file/CaloGeometry.glb';
 const CGV_URL = './root_file/CaloGeometry.cgv';
 
 // ═══════════════════════════════════════════════════════════════
@@ -2525,12 +2526,7 @@ async function initApp(){
       // Detect Git LFS pointer file (starts with "version https://git-lfs")
       const header = new Uint8Array(buf, 0, Math.min(buf.byteLength, 12));
       const isGlb = header[0] === 0x67 && header[1] === 0x6C && header[2] === 0x54 && header[3] === 0x46; // 'glTF'
-      if(!isGlb) throw new Error(
-        'O arquivo GLB não pôde ser carregado corretamente.\n\n' +
-        'GitHub Pages não serve arquivos Git LFS.\n\n' +
-        'Solução: crie uma GitHub Release e faça upload do CaloGeometry.glb como asset.\n' +
-        'Depois atualize RELEASE_GLB_URL no index.html com a URL do asset.'
-      );
+      if(!isGlb) throw new Error('Geometry file is not a valid GLB binary (got ' + buf.byteLength + ' bytes). Check the GLB_URL in index.html.');
       return buf;
     }),
     fetch(CGV_URL).then(r => r.text()),
