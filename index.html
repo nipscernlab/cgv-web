@@ -485,34 +485,42 @@ kbd{
 
 /* ── Mobile (≤768px) ──────────────────────────────────────── */
 @media(max-width:768px){
-  #toolbar{left:50%;bottom:12px;padding:6px 10px;gap:2px}
+  /* Toolbar: centered, wraps to multiple rows, never overflows */
+  #toolbar{
+    left:50%!important;bottom:12px;
+    padding:6px 8px;gap:2px;
+    flex-wrap:wrap;
+    max-width:calc(100vw - 24px);
+    justify-content:center;
+  }
   #toolbar .tb-sep{display:none}
-  .tb-btn{width:34px;height:34px}
+  .tb-btn{width:36px;height:36px}
   .tb-btn i{font-size:17px}
-  #toolbar.tb-collapsed{border-radius:50%;padding:6px}
-  #lang-btn-wrap{left:50%;bottom:68px}
-  #settings-popup{left:50%;bottom:68px;min-width:240px}
+  #toolbar.tb-collapsed{border-radius:50%;padding:6px;flex-wrap:nowrap;max-width:none}
+  #lang-btn-wrap{left:50%;bottom:auto;top:12px;transform:translateX(-50%)}
+  #settings-popup{left:50%;bottom:auto;top:50%;transform:translate(-50%,-50%);min-width:240px;max-width:calc(100vw - 32px)}
+  #settings-popup.hidden{transform:translate(-50%,-50%) translateY(6px)}
   .panel{min-width:0;width:calc(100vw - 24px);left:12px!important;right:12px!important;max-width:none}
   #hud{top:10px!important}
-  #evt{bottom:70px!important;max-height:50vh}
-  #det-panel{top:auto!important;bottom:70px!important}
-  #deletion-panel{top:auto!important;right:12px!important;bottom:70px!important}
+  #evt{bottom:auto!important;top:10px!important;max-height:45vh}
+  #det-panel{top:auto!important;bottom:auto!important;left:12px!important;right:12px!important;top:10px!important}
+  #deletion-panel{top:auto!important;right:12px!important;bottom:auto!important}
   #thr-panel{right:8px;padding:10px 6px}
   .slider-wrap{height:160px}
   #thr-slider{width:160px}
   .sc-inner{width:calc(100vw - 32px);max-height:70vh}
   .sc-body{columns:1}
-  .cell-selected-indicator{left:50%;bottom:70px}
+  .cell-selected-indicator{left:50%;bottom:auto;top:auto}
 }
 
 /* ── Very small phones (≤480px) ───────────────────────────── */
 @media(max-width:480px){
   .panel{font-size:12px}
-  .pb{max-height:40vh}
-  #xl-wrap{max-height:140px}
-  .tb-btn{width:30px;height:30px}
+  .pb{max-height:38vh}
+  #xl-wrap{max-height:130px}
+  .tb-btn{width:32px;height:32px}
   .tb-btn i{font-size:15px}
-  #toolbar{bottom:8px;padding:5px 8px}
+  #toolbar{bottom:8px;padding:5px 6px;gap:1px}
   #thr-panel{right:4px;padding:8px 4px}
   .slider-wrap{height:120px}
   #thr-slider{width:120px}
