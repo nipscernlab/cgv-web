@@ -242,7 +242,7 @@ canvas{display:block}
 
 /* ── Cinema ────────────────────────────────────────────────── */
 #cinema-exit{position:fixed;bottom:24px;right:24px;z-index:20;opacity:0;pointer-events:none;transition:opacity .4s}
-body.cinema .panel,body.cinema #thr-panel,body.cinema #toolbar,body.cinema #lang-btn-wrap,body.cinema #settings-popup,body.cinema #deletion-panel,body.cinema #det-panel{opacity:0!important;pointer-events:none}
+body.cinema .panel,body.cinema #thr-panel,body.cinema #toolbar,body.cinema #lang-btn-wrap,body.cinema #settings-popup,body.cinema #deletion-panel,body.cinema #det-panel,body.cinema #mobile-menu-btn,body.cinema #mobile-drawer,body.cinema #mobile-overlay{opacity:0!important;pointer-events:none}
 body.cinema #cell-tip{opacity:0!important}
 body.cinema #cinema-exit{opacity:.2;pointer-events:auto}
 body.cinema #cinema-exit:hover{opacity:1}
@@ -264,7 +264,7 @@ body.cinema #toast{bottom:26px}
 
 /* ── Toolbar ───────────────────────────────────────────────── */
 #toolbar{
-  position:fixed;bottom:24px;left:38%;transform:translateX(-50%);
+  position:fixed;bottom:24px;right:24px;
   display:flex;align-items:center;gap:4px;padding:8px 14px;
   background:rgba(0,14,32,0.9);border:1px solid var(--border);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
@@ -295,7 +295,7 @@ body.cinema #toast{bottom:26px}
 #toolbar.tb-collapsed{padding:8px;gap:0;border-radius:50%}
 
 /* ── Language ──────────────────────────────────────────────── */
-#lang-btn-wrap{position:fixed;bottom:82px;left:38%;transform:translateX(-50%);z-index:15;pointer-events:none}
+#lang-btn-wrap{position:fixed;bottom:82px;right:24px;z-index:15;pointer-events:none}
 #lang-panel{
   background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);
   opacity:0;transform:translateY(6px) scale(0.97);pointer-events:none;transition:opacity .18s,transform .18s;
@@ -353,13 +353,13 @@ kbd{
 
 /* ── Settings popup ────────────────────────────────────────── */
 #settings-popup{
-  position:fixed;bottom:82px;left:38%;transform:translateX(-50%);
+  position:fixed;bottom:82px;right:24px;
   background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   padding:16px;z-index:20;box-shadow:var(--shadow);min-width:280px;
   opacity:1;transition:opacity .2s ease,transform .2s;
 }
-#settings-popup.hidden{opacity:0;pointer-events:none;transform:translateX(-50%) translateY(6px)}
+#settings-popup.hidden{opacity:0;pointer-events:none;transform:translateY(6px)}
 .popup-title{font-size:9px;font-weight:700;letter-spacing:.24em;text-transform:uppercase;color:var(--t3);margin-bottom:12px}
 .grad-options{display:flex;flex-direction:column;gap:4px}
 .grad-opt{
@@ -439,7 +439,7 @@ kbd{
 
 /* ── Selected cell highlight ──────────────────────────────── */
 .cell-selected-indicator{
-  position:fixed;bottom:92px;left:38%;transform:translateX(-50%);
+  position:fixed;bottom:92px;left:50%;transform:translateX(-50%);
   background:var(--surf);border:1px solid rgba(201,168,76,0.25);
   padding:8px 16px;font-family:var(--fm);font-size:11px;color:var(--gold);
   border-radius:var(--r);z-index:15;display:none;align-items:center;gap:10px;
@@ -457,6 +457,56 @@ kbd{
 #ui-tooltip.show{opacity:1;transform:translateY(0)}
 .tip-label{font-size:12px;font-weight:500;color:var(--t);white-space:nowrap}
 .tip-key{font-family:var(--fm);font-size:10px;color:var(--t3);margin-top:3px;white-space:nowrap}
+
+/* ── Mobile menu button ─────────────────────────────────────── */
+#mobile-menu-btn{display:none}
+
+/* ── Mobile drawer ──────────────────────────────────────────── */
+#mobile-drawer{
+  position:fixed;top:0;right:0;bottom:0;
+  width:280px;max-width:calc(100vw - 48px);
+  background:var(--surf2);border-left:1px solid var(--border);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+  z-index:200;overflow-y:auto;overflow-x:hidden;
+  transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;padding-bottom:32px;
+  box-shadow:var(--shadow);
+}
+#mobile-drawer.open{transform:translateX(0)}
+#mobile-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,0.55);
+  z-index:199;opacity:0;pointer-events:none;
+  transition:opacity .3s;
+}
+#mobile-overlay.open{opacity:1;pointer-events:auto}
+.mob-head{
+  padding:16px 20px 12px;display:flex;align-items:center;justify-content:space-between;
+  border-bottom:1px solid var(--border);margin-bottom:4px;position:sticky;top:0;
+  background:var(--surf2);z-index:1;
+}
+.mob-title{font-size:9px;font-weight:700;letter-spacing:.28em;text-transform:uppercase;color:var(--t3)}
+.mob-close{
+  width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-sm);cursor:pointer;
+  background:transparent;color:var(--t3);transition:background .12s,color .12s;
+}
+.mob-close:hover{background:rgba(255,255,255,0.04);color:var(--t)}
+.mob-section{
+  padding:12px 20px 4px;font-size:8px;font-weight:700;
+  letter-spacing:.28em;text-transform:uppercase;color:var(--t4);
+}
+.mob-item{
+  display:flex;align-items:center;gap:14px;
+  padding:13px 20px;cursor:pointer;
+  border:none;background:transparent;color:var(--t2);
+  font:500 13px/1 var(--ff);width:100%;text-align:left;
+  transition:background .12s,color .12s;
+}
+.mob-item i{font-size:18px;flex-shrink:0;width:22px;text-align:center}
+.mob-item:hover{background:rgba(255,255,255,0.04);color:var(--t)}
+.mob-item.on{color:var(--gold);background:var(--gold-dim)}
+.mob-item.on:hover{background:rgba(201,168,76,0.15)}
+.mob-sep{height:1px;background:var(--border);margin:4px 20px}
 
 /* ══════════════════════════════════════════════════════════════
    RESPONSIVE
@@ -485,21 +535,25 @@ kbd{
 
 /* ── Mobile (≤768px) ──────────────────────────────────────── */
 @media(max-width:768px){
-  /* Toolbar: centered, wraps to multiple rows, never overflows */
-  #toolbar{
-    left:50%!important;bottom:12px;
-    padding:6px 8px;gap:2px;
-    flex-wrap:wrap;
-    max-width:calc(100vw - 24px);
-    justify-content:center;
+  /* Hide floating toolbar — replaced by hamburger drawer */
+  #toolbar{display:none!important}
+  #lang-btn-wrap{display:none}
+  /* Hamburger button */
+  #mobile-menu-btn{
+    display:flex;position:fixed;bottom:20px;right:20px;
+    width:52px;height:52px;border-radius:50%;
+    background:rgba(0,14,32,0.92);border:1px solid var(--border);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    box-shadow:var(--shadow);
+    align-items:center;justify-content:center;cursor:pointer;
+    color:var(--t2);z-index:15;
+    transition:background .15s,color .15s,border-color .15s;
   }
-  #toolbar .tb-sep{display:none}
-  .tb-btn{width:36px;height:36px}
-  .tb-btn i{font-size:17px}
-  #toolbar.tb-collapsed{border-radius:50%;padding:6px;flex-wrap:nowrap;max-width:none}
-  #lang-btn-wrap{left:50%;bottom:auto;top:12px;transform:translateX(-50%)}
-  #settings-popup{left:50%;bottom:auto;top:50%;transform:translate(-50%,-50%);min-width:240px;max-width:calc(100vw - 32px)}
-  #settings-popup.hidden{transform:translate(-50%,-50%) translateY(6px)}
+  #mobile-menu-btn:hover{background:rgba(0,20,45,0.95);border-color:var(--border-h);color:var(--t)}
+  #mobile-menu-btn i{font-size:22px;pointer-events:none}
+  /* Settings popup: centered on screen */
+  #settings-popup{left:12px;right:12px;bottom:auto;top:50%;transform:translateY(-50%);min-width:0;max-width:none}
+  #settings-popup.hidden{transform:translateY(-44%);opacity:0;pointer-events:none}
   .panel{min-width:0;width:calc(100vw - 24px);left:12px!important;right:12px!important;max-width:none}
   #hud{top:10px!important}
   #evt{bottom:auto!important;top:10px!important;max-height:45vh}
@@ -510,7 +564,7 @@ kbd{
   #thr-slider{width:160px}
   .sc-inner{width:calc(100vw - 32px);max-height:70vh}
   .sc-body{columns:1}
-  .cell-selected-indicator{left:50%;bottom:auto;top:auto}
+  .cell-selected-indicator{left:50%;bottom:80px}
 }
 
 /* ── Very small phones (≤480px) ───────────────────────────── */
@@ -518,9 +572,8 @@ kbd{
   .panel{font-size:12px}
   .pb{max-height:38vh}
   #xl-wrap{max-height:130px}
-  .tb-btn{width:32px;height:32px}
-  .tb-btn i{font-size:15px}
-  #toolbar{bottom:8px;padding:5px 6px;gap:1px}
+  #mobile-menu-btn{width:46px;height:46px;bottom:16px;right:16px}
+  #mobile-menu-btn i{font-size:20px}
   #thr-panel{right:4px;padding:8px 4px}
   .slider-wrap{height:120px}
   #thr-slider{width:120px}
@@ -755,6 +808,86 @@ kbd{
   </button>
   <button class="tb-btn" id="tb-collapse-btn" onclick="toggleToolbar()" data-tip="collapse" data-key="T">
     <i class="ti ti-chevron-right" id="tb-collapse-chevron"></i>
+  </button>
+</div>
+
+<!-- ── Mobile Menu Button ────────────────────────────────────── -->
+<button id="mobile-menu-btn" onclick="toggleMobileMenu()" style="display:none" aria-label="Menu">
+  <i class="ti ti-menu-2"></i>
+</button>
+
+<!-- ── Mobile Backdrop ───────────────────────────────────────── -->
+<div id="mobile-overlay" onclick="toggleMobileMenu()"></div>
+
+<!-- ── Mobile Drawer ─────────────────────────────────────────── -->
+<div id="mobile-drawer">
+  <div class="mob-head">
+    <span class="mob-title">CGV Controls</span>
+    <button class="mob-close" onclick="toggleMobileMenu()"><i class="ti ti-x"></i></button>
+  </div>
+
+  <div class="mob-section" data-i18n="scGroupView">View</div>
+  <button class="mob-item" id="mob-stats-btn" onclick="toggleStatsCard();closeMobileMenu()">
+    <i class="ti ti-layout-dashboard"></i><span>Stats Card</span>
+  </button>
+  <button class="mob-item" id="mob-wf-btn" onclick="toggleWf();closeMobileMenu()">
+    <i class="ti ti-grid-dots"></i><span data-i18n="kWireframe">Wireframe</span>
+  </button>
+  <button class="mob-item" id="mob-ol-btn" onclick="toggleOutline();closeMobileMenu()">
+    <i class="ti ti-border-outer"></i><span data-i18n="kOutline">Outline</span>
+  </button>
+  <button class="mob-item" id="mob-bound-btn" onclick="toggleBound();closeMobileMenu()">
+    <i class="ti ti-ghost"></i><span data-i18n="kGhost">Ghost Silhouette</span>
+  </button>
+  <button class="mob-item" id="mob-axis-btn" onclick="toggleBeamAxis();closeMobileMenu()">
+    <i class="ti ti-axis-x"></i><span data-i18n="kBeamAxis">Beam Axis</span>
+  </button>
+  <button class="mob-item" id="mob-jet-btn" onclick="toggleJets();closeMobileMenu()">
+    <i class="ti ti-cone"></i><span data-i18n="kJets">Jets</span>
+  </button>
+
+  <div class="mob-sep"></div>
+  <div class="mob-section" data-i18n="scGroupScene">Scene</div>
+  <button class="mob-item" onclick="resetCamera();closeMobileMenu()">
+    <i class="ti ti-focus-centered"></i><span data-i18n="kReset">Reset Camera</span>
+  </button>
+  <button class="mob-item" onclick="clearEvt();closeMobileMenu()">
+    <i class="ti ti-trash"></i><span data-i18n="kClear">Clear Event</span>
+  </button>
+
+  <div class="mob-sep"></div>
+  <div class="mob-section">Panels</div>
+  <button class="mob-item" id="mob-det-btn" onclick="toggleDetPanel();closeMobileMenu()">
+    <i class="ti ti-components"></i><span data-i18n="detectors">Detectors</span>
+  </button>
+  <button class="mob-item" id="mob-info-btn" onclick="toggleInfo();closeMobileMenu()">
+    <i class="ti ti-info-circle"></i><span data-i18n="infoOverlay">Info Overlay</span>
+  </button>
+  <button class="mob-item" id="mob-evt-btn" onclick="toggleEvtPanel();closeMobileMenu()">
+    <i class="ti ti-bolt"></i><span data-i18n="eventPanel">Event Panel</span>
+  </button>
+  <button class="mob-item" id="mob-del-panel-btn" onclick="toggleDeletionPanel();closeMobileMenu()">
+    <i class="ti ti-history"></i><span data-i18n="deletionHistory">History</span>
+  </button>
+
+  <div class="mob-sep"></div>
+  <div class="mob-section">More</div>
+  <button class="mob-item" onclick="enterCinema();closeMobileMenu()">
+    <i class="ti ti-movie"></i><span data-i18n="kCinema">Cinema Mode</span>
+  </button>
+  <button class="mob-item" onclick="openResModal();closeMobileMenu()">
+    <i class="ti ti-camera"></i><span data-i18n="screenshot">Screenshot</span>
+  </button>
+  <button class="mob-item" id="mob-settings-btn" onclick="toggleSettings()">
+    <i class="ti ti-palette"></i><span data-i18n="settings">Settings</span>
+  </button>
+
+  <div class="mob-sep"></div>
+  <button class="mob-item" onclick="toggleLangPanel();closeMobileMenu()">
+    <i class="ti ti-language"></i><span data-i18n="language">Language</span>
+  </button>
+  <button class="mob-item" onclick="openShortcuts();closeMobileMenu()">
+    <i class="ti ti-keyboard"></i><span data-i18n="shortcuts">Shortcuts</span>
   </button>
 </div>
 
@@ -1484,6 +1617,39 @@ window.toggleBound = () => {
 // ═══════════════════════════════════════════════════════════════
 window.toggleToolbar = () => {
   document.getElementById('toolbar').classList.toggle('tb-collapsed');
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MOBILE DRAWER
+// ═══════════════════════════════════════════════════════════════
+window.toggleMobileMenu = () => {
+  const drawer  = document.getElementById('mobile-drawer');
+  const overlay = document.getElementById('mobile-overlay');
+  const isOpen  = drawer.classList.contains('open');
+  if (isOpen) {
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+  } else {
+    // Sync on-states from desktop toolbar buttons
+    [['stats-btn','mob-stats-btn'],['wf-btn','mob-wf-btn'],
+     ['ol-btn','mob-ol-btn'],['bound-btn','mob-bound-btn'],
+     ['axis-btn','mob-axis-btn'],['jet-btn','mob-jet-btn'],
+     ['det-btn','mob-det-btn'],['info-btn','mob-info-btn'],
+     ['evt-btn','mob-evt-btn'],['settings-btn','mob-settings-btn'],
+     ['del-panel-btn','mob-del-panel-btn'],
+    ].forEach(([src,dst]) => {
+      const s = document.getElementById(src);
+      const d = document.getElementById(dst);
+      if (s && d) d.classList.toggle('on', s.classList.contains('on'));
+    });
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+  }
+};
+
+window.closeMobileMenu = () => {
+  document.getElementById('mobile-drawer').classList.remove('open');
+  document.getElementById('mobile-overlay').classList.remove('open');
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -2722,6 +2888,7 @@ async function initApp(){
   document.getElementById('deletion-panel').classList.add('hidden');
 
   document.getElementById('toolbar').style.display = 'flex';
+  document.getElementById('mobile-menu-btn').style.display = ''; // let CSS media query control visibility
   document.getElementById('evt-btn').classList.add('on');
 
   updateSliderGradient();
