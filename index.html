@@ -2269,11 +2269,10 @@ poller.addEventListener('status', e => {
     case 'downloading': dot.className='pdot dl'; txt.textContent=`${t('downloading')} ${(eventId||'').split('_')[0]}`; stopCheckedClock(); break;
     case 'same':       dot.className='pdot'; rb.classList.remove('show'); startCheckedClock(eventId, lastChecked||Date.now()); break;
     case 'stopped':    dot.className='pdot idle'; txt.textContent=t('pollingStopped'); stopCheckedClock(); break;
-    case 'backoff':{
-      dot.className='pdot backoff';
-      const secs = Math.round(retryIn/1000);
-      txt.textContent = `${t('noConnection')} ${secs}s`;
-      startRetryBar(retryIn); stopCheckedClock(); break;
+    case 'error':{
+      dot.className='pdot err';
+      txt.textContent = `${t('noConnection')} 5s`;
+      rb.classList.remove('show'); stopCheckedClock(); break;
     }
   }
 });
