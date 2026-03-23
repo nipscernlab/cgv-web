@@ -188,7 +188,7 @@ canvas{display:block}
   cursor:pointer;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.4);
 }
 #thr-slider::-moz-range-track{height:6px;border-radius:3px;background:transparent}
-#thr-val{font-family:var(--fm);font-size:9px;color:var(--t2);font-weight:500;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.02em}
+#thr-val{font-family:var(--fm);font-size:9px;color:var(--t2);font-weight:500;writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.02em;min-height:72px;text-align:center}
 .thr-input{
   width:52px;padding:4px 6px;background:rgba(0,0,0,0.3);border:1px solid var(--border);
   border-radius:var(--r-sm);color:var(--t);font:500 10px var(--fm);text-align:center;
@@ -198,7 +198,7 @@ canvas{display:block}
 .thr-input::placeholder{color:var(--t3)}
 #thr-hint{font-family:var(--fm);font-size:8px;color:var(--t4);writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.05em;text-align:center;transition:color .2s}
 #thr-panel:hover #thr-hint{color:var(--t3)}
-#thr-count{font-family:var(--fm);font-size:8px;color:var(--t3);writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.03em;text-align:center}
+#thr-count{font-family:var(--fm);font-size:8px;color:var(--t3);writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.03em;text-align:center;min-height:48px}
 #thr-cursor{
   position:fixed;pointer-events:none;z-index:50;
   background:var(--surf2);border:1px solid var(--border-h);
@@ -242,7 +242,7 @@ canvas{display:block}
 
 /* ── Cinema ────────────────────────────────────────────────── */
 #cinema-exit{position:fixed;bottom:24px;right:24px;z-index:20;opacity:0;pointer-events:none;transition:opacity .4s}
-body.cinema .panel,body.cinema #thr-panel,body.cinema #toolbar,body.cinema #tb-collapse-orb,body.cinema #lang-btn-wrap,body.cinema #settings-popup,body.cinema #deletion-panel,body.cinema #det-panel{opacity:0!important;pointer-events:none}
+body.cinema .panel,body.cinema #thr-panel,body.cinema #toolbar,body.cinema #lang-btn-wrap,body.cinema #settings-popup,body.cinema #deletion-panel,body.cinema #det-panel{opacity:0!important;pointer-events:none}
 body.cinema #cell-tip{opacity:0!important}
 body.cinema #cinema-exit{opacity:.2;pointer-events:auto}
 body.cinema #cinema-exit:hover{opacity:1}
@@ -264,30 +264,19 @@ body.cinema #toast{bottom:26px}
 
 /* ── Toolbar ───────────────────────────────────────────────── */
 #toolbar{
-  position:fixed;bottom:24px;left:calc(50% - 20px);transform:translateX(-50%);
+  position:fixed;bottom:24px;left:38%;transform:translateX(-50%);
   display:flex;align-items:center;gap:4px;padding:8px 14px;
   background:rgba(0,14,32,0.9);border:1px solid var(--border);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   border-radius:var(--r-pill);z-index:10;
   box-shadow:0 8px 32px rgba(0,0,0,0.5);
   animation:fadeUp .5s cubic-bezier(.22,1,.36,1) forwards .1s;
-  transition:opacity .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1);
+  transition:opacity .35s cubic-bezier(.4,0,.2,1),transform .35s cubic-bezier(.4,0,.2,1),
+             padding .35s cubic-bezier(.4,0,.2,1),gap .35s cubic-bezier(.4,0,.2,1),border-radius .35s cubic-bezier(.4,0,.2,1);
 }
-#toolbar.tb-hiding{animation:none;opacity:0;transform:translateX(-50%) scale(0.92);pointer-events:none}
-/* Collapsed toolbar: small circle, bottom-right under slider */
-#tb-collapse-orb{
-  position:fixed;right:24px;bottom:24px;z-index:10;
-  width:46px;height:46px;display:flex;align-items:center;justify-content:center;
-  background:rgba(0,14,32,0.9);border:1px solid var(--border);
-  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
-  border-radius:50%;cursor:pointer;
-  box-shadow:0 4px 20px rgba(0,0,0,0.5);
-  opacity:0;pointer-events:none;transform:scale(0.5);
-  transition:opacity .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1),background .15s;
-}
-#tb-collapse-orb:hover{background:rgba(0,20,50,0.95);border-color:var(--border-h)}
-#tb-collapse-orb.visible{opacity:1;pointer-events:auto;transform:scale(1)}
-#tb-collapse-orb i{font-size:18px;color:var(--t2);pointer-events:none}
+/* Collapse chevron rotates in-place */
+#tb-collapse-chevron{transition:transform .35s cubic-bezier(.4,0,.2,1)}
+#toolbar.tb-collapsed #tb-collapse-chevron{transform:rotate(180deg)}
 .tb-btn{
   display:flex;align-items:center;justify-content:center;width:38px;height:38px;
   border:none;background:transparent;border-radius:10px;cursor:pointer;
@@ -300,9 +289,13 @@ body.cinema #toast{bottom:26px}
 .tb-btn.on{background:var(--gold-dim);color:var(--gold)}
 .tb-btn.on:hover{background:rgba(201,168,76,0.15)}
 .tb-sep{width:1px;height:22px;background:var(--border);flex-shrink:0;margin:0 4px}
+/* Items that hide when toolbar is collapsed (everything except the chevron button) */
+.tb-collapsible{transition:width .35s cubic-bezier(.4,0,.2,1),height .35s cubic-bezier(.4,0,.2,1),opacity .25s,margin .35s,padding .35s;overflow:hidden;white-space:nowrap}
+#toolbar.tb-collapsed .tb-collapsible{width:0!important;height:0!important;opacity:0;margin:0!important;padding:0!important;pointer-events:none;flex-shrink:1}
+#toolbar.tb-collapsed{padding:8px;gap:0;border-radius:50%}
 
 /* ── Language ──────────────────────────────────────────────── */
-#lang-btn-wrap{position:fixed;bottom:82px;left:50%;transform:translateX(-50%);z-index:15;pointer-events:none}
+#lang-btn-wrap{position:fixed;bottom:82px;left:38%;transform:translateX(-50%);z-index:15;pointer-events:none}
 #lang-panel{
   background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);
   opacity:0;transform:translateY(6px) scale(0.97);pointer-events:none;transition:opacity .18s,transform .18s;
@@ -360,7 +353,7 @@ kbd{
 
 /* ── Settings popup ────────────────────────────────────────── */
 #settings-popup{
-  position:fixed;bottom:82px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:82px;left:38%;transform:translateX(-50%);
   background:var(--surf2);border:1px solid var(--border);border-radius:var(--r);
   backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
   padding:16px;z-index:20;box-shadow:var(--shadow);min-width:280px;
@@ -446,7 +439,7 @@ kbd{
 
 /* ── Selected cell highlight ──────────────────────────────── */
 .cell-selected-indicator{
-  position:fixed;bottom:92px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:92px;left:38%;transform:translateX(-50%);
   background:var(--surf);border:1px solid rgba(201,168,76,0.25);
   padding:8px 16px;font-family:var(--fm);font-size:11px;color:var(--gold);
   border-radius:var(--r);z-index:15;display:none;align-items:center;gap:10px;
@@ -464,6 +457,66 @@ kbd{
 #ui-tooltip.show{opacity:1;transform:translateY(0)}
 .tip-label{font-size:12px;font-weight:500;color:var(--t);white-space:nowrap}
 .tip-key{font-family:var(--fm);font-size:10px;color:var(--t3);margin-top:3px;white-space:nowrap}
+
+/* ══════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Large 4K+ / ATLAS Control Room (>2560px) ──────────────── */
+@media(min-width:2561px){
+  .panel{min-width:320px}
+  .pb{max-height:900px}
+  #xl-wrap{max-height:350px}
+  .slider-wrap{height:320px}
+  #thr-slider{width:320px}
+  #thr-val{min-height:90px}
+  .tb-btn{width:44px;height:44px}
+  .tb-btn i{font-size:22px}
+  .sc-inner{width:700px}
+}
+
+/* ── Tablet / small laptop (≤1024px) ──────────────────────── */
+@media(max-width:1024px){
+  .panel{min-width:240px}
+  #evt{min-width:260px!important}
+  #det-panel{right:20px!important}
+  #deletion-panel{right:20px!important;top:auto!important;bottom:90px}
+}
+
+/* ── Mobile (≤768px) ──────────────────────────────────────── */
+@media(max-width:768px){
+  #toolbar{left:50%;bottom:12px;padding:6px 10px;gap:2px}
+  #toolbar .tb-sep{display:none}
+  .tb-btn{width:34px;height:34px}
+  .tb-btn i{font-size:17px}
+  #toolbar.tb-collapsed{border-radius:50%;padding:6px}
+  #lang-btn-wrap{left:50%;bottom:68px}
+  #settings-popup{left:50%;bottom:68px;min-width:240px}
+  .panel{min-width:0;width:calc(100vw - 24px);left:12px!important;right:12px!important;max-width:none}
+  #hud{top:10px!important}
+  #evt{bottom:70px!important;max-height:50vh}
+  #det-panel{top:auto!important;bottom:70px!important}
+  #deletion-panel{top:auto!important;right:12px!important;bottom:70px!important}
+  #thr-panel{right:8px;padding:10px 6px}
+  .slider-wrap{height:160px}
+  #thr-slider{width:160px}
+  .sc-inner{width:calc(100vw - 32px);max-height:70vh}
+  .sc-body{columns:1}
+  .cell-selected-indicator{left:50%;bottom:70px}
+}
+
+/* ── Very small phones (≤480px) ───────────────────────────── */
+@media(max-width:480px){
+  .panel{font-size:12px}
+  .pb{max-height:40vh}
+  #xl-wrap{max-height:140px}
+  .tb-btn{width:30px;height:30px}
+  .tb-btn i{font-size:15px}
+  #toolbar{bottom:8px;padding:5px 8px}
+  #thr-panel{right:4px;padding:8px 4px}
+  .slider-wrap{height:120px}
+  #thr-slider{width:120px}
+}
 </style>
 </head>
 <body>
@@ -636,69 +689,65 @@ kbd{
 
 <!-- ── Toolbar ──────────────────────────────────────────────── -->
 <div id="toolbar" style="display:none">
-  <button class="tb-btn" id="stats-btn" onclick="toggleStatsCard()" data-tip="statsCard" data-key="D">
+  <button class="tb-btn" id="tb-collapse-btn" onclick="toggleToolbar()" data-tip="collapse" data-key="T">
+    <i class="ti ti-chevron-left" id="tb-collapse-chevron"></i>
+  </button>
+  <button class="tb-btn tb-collapsible" id="stats-btn" onclick="toggleStatsCard()" data-tip="statsCard" data-key="D">
     <i class="ti ti-layout-dashboard"></i>
   </button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" id="wf-btn" onclick="toggleWf()" data-tip="wireframe" data-key="W">
+  <div class="tb-sep tb-collapsible"></div>
+  <button class="tb-btn tb-collapsible" id="wf-btn" onclick="toggleWf()" data-tip="wireframe" data-key="W">
     <i class="ti ti-grid-dots"></i>
   </button>
-  <button class="tb-btn on" id="ol-btn" onclick="toggleOutline()" data-tip="outline" data-key="O">
+  <button class="tb-btn tb-collapsible on" id="ol-btn" onclick="toggleOutline()" data-tip="outline" data-key="O">
     <i class="ti ti-border-outer"></i>
   </button>
-  <button class="tb-btn on" id="bound-btn" onclick="toggleBound()" data-tip="ghost" data-key="G">
+  <button class="tb-btn tb-collapsible on" id="bound-btn" onclick="toggleBound()" data-tip="ghost" data-key="G">
     <i class="ti ti-ghost"></i>
   </button>
-  <button class="tb-btn" id="axis-btn" onclick="toggleBeamAxis()" data-tip="beamAxis" data-key="B">
+  <button class="tb-btn tb-collapsible" id="axis-btn" onclick="toggleBeamAxis()" data-tip="beamAxis" data-key="B">
     <i class="ti ti-axis-x"></i>
   </button>
-  <button class="tb-btn on" id="jet-btn" onclick="toggleJets()" data-tip="jets" data-key="J">
+  <button class="tb-btn tb-collapsible on" id="jet-btn" onclick="toggleJets()" data-tip="jets" data-key="J">
     <i class="ti ti-cone"></i>
   </button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" onclick="resetCamera()" data-tip="resetCamera" data-key="R">
+  <div class="tb-sep tb-collapsible"></div>
+  <button class="tb-btn tb-collapsible" onclick="resetCamera()" data-tip="resetCamera" data-key="R">
     <i class="ti ti-focus-centered"></i>
   </button>
-  <button class="tb-btn" onclick="clearEvt()" data-tip="clearEvent" data-key="X">
+  <button class="tb-btn tb-collapsible" onclick="clearEvt()" data-tip="clearEvent" data-key="X">
     <i class="ti ti-trash"></i>
   </button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" id="det-btn" onclick="toggleDetPanel()" data-tip="detectors" data-key="V">
+  <div class="tb-sep tb-collapsible"></div>
+  <button class="tb-btn tb-collapsible" id="det-btn" onclick="toggleDetPanel()" data-tip="detectors" data-key="V">
     <i class="ti ti-components"></i>
   </button>
-  <button class="tb-btn on" id="info-btn" onclick="toggleInfo()" data-tip="infoOverlay" data-key="I">
+  <button class="tb-btn tb-collapsible on" id="info-btn" onclick="toggleInfo()" data-tip="infoOverlay" data-key="I">
     <i class="ti ti-info-circle"></i>
   </button>
-  <button class="tb-btn" onclick="enterCinema()" data-tip="cinema" data-key="F">
+  <button class="tb-btn tb-collapsible" onclick="enterCinema()" data-tip="cinema" data-key="F">
     <i class="ti ti-movie"></i>
   </button>
-  <button class="tb-btn" onclick="openResModal()" data-tip="screenshot" data-key="Shift+S">
+  <button class="tb-btn tb-collapsible" onclick="openResModal()" data-tip="screenshot" data-key="Shift+S">
     <i class="ti ti-camera"></i>
   </button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn on" id="evt-btn" onclick="toggleEvtPanel()" data-tip="eventPanel" data-key="E">
+  <div class="tb-sep tb-collapsible"></div>
+  <button class="tb-btn tb-collapsible on" id="evt-btn" onclick="toggleEvtPanel()" data-tip="eventPanel" data-key="E">
     <i class="ti ti-bolt"></i>
   </button>
-  <button class="tb-btn" id="settings-btn" onclick="toggleSettings()" data-tip="settings" data-key="P">
+  <button class="tb-btn tb-collapsible" id="settings-btn" onclick="toggleSettings()" data-tip="settings" data-key="P">
     <i class="ti ti-palette"></i>
   </button>
-  <button class="tb-btn" id="del-panel-btn" onclick="toggleDeletionPanel()" data-tip="deletionHistory" data-key="H">
+  <button class="tb-btn tb-collapsible" id="del-panel-btn" onclick="toggleDeletionPanel()" data-tip="deletionHistory" data-key="H">
     <i class="ti ti-history"></i>
   </button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" id="lang-tb-btn" onclick="toggleLangPanel()" data-tip="language" data-key="L">
+  <div class="tb-sep tb-collapsible"></div>
+  <button class="tb-btn tb-collapsible" id="lang-tb-btn" onclick="toggleLangPanel()" data-tip="language" data-key="L">
     <i class="ti ti-language"></i>
   </button>
-  <button class="tb-btn" onclick="openShortcuts()" data-tip="shortcuts" data-key="/">
+  <button class="tb-btn tb-collapsible" onclick="openShortcuts()" data-tip="shortcuts" data-key="/">
     <i class="ti ti-keyboard"></i>
   </button>
-  <div class="tb-sep"></div>
-  <button class="tb-btn" onclick="collapseToolbar()" data-tip="collapse">
-    <i class="ti ti-chevron-right"></i>
-  </button>
-</div>
-<div id="tb-collapse-orb" onclick="expandToolbar()">
-  <i class="ti ti-chevron-left"></i>
 </div>
 
 <!-- ── Language Selector (anchored to toolbar) ─────────────── -->
@@ -765,6 +814,7 @@ kbd{
       <div class="sc-row"><kbd>Space</kbd><span class="sc-label" data-i18n="kAutoPlay">Toggle auto-play</span></div>
 
       <div class="sc-group" data-i18n="scGroupUI">Interface</div>
+      <div class="sc-row"><kbd>T</kbd><span class="sc-label" data-i18n="kToolbar">Collapse / expand toolbar</span></div>
       <div class="sc-row"><kbd>/</kbd><span class="sc-label" data-i18n="kShortcuts">Show this panel</span></div>
       <div class="sc-row"><kbd>Esc</kbd><span class="sc-label" data-i18n="kEscape">Exit cinema / close panels</span></div>
     </div>
@@ -988,8 +1038,8 @@ const i18n = {
     kUndo:'Undo deletion', kRedo:'Redo deletion',
     kLive:'Switch to live mode', kOffline:'Switch to offline mode',
     kPrev:'Previous event (offline)', kNext:'Next event (offline)',
-    kAutoPlay:'Toggle auto-play', kShortcuts:'Show shortcuts panel',
-    kEscape:'Exit cinema / close panels',
+    kAutoPlay:'Toggle auto-play', kToolbar:'Collapse / expand toolbar', kShortcuts:'Show shortcuts panel',
+    kEscape:'Exit cinema / close panels', collapse:'Collapse toolbar',
   },
   fr: {
     ovSubtitle:'Visualiseur de Geometrie Calorimetrique', loading:'Initialisation',
@@ -1037,8 +1087,8 @@ const i18n = {
     kUndo:'Annuler suppression', kRedo:'Retablir suppression',
     kLive:'Mode direct', kOffline:'Mode hors ligne',
     kPrev:'Evenement precedent', kNext:'Evenement suivant',
-    kAutoPlay:'Lecture automatique', kShortcuts:'Afficher raccourcis',
-    kEscape:'Quitter cinema / fermer panneaux',
+    kAutoPlay:'Lecture automatique', kToolbar:'Reduire / agrandir barre', kShortcuts:'Afficher raccourcis',
+    kEscape:'Quitter cinema / fermer panneaux', collapse:'Reduire la barre',
   },
   no: {
     ovSubtitle:'Kalorimeter Geometri Visualisering', loading:'Initialiserer',
@@ -1086,8 +1136,8 @@ const i18n = {
     kUndo:'Angre sletting', kRedo:'Gjenta sletting',
     kLive:'Direktemodus', kOffline:'Frakoblet modus',
     kPrev:'Forrige hendelse', kNext:'Neste hendelse',
-    kAutoPlay:'Automatisk avspilling', kShortcuts:'Vis snarveier',
-    kEscape:'Avslutt kino / lukk paneler',
+    kAutoPlay:'Automatisk avspilling', kToolbar:'Skjul / vis verktoylinjen', kShortcuts:'Vis snarveier',
+    kEscape:'Avslutt kino / lukk paneler', collapse:'Skjul verktoylinjen',
   },
   pt: {
     ovSubtitle:'Visualizador de Geometria de Calorimetro', loading:'Inicializando',
@@ -1135,8 +1185,8 @@ const i18n = {
     kUndo:'Desfazer exclusao', kRedo:'Refazer exclusao',
     kLive:'Modo ao vivo', kOffline:'Modo offline',
     kPrev:'Evento anterior', kNext:'Proximo evento',
-    kAutoPlay:'Reproducao automatica', kShortcuts:'Mostrar atalhos',
-    kEscape:'Sair do cinema / fechar paineis',
+    kAutoPlay:'Reproducao automatica', kToolbar:'Recolher / expandir barra', kShortcuts:'Mostrar atalhos',
+    kEscape:'Sair do cinema / fechar paineis', collapse:'Recolher barra',
   }
 };
 
@@ -1422,19 +1472,10 @@ window.toggleBound = () => {
 };
 
 // ═══════════════════════════════════════════════════════════════
-// TOOLBAR COLLAPSE
+// TOOLBAR COLLAPSE — chevron stays in place, rotates 180°
 // ═══════════════════════════════════════════════════════════════
-window.collapseToolbar = () => {
-  const tb = document.getElementById('toolbar');
-  const orb = document.getElementById('tb-collapse-orb');
-  tb.classList.add('tb-hiding');
-  setTimeout(() => { orb.classList.add('visible'); }, 150);
-};
-window.expandToolbar = () => {
-  const tb = document.getElementById('toolbar');
-  const orb = document.getElementById('tb-collapse-orb');
-  orb.classList.remove('visible');
-  setTimeout(() => { tb.classList.remove('tb-hiding'); }, 150);
+window.toggleToolbar = () => {
+  document.getElementById('toolbar').classList.toggle('tb-collapsed');
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -2523,6 +2564,7 @@ document.addEventListener('keydown', e => {
     case 'p': case 'P': toggleSettings(); break;
     case 'h': case 'H': toggleDeletionPanel(); break;
     case 'l': case 'L': toggleLangPanel(); break;
+    case 't': case 'T': toggleToolbar(); break;
     case '1': setMode('live'); break;
     case '2': setMode('offline'); break;
     case '/': case '?': openShortcuts(); e.preventDefault(); break;
