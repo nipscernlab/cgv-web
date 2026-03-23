@@ -867,13 +867,85 @@ const GLB_URL = _isLocal
 const CGV_URL = './root_file/CaloGeometry.cgv';
 
 // ═══════════════════════════════════════════════════════════════
+// GEOMETRY CACHE — download once, load from cache on return visits.
+// The detector geometry never changes, so we cache it permanently.
+// Bump GEO_CACHE_VER when CaloGeometry.glb is regenerated.
+// ═══════════════════════════════════════════════════════════════
+const GEO_CACHE_VER = 'cgv-geo-v1';
+
+// Purge stale cache versions
+if ('caches' in window) {
+  caches.keys().then(ks => ks.forEach(k => {
+    if (k.startsWith('cgv-geo-') && k !== GEO_CACHE_VER) caches.delete(k);
+  }));
+}
+
+/**
+ * Fetch an ArrayBuffer, cache-first.  Streams download progress via onProgress.
+ * onProgress(loaded, total) during download; onProgress(-1, -1) when from cache.
+ */
+async function cachedArrayBuffer(url, onProgress) {
+  if ('caches' in window) {
+    try {
+      const c = await caches.open(GEO_CACHE_VER);
+      const hit = await c.match(url);
+      if (hit) { onProgress?.(-1, -1); return hit.arrayBuffer(); }
+    } catch (_) {}
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Fetch ${url}: ${res.status}`);
+  const total = +(res.headers.get('Content-Length') || 0);
+  if (total && res.body) {
+    const reader = res.body.getReader();
+    const chunks = []; let loaded = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); loaded += value.length;
+      onProgress?.(loaded, total);
+    }
+    const buf = new Uint8Array(loaded);
+    let off = 0;
+    for (const c of chunks) { buf.set(c, off); off += c.length; }
+    _geoStore(url, buf.buffer);
+    return buf.buffer;
+  }
+  const ab = await res.arrayBuffer();
+  _geoStore(url, ab);
+  return ab;
+}
+
+async function cachedText(url) {
+  if ('caches' in window) {
+    try {
+      const c = await caches.open(GEO_CACHE_VER);
+      const hit = await c.match(url);
+      if (hit) return hit.text();
+    } catch (_) {}
+  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Fetch ${url}: ${res.status}`);
+  const txt = await res.text();
+  _geoStore(url, txt);
+  return txt;
+}
+
+async function _geoStore(url, data) {
+  if (!('caches' in window)) return;
+  try {
+    const c = await caches.open(GEO_CACHE_VER);
+    await c.put(url, new Response(typeof data === 'string' ? data : data.slice(0)));
+  } catch (e) { console.warn('[cache] store error:', e); }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // I18N
 // ═══════════════════════════════════════════════════════════════
 const i18n = {
   en: {
     ovSubtitle:'Calorimeter Geometry Viewer', loading:'Initialising',
-    loadingWasm:'Loading WASM module', loadingGeometry:'Loading detector geometry',
-    loadingIndexing:'Indexing cells', loadingBuilding:'Building scene',
+    loadingWasm:'Loading WASM module', loadingGeometry:'Downloading geometry',
+    loadingGeometryCache:'Loading geometry (cached)', loadingIndexing:'Indexing cells', loadingBuilding:'Building scene',
     detectorStatus:'Detector Status', totalCells:'Total cells', activeCells:'Active cells',
     visibleCells:'Visible cells',
     energyRange:'E min / max', frameRate:'Frame rate',
@@ -921,8 +993,8 @@ const i18n = {
   },
   fr: {
     ovSubtitle:'Visualiseur de Geometrie Calorimetrique', loading:'Initialisation',
-    loadingWasm:'Chargement module WASM', loadingGeometry:'Chargement geometrie',
-    loadingIndexing:'Indexation des cellules', loadingBuilding:'Construction de la scene',
+    loadingWasm:'Chargement module WASM', loadingGeometry:'Telechargement geometrie',
+    loadingGeometryCache:'Chargement geometrie (cache)', loadingIndexing:'Indexation des cellules', loadingBuilding:'Construction de la scene',
     detectorStatus:'Etat du Detecteur', totalCells:'Cellules totales', activeCells:'Cellules actives',
     visibleCells:'Cellules visibles',
     energyRange:'E min / max', frameRate:'Frequence d\'images',
@@ -970,8 +1042,8 @@ const i18n = {
   },
   no: {
     ovSubtitle:'Kalorimeter Geometri Visualisering', loading:'Initialiserer',
-    loadingWasm:'Laster WASM-modul', loadingGeometry:'Laster detektorgeometri',
-    loadingIndexing:'Indekserer celler', loadingBuilding:'Bygger scene',
+    loadingWasm:'Laster WASM-modul', loadingGeometry:'Laster ned geometri',
+    loadingGeometryCache:'Laster geometri (hurtigbuffer)', loadingIndexing:'Indekserer celler', loadingBuilding:'Bygger scene',
     detectorStatus:'Detektorstatus', totalCells:'Totale celler', activeCells:'Aktive celler',
     visibleCells:'Synlige celler',
     energyRange:'E min / maks', frameRate:'Bildefrekvens',
@@ -1019,8 +1091,8 @@ const i18n = {
   },
   pt: {
     ovSubtitle:'Visualizador de Geometria de Calorimetro', loading:'Inicializando',
-    loadingWasm:'Carregando modulo WASM', loadingGeometry:'Carregando geometria',
-    loadingIndexing:'Indexando celulas', loadingBuilding:'Construindo cena',
+    loadingWasm:'Carregando modulo WASM', loadingGeometry:'Baixando geometria',
+    loadingGeometryCache:'Carregando geometria (cache)', loadingIndexing:'Indexando celulas', loadingBuilding:'Construindo cena',
     detectorStatus:'Status do Detector', totalCells:'Total de celulas', activeCells:'Celulas ativas',
     visibleCells:'Celulas visiveis',
     energyRange:'E min / max', frameRate:'Taxa de quadros',
@@ -2517,19 +2589,29 @@ async function initApp(){
   msg.textContent = t('loadingWasm'); await init(); prog.style.width = '20%';
 
   msg.textContent = t('loadingGeometry');
+  let glbCached = false;
   const [glbBuf, cgvText] = await Promise.all([
-    fetch(GLB_URL).then(r => {
-      if(!r.ok) throw new Error(`GLB fetch failed: ${r.status} ${r.statusText}`);
-      return r.arrayBuffer();
+    cachedArrayBuffer(GLB_URL, (loaded, total) => {
+      if (loaded === -1) {
+        glbCached = true;
+        msg.textContent = t('loadingGeometryCache');
+        prog.style.width = '50%';
+      } else {
+        const pct = loaded / total;
+        const lMB = (loaded / 1048576).toFixed(1);
+        const tMB = (total / 1048576).toFixed(0);
+        msg.textContent = `${t('loadingGeometry')} — ${lMB} / ${tMB} MB`;
+        prog.style.width = `${20 + pct * 35}%`;
+      }
     }).then(buf => {
-      // Detect Git LFS pointer file (starts with "version https://git-lfs")
-      const header = new Uint8Array(buf, 0, Math.min(buf.byteLength, 12));
-      const isGlb = header[0] === 0x67 && header[1] === 0x6C && header[2] === 0x54 && header[3] === 0x46; // 'glTF'
-      if(!isGlb) throw new Error('Geometry file is not a valid GLB binary (got ' + buf.byteLength + ' bytes). Check the GLB_URL in index.html.');
+      const h = new Uint8Array(buf, 0, Math.min(buf.byteLength, 12));
+      const ok = h[0]===0x67 && h[1]===0x6C && h[2]===0x54 && h[3]===0x46; // 'glTF'
+      if (!ok) throw new Error('Not a valid GLB binary (got ' + buf.byteLength + ' bytes). Check GLB_URL.');
       return buf;
     }),
-    fetch(CGV_URL).then(r => r.text()),
+    cachedText(CGV_URL),
   ]);
+  if (glbCached) console.log('[geo] GLB served from cache (' + (glbBuf.byteLength / 1048576 | 0) + ' MB)');
   prog.style.width = '55%';
 
   msg.textContent = t('loadingIndexing');
