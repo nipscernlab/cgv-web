@@ -274,9 +274,9 @@ body.cinema #toast{bottom:26px}
   transition:opacity .35s cubic-bezier(.4,0,.2,1),transform .35s cubic-bezier(.4,0,.2,1),
              padding .35s cubic-bezier(.4,0,.2,1),gap .35s cubic-bezier(.4,0,.2,1),border-radius .35s cubic-bezier(.4,0,.2,1);
 }
-/* Collapse chevron rotates in-place */
+/* Collapse chevron rotates in-place — → collapses, ← expands */
 #tb-collapse-chevron{transition:transform .35s cubic-bezier(.4,0,.2,1)}
-#toolbar.tb-collapsed #tb-collapse-chevron{transform:rotate(180deg)}
+#toolbar.tb-collapsed #tb-collapse-chevron{transform:rotate(-180deg)}
 .tb-btn{
   display:flex;align-items:center;justify-content:center;width:38px;height:38px;
   border:none;background:transparent;border-radius:10px;cursor:pointer;
@@ -689,9 +689,6 @@ kbd{
 
 <!-- ── Toolbar ──────────────────────────────────────────────── -->
 <div id="toolbar" style="display:none">
-  <button class="tb-btn" id="tb-collapse-btn" onclick="toggleToolbar()" data-tip="collapse" data-key="T">
-    <i class="ti ti-chevron-left" id="tb-collapse-chevron"></i>
-  </button>
   <button class="tb-btn tb-collapsible" id="stats-btn" onclick="toggleStatsCard()" data-tip="statsCard" data-key="D">
     <i class="ti ti-layout-dashboard"></i>
   </button>
@@ -747,6 +744,9 @@ kbd{
   </button>
   <button class="tb-btn tb-collapsible" onclick="openShortcuts()" data-tip="shortcuts" data-key="/">
     <i class="ti ti-keyboard"></i>
+  </button>
+  <button class="tb-btn" id="tb-collapse-btn" onclick="toggleToolbar()" data-tip="collapse" data-key="T">
+    <i class="ti ti-chevron-right" id="tb-collapse-chevron"></i>
   </button>
 </div>
 
