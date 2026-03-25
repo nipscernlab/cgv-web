@@ -2,6 +2,9 @@ use wasm_bindgen::prelude::*;
 use std::f32::consts::PI;
 use std::collections::HashMap;
 
+mod calo_tables;
+use calo_tables::*;
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //  TILE CAL  –  tabela estática (inalterada)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -136,34 +139,36 @@ fn lookup_tile_cell_nth(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  LAr EM BARREL  –  geometria computada de CaloGeoConst.h
+//  LAr EM BARREL  –  tabelas exatas de CaloGeoConst.h
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Actual cell counts per side from CaloBuild.C geometry (p-side / n-side differ slightly)
-// Use minimum of both sides to guarantee valid paths.
-const LABA_SIZES: [usize; 4] = [61, 449, 52, 24];
+// Cell counts per side from CaloGeoConst.h (both sides have identical counts)
+const LABA_SIZES: [usize; 4] = [61, 451, 57, 27];
 const LABA_PHI:   [u16;   4] = [64, 64, 256, 256];
 const LABA_NAMES: [&str;  4] = ["PS", "S1", "S2", "S3"];
 
 /// Retorna η central da célula (layer, index) no LAr EM Barrel.
-/// Valores gerados algoritmicamente a partir de CaloGeoConst.h.
+/// Valores exatos extraídos de CaloGeoConst.h (tabela estática).
 fn laba_eta(layer: usize, i: usize) -> f32 {
     match layer {
-        0 => 0.0125 + 0.025 * i as f32,                      // 61 cells, Δη=0.025
-        1 => {
-            // 449 cells: 448 fine (Δη≈0.003125) + 1 coarse at high η
-            if i < 448 { 0.001_562_5 + 0.003_125 * i as f32 }
-            else { 1.4125_f32 }  // index 448 = last cell
-        }
-        2 => 0.0125 + 0.025 * i as f32,                       // 57 cells, Δη=0.025
-        3 => 0.025  + 0.05  * i as f32,                       // 27 cells, Δη=0.05
+        0 => LABA_ETA_0[i],
+        1 => LABA_ETA_1[i],
+        2 => LABA_ETA_2[i],
+        3 => LABA_ETA_3[i],
         _ => 0.0,
     }
 }
 
 /// Half-width para tolerância de matching por camada.
-fn laba_half_deta(layer: usize) -> f32 {
-    match layer { 0|2 => 0.0125, 1 => 0.0016, 3 => 0.025, _ => 0.0 }
+/// Usa deta exato da tabela / 2.
+fn laba_half_deta(layer: usize, i: usize) -> f32 {
+    match layer {
+        0 => LABA_DETA_0[i] * 0.5,
+        1 => LABA_DETA_1[i] * 0.5,
+        2 => LABA_DETA_2[i] * 0.5,
+        3 => LABA_DETA_3[i] * 0.5,
+        _ => 0.0,
+    }
 }
 
 /// Lookup: (eta, phi, nth) → (CGV path, cell label).
@@ -197,12 +202,19 @@ fn lookup_lar_barrel(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, 
             let d = (laba_eta(layer, idx) - abs_eta).abs();
             if d < bd { bd = d; bl = idx; }
         }
-        // Layer 1 last coarse cell
-        if layer == 1 && abs_eta > 1.38 && size > 448 {
-            let d = (laba_eta(1, 448) - abs_eta).abs();
-            if d < bd { bd = d; bl = 448; }
+        // Layer 1 coarse cells at high η (indices 448..450)
+        if layer == 1 && abs_eta > 1.38 {
+            for ci in 448..size.min(451) {
+                let d = (laba_eta(1, ci) - abs_eta).abs();
+                if d < bd { bd = d; bl = ci; }
+            }
         }
-        if bl < size && bd < laba_half_deta(layer) + 0.002 {
+        // Layer 2 coarse cell at high η (index 56)
+        if layer == 2 && abs_eta > 1.38 && size > 56 {
+            let d = (laba_eta(2, 56) - abs_eta).abs();
+            if d < bd { bd = d; bl = 56; }
+        }
+        if bl < size && bd < laba_half_deta(layer, bl) + 0.002 {
             if bd < best_dist { best_dist = bd; }
             cands.push(Cand { layer, idx: bl, dist: bd });
         }
@@ -219,64 +231,47 @@ fn lookup_lar_barrel(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, 
     let ei = c.idx;
     let vol = format!("EMBarrel{}{}", c.layer, side);
     let label = format!("EMB {} η{}", LABA_NAMES[c.layer], ei);
+    // Overlap-region cells use cell2_ (CaloBuild.C AddNode copy 2)
+    // Layer 0: all cell_  |  Layer 1: ei>=450  |  Layer 2: ei>=53  |  Layer 3: ei>=25
+    let cell_prefix = match c.layer {
+        1 if ei >= 450 => "cell2_",
+        2 if ei >= 53  => "cell2_",
+        3 if ei >= 25  => "cell2_",
+        _              => "cell_",
+    };
     Some((
-        format!("Calorimeter\u{2192}{vol}_0\u{2192}{vol}{ei}_{ei}\u{2192}cell_{j}"),
+        format!("Calorimeter\u{2192}{vol}_0\u{2192}{vol}{ei}_{ei}\u{2192}{cell_prefix}{j}"),
         label,
     ))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  LAr EM ENDCAP  –  geometria computada de CaloGeoConst.h
+//  LAr EM ENDCAP  –  tabelas exatas de CaloGeoConst.h
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const LAEB_SIZES: [usize; 4] = [12, 216, 51, 34];
 const LAEB_PHI:   [u16;   4] = [64, 64, 256, 256];
 
 /// Retorna η central da célula (layer, index) no LAr EM Endcap.
+/// Valores exatos extraídos de CaloGeoConst.h (tabela estática).
 fn laeb_eta(layer: usize, i: usize) -> f32 {
     match layer {
-        0 => 1.52078 + 0.025 * i as f32,
-        1 => match i {
-            0 => 1.40828,
-            1 => 1.44578,
-            2 => 1.47078,
-            3 => 1.49578,
-            4..=99   => 1.509_84  + 0.003_125     * (i - 4)   as f32,
-            100..=147 => 1.810_36  + 0.004_166_67  * (i - 100) as f32,
-            148..=211 => 2.011_41  + 0.006_25      * (i - 148) as f32,
-            _         => 2.420_78  + 0.025         * (i - 212) as f32,
-        },
-        2 => {
-            if i == 0 { 1.40828 }
-            else if i <= 3  { 1.44578 + 0.025 * (i - 1) as f32 }
-            else if i <= 43 { 1.52078 + 0.025 * (i - 4) as f32 }
-            else            { 2.55828 + 0.1   * (i - 44) as f32 }
-        },
-        3 => {
-            if i <= 11      { 1.47078 + 0.025 * i as f32 }
-            else if i <= 26 { 1.78328 + 0.05  * (i - 12) as f32 }
-            else            { 2.55828 + 0.1   * (i - 27) as f32 }
-        },
+        0 => LAEB_ETA_0[i],
+        1 => LAEB_ETA_1[i],
+        2 => LAEB_ETA_2[i],
+        3 => LAEB_ETA_3[i],
         _ => 0.0,
     }
 }
 
+/// Half-width para tolerância de matching no Endcap.
+/// Usa deta exato da tabela / 2.
 fn laeb_half_deta(layer: usize, i: usize) -> f32 {
     match layer {
-        0 => 0.0125,
-        1 => {
-            if i < 4 { 0.025 }
-            else if i < 100 { 0.0016 }
-            else if i < 148 { 0.0021 }
-            else if i < 212 { 0.0032 }
-            else { 0.0125 }
-        },
-        2 => if i >= 44 { 0.05 } else { 0.0125 },
-        3 => {
-            if i <= 11 { 0.0125 }
-            else if i <= 26 { 0.025 }
-            else { 0.05 }
-        },
+        0 => LAEB_DETA_0[i] * 0.5,
+        1 => LAEB_DETA_1[i] * 0.5,
+        2 => LAEB_DETA_2[i] * 0.5,
+        3 => LAEB_DETA_3[i] * 0.5,
         _ => 0.0,
     }
 }
@@ -316,9 +311,9 @@ fn lookup_lar_endcap(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, 
     let ei = c.idx;
     let vol = format!("EMEndCap{}{}", c.layer, side);
     let label = format!("EMEC {} η{}", LABA_NAMES[c.layer], ei);
-    // EMEndCap usa _1 (AddNode index 1 em CaloBuild.C)
+    // EMEndCap usa _1 (AddNode copy 1) e cell2_ (AddNode copy 2) em CaloBuild.C
     Some((
-        format!("Calorimeter\u{2192}{vol}_1\u{2192}{vol}{ei}_{ei}\u{2192}cell_{j}"),
+        format!("Calorimeter\u{2192}{vol}_1\u{2192}{vol}{ei}_{ei}\u{2192}cell2_{j}"),
         label,
     ))
 }
@@ -459,6 +454,7 @@ pub fn process_event(xml_text: &str) -> String {
     let mut lar_unmapped  = 0usize;
     let mut hec_mapped    = 0usize;
     let mut hec_unmapped  = 0usize;
+    let mut fcal_total    = 0usize;
 
     // ── 1. TILE ─────────────────────────────────────────────────────────────
     if let Some((energy, eta, phi, sub)) = parse_calo_arrays(xml_text, "TILE", &["energy","eta","phi","sub"]) {
@@ -573,6 +569,15 @@ pub fn process_event(xml_text: &str) -> String {
         }
     }
 
+    // ── 5. FCAL ─────────────────────────────────────────────────────────────
+    // FCAL geometry not yet in GLB/CGV — parse energy for global range, count hits
+    if let Some((energy, _x, _y, _z)) = parse_calo_arrays(xml_text, "FCAL", &["energy","x","y","z"]) {
+        let n = energy.len();
+        for v in &energy[..n] { e_min_g = e_min_g.min(*v); e_max_g = e_max_g.max(*v); }
+        fcal_total = n;
+        unmapped += n;
+    }
+
     // ── Resultado ───────────────────────────────────────────────────────────
     format!(
         concat!(
@@ -582,6 +587,7 @@ pub fn process_event(xml_text: &str) -> String {
             r#""mbts_mapped":{},"#,
             r#""lar_mapped":{},"lar_unmapped":{},"#,
             r#""hec_mapped":{},"hec_unmapped":{},"#,
+            r#""fcal_total":{},"#,
             r#""hits":[{}]}}"#,
         ),
         mapped, unmapped,
@@ -590,6 +596,7 @@ pub fn process_event(xml_text: &str) -> String {
         mbts_mapped,
         lar_mapped, lar_unmapped,
         hec_mapped, hec_unmapped,
+        fcal_total,
         hits,
     )
 }

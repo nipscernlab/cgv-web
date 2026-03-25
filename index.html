@@ -196,6 +196,7 @@ canvas{display:block}
 }
 .thr-input:focus{border-color:var(--gold)}
 .thr-input::placeholder{color:var(--t3)}
+.thr-input.out-of-range{color:var(--err);border-color:rgba(224,80,104,0.4)}
 #thr-hint{font-family:var(--fm);font-size:8px;color:var(--t4);writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.05em;text-align:center;transition:color .2s}
 #thr-panel:hover #thr-hint{color:var(--t3)}
 #thr-count{font-family:var(--fm);font-size:8px;color:var(--t3);writing-mode:vertical-rl;transform:rotate(180deg);letter-spacing:.03em;text-align:center;min-height:48px}
@@ -378,6 +379,7 @@ kbd{
   border-radius:var(--r-sm);color:var(--t);font:500 10px var(--fm);text-align:center;outline:none;
 }
 .color-range input:focus{border-color:var(--gold)}
+.color-range input.out-of-range{color:var(--err);border-color:rgba(224,80,104,0.4)}
 
 /* ── Resolution modal ─────────────────────────────────────── */
 #res-modal{
@@ -588,7 +590,7 @@ kbd{
     <img src="assets/svg/undraw-science.svg" class="ov-svg" alt="">
     <div class="ov-title">CGV <em>&middot;</em> Web</div>
     <div class="ov-sub" data-i18n="ovSubtitle">Calorimeter Geometry Viewer</div>
-    <div class="ov-denom">UFJF / NIPSCERN &middot; CERN &middot; ATLAS TileCal</div>
+    <div class="ov-denom">UFJF / NIPSCERN &middot; CERN &middot; ATLAS Calorimetry</div>
   </div>
   <div class="ov-progress">
     <div id="bar"><div id="prog"></div></div>
@@ -765,6 +767,9 @@ kbd{
   </button>
   <button class="tb-btn tb-collapsible" id="axis-btn" onclick="toggleBeamAxis()" data-tip="beamAxis" data-key="B">
     <i class="ti ti-axis-x"></i>
+  </button>
+  <button class="tb-btn tb-collapsible" id="rootgeo-btn" onclick="toggleRootGeo()" data-tip="rootGeometry" data-key="A">
+    <i class="ti ti-3d-cube-sphere"></i>
   </button>
   <button class="tb-btn tb-collapsible on" id="jet-btn" onclick="toggleJets()" data-tip="jets" data-key="J">
     <i class="ti ti-cone"></i>
@@ -960,7 +965,7 @@ kbd{
       <div class="sc-row"><kbd>Esc</kbd><span class="sc-label" data-i18n="kEscape">Exit cinema / close panels</span></div>
     </div>
     <div class="sc-footer">
-      <div class="sc-footer-text">CGV Web &middot; UFJF / NIPSCERN &middot; CERN ATLAS TileCal</div>
+      <div class="sc-footer-text">CGV Web &middot; UFJF / NIPSCERN &middot; CERN ATLAS Calorimetry</div>
     </div>
   </div>
 </div>
@@ -1141,7 +1146,7 @@ const i18n = {
     visibleCells:'Visible cells',
     energyRange:'E min / max', frameRate:'Frame rate',
     wireframe:'Wireframe', outline:'Outline', ghost:'Ghost silhouette',
-    beamAxis:'Beam axis', jets:'Jets',
+    beamAxis:'Beam axis', rootGeometry:'ROOT geometry', jets:'Jets',
     resetCamera:'Reset camera', clearEvent:'Clear event', infoOverlay:'Cell info',
     cinema:'Cinema mode', screenshot:'Screenshot', screenshotRes:'Screenshot',
     statsCard:'Detector stats', eventPanel:'Event panel', shortcuts:'Keyboard Shortcuts', collapse:'Collapse toolbar',
@@ -1190,7 +1195,7 @@ const i18n = {
     visibleCells:'Cellules visibles',
     energyRange:'E min / max', frameRate:'Frequence d\'images',
     wireframe:'Fil de fer', outline:'Contour', ghost:'Silhouette',
-    beamAxis:'Axe du faisceau', jets:'Jets',
+    beamAxis:'Axe du faisceau', rootGeometry:'Geometrie ROOT', jets:'Jets',
     resetCamera:'Reinitialiser', clearEvent:'Effacer', infoOverlay:'Info cellule',
     cinema:'Mode cinema', screenshot:'Capture', screenshotRes:'Capture',
     statsCard:'Stats detecteur', eventPanel:'Panneau evenement', shortcuts:'Raccourcis clavier', collapse:'Replier barre',
@@ -1239,7 +1244,7 @@ const i18n = {
     visibleCells:'Synlige celler',
     energyRange:'E min / maks', frameRate:'Bildefrekvens',
     wireframe:'Tradramme', outline:'Kontur', ghost:'Spokelse',
-    beamAxis:'Straleakse', jets:'Jets',
+    beamAxis:'Straleakse', rootGeometry:'ROOT geometri', jets:'Jets',
     resetCamera:'Tilbakestill', clearEvent:'Tom', infoOverlay:'Celle-info',
     cinema:'Kinomodus', screenshot:'Skjermbilde', screenshotRes:'Skjermbilde',
     statsCard:'Detektorstatistikk', eventPanel:'Hendelsespanel', shortcuts:'Tastatursnarveier', collapse:'Skjul verktoy',
@@ -1288,7 +1293,7 @@ const i18n = {
     visibleCells:'Celulas visiveis',
     energyRange:'E min / max', frameRate:'Taxa de quadros',
     wireframe:'Aramado', outline:'Contorno', ghost:'Silhueta fantasma',
-    beamAxis:'Eixo do feixe', jets:'Jets',
+    beamAxis:'Eixo do feixe', rootGeometry:'Geometria ROOT', jets:'Jets',
     resetCamera:'Resetar camera', clearEvent:'Limpar evento', infoOverlay:'Info da celula',
     cinema:'Modo cinema', screenshot:'Captura', screenshotRes:'Captura de tela',
     statsCard:'Estatisticas do detector', eventPanel:'Painel de evento', shortcuts:'Atalhos de teclado', collapse:'Recolher barra',
@@ -1395,7 +1400,24 @@ window.controls = controls;
 const baseMat    = new THREE.MeshStandardMaterial({ color:0x0a1828, roughness:.72, metalness:.08, side:THREE.DoubleSide });
 const hoverMat   = new THREE.MeshBasicMaterial({ color:0xffd700, side:THREE.BackSide, transparent:true, opacity:0.45 });
 const selectMat  = new THREE.MeshBasicMaterial({ color:0xff4444, side:THREE.BackSide, transparent:true, opacity:0.5 });
-const outlineMatShared = new THREE.MeshBasicMaterial({ wireframe:true, color:0x6aaddd, transparent:true, opacity:0.18, depthWrite:false });
+// Instanced-edge shader: renders EdgesGeometry with per-instance transforms (no diagonals)
+const _olEdgeVS = `
+  precision highp float;
+  attribute vec3 position;
+  attribute vec4 im0, im1, im2, im3;
+  uniform mat4 modelViewMatrix;
+  uniform mat4 projectionMatrix;
+  void main(){
+    mat4 im = mat4(im0, im1, im2, im3);
+    gl_Position = projectionMatrix * modelViewMatrix * im * vec4(position, 1.0);
+  }`;
+const _olEdgeFS = `
+  precision highp float;
+  void main(){ gl_FragColor = vec4(0.35, 0.6, 0.85, 0.55); }`;
+const outlineEdgeMat = new THREE.RawShaderMaterial({
+  vertexShader: _olEdgeVS, fragmentShader: _olEdgeFS,
+  transparent:true, depthWrite:false, linewidth:2,
+});
 const _zero      = new THREE.Matrix4().makeScale(0,0,0);
 
 const meshIndex  = {};
@@ -1406,6 +1428,8 @@ let hovGIdx = -1, hovIIdx = -1, hoverClone = null;
 let ghostGroup = null;
 let outlineIMs = [];
 let beamAxisGroup = null;
+let rootGeoGroup = null;
+let rootGeoEnabled = false;
 let geoCenter = new THREE.Vector3();
 let geoSize = 1;
 let geoScale = 1; // mm-to-GLB scale factor (glbR / 3820)
@@ -1520,12 +1544,14 @@ colorEMinInput.addEventListener('change', () => {
   customColorEMin = val === '' ? null : parseFloat(val);
   if(customColorEMin !== null && isNaN(customColorEMin)) customColorEMin = null;
   recolorAll();
+  checkThrOutOfRange();
 });
 colorEMaxInput.addEventListener('change', () => {
   const val = colorEMaxInput.value.trim();
   customColorEMax = val === '' ? null : parseFloat(val);
   if(customColorEMax !== null && isNaN(customColorEMax)) customColorEMax = null;
   recolorAll();
+  checkThrOutOfRange();
 });
 colorEMinInput.addEventListener('keydown', e => { if(e.key === 'Enter') colorEMinInput.blur(); });
 colorEMaxInput.addEventListener('keydown', e => { if(e.key === 'Enter') colorEMaxInput.blur(); });
@@ -1539,7 +1565,7 @@ document.addEventListener('click', e => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// GHOST ATLAS (inner detectors only — TileCal is the geometry)
+// GHOST ATLAS (inner detectors outline — full calorimeter is the geometry)
 // ═══════════════════════════════════════════════════════════════
 function buildGhostAtlas(scale, center){
   if(ghostGroup) scene.remove(ghostGroup);
@@ -1734,6 +1760,58 @@ window.toggleBeamAxis = () => {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// ROOT GEOMETRY — show/hide all GLB cells
+// ═══════════════════════════════════════════════════════════════
+function buildRootGeo(){
+  if(rootGeoGroup) return;
+  const keys = Object.keys(meshIndex);
+  if(!keys.length) return;
+  // Group meshes by geometry UUID for instancing
+  const geoMap = new Map();
+  for(const key of keys){
+    const m = meshIndex[key];
+    if(!m || !m.isMesh) continue;
+    const uid = m.geometry.uuid;
+    if(!geoMap.has(uid)) geoMap.set(uid, []);
+    geoMap.get(uid).push(m);
+  }
+  rootGeoGroup = new THREE.Group();
+  rootGeoGroup.name = 'rootGeoGroup';
+  const defaultMat = new THREE.MeshPhongMaterial({
+    color: 0x5588aa, transparent: true, opacity: 0.35,
+    side: THREE.DoubleSide, depthWrite: false
+  });
+  for(const [, meshes] of geoMap){
+    const geo = meshes[0].geometry;
+    const im = new THREE.InstancedMesh(geo, defaultMat, meshes.length);
+    im.frustumCulled = false;
+    for(let i = 0; i < meshes.length; i++){
+      im.setMatrixAt(i, meshes[i].matrixWorld);
+    }
+    im.instanceMatrix.needsUpdate = true;
+    rootGeoGroup.add(im);
+  }
+  scene.add(rootGeoGroup);
+}
+
+function clearRootGeo(){
+  if(!rootGeoGroup) return;
+  // Don't dispose geometry — it's shared with meshIndex meshes
+  rootGeoGroup.traverse(o => {
+    if(o.isInstancedMesh) o.material.dispose();
+  });
+  scene.remove(rootGeoGroup);
+  rootGeoGroup = null;
+}
+
+window.toggleRootGeo = () => {
+  rootGeoEnabled = !rootGeoEnabled;
+  document.getElementById('rootgeo-btn').classList.toggle('on', rootGeoEnabled);
+  if(rootGeoEnabled) buildRootGeo();
+  else clearRootGeo();
+};
+
+// ═══════════════════════════════════════════════════════════════
 // JETS — Parse from JiveXML and render as 3D cones
 // ═══════════════════════════════════════════════════════════════
 function parseJetsFromXml(xmlText){
@@ -1876,24 +1954,40 @@ window.toggleWf = () => {
   document.getElementById('wf-btn').classList.toggle('on', wfMode);
 };
 
-// ── Global outline ────────────────────────────────────────────
+// ── Global outline (edges only — no diagonals) ───────────────
 function buildOutline(){
   clearOutline();
   if(!outlineEnabled || !instGroups.length) return;
   for(const g of instGroups){
-    const olIm = new THREE.InstancedMesh(g.im.geometry, outlineMatShared, g.hits.length);
-    olIm.frustumCulled = false;
-    for(let i = 0; i < g.hits.length; i++){
-      olIm.setMatrixAt(i, g.hits[i].visible ? g.hits[i].mat4 : _zero);
+    // EdgesGeometry extracts only structural edges (no triangle diagonals)
+    const edgesGeo = new THREE.EdgesGeometry(g.im.geometry, 1);
+    const instGeo = new THREE.InstancedBufferGeometry();
+    instGeo.index = edgesGeo.index;
+    instGeo.setAttribute('position', edgesGeo.getAttribute('position'));
+    const count = g.hits.length;
+    const matArr = new Float32Array(count * 16);
+    for(let i = 0; i < count; i++){
+      (g.hits[i].visible ? g.hits[i].mat4 : _zero).toArray(matArr, i * 16);
     }
-    olIm.instanceMatrix.needsUpdate = true;
-    scene.add(olIm);
-    outlineIMs.push(olIm);
+    const ib = new THREE.InstancedInterleavedBuffer(matArr, 16);
+    instGeo.setAttribute('im0', new THREE.InterleavedBufferAttribute(ib, 4, 0));
+    instGeo.setAttribute('im1', new THREE.InterleavedBufferAttribute(ib, 4, 4));
+    instGeo.setAttribute('im2', new THREE.InterleavedBufferAttribute(ib, 4, 8));
+    instGeo.setAttribute('im3', new THREE.InterleavedBufferAttribute(ib, 4, 12));
+    instGeo.instanceCount = count;
+    const lines = new THREE.LineSegments(instGeo, outlineEdgeMat);
+    lines.frustumCulled = false;
+    scene.add(lines);
+    outlineIMs.push({ obj: lines, ib });
   }
 }
 
 function clearOutline(){
-  outlineIMs.forEach(m => { scene.remove(m); m.dispose(); });
+  outlineIMs.forEach(entry => {
+    const obj = entry.obj || entry;
+    scene.remove(obj);
+    if(obj.geometry) obj.geometry.dispose();
+  });
   outlineIMs = [];
 }
 
@@ -1901,10 +1995,11 @@ function syncOutlineVisibility(){
   if(!outlineEnabled || !outlineIMs.length) return;
   for(let gi = 0; gi < instGroups.length && gi < outlineIMs.length; gi++){
     const g = instGroups[gi], ol = outlineIMs[gi];
+    const arr = ol.ib.array;
     for(let i = 0; i < g.hits.length; i++){
-      ol.setMatrixAt(i, g.hits[i].visible ? g.hits[i].mat4 : _zero);
+      (g.hits[i].visible ? g.hits[i].mat4 : _zero).toArray(arr, i * 16);
     }
-    ol.instanceMatrix.needsUpdate = true;
+    ol.ib.needsUpdate = true;
   }
 }
 
@@ -2175,7 +2270,7 @@ window.downloadScreenshot = (W, H) => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       const now = new Date(), p = n => String(n).padStart(2,'0');
-      a.download = `TileCal_${W}x${H}_${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}_${p(now.getHours())}-${p(now.getMinutes())}-${p(now.getSeconds())}.png`;
+      a.download = `ATLAS_Calo_${W}x${H}_${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}_${p(now.getHours())}-${p(now.getMinutes())}-${p(now.getSeconds())}.png`;
       a.href = url; a.click();
       URL.revokeObjectURL(url);
       offR.dispose();
@@ -2207,16 +2302,21 @@ window.clearEvt = () => {
   if(jetGroup){ scene.remove(jetGroup); jetGroup = null; }
   parsedJets = [];
   eMin_mev = 0; eMax_mev = 1;
-  ['s-active','s-erange','ep-name','ep-cdecl','ep-cact','ep-mbts','thr-val'].forEach(id => {
+  ['s-active','s-erange','ep-name','ep-cdecl','ep-cact','ep-mbts'].forEach(id => {
     document.getElementById(id).textContent = '\u2013';
   });
   document.getElementById('ep-match').innerHTML = '\u2013';
   document.getElementById('s-active').textContent = '0';
   document.getElementById('s-visible').textContent = '\u2013';
   document.getElementById('thr-count').textContent = '';
-  const sl = document.getElementById('thr-slider');
-  sl.value = 0;
-  document.getElementById('thr-input').value = '';
+  // Keep threshold/color range values — only clear visual state if no userThrMev
+  if(userThrMev === null){
+    thrSlider.value = 0;
+    thrInput.value = '';
+    thrValEl.textContent = '\u2013';
+  }
+  thrInput.classList.remove('out-of-range');
+  thrValEl.style.color = '';
   renderDeletionList();
 };
 
@@ -2249,6 +2349,18 @@ const thrValEl   = document.getElementById('thr-val');
 const thrInput   = document.getElementById('thr-input');
 const thrCursor  = document.getElementById('thr-cursor');
 let thrDragging = false;
+let userThrMev = null; // User's chosen threshold in MeV (persists across XML loads)
+
+// Check if the current threshold/color range is outside the event's energy range
+function checkThrOutOfRange(){
+  const outThr = userThrMev !== null && (userThrMev > eMax_mev || userThrMev < eMin_mev);
+  thrInput.classList.toggle('out-of-range', outThr);
+  thrValEl.style.color = outThr ? 'var(--err)' : '';
+  // Also check custom color range inputs
+  const ceMin = customColorEMin, ceMax = customColorEMax;
+  colorEMinInput.classList.toggle('out-of-range', ceMin !== null && (ceMin < eMin_mev || ceMin > eMax_mev));
+  colorEMaxInput.classList.toggle('out-of-range', ceMax !== null && (ceMax < eMin_mev || ceMax > eMax_mev));
+}
 
 function applyThreshold(thr){
   let n = 0;
@@ -2282,9 +2394,11 @@ function fmtThr(mev){
 
 function setThresholdFromSlider(){
   const mev = sliderToMev(parseFloat(thrSlider.value));
+  userThrMev = mev;
   fmtThr(mev);
   thrInput.value = Math.abs(mev) < 1 ? mev.toFixed(3) : mev.toFixed(1);
   applyThreshold(mev);
+  checkThrOutOfRange();
   return mev;
 }
 
@@ -2298,11 +2412,14 @@ thrSlider.addEventListener('input', () => {
 thrInput.addEventListener('change', () => {
   const val = parseFloat(thrInput.value);
   if(isNaN(val)) return;
-  const clamped = Math.max(eMin_mev, Math.min(eMax_mev, val));
-  thrInput.value = Math.abs(clamped) < 1 ? clamped.toFixed(3) : clamped.toFixed(1);
-  thrSlider.value = mevToSlider(clamped);
-  fmtThr(clamped);
-  applyThreshold(clamped);
+  userThrMev = val;
+  // Don't clamp — allow out-of-range values (they will show in red)
+  thrInput.value = Math.abs(val) < 1 ? val.toFixed(3) : val.toFixed(1);
+  // Slider position clamped to [0,1], but userThrMev tracks the actual value
+  thrSlider.value = mevToSlider(Math.max(eMin_mev, Math.min(eMax_mev, val)));
+  fmtThr(val);
+  applyThreshold(val);
+  checkThrOutOfRange();
 });
 thrInput.addEventListener('keydown', e => { if(e.key === 'Enter') thrInput.blur(); });
 
@@ -2402,7 +2519,7 @@ async function loadXmlContent(xmlText, filename){
   eMin_mev = result.e_min; eMax_mev = result.e_max;
   document.getElementById('s-erange').textContent = `${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
   // Per-detector stats
-  console.log(`[calo] TILE: ${result.tile_mapped}/${result.tile_mapped+result.tile_unmapped}, MBTS: ${result.mbts_mapped}, LAr: ${result.lar_mapped}/${result.lar_mapped+result.lar_unmapped}, HEC: ${result.hec_mapped}/${result.hec_mapped+result.hec_unmapped}`);
+  console.log(`[calo] TILE: ${result.tile_mapped}/${result.tile_mapped+result.tile_unmapped}, MBTS: ${result.mbts_mapped}, LAr: ${result.lar_mapped}/${result.lar_mapped+result.lar_unmapped}, HEC: ${result.hec_mapped}/${result.hec_mapped+result.hec_unmapped}, FCAL: 0/${result.fcal_total||0} (no geometry)`);
 
   setHovered(-1,-1);
   clearSelection();
@@ -2410,10 +2527,20 @@ async function loadXmlContent(xmlText, filename){
   instGroups.forEach(g => { scene.remove(g.im); g.im.dispose(); g.mat.dispose(); });
   instGroups = []; allHits = []; visibleList = [];
   deletionHistory.length = 0; redoStack.length = 0;
-  thrSlider.value = 0;
-  fmtThr(eMin_mev);
-  thrInput.value = '';
+
+  // Preserve user's threshold and color range across XML loads
+  if(userThrMev !== null){
+    // Restore threshold: slider position uses new range, but keep the MeV value
+    thrSlider.value = mevToSlider(Math.max(eMin_mev, Math.min(eMax_mev, userThrMev)));
+    fmtThr(userThrMev);
+    thrInput.value = Math.abs(userThrMev) < 1 ? userThrMev.toFixed(3) : userThrMev.toFixed(1);
+  } else {
+    thrSlider.value = 0;
+    fmtThr(eMin_mev);
+    thrInput.value = '';
+  }
   updateSliderGradient();
+  checkThrOutOfRange();
 
   const geoGroups = new Map();
   let _miss = 0; const _missEx = {};
@@ -2449,8 +2576,14 @@ async function loadXmlContent(xmlText, filename){
   }
 
   document.getElementById('s-active').textContent = allHits.length.toLocaleString();
-  document.getElementById('s-visible').textContent = `${allHits.length.toLocaleString()} / ${allHits.length.toLocaleString()}`;
-  document.getElementById('thr-count').textContent = `${allHits.length} / ${allHits.length}`;
+
+  // Apply persisted threshold to newly loaded cells
+  if(userThrMev !== null && userThrMev > eMin_mev){
+    applyThreshold(userThrMev);
+  } else {
+    document.getElementById('s-visible').textContent = `${allHits.length.toLocaleString()} / ${allHits.length.toLocaleString()}`;
+    document.getElementById('thr-count').textContent = `${allHits.length} / ${allHits.length}`;
+  }
   if(outlineEnabled) buildOutline();
   renderDeletionList();
   if(_miss > 0) console.warn('[mesh] missing:', _missEx);
@@ -2726,6 +2859,7 @@ document.addEventListener('keydown', e => {
     case 'o': case 'O': toggleOutline(); break;
     case 'g': case 'G': toggleBound(); break;
     case 'b': case 'B': toggleBeamAxis(); break;
+    case 'a': case 'A': toggleRootGeo(); break;
     case 'j': case 'J': toggleJets(); break;
     case 'r': case 'R': resetCamera(); break;
     case 'x': case 'X': clearEvt(); break;
