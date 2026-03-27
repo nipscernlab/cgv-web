@@ -2519,7 +2519,7 @@ async function loadXmlContent(xmlText, filename){
   eMin_mev = result.e_min; eMax_mev = result.e_max;
   document.getElementById('s-erange').textContent = `${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
   // Per-detector stats
-  console.log(`[calo] TILE: ${result.tile_mapped}/${result.tile_mapped+result.tile_unmapped}, MBTS: ${result.mbts_mapped}, LAr: ${result.lar_mapped}/${result.lar_mapped+result.lar_unmapped}, HEC: ${result.hec_mapped}/${result.hec_mapped+result.hec_unmapped}, FCAL: 0/${result.fcal_total||0} (no geometry)`);
+  console.log(`[calo] TILE: ${result.tile_mapped}/${result.tile_mapped+result.tile_unmapped}, MBTS: ${result.mbts_mapped}, LAr: ${result.lar_mapped}/${result.lar_mapped+result.lar_unmapped}, HEC: ${result.hec_mapped}/${result.hec_mapped+result.hec_unmapped}`);
 
   setHovered(-1,-1);
   clearSelection();

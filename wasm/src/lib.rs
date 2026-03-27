@@ -2,9 +2,6 @@ use wasm_bindgen::prelude::*;
 use std::f32::consts::PI;
 use std::collections::HashMap;
 
-mod calo_tables;
-use calo_tables::*;
-
 // ═══════════════════════════════════════════════════════════════════════════════
 //  TILE CAL  –  tabela estática (inalterada)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -139,183 +136,112 @@ fn lookup_tile_cell_nth(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  LAr EM BARREL  –  tabelas exatas de CaloGeoConst.h
+//  LAr EM  –  decodificação direta do ID (bit-shifting de CaloGeoXML.C)
+//  Não usa eta/phi do XML — extrai layer, eta_idx, phi_idx, barrel/endcap do ID
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Cell counts per side from CaloGeoConst.h (both sides have identical counts)
 const LABA_SIZES: [usize; 4] = [61, 451, 57, 27];
-const LABA_PHI:   [u16;   4] = [64, 64, 256, 256];
-const LABA_NAMES: [&str;  4] = ["PS", "S1", "S2", "S3"];
-
-/// Retorna η central da célula (layer, index) no LAr EM Barrel.
-/// Valores exatos extraídos de CaloGeoConst.h (tabela estática).
-fn laba_eta(layer: usize, i: usize) -> f32 {
-    match layer {
-        0 => LABA_ETA_0[i],
-        1 => LABA_ETA_1[i],
-        2 => LABA_ETA_2[i],
-        3 => LABA_ETA_3[i],
-        _ => 0.0,
-    }
-}
-
-/// Half-width para tolerância de matching por camada.
-/// Usa deta exato da tabela / 2.
-fn laba_half_deta(layer: usize, i: usize) -> f32 {
-    match layer {
-        0 => LABA_DETA_0[i] * 0.5,
-        1 => LABA_DETA_1[i] * 0.5,
-        2 => LABA_DETA_2[i] * 0.5,
-        3 => LABA_DETA_3[i] * 0.5,
-        _ => 0.0,
-    }
-}
-
-/// Lookup: (eta, phi, nth) → (CGV path, cell label).
-/// Tenta todas as 4 camadas e seleciona candidatos por distância mínima.
-fn lookup_lar_barrel(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, String)> {
-    let abs_eta = hit_eta.abs();
-    if abs_eta > 1.55 { return None; }
-    let side = if hit_eta >= 0.0 { "p" } else { "n" };
-
-    // Encontra melhor distância em cada camada
-    struct Cand { layer: usize, idx: usize, dist: f32 }
-    let mut best_dist = f32::INFINITY;
-    let mut cands: Vec<Cand> = Vec::with_capacity(4);
-
-    for layer in 0..4usize {
-        let size = LABA_SIZES[layer];
-        // Estimativa de índice O(1) por espaçamento uniforme
-        let (base, delta) = match layer {
-            0|2 => (0.0125_f32, 0.025_f32),
-            1   => (0.001_562_5_f32, 0.003_125_f32),
-            3   => (0.025_f32, 0.05_f32),
-            _   => unreachable!(),
-        };
-        let est = ((abs_eta - base) / delta).round().max(0.0) as usize;
-        // Procura em vizinhança ±1 do estimado
-        let lo = est.saturating_sub(1);
-        let hi = (est + 2).min(size);
-        let mut bl = usize::MAX;
-        let mut bd = f32::INFINITY;
-        for idx in lo..hi {
-            let d = (laba_eta(layer, idx) - abs_eta).abs();
-            if d < bd { bd = d; bl = idx; }
-        }
-        // Layer 1 coarse cells at high η (indices 448..450)
-        if layer == 1 && abs_eta > 1.38 {
-            for ci in 448..size.min(451) {
-                let d = (laba_eta(1, ci) - abs_eta).abs();
-                if d < bd { bd = d; bl = ci; }
-            }
-        }
-        // Layer 2 coarse cell at high η (index 56)
-        if layer == 2 && abs_eta > 1.38 && size > 56 {
-            let d = (laba_eta(2, 56) - abs_eta).abs();
-            if d < bd { bd = d; bl = 56; }
-        }
-        if bl < size && bd < laba_half_deta(layer, bl) + 0.002 {
-            if bd < best_dist { best_dist = bd; }
-            cands.push(Cand { layer, idx: bl, dist: bd });
-        }
-    }
-    if cands.is_empty() { return None; }
-    // Filtra candidatos com tolerância de best_dist
-    cands.retain(|c| c.dist <= best_dist + 0.001);
-    cands.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap().then(a.layer.cmp(&b.layer)));
-    let c = &cands[nth % cands.len()];
-
-    let phi_seg = LABA_PHI[c.layer] as f32;
-    let raw = ((hit_phi + PI) * phi_seg / (2.0 * PI)).floor() as i32;
-    let j = raw.rem_euclid(LABA_PHI[c.layer] as i32) as usize;
-    let ei = c.idx;
-    let vol = format!("EMBarrel{}{}", c.layer, side);
-    let label = format!("EMB {} η{}", LABA_NAMES[c.layer], ei);
-    // Overlap-region cells use cell2_ (CaloBuild.C AddNode copy 2)
-    // Layer 0: all cell_  |  Layer 1: ei>=450  |  Layer 2: ei>=53  |  Layer 3: ei>=25
-    let cell_prefix = match c.layer {
-        1 if ei >= 450 => "cell2_",
-        2 if ei >= 53  => "cell2_",
-        3 if ei >= 25  => "cell2_",
-        _              => "cell_",
-    };
-    Some((
-        format!("Calorimeter\u{2192}{vol}_0\u{2192}{vol}{ei}_{ei}\u{2192}{cell_prefix}{j}"),
-        label,
-    ))
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  LAr EM ENDCAP  –  tabelas exatas de CaloGeoConst.h
-// ═══════════════════════════════════════════════════════════════════════════════
-
 const LAEB_SIZES: [usize; 4] = [12, 216, 51, 34];
-const LAEB_PHI:   [u16;   4] = [64, 64, 256, 256];
+const LAR_PHI_BARREL: [usize; 4] = [64, 64, 256, 256];
+const LAR_PHI_ENDCAP: [usize; 4] = [64, 64, 256, 256];
+const LAR_NAMES: [&str; 4] = ["PS", "S1", "S2", "S3"];
 
-/// Retorna η central da célula (layer, index) no LAr EM Endcap.
-/// Valores exatos extraídos de CaloGeoConst.h (tabela estática).
-fn laeb_eta(layer: usize, i: usize) -> f32 {
-    match layer {
-        0 => LAEB_ETA_0[i],
-        1 => LAEB_ETA_1[i],
-        2 => LAEB_ETA_2[i],
-        3 => LAEB_ETA_3[i],
-        _ => 0.0,
-    }
+// Tabelas de decodificação do compact identifier (CaloGeoXML.C)
+const LAR_PART: [i32; 8] = [-3, -2, -1, 1, 2, 3, 4, 5];
+const LAR_BARREL_ENDCAP: [i32; 6] = [-3, -2, -1, 1, 2, 3];
+
+struct LarDecoded {
+    barrel: bool,
+    side:   bool,    // true = eta positivo
+    layer:  usize,
+    eta:    usize,
+    phi:    usize,
 }
 
-/// Half-width para tolerância de matching no Endcap.
-/// Usa deta exato da tabela / 2.
-fn laeb_half_deta(layer: usize, i: usize) -> f32 {
-    match layer {
-        0 => LAEB_DETA_0[i] * 0.5,
-        1 => LAEB_DETA_1[i] * 0.5,
-        2 => LAEB_DETA_2[i] * 0.5,
-        3 => LAEB_DETA_3[i] * 0.5,
-        _ => 0.0,
+/// Decodifica o compact identifier do LAr EM (lógica de CaloGeoXML.C).
+/// Retorna None para células filtradas (barrel region==1) ou partições não tratadas.
+fn decode_lar_id(id: i64) -> Option<LarDecoded> {
+    let part_idx = ((id >> 26) & 7) as usize;
+    if part_idx >= 8 { return None; }
+    let larpart = LAR_PART[part_idx];
+
+    let be_idx = ((id >> 23) & 7) as usize;
+    if be_idx >= 6 { return None; }
+    let barrel_endcap = LAR_BARREL_ENDCAP[be_idx];
+
+    // Região — pula barrel region==1 (gap)
+    let larregion = match larpart {
+        1 => ((id >> 18) & 7) as i32,
+        2 => ((id >> 22) & 1) as i32,
+        _ => -1,
+    };
+    if barrel_endcap.unsigned_abs() == 1 && larregion == 1 {
+        return None;
     }
+
+    // Decodifica eta, layer, phi conforme larpart
+    let eta = match larpart {
+        1 => ((id >>  9) & 511) as usize,
+        2 => ((id >> 18) &  15) as usize,
+        3 => ((id >> 17) &  63) as usize,
+        _ => return None,
+    };
+    let layer = match larpart {
+        1     => ((id >> 21) & 3) as usize,
+        2 | 3 => ((id >> 23) & 3) as usize,
+        _     => return None,
+    };
+    let phi = match larpart {
+        1 => ((id >>  1) & 255) as usize,
+        2 => ((id >> 12) &  63) as usize,
+        3 => ((id >> 13) &  15) as usize,
+        _ => return None,
+    };
+
+    let barrel = barrel_endcap.unsigned_abs() == 1;
+    let side   = barrel_endcap > 0;
+
+    Some(LarDecoded { barrel, side, layer, eta, phi })
 }
 
-fn lookup_lar_endcap(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, String)> {
-    let abs_eta = hit_eta.abs();
-    if abs_eta < 1.35 || abs_eta > 3.25 { return None; }
-    let side = if hit_eta >= 0.0 { "p" } else { "n" };
+/// Converte célula LAr decodificada em (CGV path, label) para o visualizador.
+fn lar_id_to_path(d: &LarDecoded) -> Option<(String, String)> {
+    let s = if d.side { "p" } else { "n" };
 
-    struct Cand { layer: usize, idx: usize, dist: f32 }
-    let mut best_dist = f32::INFINITY;
-    let mut cands: Vec<Cand> = Vec::with_capacity(4);
+    if d.barrel {
+        let phi_size = LAR_PHI_BARREL[d.layer];
+        if d.eta >= LABA_SIZES[d.layer] || d.phi >= phi_size { return None; }
+        let j = phi_size - 1 - d.phi;
 
-    for layer in 0..4usize {
-        let size = LAEB_SIZES[layer];
-        // Linear scan (sizes are small: max 216)
-        let mut bi = 0usize;
-        let mut bd = f32::INFINITY;
-        for idx in 0..size {
-            let d = (laeb_eta(layer, idx) - abs_eta).abs();
-            if d < bd { bd = d; bi = idx; }
-        }
-        let tol = laeb_half_deta(layer, bi) + 0.003;
-        if bd < tol {
-            if bd < best_dist { best_dist = bd; }
-            cands.push(Cand { layer, idx: bi, dist: bd });
-        }
+        let vol = format!("EMBarrel{}{}", d.layer, s);
+        let label = format!("EMB {} η{}", LAR_NAMES[d.layer], d.eta);
+
+        // cell2_ para células na região de overlap (CaloBuild.C)
+        let pfx = match d.layer {
+            1 if d.eta >= 450 => "cell2_",
+            2 if d.eta >= 53  => "cell2_",
+            3 if d.eta >= 25  => "cell2_",
+            _                 => "cell_",
+        };
+        Some((
+            format!("Calorimeter\u{2192}{vol}_0\u{2192}{vol}{}_{}\u{2192}{pfx}{j}", d.eta, d.eta),
+            label,
+        ))
+    } else {
+        let phi_size = LAR_PHI_ENDCAP[d.layer];
+        if d.eta >= LAEB_SIZES[d.layer] || d.phi >= phi_size { return None; }
+        let j = phi_size - 1 - d.phi;
+
+        let vol = format!("EMEndCap{}{}", d.layer, s);
+        let label = format!("EMEC {} η{}", LAR_NAMES[d.layer], d.eta);
+
+        // CaloBuild.C: cell2_ para i < 3, cell_ para i >= 3
+        let pfx = if d.eta < 3 { "cell2_" } else { "cell_" };
+        Some((
+            format!("Calorimeter\u{2192}{vol}_1\u{2192}{vol}{}_{}\u{2192}{pfx}{j}", d.eta, d.eta),
+            label,
+        ))
     }
-    if cands.is_empty() { return None; }
-    cands.retain(|c| c.dist <= best_dist + 0.002);
-    cands.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap().then(a.layer.cmp(&b.layer)));
-    let c = &cands[nth % cands.len()];
-
-    let phi_seg = LAEB_PHI[c.layer] as f32;
-    let raw = ((hit_phi + PI) * phi_seg / (2.0 * PI)).floor() as i32;
-    let j = raw.rem_euclid(LAEB_PHI[c.layer] as i32) as usize;
-    let ei = c.idx;
-    let vol = format!("EMEndCap{}{}", c.layer, side);
-    let label = format!("EMEC {} η{}", LABA_NAMES[c.layer], ei);
-    // EMEndCap usa _1 (AddNode copy 1) e cell2_ (AddNode copy 2) em CaloBuild.C
-    Some((
-        format!("Calorimeter\u{2192}{vol}_1\u{2192}{vol}{ei}_{ei}\u{2192}cell2_{j}"),
-        label,
-    ))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -454,7 +380,6 @@ pub fn process_event(xml_text: &str) -> String {
     let mut lar_unmapped  = 0usize;
     let mut hec_mapped    = 0usize;
     let mut hec_unmapped  = 0usize;
-    let mut fcal_total    = 0usize;
 
     // ── 1. TILE ─────────────────────────────────────────────────────────────
     if let Some((energy, eta, phi, sub)) = parse_calo_arrays(xml_text, "TILE", &["energy","eta","phi","sub"]) {
@@ -507,32 +432,16 @@ pub fn process_event(xml_text: &str) -> String {
         }
     }
 
-    // ── 3. LAr ──────────────────────────────────────────────────────────────
-    if let Some((energy, eta, phi, _slot)) = parse_calo_arrays(xml_text, "LAr", &["energy","eta","phi","slot"]) {
-        let n = energy.len().min(eta.len()).min(phi.len());
+    // ── 3. LAr  (decodificação via ID — CaloGeoXML.C) ──────────────────────
+    if let Some((energy, ids, eta_xml, phi_xml)) = parse_lar_arrays(xml_text) {
+        let n = energy.len().min(ids.len());
         for v in &energy[..n] { e_min_g = e_min_g.min(*v); e_max_g = e_max_g.max(*v); }
 
-        let mut seen: HashMap<(i32, i32), usize> = HashMap::new();
         for i in 0..n {
-            let hit_eta = eta[i];
-            let hit_phi = phi[i];
-            let abs_eta = hit_eta.abs();
-            let eta_key = (hit_eta * 10000.0).round() as i32;
-            let phi_key = (hit_phi * 1000.0).round() as i32;
-            let seen_key = (eta_key, phi_key);
-            let nth = *seen.get(&seen_key).unwrap_or(&0);
-            seen.insert(seen_key, nth + 1);
+            let hit_eta = if i < eta_xml.len() { eta_xml[i] } else { 0.0 };
+            let hit_phi = if i < phi_xml.len() { phi_xml[i] } else { 0.0 };
 
-            // Tenta barrel primeiro se |η| < 1.5, senão endcap
-            let result = if abs_eta < 1.5 {
-                lookup_lar_barrel(hit_eta, hit_phi, nth)
-                    .or_else(|| lookup_lar_endcap(hit_eta, hit_phi, nth))
-            } else {
-                lookup_lar_endcap(hit_eta, hit_phi, nth)
-                    .or_else(|| lookup_lar_barrel(hit_eta, hit_phi, nth))
-            };
-
-            match result {
+            match decode_lar_id(ids[i]).and_then(|d| lar_id_to_path(&d)) {
                 Some((path, label)) => {
                     append_hit(&mut hits, &path, energy[i], hit_eta, hit_phi, &label, "LAr");
                     lar_mapped += 1;
@@ -569,15 +478,6 @@ pub fn process_event(xml_text: &str) -> String {
         }
     }
 
-    // ── 5. FCAL ─────────────────────────────────────────────────────────────
-    // FCAL geometry not yet in GLB/CGV — parse energy for global range, count hits
-    if let Some((energy, _x, _y, _z)) = parse_calo_arrays(xml_text, "FCAL", &["energy","x","y","z"]) {
-        let n = energy.len();
-        for v in &energy[..n] { e_min_g = e_min_g.min(*v); e_max_g = e_max_g.max(*v); }
-        fcal_total = n;
-        unmapped += n;
-    }
-
     // ── Resultado ───────────────────────────────────────────────────────────
     format!(
         concat!(
@@ -587,7 +487,6 @@ pub fn process_event(xml_text: &str) -> String {
             r#""mbts_mapped":{},"#,
             r#""lar_mapped":{},"lar_unmapped":{},"#,
             r#""hec_mapped":{},"hec_unmapped":{},"#,
-            r#""fcal_total":{},"#,
             r#""hits":[{}]}}"#,
         ),
         mapped, unmapped,
@@ -596,7 +495,6 @@ pub fn process_event(xml_text: &str) -> String {
         mbts_mapped,
         lar_mapped, lar_unmapped,
         hec_mapped, hec_unmapped,
-        fcal_total,
         hits,
     )
 }
@@ -655,6 +553,31 @@ fn parse_calo_arrays(xml_text: &str, tag: &str, fields: &[&str]) -> Option<(Vec<
     let c = if fields.len() > 2 { extract_array(inner, fields[2]).unwrap_or_default() } else { Vec::new() };
     let d = if fields.len() > 3 { extract_array(inner, fields[3]).unwrap_or_default() } else { Vec::new() };
     Some((a, b, c, d))
+}
+
+fn extract_i64_array(content: &str, tag: &str) -> Option<Vec<i64>> {
+    let open  = format!("<{}>",  tag);
+    let close = format!("</{}>", tag);
+    let s = content.find(&open)?  + open.len();
+    let e = content[s..].find(&close)? + s;
+    Some(content[s..e].split_whitespace().filter_map(|t| t.parse::<i64>().ok()).collect())
+}
+
+/// Extrai arrays do bloco LAr: energy (f32), id (i64), eta (f32), phi (f32).
+/// IDs devem ser i64 para preservar bits baixos usados na decodificação.
+fn parse_lar_arrays(xml_text: &str) -> Option<(Vec<f32>, Vec<i64>, Vec<f32>, Vec<f32>)> {
+    let pos = find_tag(xml_text, "LAr")?;
+    let inner_start = xml_text[pos..].find('>')? + pos + 1;
+    let inner_end = xml_text[inner_start..].find("</LAr>")? + inner_start;
+    let inner = &xml_text[inner_start..inner_end];
+
+    let energy = extract_array(inner, "energy").unwrap_or_default();
+    let id     = extract_i64_array(inner, "id").unwrap_or_default();
+    let eta    = extract_array(inner, "eta").unwrap_or_default();
+    let phi    = extract_array(inner, "phi").unwrap_or_default();
+
+    if energy.is_empty() || id.is_empty() { return None; }
+    Some((energy, id, eta, phi))
 }
 
 fn parse_mbts_arrays(xml_text: &str) -> Option<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
