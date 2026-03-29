@@ -659,8 +659,8 @@ void SaxHandler::populate()
 
 	// Larg --------------------------------------------------------------------
 
-	int LAR_PART         [8] = {-3, -2, -1, 1, 2, 3, 4, 5}; // 1: stripe, 2: camada do meio, 3: camada externa
-	int LAR_BARREL_ENDCAP[6] = {-3, -2, -1, 1, 2, 3}; // Comentário: -1 BARRIL eta negativo, 1 BARRIL eta positivo. -2/2 ENDCAP,   p/n
+	int LAR_PART         [8] = {-3, -2, -1, 1, 2, 3, 4, 5};
+	int LAR_BARREL_ENDCAP[6] = {-3, -2, -1, 1, 2, 3};
 
 	int larpart;
 	int larbarrelendcap;
@@ -669,9 +669,10 @@ void SaxHandler::populate()
 	for (unsigned int i = 0; i < vid_lar.size(); i++)
 	{
 
-		larpart         = LAR_PART[(vid_lar[i] >> 26) & 7];
-		larbarrelendcap = LAR_BARREL_ENDCAP[vid_lar[i] >> 23 & 7]; // ID: 3179541336923570176, 
+		larpart         = LAR_PART[(vid_lar[i] >> 26) & 7];        // 1: em, 2: hec, 3: fcal
+		larbarrelendcap = LAR_BARREL_ENDCAP[vid_lar[i] >> 23 & 7]; // +-1: emb, +-2: emec, +-3: hec
 
+		// regiao esta associado a aglomerado de celulas com mesma eletronica
 		switch (larpart)
 		{
 			case  1: larregion = (vid_lar[i] >> 18) & 7; break;
@@ -679,27 +680,27 @@ void SaxHandler::populate()
 			default: larregion = -1;
 		}
 
-		if (abs(larbarrelendcap) == 1 && larregion == 1) continue;
+		if (abs(larbarrelendcap) == 1 && larregion == 1) continue; // a regiao 1 do emb nao eh valida (descobrir onde fica isso)
 
 		switch (larpart)
 		{
-			case 1: eta = (vid_lar[i] >>  9) & 511; break; // index em eta
-			case 2: eta = (vid_lar[i] >> 18) &  15; break; // index em eta
-			case 3: eta = (vid_lar[i] >> 17) &  63; break; // index em eta
+			case 1: eta = (vid_lar[i] >>  9) & 511; break; // eta do em (barril e tampa)
+			case 2: eta = (vid_lar[i] >> 18) &  15; break; // eta do hec
+			case 3: eta = (vid_lar[i] >> 17) &  63; break; // eta do fcal
 		}
 
 		switch (larpart)
 		{
-			case 1: lay = (vid_lar[i] >> 21) &   3; break; // layer
-			case 2:
-			case 3: lay = (vid_lar[i] >> 23) &   3; break;
+			case 1: lay = (vid_lar[i] >> 21) &   3; break; // layer pro em
+			case 2:                                        // layer pro hec
+			case 3: lay = (vid_lar[i] >> 23) &   3; break; // layer pro fcal
 		}
 
 		switch (larpart)
 		{
-			case 1: phi = (vid_lar[i] >>  1) & 255; break;
-			case 2: phi = (vid_lar[i] >> 12) &  63; break;
-			case 3: phi = (vid_lar[i] >> 13) &  15; break;
+			case 1: phi = (vid_lar[i] >>  1) & 255; break; // phi pro em
+			case 2: phi = (vid_lar[i] >> 12) &  63; break; // phi pro hec
+			case 3: phi = (vid_lar[i] >> 13) &  15; break; // phi pro fcal
 		}
 
 		if (larbarrelendcap > 0) sid = 1; else sid = 0;
@@ -721,11 +722,13 @@ void SaxHandler::populate()
 
 		switch (abs(larbarrelendcap))
 		{
+			// emb
 			case 1: energy[NLAY_TILE + NLAY_HEC + lay][eta][phi_size[NLAY_TILE + NLAY_HEC + lay]-1-phi] = ven_lar[i];
 			            et[NLAY_TILE + NLAY_HEC + lay][eta][phi_size[NLAY_TILE + NLAY_HEC + lay]-1-phi] = vet_lar[i];
 			            ph[NLAY_TILE + NLAY_HEC + lay][eta][phi_size[NLAY_TILE + NLAY_HEC + lay]-1-phi] = vph_lar[i];
 			        if (NSamp_lar > 0)
 			          adc1[NLAY_TILE + NLAY_HEC + lay][eta][phi_size[NLAY_TILE + NLAY_LAR + lay]-1-phi] = va1_lar[i]; break;
+			// emec
 			case 2: energy[NLAY_TILE + NLAY_HEC + NLAY_LAR + lay][eta][phi_size[NLAY_TILE + NLAY_HEC + NLAY_LAR + lay]-1-phi] = ven_lar[i];
 			            et[NLAY_TILE + NLAY_HEC + NLAY_LAR + lay][eta][phi_size[NLAY_TILE + NLAY_HEC + NLAY_LAR + lay]-1-phi] = vet_lar[i];
 			            ph[NLAY_TILE + NLAY_HEC + NLAY_LAR + lay][eta][phi_size[NLAY_TILE + NLAY_HEC + NLAY_LAR + lay]-1-phi] = vph_lar[i];

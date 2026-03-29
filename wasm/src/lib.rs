@@ -161,6 +161,8 @@ struct LarDecoded {
 /// Decodifica o compact identifier do LAr EM (lógica de CaloGeoXML.C).
 /// Retorna None para células filtradas (barrel region==1) ou partições não tratadas.
 fn decode_lar_id(id: i64) -> Option<LarDecoded> {
+    // IDs no JiveXML são 64-bit; o compact identifier fica nos 32 bits superiores
+    let id = id >> 32;
     let part_idx = ((id >> 26) & 7) as usize;
     if part_idx >= 8 { return None; }
     let larpart = LAR_PART[part_idx];
@@ -168,6 +170,9 @@ fn decode_lar_id(id: i64) -> Option<LarDecoded> {
     let be_idx = ((id >> 23) & 7) as usize;
     if be_idx >= 6 { return None; }
     let barrel_endcap = LAR_BARREL_ENDCAP[be_idx];
+
+    // Pula inner wheel do endcap (abs(be)==3) — não tratado em CaloGeoXML.C
+    if barrel_endcap.unsigned_abs() == 3 { return None; }
 
     // Região — pula barrel region==1 (gap)
     let larregion = match larpart {
@@ -245,106 +250,42 @@ fn lar_id_to_path(d: &LarDecoded) -> Option<(String, String)> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  HEC  –  geometria computada de CaloGeoConst.h + CaloBuild.C
+//  HEC  –  decodificação direta do ID (bit-shifting de CaloGeoXML.C)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// HECz[7][14] — posição radial (r em mm) de cada célula HEC.
-/// Indexação: HECz[real_layer_0based][cell_index]
-static HECZ: [[f32; 14]; 7] = [
-    [1953.63, 1777.76, 1597.56, 1437.47, 1294.76, 1167.21, 1052.94, 950.382, 858.205, 775.278, 668.405, 545.996, 446.465, 386.875],
-    [2008.09, 1881.11, 1690.42, 1521.01, 1370.00, 1235.03, 1114.11, 1005.59, 908.060, 820.287, 707.225, 577.746, 502.371, 0.0],
-    [1951.08, 1774.10, 1596.30, 1437.80, 1296.15, 1169.26, 1060.37, 958.008, 860.888, 742.229, 606.344, 515.234, 0.0, 0.0],
-    [2008.26, 1882.60, 1693.79, 1525.52, 1375.14, 1240.45, 1119.58, 1010.96, 913.220, 787.548, 643.565, 531.973, 0.0, 0.0],
-    [1947.43, 1768.06, 1592.41, 1435.44, 1294.84, 1168.68, 1055.29, 953.266, 822.083, 671.786, 549.312, 0.0, 0.0, 0.0],
-    [1986.52, 1842.34, 1659.31, 1495.74, 1349.24, 1217.77, 1099.62, 993.312, 856.619, 700.007, 572.389, 500.028, 0.0, 0.0],
-    [1916.61, 1726.20, 1556.04, 1403.63, 1266.87, 1143.96, 1033.36, 891.153, 728.228, 595.465, 510.411, 0.0, 0.0, 0.0],
-];
-/// Nº de células por camada real (0-6)
-#[allow(dead_code)]
-static HEC_SIZES: [usize; 7] = [14, 13, 12, 12, 11, 12, 11];
+const HEC_VOL_NAMES: [&str; 4] = ["HEC1", "HEC23", "HEC45", "HEC67"];
+const HEC_ETA_SIZES: [usize; 4] = [14, 13, 12, 12]; // de CaloGeoConst.h
 
-/// HEC volume definitions matching CaloBuild.C structure.
-/// For BuildHEC volumes: single layer, eta_count = HEC_SIZES[layer].
-/// For MergeHEC volumes: two layers merged, eta_count = 1 + HEC_SIZES[layer2].
-///   eta 0 → outermost cell from layer1
-///   eta i (i≥1) → merged cell using layer1[i] + layer2[i-1]
-struct HecVol {
-    name:      &'static str,
-    eta_count: usize,
-    /// (real_layer_0based, z_center_mm) pairs; BuildHEC has 1, MergeHEC has 2
-    segments:  &'static [(usize, f32)],
-}
+/// Decodifica o compact identifier do HEC e gera (CGV path, label).
+/// Bit-shifting idêntico ao CaloGeoXML.C:
+///   eta = (id >> 18) & 0xF
+///   phi = (id >> 12) & 0x3F
+///   lay = (id >> 23) & 0x3
+///   sid = (id >> 25) & 0x1
+fn decode_hec_to_path(id: i64) -> Option<(String, String)> {
+    // IDs no JiveXML são 64-bit; o compact identifier fica nos 32 bits superiores
+    let id = id >> 32;
+    let eta = ((id >> 18) & 0xF)  as usize;
+    let phi = ((id >> 12) & 0x3F) as usize;
+    let lay = ((id >> 23) & 0x3)  as usize;
+    let sid = ((id >> 25) & 0x1)  as usize;
 
-static HEC_VOLS: [HecVol; 4] = [
-    HecVol { name: "HEC1",  eta_count: 14, segments: &[(0, 4490.0)] },
-    HecVol { name: "HEC23", eta_count: 13, segments: &[(1, 4747.5), (2, 4982.5)] },
-    HecVol { name: "HEC45", eta_count: 12, segments: &[(3, 5245.0), (4, 5475.0)] },
-    HecVol { name: "HEC67", eta_count: 12, segments: &[(5, 5705.0), (6, 5935.0)] },
-];
+    if lay >= 4 || eta >= HEC_ETA_SIZES[lay] || phi >= 64 { return None; }
 
-/// Computa η a partir de (r, z): η = -ln(tan(atan2(r, z)/2))
-fn r_z_to_eta(r: f32, z: f32) -> f32 {
-    let theta = r.atan2(z);
-    -(theta * 0.5).tan().ln()
-}
+    let s = if sid == 1 { "p" } else { "n" };
+    let vol_name = HEC_VOL_NAMES[lay];
+    let vol = format!("{}{}", vol_name, s);
+    let phi_idx = 63 - phi; // CaloGeoXML.C: [eta][63-phi]
 
-fn lookup_hec(hit_eta: f32, hit_phi: f32, nth: usize) -> Option<(String, String)> {
-    let abs_eta = hit_eta.abs();
-    if abs_eta < 1.4 || abs_eta > 3.3 { return None; }
-    let side = if hit_eta >= 0.0 { "p" } else { "n" };
+    // Copy number no CGV: HEC1 (single) → copy=eta; HEC23/45/67 (merged) → max(0,eta-1)
+    let copy = if lay > 0 && eta > 0 { eta - 1 } else { eta };
 
-    struct Cand { vol_idx: usize, eta_i: usize, dist: f32 }
-    let mut best_dist = f32::INFINITY;
-    let mut cands: Vec<Cand> = Vec::with_capacity(8);
-
-    for (vi, vol) in HEC_VOLS.iter().enumerate() {
-        // Compute representative eta for each eta_index in this merged volume.
-        // For BuildHEC (1 segment): eta_i maps directly to HECz[layer][eta_i]
-        // For MergeHEC (2 segments): eta_0 uses layer1[0], eta_i (i≥1) averages layer1[i] + layer2[i-1]
-        let n = vol.eta_count;
-        for ei in 0..n {
-            let cell_eta = if vol.segments.len() == 1 {
-                let (rl, zc) = vol.segments[0];
-                r_z_to_eta(HECZ[rl][ei], zc)
-            } else {
-                let (rl1, zc1) = vol.segments[0];
-                let (rl2, zc2) = vol.segments[1];
-                if ei == 0 {
-                    r_z_to_eta(HECZ[rl1][0], zc1)
-                } else {
-                    // Merged cell: average eta from both layers
-                    let e1 = r_z_to_eta(HECZ[rl1][ei], zc1);
-                    let e2 = r_z_to_eta(HECZ[rl2][ei - 1], zc2);
-                    (e1 + e2) * 0.5
-                }
-            };
-            let d = (cell_eta - abs_eta).abs();
-            if d < 0.08 {
-                if d < best_dist { best_dist = d; }
-                cands.push(Cand { vol_idx: vi, eta_i: ei, dist: d });
-            }
-        }
-    }
-    if cands.is_empty() { return None; }
-    cands.retain(|c| c.dist <= best_dist + 0.005);
-    cands.sort_by(|a, b| a.dist.partial_cmp(&b.dist).unwrap());
-    let c = &cands[nth % cands.len()];
-
-    let vol_name = HEC_VOLS[c.vol_idx].name;
-    let raw = ((hit_phi + PI) * 64.0 / (2.0 * PI)).floor() as i32;
-    let j = raw.rem_euclid(64) as usize;
-    let ei = c.eta_i;
-    let vol = format!("{}{}", vol_name, side);
-    let label = format!("{} η{}", vol_name, ei);
-    // MergeHEC copy number: CaloBuild.C AddNode(etaslice, i) where i=0 for eta 0,
-    // and i=0..N-1 for merged cells (eta 1..N). So copy = max(0, ei-1) for merged.
-    // BuildHEC: copy = ei directly.
-    let is_merged = HEC_VOLS[c.vol_idx].segments.len() > 1;
-    let copy = if is_merged && ei > 0 { ei - 1 } else { ei };
-    Some((
-        format!("Calorimeter\u{2192}{vol}_0\u{2192}{vol}{ei}_{copy}\u{2192}cell_{j}"),
-        label,
-    ))
+    let label = format!("{} η{}", vol_name, eta);
+    let path = format!(
+        "Calorimeter\u{2192}{vol}_0\u{2192}{vol}{}_{}\u{2192}cell_{phi_idx}",
+        eta, copy
+    );
+    Some((path, label))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -452,22 +393,16 @@ pub fn process_event(xml_text: &str) -> String {
         }
     }
 
-    // ── 4. HEC ──────────────────────────────────────────────────────────────
-    if let Some((energy, eta, phi, _slot)) = parse_calo_arrays(xml_text, "HEC", &["energy","eta","phi","slot"]) {
-        let n = energy.len().min(eta.len()).min(phi.len());
+    // ── 4. HEC (decodificação via ID — CaloGeoXML.C) ─────────────────────
+    if let Some((energy, ids, eta_xml, phi_xml)) = parse_hec_arrays(xml_text) {
+        let n = energy.len().min(ids.len());
         for v in &energy[..n] { e_min_g = e_min_g.min(*v); e_max_g = e_max_g.max(*v); }
 
-        let mut seen: HashMap<(i32, i32), usize> = HashMap::new();
         for i in 0..n {
-            let hit_eta = eta[i];
-            let hit_phi = phi[i];
-            let eta_key = (hit_eta * 10000.0).round() as i32;
-            let phi_key = (hit_phi * 1000.0).round() as i32;
-            let seen_key = (eta_key, phi_key);
-            let nth = *seen.get(&seen_key).unwrap_or(&0);
-            seen.insert(seen_key, nth + 1);
+            let hit_eta = if i < eta_xml.len() { eta_xml[i] } else { 0.0 };
+            let hit_phi = if i < phi_xml.len() { phi_xml[i] } else { 0.0 };
 
-            match lookup_hec(hit_eta, hit_phi, nth) {
+            match decode_hec_to_path(ids[i]) {
                 Some((path, label)) => {
                     append_hit(&mut hits, &path, energy[i], hit_eta, hit_phi, &label, "HEC");
                     hec_mapped += 1;
@@ -569,6 +504,22 @@ fn parse_lar_arrays(xml_text: &str) -> Option<(Vec<f32>, Vec<i64>, Vec<f32>, Vec
     let pos = find_tag(xml_text, "LAr")?;
     let inner_start = xml_text[pos..].find('>')? + pos + 1;
     let inner_end = xml_text[inner_start..].find("</LAr>")? + inner_start;
+    let inner = &xml_text[inner_start..inner_end];
+
+    let energy = extract_array(inner, "energy").unwrap_or_default();
+    let id     = extract_i64_array(inner, "id").unwrap_or_default();
+    let eta    = extract_array(inner, "eta").unwrap_or_default();
+    let phi    = extract_array(inner, "phi").unwrap_or_default();
+
+    if energy.is_empty() || id.is_empty() { return None; }
+    Some((energy, id, eta, phi))
+}
+
+/// Extrai energy (f32), id (i64), eta (f32), phi (f32) do bloco <HEC>.
+fn parse_hec_arrays(xml_text: &str) -> Option<(Vec<f32>, Vec<i64>, Vec<f32>, Vec<f32>)> {
+    let pos = find_tag(xml_text, "HEC")?;
+    let inner_start = xml_text[pos..].find('>')? + pos + 1;
+    let inner_end = xml_text[inner_start..].find("</HEC>")? + inner_start;
     let inner = &xml_text[inner_start..inner_end];
 
     let energy = extract_array(inner, "energy").unwrap_or_default();

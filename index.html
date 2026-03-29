@@ -1620,12 +1620,6 @@ function buildGhostAtlas(scale, center){
   ring(387,2008,6050,P32,wHEC); ring(387,2008,4350,P32,wHEC);
   cyl(387,-6050,-4350,P32,wHEC); cyl(2008,-6050,-4350,P32,wHEC);
   ring(387,2008,-6050,P32,wHEC); ring(387,2008,-4350,P32,wHEC);
-  // FCal (z≈4700-6200mm, r=80-450mm)
-  cyl(80,4700,6200,P16,wS); cyl(450,4700,6200,P16,wS);
-  ring(80,450,6200,P16,wS); ring(80,450,4700,P16,wS);
-  cyl(80,-6200,-4700,P16,wS); cyl(450,-6200,-4700,P16,wS);
-  ring(80,450,-6200,P16,wS); ring(80,450,-4700,P16,wS);
-
   // Center ghost on geometry
   ghostGroup.position.copy(center);
   ghostGroup.visible = ghostEnabled;
@@ -2501,6 +2495,62 @@ function showToast(msg, err=false){
 }
 
 // ═══════════════════════════════════════════════════════════════
+// DEBUG — decodifica IDs de LAr e HEC com bit-shifting (CaloGeoXML.C)
+// Imprime larpart/be/lay/eta de cada célula capturada do XML
+// ═══════════════════════════════════════════════════════════════
+function debugCaloIds(xmlText){
+  const LAR_PART = [-3,-2,-1, 1, 2, 3, 4, 5];
+  const LAR_BE   = [-3,-2,-1, 1, 2, 3];
+  function extractIds(tag){
+    const s0 = xmlText.indexOf('<'+tag);
+    if(s0<0) return [];
+    const s1 = xmlText.indexOf('>',s0)+1;
+    const s2 = xmlText.indexOf('</'+tag+'>',s1);
+    const block = xmlText.substring(s1,s2);
+    const idS = block.indexOf('<id>')+4, idE = block.indexOf('</id>');
+    if(idS<4||idE<0) return [];
+    // BigInt para preservar os 64 bits sem perda de precisão
+    return block.substring(idS,idE).trim().split(/\s+/).map(s => BigInt(s));
+  }
+  // --- LAr ---
+  const larIds = extractIds('LAr');
+  if(larIds.length){
+    const rows = [];
+    for(const id64 of larIds){
+      // Compact ID nos 32 bits superiores (JiveXML usa Identifier 64-bit)
+      const id = id64 >> 32n;
+      const partIdx = Number((id >> 26n) & 7n);
+      const beIdx   = Number((id >> 23n) & 7n);
+      const larpart = partIdx<8 ? LAR_PART[partIdx] : 99;
+      const be      = beIdx<6  ? LAR_BE[beIdx]     : 99;
+      let lay=-1, eta=-1;
+      if(larpart===1){ lay=Number((id>>21n)&3n); eta=Number((id>>9n)&511n); }
+      else if(larpart===2){ lay=Number((id>>23n)&3n); eta=Number((id>>18n)&15n); }
+      else if(larpart===3){ lay=Number((id>>23n)&3n); eta=Number((id>>17n)&63n); }
+      rows.push({larpart, be, lay, eta});
+    }
+    console.log(`[LAr] ${larIds.length} IDs — larpart | be | lay | eta:`);
+    console.table(rows);
+  }
+  // --- HEC ---
+  const hecIds = extractIds('HEC');
+  if(hecIds.length){
+    const rows = [];
+    for(const id64 of hecIds){
+      // Compact ID nos 32 bits superiores
+      const id = id64 >> 32n;
+      const eta = Number((id>>18n) & 0xFn);
+      const phi = Number((id>>12n) & 0x3Fn);
+      const lay = Number((id>>23n) & 0x3n);
+      const sid = Number((id>>25n) & 0x1n);
+      rows.push({lay, eta, phi, sid});
+    }
+    console.log(`[HEC] ${hecIds.length} IDs — lay | eta | phi | sid:`);
+    console.table(rows);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // XML LOADER
 // ═══════════════════════════════════════════════════════════════
 async function loadXmlContent(xmlText, filename){
@@ -2520,6 +2570,8 @@ async function loadXmlContent(xmlText, filename){
   document.getElementById('s-erange').textContent = `${eMin_mev.toFixed(1)} / ${eMax_mev.toFixed(1)} MeV`;
   // Per-detector stats
   console.log(`[calo] TILE: ${result.tile_mapped}/${result.tile_mapped+result.tile_unmapped}, MBTS: ${result.mbts_mapped}, LAr: ${result.lar_mapped}/${result.lar_mapped+result.lar_unmapped}, HEC: ${result.hec_mapped}/${result.hec_mapped+result.hec_unmapped}`);
+  // LAr debug: decodifica IDs com bit-shifting (CaloGeoXML.C) e imprime larpart, be, lay, eta
+  debugCaloIds(xmlText);
 
   setHovered(-1,-1);
   clearSelection();
