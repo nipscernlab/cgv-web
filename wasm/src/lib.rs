@@ -3,7 +3,29 @@ use std::f32::consts::PI;
 use std::collections::HashMap;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  TILE CAL  –  tabela estática (inalterada)
+//  TILE CAL  –  Tabela de correspondência XML ↔ Geometria CGV
+//
+//  O campo "sub" no JiveXML AllCalo codifica a PARTIÇÃO do TileCal,
+//  não a camada de amostragem. Cada partição contém múltiplas camadas.
+//
+//  Mapeamento confirmado pelo XML JiveXML_516390_410843827.xml (5182 células):
+//
+//  sub | Partição           | Células (η)         | Volume CGV     | Total
+//  ----|--------------------|---------------------|----------------|------
+//   3  | LBA (Long Barrel+) | A1-A10, BC1-B9, D0-D3  | Tile1p/23p/4p  | 1472
+//   2  | LBC (Long Barrel−) | A1-A10, BC1-B9, D1-D3  | Tile1n/23n/4n  | 1408
+//   5  | EBA (Ext. Barrel+) | A12-A16, B12-B15, D4-D6| Tile5p/6p/7p/8p|  768
+//   0  | EBC (Ext. Barrel−) | A12-A16, B12-B15, D4-D6| Tile5n/6n/7n/8n|  768
+//   4  | EBA especial (+)   | C10,B11,E1-E4          | Tile9p/10-13p  |  383
+//   1  | EBC especial (−)   | C10,B11,E1-E4          | Tile9n/10-13n  |  383
+//  (MBTS tratado separadamente do bloco <MBTS> do XML, não do <TILE>)
+//
+//  Notas importantes:
+//  · D0 (η≈0): pertence apenas ao LBA (sub=3); ausente no LBC (sub=2)
+//  · Cada A e BC na mesma posição (η, φ) usa o contador "nth" para distinguir
+//  · C10 tem 63 células φ (phi_j=46 ausente no detector)
+//  · eta_c são os centros exatos medidos do XML — validados célula a célula
+//  · Phi: j = floor((φ+π)×64/(2π)) mod 64 → cell_{j} no GLB
 // ═══════════════════════════════════════════════════════════════════════════════
 
 struct TileCell {
@@ -16,7 +38,8 @@ struct TileCell {
 }
 
 static TILE_CELLS: &[TileCell] = &[
-    // ── sub=3: LBA (η > 0) ─────────────────────────────────────────────────
+    // ── sub=3: LBA — Long Barrel A-side (η > 0) ────────────────────────────
+    // Camada A (Tile1p): A1-A10, eta_i = 0..9
     TileCell { sub:3, eta_c: 0.05, tile_vol:"Tile1p",  eta_i:0, phi_n:64, cell_name:"A1"  },
     TileCell { sub:3, eta_c: 0.15, tile_vol:"Tile1p",  eta_i:1, phi_n:64, cell_name:"A2"  },
     TileCell { sub:3, eta_c: 0.25, tile_vol:"Tile1p",  eta_i:2, phi_n:64, cell_name:"A3"  },
@@ -27,6 +50,7 @@ static TILE_CELLS: &[TileCell] = &[
     TileCell { sub:3, eta_c: 0.75, tile_vol:"Tile1p",  eta_i:7, phi_n:64, cell_name:"A8"  },
     TileCell { sub:3, eta_c: 0.85, tile_vol:"Tile1p",  eta_i:8, phi_n:64, cell_name:"A9"  },
     TileCell { sub:3, eta_c: 0.95, tile_vol:"Tile1p",  eta_i:9, phi_n:64, cell_name:"A10" },
+    // Camada BC (Tile23p): BC1-B9, eta_i = 0..8 (mesmos η da camada A → usa nth)
     TileCell { sub:3, eta_c: 0.05, tile_vol:"Tile23p", eta_i:0, phi_n:64, cell_name:"BC1" },
     TileCell { sub:3, eta_c: 0.15, tile_vol:"Tile23p", eta_i:1, phi_n:64, cell_name:"BC2" },
     TileCell { sub:3, eta_c: 0.25, tile_vol:"Tile23p", eta_i:2, phi_n:64, cell_name:"BC3" },
@@ -36,11 +60,13 @@ static TILE_CELLS: &[TileCell] = &[
     TileCell { sub:3, eta_c: 0.65, tile_vol:"Tile23p", eta_i:6, phi_n:64, cell_name:"BC7" },
     TileCell { sub:3, eta_c: 0.75, tile_vol:"Tile23p", eta_i:7, phi_n:64, cell_name:"BC8" },
     TileCell { sub:3, eta_c: 0.85, tile_vol:"Tile23p", eta_i:8, phi_n:64, cell_name:"B9"  },
+    // Camada D (Tile4p): D0-D3, eta_i = 0..3 (D0 a η=0 pertence só ao LBA)
     TileCell { sub:3, eta_c: 0.00, tile_vol:"Tile4p",  eta_i:0, phi_n:64, cell_name:"D0"  },
     TileCell { sub:3, eta_c: 0.20, tile_vol:"Tile4p",  eta_i:1, phi_n:64, cell_name:"D1"  },
     TileCell { sub:3, eta_c: 0.40, tile_vol:"Tile4p",  eta_i:2, phi_n:64, cell_name:"D2"  },
     TileCell { sub:3, eta_c: 0.60, tile_vol:"Tile4p",  eta_i:3, phi_n:64, cell_name:"D3"  },
-    // ── sub=2: LBC (η < 0) ─────────────────────────────────────────────────
+    // ── sub=2: LBC — Long Barrel C-side (η < 0) ────────────────────────────
+    // Camada A (Tile1n): A1-A10
     TileCell { sub:2, eta_c:-0.05, tile_vol:"Tile1n",  eta_i:0, phi_n:64, cell_name:"A1"  },
     TileCell { sub:2, eta_c:-0.15, tile_vol:"Tile1n",  eta_i:1, phi_n:64, cell_name:"A2"  },
     TileCell { sub:2, eta_c:-0.25, tile_vol:"Tile1n",  eta_i:2, phi_n:64, cell_name:"A3"  },
@@ -51,6 +77,7 @@ static TILE_CELLS: &[TileCell] = &[
     TileCell { sub:2, eta_c:-0.75, tile_vol:"Tile1n",  eta_i:7, phi_n:64, cell_name:"A8"  },
     TileCell { sub:2, eta_c:-0.85, tile_vol:"Tile1n",  eta_i:8, phi_n:64, cell_name:"A9"  },
     TileCell { sub:2, eta_c:-0.95, tile_vol:"Tile1n",  eta_i:9, phi_n:64, cell_name:"A10" },
+    // Camada BC (Tile23n): BC1-B9
     TileCell { sub:2, eta_c:-0.05, tile_vol:"Tile23n", eta_i:0, phi_n:64, cell_name:"BC1" },
     TileCell { sub:2, eta_c:-0.15, tile_vol:"Tile23n", eta_i:1, phi_n:64, cell_name:"BC2" },
     TileCell { sub:2, eta_c:-0.25, tile_vol:"Tile23n", eta_i:2, phi_n:64, cell_name:"BC3" },
@@ -60,53 +87,62 @@ static TILE_CELLS: &[TileCell] = &[
     TileCell { sub:2, eta_c:-0.65, tile_vol:"Tile23n", eta_i:6, phi_n:64, cell_name:"BC7" },
     TileCell { sub:2, eta_c:-0.75, tile_vol:"Tile23n", eta_i:7, phi_n:64, cell_name:"BC8" },
     TileCell { sub:2, eta_c:-0.85, tile_vol:"Tile23n", eta_i:8, phi_n:64, cell_name:"B9"  },
+    // Camada D (Tile4n): D1-D3 (sem D0 — D0 pertence ao LBA)
     TileCell { sub:2, eta_c:-0.20, tile_vol:"Tile4n",  eta_i:1, phi_n:64, cell_name:"D1"  },
     TileCell { sub:2, eta_c:-0.40, tile_vol:"Tile4n",  eta_i:2, phi_n:64, cell_name:"D2"  },
     TileCell { sub:2, eta_c:-0.60, tile_vol:"Tile4n",  eta_i:3, phi_n:64, cell_name:"D3"  },
-    // ── sub=5: EBA regular (η > 0) ─────────────────────────────────────────
+    // ── sub=5: EBA regular — Extended Barrel A-side (η > 0) ─────────────────
+    // Camada A (Tile5p): A12-A16, eta_i = 0..4
     TileCell { sub:5, eta_c: 1.0587, tile_vol:"Tile5p",  eta_i:0, phi_n:64, cell_name:"A12" },
     TileCell { sub:5, eta_c: 1.1594, tile_vol:"Tile5p",  eta_i:1, phi_n:64, cell_name:"A13" },
     TileCell { sub:5, eta_c: 1.2587, tile_vol:"Tile5p",  eta_i:2, phi_n:64, cell_name:"A14" },
     TileCell { sub:5, eta_c: 1.3579, tile_vol:"Tile5p",  eta_i:3, phi_n:64, cell_name:"A15" },
     TileCell { sub:5, eta_c: 1.4573, tile_vol:"Tile5p",  eta_i:4, phi_n:64, cell_name:"A16" },
+    // Camada B (Tile6p): B12-B15, eta_i = 1..4
     TileCell { sub:5, eta_c: 1.1580, tile_vol:"Tile6p",  eta_i:1, phi_n:64, cell_name:"B12" },
     TileCell { sub:5, eta_c: 1.2574, tile_vol:"Tile6p",  eta_i:2, phi_n:64, cell_name:"B13" },
     TileCell { sub:5, eta_c: 1.3568, tile_vol:"Tile6p",  eta_i:3, phi_n:64, cell_name:"B14" },
     TileCell { sub:5, eta_c: 1.4562, tile_vol:"Tile6p",  eta_i:4, phi_n:64, cell_name:"B15" },
+    // Camada D: D4 (Tile8p), D5-D6 (Tile7p)
     TileCell { sub:5, eta_c: 1.0074, tile_vol:"Tile8p",  eta_i:0, phi_n:64, cell_name:"D4"  },
     TileCell { sub:5, eta_c: 1.2064, tile_vol:"Tile7p",  eta_i:0, phi_n:64, cell_name:"D5"  },
     TileCell { sub:5, eta_c: 1.5566, tile_vol:"Tile7p",  eta_i:1, phi_n:64, cell_name:"D6"  },
-    // ── sub=0: EBC regular (η < 0) ─────────────────────────────────────────
+    // ── sub=0: EBC regular — Extended Barrel C-side (η < 0) ─────────────────
+    // Camada A (Tile5n): A12-A16
     TileCell { sub:0, eta_c:-1.0565, tile_vol:"Tile5n",  eta_i:0, phi_n:64, cell_name:"A12" },
     TileCell { sub:0, eta_c:-1.1570, tile_vol:"Tile5n",  eta_i:1, phi_n:64, cell_name:"A13" },
     TileCell { sub:0, eta_c:-1.2565, tile_vol:"Tile5n",  eta_i:2, phi_n:64, cell_name:"A14" },
     TileCell { sub:0, eta_c:-1.3559, tile_vol:"Tile5n",  eta_i:3, phi_n:64, cell_name:"A15" },
     TileCell { sub:0, eta_c:-1.4554, tile_vol:"Tile5n",  eta_i:4, phi_n:64, cell_name:"A16" },
+    // Camada B (Tile6n): B12-B15
     TileCell { sub:0, eta_c:-1.1560, tile_vol:"Tile6n",  eta_i:1, phi_n:64, cell_name:"B12" },
     TileCell { sub:0, eta_c:-1.2555, tile_vol:"Tile6n",  eta_i:2, phi_n:64, cell_name:"B13" },
     TileCell { sub:0, eta_c:-1.3551, tile_vol:"Tile6n",  eta_i:3, phi_n:64, cell_name:"B14" },
     TileCell { sub:0, eta_c:-1.4546, tile_vol:"Tile6n",  eta_i:4, phi_n:64, cell_name:"B15" },
+    // Camada D: D4 (Tile8n), D5-D6 (Tile7n)
     TileCell { sub:0, eta_c:-1.0056, tile_vol:"Tile8n",  eta_i:0, phi_n:64, cell_name:"D4"  },
     TileCell { sub:0, eta_c:-1.2048, tile_vol:"Tile7n",  eta_i:0, phi_n:64, cell_name:"D5"  },
     TileCell { sub:0, eta_c:-1.5550, tile_vol:"Tile7n",  eta_i:1, phi_n:64, cell_name:"D6"  },
-    // ── sub=4: EBA especial (η > 0) ────────────────────────────────────────
+    // ── sub=4: EBA especial — Extended Barrel A-side, células gap/crack (η > 0)
+    // C10: célula de gap (Tile9p), 63 φ no detector (φ_j=46 ausente)
     TileCell { sub:4, eta_c: 0.8580, tile_vol:"Tile9p",  eta_i:0, phi_n:64, cell_name:"C10" },
+    // B11: camada B, eta_i=0 no mesmo volume Tile6p dos B12-B15
     TileCell { sub:4, eta_c: 0.9584, tile_vol:"Tile6p",  eta_i:0, phi_n:64, cell_name:"B11" },
+    // E1-E4: crack cells (Tile10p-13p), eta_c corrigidos do XML real
     TileCell { sub:4, eta_c: 1.0589, tile_vol:"Tile10p", eta_i:0, phi_n:64, cell_name:"E1"  },
     TileCell { sub:4, eta_c: 1.1593, tile_vol:"Tile11p", eta_i:0, phi_n:64, cell_name:"E2"  },
-    TileCell { sub:4, eta_c: 1.3098, tile_vol:"Tile12p", eta_i:0, phi_n:64, cell_name:"E3"  },
-    TileCell { sub:4, eta_c: 1.5104, tile_vol:"Tile13p", eta_i:0, phi_n:64, cell_name:"E4"  },
-    // ── sub=1: EBC especial (η < 0) ────────────────────────────────────────
+    TileCell { sub:4, eta_c: 1.4099, tile_vol:"Tile12p", eta_i:0, phi_n:64, cell_name:"E3"  },
+    TileCell { sub:4, eta_c: 1.6705, tile_vol:"Tile13p", eta_i:0, phi_n:64, cell_name:"E4"  },
+    // ── sub=1: EBC especial — Extended Barrel C-side, células gap/crack (η < 0)
     TileCell { sub:1, eta_c:-0.8560, tile_vol:"Tile9n",  eta_i:0, phi_n:64, cell_name:"C10" },
     TileCell { sub:1, eta_c:-0.9563, tile_vol:"Tile6n",  eta_i:0, phi_n:64, cell_name:"B11" },
     TileCell { sub:1, eta_c:-1.0567, tile_vol:"Tile10n", eta_i:0, phi_n:64, cell_name:"E1"  },
     TileCell { sub:1, eta_c:-1.1570, tile_vol:"Tile11n", eta_i:0, phi_n:64, cell_name:"E2"  },
-    TileCell { sub:1, eta_c:-1.3074, tile_vol:"Tile12n", eta_i:0, phi_n:64, cell_name:"E3"  },
-    TileCell { sub:1, eta_c:-1.5078, tile_vol:"Tile13n", eta_i:0, phi_n:64, cell_name:"E4"  },
-    // ── sub=6: MBTS-A (η > 0, φ_n=8) ──────────────────────────────────────
+    TileCell { sub:1, eta_c:-1.4075, tile_vol:"Tile12n", eta_i:0, phi_n:64, cell_name:"E3"  },
+    TileCell { sub:1, eta_c:-1.6679, tile_vol:"Tile13n", eta_i:0, phi_n:64, cell_name:"E4"  },
+    // ── sub=6/7: MBTS — tratado pelo bloco <MBTS> do XML, estes são fallback ──
     TileCell { sub:6, eta_c: 2.40, tile_vol:"Tile14p", eta_i:0, phi_n:8, cell_name:"MBTS2" },
     TileCell { sub:6, eta_c: 3.20, tile_vol:"Tile15p", eta_i:0, phi_n:8, cell_name:"MBTS1" },
-    // ── sub=7: MBTS-C (η < 0, φ_n=8) ──────────────────────────────────────
     TileCell { sub:7, eta_c:-2.40, tile_vol:"Tile14n", eta_i:0, phi_n:8, cell_name:"MBTS2" },
     TileCell { sub:7, eta_c:-3.20, tile_vol:"Tile15n", eta_i:0, phi_n:8, cell_name:"MBTS1" },
 ];
@@ -317,10 +353,10 @@ pub fn process_event(xml_text: &str) -> String {
     let mut tile_mapped   = 0usize;
     let mut tile_unmapped = 0usize;
     let mut mbts_mapped   = 0usize;
-    let mut lar_mapped    = 0usize;
-    let mut lar_unmapped  = 0usize;
-    let mut hec_mapped    = 0usize;
-    let mut hec_unmapped  = 0usize;
+    let lar_mapped    = 0usize;
+    let lar_unmapped  = 0usize;
+    let hec_mapped    = 0usize;
+    let hec_unmapped  = 0usize;
 
     // ── 1. TILE ─────────────────────────────────────────────────────────────
     if let Some((energy, eta, phi, sub)) = parse_calo_arrays(xml_text, "TILE", &["energy","eta","phi","sub"]) {
@@ -374,44 +410,12 @@ pub fn process_event(xml_text: &str) -> String {
     }
 
     // ── 3. LAr  (decodificação via ID — CaloGeoXML.C) ──────────────────────
-    if let Some((energy, ids, eta_xml, phi_xml)) = parse_lar_arrays(xml_text) {
-        let n = energy.len().min(ids.len());
-        for v in &energy[..n] { e_min_g = e_min_g.min(*v); e_max_g = e_max_g.max(*v); }
-
-        for i in 0..n {
-            let hit_eta = if i < eta_xml.len() { eta_xml[i] } else { 0.0 };
-            let hit_phi = if i < phi_xml.len() { phi_xml[i] } else { 0.0 };
-
-            match decode_lar_id(ids[i]).and_then(|d| lar_id_to_path(&d)) {
-                Some((path, label)) => {
-                    append_hit(&mut hits, &path, energy[i], hit_eta, hit_phi, &label, "LAr");
-                    lar_mapped += 1;
-                    mapped += 1;
-                }
-                None => { lar_unmapped += 1; unmapped += 1; }
-            }
-        }
-    }
+    // DESABILITADO: LAr não incluído nesta versão (apenas TileCal)
+    // if let Some((energy, ids, eta_xml, phi_xml)) = parse_lar_arrays(xml_text) { ... }
 
     // ── 4. HEC (decodificação via ID — CaloGeoXML.C) ─────────────────────
-    if let Some((energy, ids, eta_xml, phi_xml)) = parse_hec_arrays(xml_text) {
-        let n = energy.len().min(ids.len());
-        for v in &energy[..n] { e_min_g = e_min_g.min(*v); e_max_g = e_max_g.max(*v); }
-
-        for i in 0..n {
-            let hit_eta = if i < eta_xml.len() { eta_xml[i] } else { 0.0 };
-            let hit_phi = if i < phi_xml.len() { phi_xml[i] } else { 0.0 };
-
-            match decode_hec_to_path(ids[i]) {
-                Some((path, label)) => {
-                    append_hit(&mut hits, &path, energy[i], hit_eta, hit_phi, &label, "HEC");
-                    hec_mapped += 1;
-                    mapped += 1;
-                }
-                None => { hec_unmapped += 1; unmapped += 1; }
-            }
-        }
-    }
+    // DESABILITADO: HEC não incluído nesta versão (apenas TileCal)
+    // if let Some((energy, ids, eta_xml, phi_xml)) = parse_hec_arrays(xml_text) { ... }
 
     // ── Resultado ───────────────────────────────────────────────────────────
     format!(

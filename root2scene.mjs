@@ -81,6 +81,7 @@ function parseCliArgs() {
       'no-gltf':      { type: 'boolean', default: false },
       'no-cgv':       { type: 'boolean', default: false },
       verbose:        { type: 'boolean', default: false },
+      'tilecal-only': { type: 'boolean', default: false },
       help:           { type: 'boolean', default: false },
     },
   });
@@ -95,6 +96,7 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
   --visible-only     pular volumes invisíveis (bit kVisThis)
   --no-gltf          gerar apenas o .cgv, pular o .gltf
   --no-cgv           gerar apenas o .gltf, pular o .cgv
+  --tilecal-only     gerar apenas volumes TileCal (Tile1-15)
   --verbose          log detalhado
   --help             esta mensagem
 `);
@@ -111,6 +113,7 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
     visibleOnly: values['visible-only'],
     noGltf:      values['no-gltf'],
     noCgv:       values['no-cgv'],
+    tilecalOnly: values['tilecal-only'],
   };
 }
 
@@ -544,6 +547,8 @@ async function buildGltf(geoResult, rootPath, opts) {
           const childName = child.fName ?? child.fVolume?.fName ?? '';
           // --subtree filtra filhos DIRETOS do root (depth=0)
           if (opts.subtree && depth === 0 && !childName.startsWith(opts.subtree)) continue;
+          // --tilecal-only keeps only Tile1-Tile15 volumes
+          if (opts.tilecalOnly && depth === 0 && !/^Tile\d/.test(childName)) continue;
           stack.push({ node: child, worldMat: nodeMat, ancestorPath: path, depth: depth + 1 });
         }
       }
