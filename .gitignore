@@ -1,3 +1,4 @@
 /node_modules
 wasm/target/
 filter_glb.mjs
+cgvweb
