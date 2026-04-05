@@ -1,17 +1,5 @@
 {
-  "name": "root2scene",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "Converts CERN .root files to CGV hierarchy tree + Three.js GLTF scene",
-  "main": "root2scene.mjs",
-  "bin": {
-    "root2scene": "./root2scene.mjs"
-  },
   "dependencies": {
     "jsroot": "^7.10.3"
-  },
-  "devDependencies": {
-    "@gltf-transform/core": "^4.3.0",
-    "@gltf-transform/functions": "^4.3.0"
   }
 }

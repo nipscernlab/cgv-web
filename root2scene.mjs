@@ -447,12 +447,10 @@ class MaterialCache {
   get(color, opacity) {
     const key = `${color.getHexString()}_${opacity.toFixed(3)}`;
     if (!this.#map.has(key)) {
-      this.#map.set(key, new THREE.MeshStandardMaterial({
+      this.#map.set(key, new THREE.MeshBasicMaterial({
         color,
         opacity,
         transparent : opacity < 1.0,
-        roughness   : 0.55,
-        metalness   : 0.05,
         side        : THREE.DoubleSide,
       }));
     }
@@ -515,7 +513,20 @@ async function buildGltf(geoResult, rootPath, opts) {
           } catch (e) {
             dbg(`createGeometry falhou "${name}" (${shape._typename}): ${e.message}`);
           }
-          if (bufGeo && sig) { geoCache.set(sig, bufGeo); nUniq++; }
+          if (bufGeo && sig) {
+            // Pre-normalise normals so GLTFExporter doesn't create a slow copy
+            const nAttr = bufGeo.attributes.normal;
+            if (nAttr) {
+              const a = nAttr.array;
+              for (let k = 0; k < a.length; k += 3) {
+                const len = Math.sqrt(a[k] * a[k] + a[k + 1] * a[k + 1] + a[k + 2] * a[k + 2]);
+                if (len > 1e-10) { a[k] /= len; a[k + 1] /= len; a[k + 2] /= len; }
+              }
+              nAttr.needsUpdate = true;
+            }
+            geoCache.set(sig, bufGeo);
+            nUniq++;
+          }
         }
 
         if (bufGeo) {
@@ -557,11 +568,14 @@ async function buildGltf(geoResult, rootPath, opts) {
     ok(`GLB: ${nMesh} meshes · ${nUniq} geometrias únicas`);
   }
 
-  const exporter      = new GLTFExporter();
-  const glbArrayBuffer = await exporter.parseAsync(scene, {
-    binary      : true,
-    embedImages : false,
-    onlyVisible : false,
+  const exporter = new GLTFExporter();
+  const glbArrayBuffer = await new Promise((resolve, reject) => {
+    exporter.parse(
+      scene,
+      (result) => resolve(result),
+      (err)    => reject(err),
+      { binary: true, embedImages: false, onlyVisible: false }
+    );
   });
 
   return Buffer.from(glbArrayBuffer);
