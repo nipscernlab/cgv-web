@@ -16,141 +16,104 @@
   }
   </script>
   <style>
-    /* ── Variables ─────────────────────────────────────── */
+    /* ── Variables ───────────────────────────────────────── */
     :root {
-      --bg:        #01192e;
-      --panel:     rgba(1, 20, 45, 0.78);
-      --border:    rgba(40, 110, 210, 0.22);
-      --text:      #b8d4f2;
-      --muted:     #3a5a82;
-      --bright:    #e8f4ff;
-      --accent:    #2a7aef;
-      --ok:        #30d870;
-      --warn:      #f0a020;
-      --err:       #f03838;
-      --font:      'Inter', system-ui, sans-serif;
-      --mono:      'JetBrains Mono', 'Courier New', monospace;
-      --blur:      blur(18px) saturate(1.6);
-      --r:         7px;
+      --bg:     #01192e;
+      --panel:  rgba(1, 20, 45, 0.78);
+      --border: rgba(40, 110, 210, 0.22);
+      --text:   #b8d4f2;
+      --muted:  #3a5a82;
+      --bright: #e8f4ff;
+      --accent: #2a7aef;
+      --ok:     #30d870;
+      --warn:   #f0a020;
+      --err:    #f03838;
+      --font:   'Inter', system-ui, sans-serif;
+      --mono:   'JetBrains Mono', 'Courier New', monospace;
+      --blur:   blur(18px) saturate(1.6);
+      --r:      7px;
     }
 
-    /* ── Reset ─────────────────────────────────────────── */
+    /* ── Reset ───────────────────────────────────────────── */
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font);
-      overflow: hidden;
-    }
-    canvas {
-      display: block;
-      width: 100vw;
-      height: 100vh;
-    }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
     button { font-family: var(--font); cursor: pointer; }
 
-    /* ── Icon helper ───────────────────────────────────── */
+    /* ── Icon helper ─────────────────────────────────────── */
     .ic {
-      display: inline-block;
-      width: 13px; height: 13px;
+      display: inline-block; width: 13px; height: 13px;
       stroke: currentColor; fill: none;
       stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-      vertical-align: middle; flex-shrink: 0;
-      overflow: visible;
+      vertical-align: middle; flex-shrink: 0; overflow: visible;
     }
     svg.defs { display: none; }
 
-    /* ── Left panel ────────────────────────────────────── */
+    /* ── Left panel ──────────────────────────────────────── */
     #panel {
-      position: fixed;
-      top: 0; left: 0;
+      position: fixed; top: 0; left: 0;
       width: 230px; height: 100vh;
       background: var(--panel);
-      backdrop-filter: var(--blur);
-      -webkit-backdrop-filter: var(--blur);
+      backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
       border-right: 1px solid var(--border);
       display: flex; flex-direction: column;
       z-index: 10;
+      transition: opacity 0.5s ease;
     }
-
     #panel-head {
       padding: 18px 16px 12px;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
-    .logo    { font: 600 1.3rem var(--font); color: var(--bright); letter-spacing: .05em; }
-    .logo-s  { font-size: .6rem; color: var(--muted); letter-spacing: .12em;
-               text-transform: uppercase; margin-top: 3px; }
+    .logo   { font: 600 1.3rem var(--font); color: var(--bright); letter-spacing: .05em; }
+    .logo-s { font-size: .6rem; color: var(--muted); letter-spacing: .12em;
+              text-transform: uppercase; margin-top: 3px; }
 
     /* Mode bar */
     #mode-bar {
-      display: flex; gap: 5px;
-      padding: 9px 12px;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
+      display: flex; gap: 5px; padding: 9px 12px;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
     .mbtn {
       flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
       padding: 6px 4px;
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: var(--r);
-      color: var(--muted);
-      font: 500 .68rem var(--font); letter-spacing: .07em;
+      background: transparent; border: 1px solid var(--border); border-radius: var(--r);
+      color: var(--muted); font: 500 .68rem var(--font); letter-spacing: .07em;
       transition: all .15s;
     }
     .mbtn:hover { color: var(--text); border-color: rgba(60,140,240,.4); }
-    .mbtn.on  {
-      background: rgba(42,122,239,.18);
-      border-color: var(--accent);
-      color: #7ab8ff;
-    }
+    .mbtn.on { background: rgba(42,122,239,.18); border-color: var(--accent); color: #7ab8ff; }
 
     /* Live section */
     #live-sec { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
     #live-bar {
       display: flex; align-items: center; gap: 7px;
-      padding: 8px 12px;
-      font-size: .7rem; color: var(--muted);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
+      padding: 8px 12px; font-size: .7rem; color: var(--muted);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
     .ldot {
       width: 7px; height: 7px; border-radius: 50%;
-      background: var(--muted); flex-shrink: 0;
-      transition: background .3s;
+      background: var(--muted); flex-shrink: 0; transition: background .3s;
     }
-    .ldot.ok  { background: var(--ok);  box-shadow: 0 0 5px var(--ok);  }
+    .ldot.ok  { background: var(--ok);  box-shadow: 0 0 5px var(--ok); }
     .ldot.err { background: var(--err); }
     .ldot.dl  { background: var(--warn); }
     .ldot.pulse { animation: pulse 1.4s ease-in-out infinite; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
     #live-txt { flex: 1; }
-
     #ibtn-play, #ibtn-stop {
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      color: var(--muted);
-      padding: 2px 5px; line-height: 0;
-      transition: all .15s;
+      background: transparent; border: 1px solid var(--border); border-radius: 4px;
+      color: var(--muted); padding: 2px 5px; line-height: 0; transition: all .15s;
     }
     #ibtn-play:hover { color: var(--ok);  border-color: var(--ok); }
     #ibtn-stop:hover { color: var(--err); border-color: var(--err); }
-
-    /* Event list */
-    #evt-list {
-      flex: 1; overflow-y: auto; padding: 6px 8px;
-    }
+    #evt-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
     #evt-list::-webkit-scrollbar { width: 3px; }
     #evt-list::-webkit-scrollbar-thumb { background: rgba(60,130,230,.25); border-radius: 2px; }
     .erow {
       display: flex; align-items: center; gap: 6px;
-      padding: 7px 8px; border-radius: 5px;
-      cursor: pointer;
-      border: 1px solid transparent;
-      transition: all .12s;
-      margin-bottom: 3px;
+      padding: 7px 8px; border-radius: 5px; cursor: pointer;
+      border: 1px solid transparent; transition: all .12s; margin-bottom: 3px;
     }
     .erow:hover { background: rgba(42,122,239,.1); border-color: rgba(42,122,239,.25); }
     .erow.cur  { background: rgba(42,122,239,.18); border-color: var(--accent); }
@@ -159,132 +122,143 @@
              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .etime { font-size: .59rem; color: var(--muted); margin-top: 2px; }
     .edl {
-      background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 4px; color: var(--muted);
-      padding: 2px 5px; line-height: 0;
-      flex-shrink: 0;
+      background: transparent; border: 1px solid var(--border); border-radius: 4px;
+      color: var(--muted); padding: 2px 5px; line-height: 0; flex-shrink: 0;
       transition: all .15s;
     }
     .edl:hover { color: var(--accent); border-color: var(--accent); }
-
-    /* Local section */
     #local-sec { padding: 12px; flex-shrink: 0; }
     .uplbl {
       display: flex; align-items: center; justify-content: center; gap: 7px;
       width: 100%; padding: 9px 12px;
-      background: rgba(42,122,239,.13);
-      border: 1px solid rgba(42,122,239,.4);
-      border-radius: var(--r);
-      color: #80b8ff;
+      background: rgba(42,122,239,.13); border: 1px solid rgba(42,122,239,.4);
+      border-radius: var(--r); color: #80b8ff;
       font: 500 .73rem var(--font); letter-spacing: .08em;
-      cursor: pointer; user-select: none;
-      transition: background .15s;
+      cursor: pointer; user-select: none; transition: background .15s;
     }
     .uplbl:hover { background: rgba(42,122,239,.24); }
     #file-in { display: none; }
-
-    /* Status */
     #statusbar {
-      padding: 8px 12px;
-      font-size: .66rem; color: var(--muted);
+      padding: 8px 12px; font-size: .66rem; color: var(--muted);
       line-height: 1.7; min-height: 34px;
-      border-top: 1px solid var(--border);
-      flex-shrink: 0;
+      border-top: 1px solid var(--border); flex-shrink: 0;
     }
-    .ok   { color: var(--ok);   }
+    .ok   { color: var(--ok); }
     .warn { color: var(--warn); }
-    .err  { color: var(--err);  }
+    .err  { color: var(--err); }
 
-    /* ── Right slider ──────────────────────────────────── */
+    /* ── Right slider ────────────────────────────────────── */
     #slider-wrap {
-      position: fixed;
-      right: 18px; top: 50%;
-      transform: translateY(-50%);
+      position: fixed; right: 18px; top: 50%; transform: translateY(-50%);
       z-index: 10;
       display: flex; flex-direction: column; align-items: center; gap: 5px;
-      padding: 12px 10px;
+      padding: 14px 12px;
       background: rgba(1, 14, 34, 0.78);
-      backdrop-filter: var(--blur);
-      -webkit-backdrop-filter: var(--blur);
-      border: 1px solid var(--border);
-      border-radius: 14px;
+      backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--border); border-radius: 14px;
       box-shadow: 0 4px 28px rgba(0,0,0,.45);
+      /* fade in/out on hover */
+      opacity: 0.2;
+      transition: opacity 0.38s ease;
     }
+    #slider-wrap:hover, #slider-wrap.dragging { opacity: 1; }
+
     .slbl { font: 400 .56rem var(--font); letter-spacing: .14em; color: var(--muted);
             text-transform: uppercase; text-align: center; }
-    .sval { font: 400 .6rem var(--mono); color: var(--muted); text-align: center;
-            min-width: 62px; }
+    .sval { font: 400 .6rem var(--mono); color: var(--muted); text-align: center; min-width: 62px; }
+
     #strak {
-      position: relative;
-      width: 22px; height: 280px;
-      border-radius: 11px;
-      cursor: pointer;
-      user-select: none; touch-action: none;
+      position: relative; width: 26px; height: 340px;
+      border-radius: 13px; cursor: pointer; user-select: none; touch-action: none;
       background: linear-gradient(to top,
-        #0030ff  0%,
-        #00b8ff 20%,
-        #00e870 42%,
-        #ffe000 65%,
-        #ff4800 84%,
-        #ff0000 100%
+        #0030ff  0%, #00b8ff 20%, #00e870 42%,
+        #ffe000  65%, #ff4800 84%, #ff0000 100%
       );
       border: 1px solid rgba(255,255,255,.1);
-      box-shadow: 0 0 20px rgba(0,60,200,.22), inset 0 1px 6px rgba(0,0,0,.35);
+      box-shadow: 0 0 22px rgba(0,60,200,.24), inset 0 1px 6px rgba(0,0,0,.35);
     }
-    /* Thumb: white horizontal line */
     #sthumb {
-      position: absolute;
-      left: -5px; right: -5px;
-      height: 3px;
-      border-radius: 2px;
-      background: #ffffff;
+      position: absolute; left: -6px; right: -6px; height: 3px;
+      border-radius: 2px; background: #ffffff;
       box-shadow: 0 0 8px rgba(255,255,255,.9);
-      pointer-events: none;
-      top: 50%; /* overridden by JS */
+      pointer-events: none; top: 50%;
     }
-    /* Threshold label next to thumb */
     #sthlbl {
-      position: absolute;
-      right: calc(100% + 7px);
-      top: 50%; transform: translateY(-50%);
-      white-space: nowrap;
-      font: 500 .62rem var(--mono);
-      color: #fff;
-      text-shadow: 0 1px 4px rgba(0,0,0,.8);
-      pointer-events: none;
+      position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+      white-space: nowrap; font: 500 .62rem var(--mono); color: #fff;
+      text-shadow: 0 1px 4px rgba(0,0,0,.8); pointer-events: none;
     }
     #scur {
       font: 600 .7rem var(--mono); color: var(--bright);
-      background: rgba(1,14,34,.9);
-      border: 1px solid var(--border);
-      border-radius: 4px; padding: 3px 6px;
-      text-align: center; min-width: 68px;
+      background: rgba(1,14,34,.9); border: 1px solid var(--border);
+      border-radius: 4px; padding: 3px 6px; text-align: center; min-width: 68px;
     }
 
-    /* ── Hover tooltip ─────────────────────────────────── */
+    /* ── Tools panel (bottom-right) ──────────────────────── */
+    #tools {
+      position: fixed; right: 16px; bottom: 22px;
+      z-index: 10;
+      display: flex; flex-direction: column; gap: 7px;
+      opacity: 0.2;
+      transition: opacity 0.38s ease;
+    }
+    #tools:hover { opacity: 1; }
+    .tbtn {
+      width: 34px; height: 34px;
+      background: rgba(1, 14, 34, 0.82);
+      backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--border); border-radius: 9px;
+      color: var(--muted);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all .18s;
+    }
+    .tbtn:hover { color: var(--bright); border-color: rgba(80,160,255,.5); }
+    .tbtn.on { color: var(--accent); border-color: var(--accent); background: rgba(42,122,239,.18); }
+
+    /* ── Hover tooltip ───────────────────────────────────── */
     #tip {
       position: fixed; pointer-events: none; z-index: 20;
-      padding: 10px 14px;
+      padding: 11px 15px;
       background: rgba(1,14,34,.92);
-      backdrop-filter: var(--blur);
-      -webkit-backdrop-filter: var(--blur);
-      border: 1px solid var(--border);
-      border-radius: var(--r);
+      backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--border); border-radius: var(--r);
       box-shadow: 0 4px 24px rgba(0,0,0,.5);
       white-space: nowrap;
     }
-    #tip-cell { font: 700 1.0rem var(--font); color: var(--bright); margin-bottom: 5px; }
-    .tdiv { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
-    .trow { display: flex; justify-content: space-between; gap: 18px; margin-top: 2px; }
+    #tip-cell { font: 600 1.05rem var(--font); color: var(--bright); margin-bottom: 6px; letter-spacing: .02em; }
+    .tdiv { border: none; border-top: 1px solid var(--border); margin: 5px 0; }
+    .trow { display: flex; justify-content: space-between; gap: 20px; margin-top: 3px; }
     .tkey { font: 400 .6rem var(--font); color: var(--muted);
             text-transform: uppercase; letter-spacing: .09em; align-self: center; }
     .tval { font: 500 .72rem var(--mono); color: var(--bright); }
+
+    /* ── Cinema mode ─────────────────────────────────────── */
+    body.cinema #panel,
+    body.cinema #tools        { opacity: 0 !important; pointer-events: none; }
+    body.cinema #slider-wrap  { opacity: 0 !important; pointer-events: none; }
+    body.cinema #tip          { display: none; }
+
+    /* Cinema exit pill (top-right, only in cinema) */
+    #cinema-exit {
+      position: fixed; top: 20px; right: 20px; z-index: 50;
+      display: none; align-items: center; gap: 7px;
+      padding: 8px 16px;
+      background: rgba(1, 14, 34, 0.70);
+      backdrop-filter: var(--blur);
+      border: 1px solid rgba(255,255,255,.15); border-radius: 22px;
+      color: rgba(210,230,255,.6);
+      font: 400 .65rem var(--font); letter-spacing: .10em; text-transform: uppercase;
+      cursor: pointer;
+      transition: all .22s;
+    }
+    body.cinema #cinema-exit { display: flex; }
+    #cinema-exit:hover { color: #fff; border-color: rgba(255,255,255,.35); background: rgba(1,14,34,.90); }
   </style>
 </head>
 <body>
 
-<!-- ── SVG icon sprite ─────────────────────────────── -->
+<!-- ── SVG icon sprite ─────────────────────────────────── -->
 <svg class="defs" aria-hidden="true"><defs>
   <symbol id="i-wifi" viewBox="0 0 24 24">
     <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
@@ -309,11 +283,44 @@
   <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor" stroke="none">
     <rect x="3" y="3" width="18" height="18" rx="2"/>
   </symbol>
+  <!-- Film strip (cinema) -->
+  <symbol id="i-film" viewBox="0 0 24 24">
+    <rect x="2" y="2" width="20" height="20" rx="2.18"/>
+    <line x1="7"  y1="2"  x2="7"  y2="22"/>
+    <line x1="17" y1="2"  x2="17" y2="22"/>
+    <line x1="2"  y1="12" x2="22" y2="12"/>
+    <line x1="2"  y1="7"  x2="7"  y2="7"/>
+    <line x1="17" y1="7"  x2="22" y2="7"/>
+    <line x1="2"  y1="17" x2="7"  y2="17"/>
+    <line x1="17" y1="17" x2="22" y2="17"/>
+  </symbol>
+  <!-- Layers (ATLAS ghost) -->
+  <symbol id="i-layers" viewBox="0 0 24 24">
+    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+    <polyline points="2 17 12 22 22 17"/>
+    <polyline points="2 12 12 17 22 12"/>
+  </symbol>
+  <!-- Eye (tooltip on) -->
+  <symbol id="i-eye" viewBox="0 0 24 24">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </symbol>
+  <!-- Eye-off (tooltip off) -->
+  <symbol id="i-eye-off" viewBox="0 0 24 24">
+    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+    <line x1="1" y1="1" x2="23" y2="23"/>
+  </symbol>
+  <!-- X (cinema exit) -->
+  <symbol id="i-x" viewBox="0 0 24 24">
+    <line x1="18" y1="6"  x2="6"  y2="18"/>
+    <line x1="6"  y1="6"  x2="18" y2="18"/>
+  </symbol>
 </defs></svg>
 
 <canvas id="c"></canvas>
 
-<!-- ── Left panel ──────────────────────────────────── -->
+<!-- ── Left panel ─────────────────────────────────────── -->
 <aside id="panel">
   <div id="panel-head">
     <div class="logo">CGV</div>
@@ -329,7 +336,6 @@
     </button>
   </div>
 
-  <!-- Live section -->
   <div id="live-sec">
     <div id="live-bar">
       <span class="ldot pulse" id="ldot"></span>
@@ -344,7 +350,6 @@
     <div id="evt-list"></div>
   </div>
 
-  <!-- Local section (hidden by default) -->
   <div id="local-sec" hidden>
     <label class="uplbl" for="file-in">
       <svg class="ic"><use href="#i-up"/></svg>
@@ -356,7 +361,7 @@
   <div id="statusbar">Initializing…</div>
 </aside>
 
-<!-- ── Energy threshold slider ─────────────────────── -->
+<!-- ── Energy threshold slider ────────────────────────── -->
 <div id="slider-wrap" hidden>
   <div class="slbl">Energy</div>
   <div class="slbl">Threshold</div>
@@ -370,7 +375,26 @@
   <div id="scur">—</div>
 </div>
 
-<!-- ── Hover tooltip ───────────────────────────────── -->
+<!-- ── Floating tools panel ───────────────────────────── -->
+<div id="tools">
+  <button class="tbtn" id="btn-cinema" title="Cinema mode">
+    <svg class="ic" style="width:14px;height:14px"><use href="#i-film"/></svg>
+  </button>
+  <button class="tbtn" id="btn-ghost" title="Show ATLAS context">
+    <svg class="ic" style="width:14px;height:14px"><use href="#i-layers"/></svg>
+  </button>
+  <button class="tbtn on" id="btn-info" title="Toggle cell info on hover">
+    <svg class="ic" style="width:14px;height:14px"><use href="#i-eye"/></svg>
+  </button>
+</div>
+
+<!-- ── Cinema exit pill ───────────────────────────────── -->
+<button id="cinema-exit">
+  <svg class="ic" style="width:11px;height:11px;stroke-width:2.5"><use href="#i-x"/></svg>
+  Exit Cinema
+</button>
+
+<!-- ── Hover tooltip ──────────────────────────────────── -->
 <div id="tip" hidden>
   <div id="tip-cell">—</div>
   <hr class="tdiv">
@@ -381,9 +405,9 @@
 </div>
 
 <script type="module">
-import * as THREE          from 'three';
-import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader }     from 'three/addons/loaders/GLTFLoader.js';
+import * as THREE         from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import wasmInit, { parse_atlas_id } from './atlas-id-parser/pkg/atlas_id_parser.js';
 
 // ── Live poller (graceful if unavailable) ─────────────────────────────────────
@@ -393,46 +417,53 @@ try {
 } catch (_) { /* offline-only mode */ }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const PAL_N      = 4096;   // palette steps
-const DEF_THR    = 200;    // default threshold MeV
-const LOG_FLOOR  = 1;      // log scale base (MeV)
+const PAL_N     = 4096;   // palette resolution
+const DEF_THR   = 200;    // default threshold, MeV
+const LOG_FLOOR = 1;      // log-scale floor, MeV
 
 // ── State ─────────────────────────────────────────────────────────────────────
-const meshByName = new Map();    // CGV path → THREE.Mesh
-const origMat    = new Map();    // CGV path → original material
-let   active     = new Map();    // CGV path → { energyGev, energyMev, cellName }
-let   rayTargets = [];           // cached visible mesh array for raycasting
+const meshByName = new Map();   // CGV path → THREE.Mesh
+const origMat    = new Map();   // CGV path → original material
+let   active     = new Map();   // CGV path → { energyGev, energyMev, cellName }
+let   rayTargets = [];          // visible meshes for raycasting
 
-let   eMaxMev     = 1;           // current event max energy
-let   thrMev      = DEF_THR;     // persisted threshold across events
-let   wasmOk      = false;
-let   sceneOk     = false;
-let   dirty       = true;        // render-on-demand flag
-let   curEvtId    = null;        // currently displayed event id
-let   isLive      = true;
+let eMaxMev    = 1;
+let thrMev     = DEF_THR;
+let wasmOk     = false;
+let sceneOk    = false;
+let dirty      = true;
+let curEvtId   = null;
+let isLive     = true;
+let showInfo   = true;    // tooltip + outline toggle
+let cinemaMode = false;
+let ghostGroup = null;
+let ghostOn    = false;
 
-// ── Palette (4096 steps, jet colormap: blue → cyan → green → yellow → red) ──
+// ── Palette: 4096-step jet colormap ──────────────────────────────────────────
 const PAL = Array.from({ length: PAL_N }, (_, i) => {
   const t = i / (PAL_N - 1);
   const r = Math.min(1, Math.max(0, 2 * t - 1));
   const g = Math.min(1, Math.max(0, 1 - Math.abs(2 * t - 1)));
   const b = Math.min(1, Math.max(0, 1 - 2 * t));
   return new THREE.MeshLambertMaterial({
-    color:       new THREE.Color(r, g, b),
-    transparent: true,
-    opacity:     0.86,
-    side:        THREE.DoubleSide,
+    color: new THREE.Color(r, g, b),
+    transparent: true, opacity: 0.86, side: THREE.DoubleSide,
   });
 });
 
-function palMat(eMev, lo, hi) {
-  const t   = hi > lo ? (eMev - lo) / (hi - lo) : 0.5;
-  const idx = Math.round(Math.max(0, Math.min(PAL_N - 1, t * (PAL_N - 1))));
-  return PAL[idx];
+// Log-scale color mapping — mirrors the slider scale exactly.
+// t=0 → blue (low energy), t=1 → red (peak energy).
+function palMat(eMev) {
+  if (!isFinite(eMev) || eMaxMev <= LOG_FLOOR) return PAL[0];
+  const t = eMev <= LOG_FLOOR
+    ? 0
+    : Math.max(0, Math.min(1,
+        Math.log(eMev / LOG_FLOOR) / Math.log(eMaxMev / LOG_FLOOR)));
+  return PAL[Math.round(t * (PAL_N - 1))];
 }
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
-const canvas = document.getElementById('c');
+const canvas   = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias:       true,
@@ -444,7 +475,7 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 // ── Scene / Camera / Controls ─────────────────────────────────────────────────
-const scene = new THREE.Scene();
+const scene  = new THREE.Scene();
 scene.background = new THREE.Color(0x01192e);
 
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 10, 100_000);
@@ -456,23 +487,23 @@ controls.dampingFactor = 0.055;
 controls.zoomSpeed     = 1.2;
 controls.addEventListener('change', () => {
   dirty = true;
-  tooltip.hidden = true;
-  clearOutline();
+  if (!cinemaMode) { tooltip.hidden = true; clearOutline(); }
 });
 
 // ── Lighting ──────────────────────────────────────────────────────────────────
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-const key  = new THREE.DirectionalLight(0xffffff, 0.95);
+const key = new THREE.DirectionalLight(0xffffff, 0.95);
 key.position.set(600, 1500, 1000);
 scene.add(key);
 const fill = new THREE.DirectionalLight(0x5577ff, 0.28);
 fill.position.set(-800, -400, 600);
 scene.add(fill);
 
-// ── Render loop (dirty flag) ──────────────────────────────────────────────────
+// ── Render loop (dirty flag; always renders during cinema autoRotate) ─────────
 (function loop() {
   requestAnimationFrame(loop);
   controls.update();
+  if (controls.autoRotate) dirty = true;
   if (!dirty) return;
   renderer.render(scene, camera);
   dirty = false;
@@ -485,8 +516,8 @@ window.addEventListener('resize', () => {
   dirty = true;
 });
 
-// ── Status ────────────────────────────────────────────────────────────────────
-const statusEl = document.getElementById('statusbar');
+// ── Status bar ────────────────────────────────────────────────────────────────
+const statusEl  = document.getElementById('statusbar');
 const setStatus = h => { statusEl.innerHTML = h; };
 
 function checkReady() {
@@ -494,7 +525,6 @@ function checkReady() {
   setStatus('Ready — waiting for event…');
   if (isLive && poller) {
     poller.start();
-    // Load most recent cached event if any
     const list = poller.getList();
     if (list.length > 0) { curEvtId = list[0].id; processXml(list[0].text); renderEvtList(); }
   }
@@ -511,15 +541,13 @@ new GLTFLoader().load(
       origMat.set(o.name, o.material);
     });
     scene.add(g);
-    sceneOk = true;
-    dirty   = true;
+    sceneOk = true; dirty = true;
     checkReady();
   },
-  x => { if (x.total) setStatus(`Loading geometry: ${Math.round(x.loaded/x.total*100)} %`); },
+  x => { if (x.total) setStatus(`Loading geometry: ${Math.round(x.loaded / x.total * 100)} %`); },
   () => {
     setStatus('<span class="warn">CaloGeometry.glb not found — run root2scene.mjs first.</span>');
-    sceneOk = true;
-    checkReady();
+    sceneOk = true; checkReady();
   }
 );
 
@@ -528,7 +556,7 @@ wasmInit()
   .then(() => { wasmOk = true; checkReady(); })
   .catch(e  => setStatus(`<span class="err">WASM error: ${esc(e.message)}</span>`));
 
-// ── TILECAL mapping ───────────────────────────────────────────────────────────
+// ── TileCal ID → cell-name mapping ────────────────────────────────────────────
 function compX(sec, samp, tow) {
   if (sec < 3) {
     if (samp === 0) return sec === 1 ?  1 :  5;
@@ -601,15 +629,14 @@ function resetScene() {
     mesh.visible  = false;
     mesh.material = origMat.get(name) ?? mesh.material;
   }
-  active.clear();
-  rayTargets = [];
+  active.clear(); rayTargets = [];
   clearOutline();
   document.getElementById('slider-wrap').hidden = true;
   tooltip.hidden = true;
   dirty = true;
 }
 
-// ── Threshold ─────────────────────────────────────────────────────────────────
+// ── Threshold (visibility filter) ────────────────────────────────────────────
 function applyThreshold(mev) {
   rayTargets = [];
   for (const [name, { energyMev }] of active) {
@@ -633,6 +660,7 @@ function processXml(xmlText) {
   setStatus(`Decoding ${cells.length} cells…`);
   resetScene();
 
+  // energies in MeV (raw XML values are in GeV → ×1000)
   const mevs = cells.map(c => c.energy * 1000).filter(isFinite);
   const eMin = Math.min(...mevs);
   eMaxMev    = Math.max(...mevs);
@@ -650,7 +678,7 @@ function processXml(xmlText) {
     const path = `Calorimeter\u2192Tile${x}${y}_0\u2192Tile${x}${y}${k}_${k}\u2192cell_${f.module}`;
     const mesh = meshByName.get(path);
     if (!mesh) { nMiss++; continue; }
-    mesh.material = palMat(eMev, eMin, eMaxMev);
+    mesh.material = palMat(eMev);   // log-scale color
     mesh.visible  = true;
     active.set(path, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k) });
     nHit++;
@@ -658,7 +686,6 @@ function processXml(xmlText) {
 
   initSlider(eMin, eMaxMev);
   applyThreshold(thrMev);
-
   setStatus(
     `<span class="ok">${nHit} cells</span>` +
     (nMiss ? ` · <span class="warn">${nMiss} unmapped</span>` : '') +
@@ -667,11 +694,12 @@ function processXml(xmlText) {
 }
 
 // ── Slider ────────────────────────────────────────────────────────────────────
-const strak   = document.getElementById('strak');
-const sthumb  = document.getElementById('sthumb');
-const sthlbl  = document.getElementById('sthlbl');
-const scur    = document.getElementById('scur');
-let   sdrag   = false;
+const sliderWrap = document.getElementById('slider-wrap');
+const strak      = document.getElementById('strak');
+const sthumb     = document.getElementById('sthumb');
+const sthlbl     = document.getElementById('sthlbl');
+const scur       = document.getElementById('scur');
+let   sdrag      = false;
 
 function mevToRatio(mev) {
   if (!isFinite(mev) || mev <= LOG_FLOOR || eMaxMev <= LOG_FLOOR) return 0;
@@ -681,27 +709,20 @@ function ratioToMev(r) {
   if (r <= 0) return -Infinity;
   return LOG_FLOOR * Math.pow(eMaxMev / LOG_FLOOR, Math.min(1, r));
 }
-
-function placeThumb(r) {
-  sthumb.style.top = ((1 - r) * 100) + '%';
-}
-
+function placeThumb(r) { sthumb.style.top = ((1 - r) * 100) + '%'; }
 function updateSliderUI(mev) {
   const lbl = !isFinite(mev) ? 'ALL' : fmtMev(mev);
   sthlbl.textContent = lbl;
   scur.textContent   = lbl;
   placeThumb(mevToRatio(mev));
 }
-
 function initSlider(eMin, eMax) {
   document.getElementById('smax').textContent = fmtMev(eMax);
   document.getElementById('smin').textContent = fmtMev(eMin);
-  // Clamp persisted threshold to current event's max; if above max, reset to default
   if (isFinite(thrMev) && thrMev > eMax) thrMev = Math.min(DEF_THR, eMax);
   updateSliderUI(thrMev);
-  document.getElementById('slider-wrap').hidden = false;
+  sliderWrap.hidden = false;
 }
-
 function sliderRatioFromPtr(e) {
   const rect = strak.getBoundingClientRect();
   const y    = (e.clientY ?? e.touches?.[0]?.clientY ?? 0) - rect.top;
@@ -710,24 +731,89 @@ function sliderRatioFromPtr(e) {
 
 strak.addEventListener('pointerdown', e => {
   sdrag = true;
+  sliderWrap.classList.add('dragging');
   strak.setPointerCapture(e.pointerId);
-  const r = sliderRatioFromPtr(e);
-  thrMev  = ratioToMev(r);
-  updateSliderUI(thrMev);
-  applyThreshold(thrMev);
+  thrMev = ratioToMev(sliderRatioFromPtr(e));
+  updateSliderUI(thrMev); applyThreshold(thrMev);
 });
 strak.addEventListener('pointermove', e => {
   if (!sdrag) return;
-  const r = sliderRatioFromPtr(e);
-  thrMev  = ratioToMev(r);
-  updateSliderUI(thrMev);
-  applyThreshold(thrMev);
+  thrMev = ratioToMev(sliderRatioFromPtr(e));
+  updateSliderUI(thrMev); applyThreshold(thrMev);
 });
-strak.addEventListener('pointerup',     () => { sdrag = false; });
-strak.addEventListener('pointercancel', () => { sdrag = false; });
+['pointerup', 'pointercancel'].forEach(t => strak.addEventListener(t, () => {
+  sdrag = false;
+  sliderWrap.classList.remove('dragging');
+}));
 
-// ── Outline (EdgesGeometry) ───────────────────────────────────────────────────
-const eGeoCache  = new Map();  // geometry.uuid → THREE.EdgesGeometry
+// ── Ghost ATLAS geometry ──────────────────────────────────────────────────────
+// Approximate cylindrical shells showing the main ATLAS sub-detector layers.
+// Coordinate system matches the GLB: x-y = transverse plane, z = beam axis (mm).
+// Dimensions sourced from ATLAS detector paper (JINST 3 S08003, 2008).
+const GHOST_MAT = new THREE.LineBasicMaterial({
+  color: 0x4077cc, transparent: true, opacity: 0.16, depthWrite: false,
+});
+
+function ghostRing(r, z, segs = 64) {
+  const pts = [];
+  for (let i = 0; i <= segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    pts.push(new THREE.Vector3(r * Math.cos(a), r * Math.sin(a), z));
+  }
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), GHOST_MAT);
+}
+
+function ghostBarrel(r, z0, z1, nVert = 8) {
+  const grp = new THREE.Group();
+  grp.add(ghostRing(r, z0), ghostRing(r, z1));
+  for (let i = 0; i < nVert; i++) {
+    const a = (i / nVert) * Math.PI * 2;
+    const x = r * Math.cos(a), y = r * Math.sin(a);
+    grp.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x, y, z0),
+        new THREE.Vector3(x, y, z1),
+      ]), GHOST_MAT
+    ));
+  }
+  return grp;
+}
+
+function buildGhostAtlas() {
+  if (ghostGroup) return;
+  ghostGroup = new THREE.Group();
+
+  // Inner Detector outer boundary (SCT + TRT region)
+  ghostGroup.add(ghostBarrel(1100, -3400, 3400, 10));
+
+  // LAr EM Calorimeter barrel outer boundary
+  ghostGroup.add(ghostBarrel(1960, -3200, 3200, 12));
+
+  // Muon Spectrometer outer boundary
+  ghostGroup.add(ghostBarrel(10500, -10500, 10500, 16));
+
+  // Beam axis reference line
+  ghostGroup.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, -11500),
+      new THREE.Vector3(0, 0,  11500),
+    ]), GHOST_MAT
+  ));
+
+  ghostGroup.visible = false;
+  scene.add(ghostGroup);
+}
+
+function toggleGhost() {
+  buildGhostAtlas();
+  ghostOn = !ghostOn;
+  ghostGroup.visible = ghostOn;
+  document.getElementById('btn-ghost').classList.toggle('on', ghostOn);
+  dirty = true;
+}
+
+// ── EdgesGeometry outline on hover ───────────────────────────────────────────
+const eGeoCache  = new Map();  // geometry.uuid → EdgesGeometry
 const outlineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 });
 let   outlineMesh = null;
 
@@ -754,16 +840,16 @@ function showOutline(mesh) {
 }
 
 // ── Hover tooltip + outline ───────────────────────────────────────────────────
-const raycast  = new THREE.Raycaster();
-const mxy      = new THREE.Vector2();
-const tooltip  = document.getElementById('tip');
-let   lastRay  = 0;
+const raycast = new THREE.Raycaster();
+const mxy     = new THREE.Vector2();
+const tooltip = document.getElementById('tip');
+let   lastRay = 0;
 
 canvas.addEventListener('mousemove', e => {
+  if (!showInfo || cinemaMode) { tooltip.hidden = true; return; }
   const now = Date.now();
   if (now - lastRay < 34) return;
   lastRay = now;
-
   if (!active.size) { tooltip.hidden = true; clearOutline(); return; }
 
   mxy.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
@@ -776,8 +862,8 @@ canvas.addEventListener('mousemove', e => {
       showOutline(hits[0].object);
       document.getElementById('tip-cell').textContent = data.cellName;
       document.getElementById('tip-e').textContent    = `${data.energyGev.toFixed(4)} GeV`;
-      tooltip.style.left = Math.min(e.clientX + 18, innerWidth  - 185) + 'px';
-      tooltip.style.top  = Math.min(e.clientY + 18, innerHeight -  85) + 'px';
+      tooltip.style.left = Math.min(e.clientX + 18, innerWidth  - 200) + 'px';
+      tooltip.style.top  = Math.min(e.clientY + 18, innerHeight -  90) + 'px';
       tooltip.hidden = false;
     }
   } else {
@@ -786,6 +872,46 @@ canvas.addEventListener('mousemove', e => {
   }
 });
 canvas.addEventListener('mouseleave', () => { clearOutline(); tooltip.hidden = true; });
+
+// ── Cinema mode ───────────────────────────────────────────────────────────────
+function enterCinema() {
+  cinemaMode = true;
+  document.body.classList.add('cinema');
+  controls.autoRotate      = true;
+  controls.autoRotateSpeed = 0.38;
+  document.getElementById('btn-cinema').classList.add('on');
+  clearOutline();
+  tooltip.hidden = true;
+}
+
+function exitCinema() {
+  cinemaMode = false;
+  document.body.classList.remove('cinema');
+  controls.autoRotate = false;
+  document.getElementById('btn-cinema').classList.remove('on');
+}
+
+document.getElementById('btn-cinema').addEventListener('click', () => {
+  if (!cinemaMode) enterCinema(); else exitCinema();
+});
+document.getElementById('cinema-exit').addEventListener('click', exitCinema);
+
+// A plain click on the canvas (not a drag) also exits cinema
+let cDragged = false;
+canvas.addEventListener('mousedown', () => { cDragged = false; });
+canvas.addEventListener('mousemove', () => { cDragged = true; });
+canvas.addEventListener('mouseup',   () => { if (cinemaMode && !cDragged) exitCinema(); });
+
+// ── Tooltip + outline toggle ──────────────────────────────────────────────────
+document.getElementById('btn-info').addEventListener('click', () => {
+  showInfo = !showInfo;
+  document.getElementById('btn-info').classList.toggle('on', showInfo);
+  document.querySelector('#btn-info use').setAttribute('href', showInfo ? '#i-eye' : '#i-eye-off');
+  if (!showInfo) { clearOutline(); tooltip.hidden = true; }
+});
+
+// ── Ghost toggle ──────────────────────────────────────────────────────────────
+document.getElementById('btn-ghost').addEventListener('click', toggleGhost);
 
 // ── Mode toggle ───────────────────────────────────────────────────────────────
 document.getElementById('btn-live').addEventListener('click', () => {
@@ -797,7 +923,6 @@ document.getElementById('btn-live').addEventListener('click', () => {
   document.getElementById('local-sec').hidden = true;
   if (poller && wasmOk && sceneOk) poller.start();
 });
-
 document.getElementById('btn-local').addEventListener('click', () => {
   if (!isLive) return;
   isLive = false;
@@ -829,9 +954,9 @@ const SVG_DL = `<svg class="ic"><use href="#i-dl"/></svg>`;
 
 function relTime(ts) {
   const s = (Date.now() - ts) / 1000;
-  if (s < 10)    return 'just now';
-  if (s < 60)    return `${Math.floor(s)} s ago`;
-  if (s < 3600)  return `${Math.floor(s / 60)} min ago`;
+  if (s < 10)   return 'just now';
+  if (s < 60)   return `${Math.floor(s)} s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
   return `${Math.floor(s / 3600)} h ago`;
 }
 
@@ -849,42 +974,30 @@ function renderEvtList() {
       </div>
       <button class="edl" title="Download XML">${SVG_DL}</button>`;
     row.querySelector('.einfo').addEventListener('click', () => {
-      curEvtId = entry.id;
-      processXml(entry.text);
-      renderEvtList();
+      curEvtId = entry.id; processXml(entry.text); renderEvtList();
     });
     row.querySelector('.edl').addEventListener('click', ev => {
-      ev.stopPropagation();
-      poller.download(idx);
+      ev.stopPropagation(); poller.download(idx);
     });
     el.appendChild(row);
   });
 }
 
-// Refresh relative timestamps every 30 s
 setInterval(() => {
   for (const el of document.querySelectorAll('.etime[data-ts]'))
     el.textContent = relTime(+el.dataset.ts);
 }, 30_000);
 
 if (poller) {
-  poller.addEventListener('newxml', ({ detail: { entry } }) => {
-    curEvtId = entry.id;
-    processXml(entry.text);
-    renderEvtList();
-  });
+  poller.addEventListener('newxml',     ({ detail: { entry } }) => { curEvtId = entry.id; processXml(entry.text); renderEvtList(); });
   poller.addEventListener('listupdate', renderEvtList);
-  poller.addEventListener('status', ({ detail: { state } }) => setLiveDot(state));
-  poller.addEventListener('error',  ({ detail }) => console.warn('[LivePoller]', detail.message));
-
-  // Restore cached events from browser Cache API
+  poller.addEventListener('status',     ({ detail: { state } }) => setLiveDot(state));
+  poller.addEventListener('error',      ({ detail }) => console.warn('[LivePoller]', detail.message));
   poller.init().then(() => renderEvtList()).catch(() => {});
 } else {
-  // LivePoller not available → switch to local mode silently
   document.getElementById('btn-local').click();
 }
 
-// Play / Stop buttons
 document.getElementById('ibtn-play').addEventListener('click', () => {
   if (!poller) return;
   poller.start();
@@ -914,10 +1027,8 @@ function fmtMev(v) {
   if (a >= 1)    return `${v.toFixed(1)} MeV`;
   return `${v.toFixed(3)} MeV`;
 }
-
 function esc(s) {
-  return String(s ?? '')
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 </script>
 </body>
