@@ -515,7 +515,7 @@ async function buildGltf(geoResult, rootPath, opts) {
           }
           if (bufGeo && sig) {
             // Pre-normalise normals so GLTFExporter doesn't create a slow copy
-            const nAttr = bufGeo.attributes.normal;
+            const nAttr = bufGeo.attributes?.normal;
             if (nAttr) {
               const a = nAttr.array;
               for (let k = 0; k < a.length; k += 3) {
