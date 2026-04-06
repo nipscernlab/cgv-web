@@ -1135,12 +1135,13 @@ function palColorTile(t) {
     0.0                           // B: always 0
   );
 }
-const PAL_TILE = Array.from({ length: PAL_N }, (_, i) =>
-  new THREE.MeshPhongMaterial({
-    color: palColorTile(i / (PAL_N - 1)),
-    shininess: 25, side: THREE.FrontSide,
-  })
-);
+const PAL_TILE = Array.from({ length: PAL_N }, (_, i) => {
+  const c = palColorTile(i / (PAL_N - 1));
+  return new THREE.MeshPhongMaterial({
+    color: c, emissive: c, emissiveIntensity: 0.42,
+    shininess: 6, side: THREE.FrontSide,
+  });
+});
 const TILE_SCALE = 2000; // MeV — fixed 0–2 GeV
 function palMatTile(eMev) {
   const tv = Math.max(0, Math.min(1, eMev / TILE_SCALE));
