@@ -41,6 +41,7 @@
       --blur:    blur(20px) saturate(1.7);
       --r:       7px;
       --pw:      250px;
+      --rpw:     160px;
       --pt:      0.34s;
     }
 
@@ -300,50 +301,75 @@
     }
     .about-close:hover { color: var(--bright); border-color: var(--accent); }
 
-    /* ── Right slider ─────────────────────────────────────── */
-    #slider-wrap {
-      position: fixed; right: 18px; top: 50%; transform: translateY(-50%);
-      z-index: 10;
-      display: flex; flex-direction: column; align-items: center; gap: 5px;
-      padding: 12px 13px;
-      background: rgba(2, 11, 28, 0.84);
+    /* ── Right retractable panel ─────────────────────────── */
+    #rpanel {
+      position: fixed; top: 0; right: 0;
+      width: var(--rpw); height: 100vh;
+      background: var(--panel);
       backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
-      border: 1px solid var(--border); border-radius: 14px;
-      box-shadow: 0 4px 28px rgba(0,0,0,.52);
-      opacity: 0.22; transition: opacity 0.36s ease;
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      z-index: 30;
+      transform: translateX(var(--rpw));
+      transition: transform var(--pt) cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
     }
-    #slider-wrap:hover, #slider-wrap.dragging { opacity: 1; }
+    #rpanel.open { transform: translateX(0); }
+    #rpanel-tab {
+      position: absolute; top: 50%; left: 0;
+      transform: translateX(-100%) translateY(-50%);
+      width: 18px; height: 52px;
+      background: var(--panel);
+      border: 1px solid var(--border); border-right: none;
+      border-radius: 6px 0 0 6px;
+      color: var(--muted); font-size: 13px; line-height: 1;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: color .15s, background .15s;
+    }
+    #rpanel-tab:hover { color: var(--bright); background: rgba(22,72,168,.15); }
+    #rpanel-head {
+      padding: 10px 8px 7px; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+      font: 500 .55rem var(--font); letter-spacing: .10em;
+      color: var(--muted); text-transform: uppercase; text-align: center;
+    }
+    #det-tab-bar {
+      display: flex; gap: 2px; padding: 6px 5px 4px; flex-shrink: 0;
+    }
+    .det-tab {
+      flex: 1; padding: 3px 3px;
+      font: 600 .56rem var(--mono); letter-spacing: .03em;
+      color: var(--muted); border: 1px solid transparent;
+      border-radius: 5px; cursor: pointer; transition: all .14s;
+    }
+    .det-tab:hover { color: var(--bright); }
+    .det-tab.on { color: var(--bright); border-color: var(--border2); background: rgba(26,82,192,.16); }
+    .det-pane {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 6px; padding: 8px 0;
+    }
     .slbl { font: 400 .53rem var(--font); letter-spacing: .13em; color: var(--muted); text-transform: uppercase; text-align: center; }
-    .sval { font: 400 .58rem var(--mono); color: var(--muted); text-align: center; min-width: 62px; }
-    #strak {
-      position: relative; width: 12px; height: 340px;
+    .sval { font: 400 .58rem var(--mono); color: var(--muted); text-align: center; }
+    .strak {
+      position: relative; width: 12px; height: 260px;
       border-radius: 6px; cursor: ns-resize; user-select: none; touch-action: none;
-      background: linear-gradient(to top,
-        #5584ff  0%, #1a2ee0 20%, #0c08cc 40%,
-        #6600aa 60%, #c80041 80%, #cc0606 100%
-      );
       border: 1px solid rgba(255,255,255,.12);
-      box-shadow: 0 0 20px rgba(0,30,180,.28), inset 0 1px 5px rgba(0,0,0,.4);
+      box-shadow: inset 0 1px 5px rgba(0,0,0,.4);
     }
-    #sthumb {
+    .sthumb {
       position: absolute; left: -9px; right: -9px; height: 2px;
       border-radius: 1px; background: #fff;
       box-shadow: 0 0 7px rgba(255,255,255,.95);
       pointer-events: none; top: 50%;
     }
-    #sthlbl {
-      position: absolute; right: calc(100% + 10px); top: 50%; transform: translateY(-50%);
-      white-space: nowrap; font: 500 .59rem var(--mono); color: #fff;
-      text-shadow: 0 1px 4px rgba(0,0,0,.8); pointer-events: none;
-    }
-    #thr-input {
+    .thr-input {
       width: 72px; padding: 3px 7px;
       background: rgba(2,11,28,.9); border: 1px solid var(--border);
       border-radius: 4px; color: var(--text); font: 400 .61rem var(--mono);
       text-align: center; transition: border-color .15s;
     }
-    #thr-input:focus { border-color: var(--accent2); color: var(--bright); }
-    #thr-input::placeholder { color: var(--dim); }
+    .thr-input:focus { border-color: var(--accent2); color: var(--bright); }
+    .thr-input::placeholder { color: var(--dim); }
 
     /* ── Bottom-center toolbar ────────────────────────────── */
     #toolbar {
@@ -425,7 +451,7 @@
     /* ── Cinema mode ──────────────────────────────────────── */
     body.cinema #panel       { opacity: 0 !important; pointer-events: none; }
     body.cinema #toolbar     { opacity: 0 !important; pointer-events: none; }
-    body.cinema #slider-wrap { opacity: 0 !important; pointer-events: none; }
+    body.cinema #rpanel      { opacity: 0 !important; pointer-events: none; }
     body.cinema #tip         { display: none; }
     #cinema-exit {
       position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
@@ -461,12 +487,12 @@
         border-radius: 18px;
       }
 
-      /* Slider */
-      #strak { height: 180px; }
-      #slider-wrap { right: 6px; padding: 8px 9px; border-radius: 10px; }
+      /* Right panel on small screens */
+      .strak { height: 160px; }
+      #rpanel { --rpw: 140px; width: 140px; }
       .slbl { font-size: .50rem; }
       .sval { font-size: .56rem; }
-      #thr-input { width: 62px; font-size: .59rem; }
+      .thr-input { width: 60px; font-size: .59rem; }
 
       /* Cinema exit button */
       #cinema-exit { bottom: 70px; }
@@ -490,8 +516,8 @@
 
     /* Touch-friendly: bigger hit area for slider on touch */
     @media (pointer: coarse) {
-      #strak { width: 18px; border-radius: 9px; }
-      #sthumb { left: -12px; right: -12px; height: 3px; }
+      .strak { width: 18px; border-radius: 9px; }
+      .sthumb { left: -12px; right: -12px; height: 3px; }
       .ctrl-btn, .edl { min-width: 36px; min-height: 36px; }
     }
   </style>
@@ -668,18 +694,53 @@
 
 <div id="panel-edge"></div>
 
-<!-- ── Energy slider ──────────────────────────────────────── -->
-<div id="slider-wrap" hidden>
-  <div class="slbl" data-i18n="slbl-energy">Energy</div>
-  <div class="slbl" data-i18n="slbl-threshold">Threshold</div>
-  <div class="sval" id="smax">—</div>
-  <div id="strak">
-    <div id="sthumb"><div id="sthlbl"></div></div>
+<!-- ── Right retractable panel ────────────────────────────── -->
+<aside id="rpanel">
+  <button id="rpanel-tab" aria-label="Toggle threshold panel">‹</button>
+  <div id="rpanel-head">Thresholds</div>
+  <div id="det-tab-bar">
+    <button class="det-tab on" id="tab-tile">TILE</button>
+    <button class="det-tab"    id="tab-lar">LAr</button>
+    <button class="det-tab"    id="tab-ghost">Ghost</button>
   </div>
-  <div class="sval" id="smin">—</div>
-  <input id="thr-input" type="text" autocomplete="off" spellcheck="false"
-    placeholder="e.g. 200 MeV" data-i18n-ph="thr-placeholder">
-</div>
+
+  <!-- TILE pane -->
+  <div class="det-pane" id="pane-tile">
+    <div class="sval">2.00 GeV</div>
+    <div class="strak" id="tile-strak"
+      style="background:linear-gradient(to top,#ffff00 0%,#800000 100%)">
+      <div class="sthumb" id="tile-sthumb"></div>
+    </div>
+    <div class="sval">0 GeV</div>
+    <div class="slbl">Threshold</div>
+    <input id="tile-thr-input" class="thr-input" type="text"
+      autocomplete="off" spellcheck="false" placeholder="e.g. 200 MeV">
+  </div>
+
+  <!-- LAr pane (hidden by default) -->
+  <div class="det-pane" id="pane-lar" style="display:none">
+    <div class="sval">1.00 GeV</div>
+    <div class="strak" id="lar-strak"
+      style="background:linear-gradient(to top,#17cf42 0%,#270042 100%)">
+      <div class="sthumb" id="lar-sthumb"></div>
+    </div>
+    <div class="sval">0 GeV</div>
+    <div class="slbl">Threshold</div>
+    <input id="lar-thr-input" class="thr-input" type="text"
+      autocomplete="off" spellcheck="false" placeholder="e.g. 200 MeV">
+  </div>
+
+  <!-- Ghost pane (hidden by default) -->
+  <div class="det-pane" id="pane-ghost" style="display:none">
+    <div class="sval" id="ghost-opacity-lbl">17%</div>
+    <div class="strak" id="ghost-strak"
+      style="background:linear-gradient(to top,rgba(61,114,204,0.05) 0%,#3d72cc 100%)">
+      <div class="sthumb" id="ghost-sthumb"></div>
+    </div>
+    <div class="sval">0%</div>
+    <div class="slbl">Ghost Opacity</div>
+  </div>
+</aside>
 
 <!-- ── Bottom toolbar ─────────────────────────────────────── -->
 <div id="toolbar">
@@ -709,11 +770,6 @@
     <svg class="ic" style="width:14px;height:14px"><use href="#i-beam"/></svg>
   </button>
   <div class="tbtn-sep"></div>
-  <button class="tbtn" id="btn-outline-color"
-    data-tip="Outline colour — click to change cell outline colour">
-    <svg class="ic" style="width:14px;height:14px"><use href="#i-palette"/></svg>
-  </button>
-  <div class="tbtn-sep"></div>
   <button class="tbtn tbtn-label on" id="btn-tile"
     data-tip="Toggle TileCal cells">TILE</button>
   <button class="tbtn tbtn-label on" id="btn-lar"
@@ -724,10 +780,6 @@
     <svg class="ic" style="width:14px;height:14px"><use href="#i-globe"/></svg>
   </button>
 </div>
-
-<!-- hidden outline colour input -->
-<input type="color" id="outline-color-input" value="#ffffff"
-  style="position:fixed;visibility:hidden;pointer-events:none">
 
 <!-- ── Language dropdown ──────────────────────────────────── -->
 <div id="lang-menu">
@@ -1024,17 +1076,18 @@ function applyLang(lang) {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const PAL_N     = 2048;
-const DEF_THR   = 200;
-const LOG_FLOOR = 1;
+const PAL_N   = 2048;
+const DEF_THR = 200;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 const meshByName = new Map();
 const origMat    = new Map();
 let   active     = new Map();
 let   rayTargets = [];
-let eMaxMev    = 1;
-let thrMev     = DEF_THR;
+let tileMaxMev = 1, tileMinMev = 0;
+let larMaxMev  = 1, larMinMev  = 0;
+let thrTileMev = DEF_THR;
+let thrLArMev  = DEF_THR;
 let wasmOk     = false;
 let sceneOk    = false;
 let dirty      = true;
@@ -1044,8 +1097,10 @@ let showInfo   = true;
 let cinemaMode = false;
 let showTile   = true;
 let showLAr    = true;
-let ghostGroup = null;
-let ghostOn    = false;
+let ghostGroup   = null;
+let ghostOn      = false;
+let ghostMat     = null;
+let ghostOpacity = 0.17;
 let beamGroup  = null;
 let beamOn     = false;
 let panelPinned  = true;
@@ -1071,32 +1126,54 @@ function bumpReq(label = '') {
   if (label) addLog(label);
 }
 
-// ── Palette: #ffff00 (min) → #800000 (max), linear ───────────────────────────
-function palColor(t2) {
-  t2 = Math.max(0, Math.min(1, t2));
+// ── Palette TILE: #ffff00 (min) → #800000 (max), linear ──────────────────────
+function palColorTile(t) {
+  t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
-    1.000 + t2 * (0.502 - 1.000), // R: 1.0 → 0.502
-    1.000 + t2 * (0.000 - 1.000), // G: 1.0 → 0.0
-    0.0                            // B: always 0
+    1.000 + t * (0.502 - 1.000), // R: 1.0 → 0.502
+    1.000 + t * (0.000 - 1.000), // G: 1.0 → 0.0
+    0.0                           // B: always 0
   );
 }
-const PAL = Array.from({ length: PAL_N }, (_, i) =>
-  new THREE.MeshBasicMaterial({
-    color: palColor(i / (PAL_N - 1)),
-    side: THREE.FrontSide,
+const PAL_TILE = Array.from({ length: PAL_N }, (_, i) =>
+  new THREE.MeshPhongMaterial({
+    color: palColorTile(i / (PAL_N - 1)),
+    shininess: 25, side: THREE.FrontSide,
   })
 );
-function palMat(eMev) {
-  if (!isFinite(eMev) || eMaxMev <= LOG_FLOOR) return PAL[0];
-  const tv = eMev <= LOG_FLOOR ? 0
-    : Math.max(0, Math.min(1, Math.log(eMev/LOG_FLOOR)/Math.log(eMaxMev/LOG_FLOOR)));
-  return PAL[Math.round(tv * (PAL_N - 1))];
+const TILE_SCALE = 2000; // MeV — fixed 0–2 GeV
+function palMatTile(eMev) {
+  const tv = Math.max(0, Math.min(1, eMev / TILE_SCALE));
+  return PAL_TILE[Math.round(tv * (PAL_N - 1))];
+}
+
+// ── Palette LAr: #17cf42 (min) → #270042 (max), linear ───────────────────────
+// #17cf42 = [23,207,66]/255 = [0.0902,0.8118,0.2588]
+// #270042 = [39,0,66]/255   = [0.1529,0.0000,0.2588]
+function palColorLAr(t) {
+  t = Math.max(0, Math.min(1, t));
+  return new THREE.Color(
+    0.0902 + t * (0.1529 - 0.0902), // R: ~0.09 → ~0.15
+    0.8118 + t * (0.0000 - 0.8118), // G: ~0.81 → 0
+    0.2588                           // B: constant
+  );
+}
+const PAL_LAR = Array.from({ length: PAL_N }, (_, i) =>
+  new THREE.MeshPhongMaterial({
+    color: palColorLAr(i / (PAL_N - 1)),
+    shininess: 25, side: THREE.FrontSide,
+  })
+);
+const LAR_SCALE = 1000; // MeV — fixed 0–1 GeV
+function palMatLAr(eMev) {
+  const tv = Math.max(0, Math.min(1, eMev / LAR_SCALE));
+  return PAL_LAR[Math.round(tv * (PAL_N - 1))];
 }
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', precision: 'mediump' });
-renderer.setPixelRatio(1);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.sortObjects = false;
@@ -1111,7 +1188,13 @@ controls.enableDamping = true;
 controls.dampingFactor = 0.055;
 controls.zoomSpeed     = 1.2;
 controls.addEventListener('change', () => { dirty = true; if (!cinemaMode) { tooltip.hidden = true; clearOutline(); } });
-scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+// Ambient base + directional key light attached to camera (follows the viewer)
+scene.add(new THREE.AmbientLight(0xffffff, 0.68));
+const camLight = new THREE.DirectionalLight(0xffffff, 1.1);
+camLight.position.set(0, 0, 1); // +Z in camera space = behind camera = toward scene
+camera.add(camLight);
+scene.add(camera); // camera must be in scene for child lights to update
 
 // ── Render loop ───────────────────────────────────────────────────────────────
 (function loop() {
@@ -1279,15 +1362,15 @@ function resetScene() {
   }
   active.clear(); rayTargets = [];
   clearOutline(); clearAllOutlines();
-  document.getElementById('slider-wrap').hidden = true;
   tooltip.hidden = true; dirty = true;
 }
-function applyThreshold(mev) {
+function applyThreshold() {
   rayTargets = [];
   for (const [name, { energyMev, det }] of active) {
     const mesh = meshByName.get(name); if (!mesh) continue;
-    const detOn = det === 'LAR' ? showLAr : showTile;
-    const vis = detOn && (!isFinite(mev) || energyMev >= mev);
+    const thr   = det === 'LAR' ? thrLArMev  : thrTileMev;
+    const detOn = det === 'LAR' ? showLAr    : showTile;
+    const vis = detOn && (!isFinite(thr) || energyMev >= thr);
     mesh.visible = vis; if (vis) rayTargets.push(mesh);
   }
   rebuildAllOutlines();
@@ -1311,10 +1394,13 @@ function processXml(xmlText) {
   setStatus(`Decoding ${total} cells…`);
   resetScene();
 
-  // Energy range over all cells combined
-  const mevs = [...tileCells, ...larCells].map(c => c.energy * 1000).filter(isFinite);
-  const eMin = Math.min(...mevs);
-  eMaxMev    = Math.max(...mevs);
+  // Per-detector energy ranges (first pass)
+  const tileMevs = tileCells.map(c => c.energy * 1000).filter(v => isFinite(v) && v > 0);
+  const larMevs  = larCells .map(c => c.energy * 1000).filter(v => isFinite(v) && v > 0);
+  tileMinMev = tileMevs.length ? Math.min(...tileMevs) : 0;
+  tileMaxMev = tileMevs.length ? Math.max(...tileMevs) : 1;
+  larMinMev  = larMevs.length  ? Math.min(...larMevs)  : 0;
+  larMaxMev  = larMevs.length  ? Math.max(...larMevs)  : 1;
 
   let nTile = 0, nLAr = 0, nMiss = 0, nSkip = 0;
 
@@ -1331,7 +1417,7 @@ function processXml(xmlText) {
     const path = `Calorimeter\u2192Tile${x}${y}_0\u2192Tile${x}${y}${k}_${k}\u2192cell_${f.module}`;
     const mesh = meshByName.get(path);
     if (!mesh) { nMiss++; continue; }
-    mesh.material = palMat(eMev); mesh.visible = true; mesh.renderOrder = 2;
+    mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     active.set(path, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k), det: 'TILE' });
     nTile++;
   }
@@ -1349,116 +1435,198 @@ function processXml(xmlText) {
     if (!path) { nMiss++; continue; }
     const mesh = meshByName.get(path);
     if (!mesh) { nMiss++; continue; }
-    mesh.material = palMat(eMev); mesh.visible = true; mesh.renderOrder = 2;
+    mesh.material = palMatLAr(eMev); mesh.visible = true; mesh.renderOrder = 2;
     active.set(path, { energyGev: energy, energyMev: eMev, cellName: p.cell_name ?? `LAr η=${f.eta} φ=${f.phi}`, det: 'LAR' });
     nLAr++;
   }
 
-  initSlider(eMin, eMaxMev);
-  applyThreshold(thrMev);
+  initDetPanel(nTile > 0, nLAr > 0);
+  applyThreshold();
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
 
   const hitParts = [];
-  if (nTile) hitParts.push(`TILE: ${nTile}`);
-  if (nLAr)  hitParts.push(`LAr: ${nLAr}`);
+  if (nTile) hitParts.push(`TILE: ${nTile} (${fmtMev(tileMinMev)}–${fmtMev(tileMaxMev)})`);
+  if (nLAr)  hitParts.push(`LAr: ${nLAr} (${fmtMev(larMinMev)}–${fmtMev(larMaxMev)})`);
   const hitStr  = hitParts.join(' · ') || '0';
   const nHit    = nTile + nLAr;
   const missStr = nMiss ? ` · <span class="warn">${nMiss} unmapped</span>` : '';
-  const logMsg  = `${nHit} cells (${hitStr}) · ${fmtMev(eMin)}–${fmtMev(eMaxMev)}` + (nMiss ? ` · ${nMiss} unmapped` : '');
-  setStatus(`<span class="ok">${hitStr}</span>${missStr} · ${fmtMev(eMin)}–${fmtMev(eMaxMev)}`);
-  addLog(`${logMsg} (${dt}s)`, 'ok');
+  setStatus(`<span class="ok">${nHit} cells</span>${missStr} · ${hitStr}`);
+  addLog(`${nHit} cells — ${hitStr}${nMiss ? ` · ${nMiss} unmapped` : ''} (${dt}s)`, 'ok');
 }
 
-// ── Slider ────────────────────────────────────────────────────────────────────
-const sliderWrap = document.getElementById('slider-wrap');
-const strak      = document.getElementById('strak');
-const sthumb     = document.getElementById('sthumb');
-const sthlbl     = document.getElementById('sthlbl');
-const thrInput   = document.getElementById('thr-input');
-let   sdrag      = false;
-function mevToRatio(mev) {
-  if (!isFinite(mev) || mev <= LOG_FLOOR || eMaxMev <= LOG_FLOOR) return 0;
-  return Math.max(0, Math.min(1, Math.log(mev/LOG_FLOOR)/Math.log(eMaxMev/LOG_FLOOR)));
+// ── Right panel (rpanel) toggle ───────────────────────────────────────────────
+const rpanel    = document.getElementById('rpanel');
+const rpanelTab = document.getElementById('rpanel-tab');
+let rpanelOpen  = false;
+function openRPanel()  { rpanelOpen = true;  rpanel.classList.add('open');    rpanelTab.textContent = '›'; }
+function closeRPanel() { rpanelOpen = false; rpanel.classList.remove('open'); rpanelTab.textContent = '‹'; }
+rpanelTab.addEventListener('click', () => rpanelOpen ? closeRPanel() : openRPanel());
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+const TAB_IDS = ['tile', 'lar', 'ghost'];
+function switchTab(det) {
+  TAB_IDS.forEach(d => {
+    document.getElementById('pane-' + d).style.display = d === det ? 'flex' : 'none';
+    document.getElementById('tab-'  + d).classList.toggle('on', d === det);
+  });
 }
-function ratioToMev(r) { return r <= 0 ? -Infinity : LOG_FLOOR * Math.pow(eMaxMev/LOG_FLOOR, Math.min(1,r)); }
-function placeThumb(r) { sthumb.style.top = ((1-r)*100)+'%'; }
-function updateSliderUI(mev) {
-  const lbl = !isFinite(mev) ? 'ALL' : fmtMev(mev);
-  sthlbl.textContent = lbl;
-  if (document.activeElement !== thrInput) thrInput.value = !isFinite(mev) ? '' : lbl;
-  placeThumb(mevToRatio(mev));
-}
-function initSlider(eMin, eMax) {
-  document.getElementById('smax').textContent = fmtMev(eMax);
-  document.getElementById('smin').textContent = fmtMev(eMin);
-  if (isFinite(thrMev) && thrMev > eMax) thrMev = Math.min(DEF_THR, eMax);
-  updateSliderUI(thrMev); sliderWrap.hidden = false;
-}
-function sliderRatioFromPtr(e) {
-  const rect = strak.getBoundingClientRect();
-  return 1 - Math.max(0, Math.min(1, ((e.clientY ?? e.touches?.[0]?.clientY ?? 0)-rect.top) / rect.height));
-}
-strak.addEventListener('pointerdown', e => {
-  sdrag = true; sliderWrap.classList.add('dragging'); strak.setPointerCapture(e.pointerId);
-  thrMev = ratioToMev(sliderRatioFromPtr(e)); updateSliderUI(thrMev); applyThreshold(thrMev);
-});
-strak.addEventListener('pointermove', e => {
-  if (!sdrag) return;
-  thrMev = ratioToMev(sliderRatioFromPtr(e)); updateSliderUI(thrMev); applyThreshold(thrMev);
-});
-['pointerup','pointercancel'].forEach(ev =>
-  strak.addEventListener(ev, () => { sdrag = false; sliderWrap.classList.remove('dragging'); })
-);
-thrInput.addEventListener('keydown', e => { if (e.key==='Enter') thrInput.blur(); });
-thrInput.addEventListener('blur', () => {
-  const v = parseMevInput(thrInput.value);
-  if (v !== null) { thrMev = v; applyThreshold(thrMev); }
-  updateSliderUI(thrMev);
-});
+TAB_IDS.forEach(d => document.getElementById('tab-' + d).addEventListener('click', () => switchTab(d)));
+// Initialize: TILE pane visible, others hidden
+switchTab('tile');
+
+// ── Slider helpers ────────────────────────────────────────────────────────────
 function parseMevInput(s) {
   s = s.trim().toLowerCase();
-  if (!s || s==='all') return -Infinity;
-  const g = s.match(/^([\d.]+)\s*gev$/i); if (g) return parseFloat(g[1])*1000;
+  if (!s || s === 'all') return -Infinity;
+  const g = s.match(/^([\d.]+)\s*gev$/i); if (g) return parseFloat(g[1]) * 1000;
   const m = s.match(/^([\d.]+)\s*(mev)?$/i); if (m) return parseFloat(m[1]);
   return null;
 }
+function ratioFromPtr(e, trackEl) {
+  const rect = trackEl.getBoundingClientRect();
+  return 1 - Math.max(0, Math.min(1, ((e.clientY ?? e.touches?.[0]?.clientY ?? 0) - rect.top) / rect.height));
+}
 
-// ── Ghost ATLAS geometry ──────────────────────────────────────────────────────
+// Generic vertical energy slider — fixed max in MeV
+function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev) {
+  const track = document.getElementById(trackId);
+  const thumb = document.getElementById(thumbId);
+  const input = document.getElementById(inputId);
+  let drag = false;
+
+  function updateUI(mev) {
+    const ratio = isFinite(mev) && mev > 0 ? Math.max(0, Math.min(1, mev / maxMev)) : 0;
+    thumb.style.top = ((1 - ratio) * 100) + '%';
+    if (document.activeElement !== input) input.value = isFinite(mev) && mev > 0 ? fmtMev(mev) : '';
+  }
+
+  track.addEventListener('pointerdown', e => {
+    drag = true; rpanel.classList.add('dragging'); track.setPointerCapture(e.pointerId);
+    const r = ratioFromPtr(e, track); setThr(r <= 0 ? -Infinity : maxMev * r);
+    updateUI(getThr()); applyThreshold();
+  });
+  track.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const r = ratioFromPtr(e, track); setThr(r <= 0 ? -Infinity : maxMev * r);
+    updateUI(getThr()); applyThreshold();
+  });
+  ['pointerup', 'pointercancel'].forEach(ev =>
+    track.addEventListener(ev, () => { drag = false; rpanel.classList.remove('dragging'); })
+  );
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
+  input.addEventListener('blur', () => {
+    const v = parseMevInput(input.value);
+    if (v !== null) { setThr(v); applyThreshold(); }
+    updateUI(getThr());
+  });
+
+  return { updateUI };
+}
+
+const tileSlider = makeDetSlider('tile-strak', 'tile-sthumb', 'tile-thr-input',
+  () => thrTileMev, v => { thrTileMev = v; }, TILE_SCALE);
+const larSlider  = makeDetSlider('lar-strak',  'lar-sthumb',  'lar-thr-input',
+  () => thrLArMev,  v => { thrLArMev = v; },  LAR_SCALE);
+
+// Initialize thumb positions at default threshold
+tileSlider.updateUI(thrTileMev);
+larSlider.updateUI(thrLArMev);
+
+function initDetPanel(hasTile, hasLAr) {
+  tileSlider.updateUI(thrTileMev);
+  larSlider.updateUI(thrLArMev);
+  openRPanel();
+  if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar');
+}
+
+// ── Ghost opacity slider ──────────────────────────────────────────────────────
+const ghostTrack = document.getElementById('ghost-strak');
+const ghostThumb = document.getElementById('ghost-sthumb');
+const ghostLbl   = document.getElementById('ghost-opacity-lbl');
+let   ghostDrag  = false;
+
+function updateGhostUI(opacity) {
+  ghostThumb.style.top = ((1 - opacity) * 100) + '%';
+  ghostLbl.textContent = Math.round(opacity * 100) + '%';
+  if (ghostMat) { ghostMat.opacity = opacity; dirty = true; }
+}
+
+ghostTrack.addEventListener('pointerdown', e => {
+  ghostDrag = true; rpanel.classList.add('dragging'); ghostTrack.setPointerCapture(e.pointerId);
+  ghostOpacity = ratioFromPtr(e, ghostTrack); updateGhostUI(ghostOpacity);
+});
+ghostTrack.addEventListener('pointermove', e => {
+  if (!ghostDrag) return;
+  ghostOpacity = ratioFromPtr(e, ghostTrack); updateGhostUI(ghostOpacity);
+});
+['pointerup', 'pointercancel'].forEach(ev =>
+  ghostTrack.addEventListener(ev, () => { ghostDrag = false; rpanel.classList.remove('dragging'); })
+);
+
+// Initialize ghost thumb at default opacity
+updateGhostUI(ghostOpacity);
+
+// ── Ghost ATLAS geometry — solid faces ────────────────────────────────────────
 function buildGhostAtlas() {
   if (ghostGroup) return;
-  const segs = [];
-  function ring(r, z, n=48) {
-    for (let i=0;i<n;i++) {
-      const a0=(i/n)*Math.PI*2, a1=((i+1)/n)*Math.PI*2;
-      segs.push(new THREE.Vector3(r*Math.cos(a0),r*Math.sin(a0),z), new THREE.Vector3(r*Math.cos(a1),r*Math.sin(a1),z));
-    }
-  }
-  function verts(r,z0,z1,n=8) {
-    for (let i=0;i<n;i++) {
-      const a=(i/n)*Math.PI*2;
-      segs.push(new THREE.Vector3(r*Math.cos(a),r*Math.sin(a),z0), new THREE.Vector3(r*Math.cos(a),r*Math.sin(a),z1));
-    }
-  }
-  function cylBox(rI,rO,z0,z1,nV=8) { ring(rI,z0);ring(rI,z1);ring(rO,z0);ring(rO,z1);verts(rI,z0,z1,nV);verts(rO,z0,z1,nV); }
-  function annDisk(rI,rO,z,nSp=8) {
-    ring(rI,z);ring(rO,z);
-    for (let i=0;i<nSp;i++) {
-      const a=(i/nSp)*Math.PI*2;
-      segs.push(new THREE.Vector3(rI*Math.cos(a),rI*Math.sin(a),z), new THREE.Vector3(rO*Math.cos(a),rO*Math.sin(a),z));
-    }
-  }
-  cylBox(2280,3835,-2820, 2820,12); cylBox(2280,3835, 3600, 6050, 8); cylBox(2280,3835,-6050,-3600, 8);
-  cylBox(1540,1960,-3170, 3170,10);
-  for (const s of [1,-1]) {
-    annDisk(330,2100,s*3700,8); annDisk(330,2100,s*5700,8); verts(330,s*3700,s*5700,8); verts(2100,s*3700,s*5700,8);
-    annDisk(375,2100,s*4200,8); annDisk(375,2100,s*6100,8); verts(375,s*4200,s*6100,8); verts(2100,s*4200,s*6100,8);
-  }
+
+  ghostMat = new THREE.MeshBasicMaterial({
+    color: 0x3d72cc,
+    transparent: true,
+    opacity: ghostOpacity,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   ghostGroup = new THREE.Group();
-  ghostGroup.add(new THREE.LineSegments(
-    new THREE.BufferGeometry().setFromPoints(segs),
-    new THREE.LineBasicMaterial({ color: 0x3d72cc, transparent: true, opacity: 0.17, depthWrite: false })
-  ));
-  ghostGroup.visible = false; scene.add(ghostGroup);
+
+  const ROT = Math.PI * 0.5; // CylinderGeometry is along Y; rotate to Z-axis
+
+  // Open cylindrical surface at radius r from z0 to z1
+  function cylWall(r, z0, z1, n = 32) {
+    const geo  = new THREE.CylinderGeometry(r, r, Math.abs(z1 - z0), n, 1, true);
+    const mesh = new THREE.Mesh(geo, ghostMat);
+    mesh.rotation.x = ROT;
+    mesh.position.z  = (z0 + z1) * 0.5;
+    ghostGroup.add(mesh);
+  }
+
+  // Flat annular ring (disk with hole) at position z — RingGeometry lies in the
+  // XY plane with normal along +Z, which is already correct for beam-axis caps.
+  function annDisk(rI, rO, z, n = 32) {
+    const geo  = new THREE.RingGeometry(rI, rO, n);
+    const mesh = new THREE.Mesh(geo, ghostMat);
+    mesh.position.z = z;
+    ghostGroup.add(mesh);
+  }
+
+  // Hollow annular cylinder: inner wall + outer wall + two annular end caps
+  function cylBox(rI, rO, z0, z1, n = 32) {
+    cylWall(rI, z0, z1, n);
+    cylWall(rO, z0, z1, n);
+    annDisk(rI, rO, z0, n);
+    annDisk(rI, rO, z1, n);
+  }
+
+  // ── ATLAS calorimeter sub-detector volumes ─────────────────────────────────
+  cylBox(2280, 3835, -2820,  2820, 48);  // TileCal barrel
+  cylBox(2280, 3835,  3600,  6050, 32);  // TileCal ext. barrel A
+  cylBox(2280, 3835, -6050, -3600, 32);  // TileCal ext. barrel C
+  cylBox(1540, 1960, -3170,  3170, 32);  // Inner cylinder (solenoid envelope)
+
+  for (const s of [1, -1]) {
+    annDisk(330, 2100, s * 3700, 32);
+    annDisk(330, 2100, s * 5700, 32);
+    cylWall(330,  s * 3700, s * 5700, 16);
+    cylWall(2100, s * 3700, s * 5700, 32);
+
+    annDisk(375, 2100, s * 4200, 32);
+    annDisk(375, 2100, s * 6100, 32);
+    cylWall(375,  s * 4200, s * 6100, 16);
+    cylWall(2100, s * 4200, s * 6100, 32);
+  }
+
+  ghostGroup.visible = false;
+  scene.add(ghostGroup);
 }
 function toggleGhost() {
   buildGhostAtlas(); ghostOn = !ghostOn;
@@ -1510,7 +1678,7 @@ function showOutline(mesh) {
 }
 
 // ── All-cells outline (single merged draw call) ───────────────────────────────
-const outlineAllMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+const outlineAllMat = new THREE.LineBasicMaterial({ color: 0x000000 });
 function clearAllOutlines() {
   if (!allOutlinesMesh) return;
   scene.remove(allOutlinesMesh);
@@ -1611,24 +1779,17 @@ document.getElementById('btn-info').addEventListener('click', () => {
 document.getElementById('btn-ghost').addEventListener('click', toggleGhost);
 document.getElementById('btn-beam').addEventListener('click', toggleBeam);
 
-// ── Outline colour picker ─────────────────────────────────────────────────────
-const outlineColorInput = document.getElementById('outline-color-input');
-document.getElementById('btn-outline-color').addEventListener('click', () => outlineColorInput.click());
-outlineColorInput.addEventListener('input', e => {
-  outlineAllMat.color.set(e.target.value);
-  dirty = true;
-});
 
 // ── Detector layer toggles ────────────────────────────────────────────────────
 document.getElementById('btn-tile').addEventListener('click', () => {
   showTile = !showTile;
   document.getElementById('btn-tile').classList.toggle('on', showTile);
-  applyThreshold(thrMev);
+  applyThreshold();
 });
 document.getElementById('btn-lar').addEventListener('click', () => {
   showLAr = !showLAr;
   document.getElementById('btn-lar').classList.toggle('on', showLAr);
-  applyThreshold(thrMev);
+  applyThreshold();
 });
 
 // ── Panel resize ──────────────────────────────────────────────────────────────
