@@ -2488,7 +2488,7 @@ async function loadSampleIndex() {
   msgEl.hidden = false;
   listEl.innerHTML = '';
   try {
-    const res = await fetch('./default_xml/index.json');
+    const res = await fetch('/default_xml/index.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const names = await res.json();
     msgEl.hidden = true;
