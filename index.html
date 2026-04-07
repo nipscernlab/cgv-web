@@ -935,7 +935,7 @@
     <div class="ghost-switches-wrap">
       <!-- TILE toggle -->
       <div class="gswitch-row">
-        <div class="gswitch-dot" style="background:#cca830"></div>
+        <div class="gswitch-dot" style="background:#5C5F66"></div>
         <span class="gswitch-lbl">TILE</span>
         <button class="gswitch" id="gtog-tile" role="switch" aria-checked="false"
           style="--gswitch-col:#c87c18"></button>
@@ -944,24 +944,24 @@
       <div class="gswitch-row" style="flex-direction:column;align-items:flex-start;gap:6px">
         <span class="gswitch-lbl" style="color:var(--text)">Transparency</span>
         <div style="display:flex;align-items:center;gap:8px;width:100%">
-          <input type="range" id="ghost-alpha-slider" min="0" max="100" value="88"
+          <input type="range" id="ghost-alpha-slider" min="0" max="100" value="90"
             style="flex:1;accent-color:#7ab8ff;cursor:pointer">
-          <span id="ghost-alpha-val" style="font:500 .6rem var(--mono);color:var(--muted);min-width:28px;text-align:right">88%</span>
+          <span id="ghost-alpha-val" style="font:500 .6rem var(--mono);color:var(--muted);min-width:28px;text-align:right">90%</span>
         </div>
       </div>
       <!-- Color pickers -->
       <div class="gswitch-row" style="justify-content:space-between">
         <span class="gswitch-lbl" style="color:var(--text)">Solid</span>
         <label class="ghost-cpick-wrap" title="Solid fill colour">
-          <input type="color" id="ghost-solid-color" value="#cca830">
-          <span class="ghost-cpick-swatch" id="ghost-solid-swatch" style="background:#cca830"></span>
+          <input type="color" id="ghost-solid-color" value="#5C5F66">
+          <span class="ghost-cpick-swatch" id="ghost-solid-swatch" style="background:#5C5F66"></span>
         </label>
       </div>
       <div class="gswitch-row" style="justify-content:space-between">
         <span class="gswitch-lbl" style="color:var(--text)">φ-lines</span>
         <label class="ghost-cpick-wrap" title="Phi-segmentation line colour">
-          <input type="color" id="ghost-phi-color" value="#d4a030">
-          <span class="ghost-cpick-swatch" id="ghost-phi-swatch" style="background:#d4a030"></span>
+          <input type="color" id="ghost-phi-color" value="#FFFFFF">
+          <span class="ghost-cpick-swatch" id="ghost-phi-swatch" style="background:#FFFFFF"></span>
         </label>
       </div>
     </div>
@@ -1496,9 +1496,9 @@ const GHOST_TILE_NAMES = [
 ];
 
 // Mutable ghost colours / opacity (updated by UI controls)
-let ghostSolidColor = 0xcca830;
-let ghostPhiColor   = 0xd4a030;
-let ghostSolidOpacity = 0.12;  // (1 - transparency/100)
+let ghostSolidColor = 0x5C5F66;
+let ghostPhiColor   = 0xFFFFFF;
+let ghostSolidOpacity = 0.03;  // (1 - transparency/100)
 
 const ghostSolidMat = new THREE.MeshBasicMaterial({
   color: ghostSolidColor, transparent: true, opacity: ghostSolidOpacity,
@@ -2689,7 +2689,7 @@ async function renderAndDownload(targetW, targetH) {
   // ── 9. Download ─────────────────────────────────────────────────────────
   const ts   = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
   const link = document.createElement('a');
-  link.download = `CGV_${targetW}x${targetH}_${ts}.png`;
+  link.download = `CGVWEB_${targetW}x${targetH}_${ts}.png`;
   link.href = offscreen.toDataURL('image/png');
   link.click();
 }
