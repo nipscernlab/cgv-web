@@ -15,7 +15,6 @@ atlas-id-parser/pkg/*
 # ── Large / binary source data ─────────────────────────────────────────────────
 *.root
 *.cgv
-JiveXML_*.xml
 
 # ── Node.js project files (not needed for static site) ────────────────────────
 package.json
