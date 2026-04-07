@@ -41,7 +41,7 @@
       --blur:    blur(20px) saturate(1.7);
       --r:       7px;
       --pw:      250px;
-      --rpw:     160px;
+      --rpw:     182px;
       --pt:      0.34s;
     }
 
@@ -145,6 +145,29 @@
     }
     .mbtn:hover { color: var(--text); border-color: rgba(36,103,224,.40); }
     .mbtn.on { background: rgba(26,82,192,.16); border-color: var(--accent); color: #7ab8ff; }
+
+    /* ── Sample section ──────────────────────────────────── */
+    #sample-sec {
+      flex: 1; overflow-y: auto; min-height: 0;
+      padding: 8px 10px; display: flex; flex-direction: column; gap: 4px;
+    }
+    #sample-sec::-webkit-scrollbar { width: 3px; }
+    #sample-sec::-webkit-scrollbar-thumb { background: rgba(36,103,224,.22); border-radius: 2px; }
+    #sample-list-msg {
+      font-size: .62rem; color: var(--muted); padding: 8px 0; text-align: center;
+    }
+    .sample-item {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 10px; border-radius: var(--r);
+      border: 1px solid var(--border);
+      font-size: .63rem; color: var(--text); cursor: pointer;
+      transition: all .12s; background: transparent;
+      text-align: left; width: 100%;
+    }
+    .sample-item:hover { background: rgba(36,103,224,.10); border-color: rgba(36,103,224,.40); color: #7ab8ff; }
+    .sample-item.cur  { background: rgba(26,82,192,.16); border-color: var(--accent); color: #7ab8ff; }
+    .sample-item-icon { flex-shrink: 0; opacity: .55; }
+    .sample-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* ── Live section ─────────────────────────────────────── */
     #live-sec { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
@@ -327,49 +350,95 @@
       transition: color .15s, background .15s;
     }
     #rpanel-tab:hover { color: var(--bright); background: rgba(22,72,168,.15); }
-    #rpanel-head {
-      padding: 10px 8px 7px; flex-shrink: 0;
-      border-bottom: 1px solid var(--border);
-      font: 500 .55rem var(--font); letter-spacing: .10em;
-      color: var(--muted); text-transform: uppercase; text-align: center;
-    }
+
+    /* ── Detector tab bar ────────────────────────────────── */
     #det-tab-bar {
-      display: flex; gap: 2px; padding: 6px 5px 4px; flex-shrink: 0;
+      display: flex; flex-shrink: 0;
+      border-bottom: 2px solid var(--border);
     }
     .det-tab {
-      flex: 1; padding: 3px 3px;
-      font: 600 .56rem var(--mono); letter-spacing: .03em;
-      color: var(--muted); border: 1px solid transparent;
-      border-radius: 5px; cursor: pointer; transition: all .14s;
+      flex: 1; padding: 8px 2px 6px;
+      font: 600 .53rem var(--mono); letter-spacing: .04em;
+      color: var(--muted); border: none;
+      border-bottom: 2px solid transparent; margin-bottom: -2px;
+      cursor: pointer; transition: color .14s, border-color .14s, background .14s;
     }
-    .det-tab:hover { color: var(--bright); }
-    .det-tab.on { color: var(--bright); border-color: var(--border2); background: rgba(26,82,192,.16); }
+    .det-tab:hover { color: var(--text); }
+    .det-tab.on {
+      color: var(--bright);
+      border-bottom-color: var(--tab-col, var(--accent2));
+      background: rgba(36,103,224,.06);
+    }
+
+    /* ── Detector pane — compact centred layout ──────────── */
     .det-pane {
       flex: 1; display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 6px; padding: 8px 0;
+      align-items: center; justify-content: center;
+      gap: 5px; padding: 10px 0 12px;
     }
-    .slbl { font: 400 .53rem var(--font); letter-spacing: .13em; color: var(--muted); text-transform: uppercase; text-align: center; }
-    .sval { font: 400 .58rem var(--mono); color: var(--muted); text-align: center; }
+    /* Tiny detector label + dot above the slider */
+    .pane-det-row {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 2px;
+    }
+    .pane-det-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .pane-det-name {
+      font: 500 .56rem var(--font); color: var(--text); letter-spacing: .03em;
+    }
+    .slbl {
+      font: 400 .50rem var(--font); letter-spacing: .13em;
+      color: var(--muted); text-transform: uppercase; text-align: center;
+    }
+    .sval { font: 400 .57rem var(--mono); color: var(--muted); text-align: center; }
     .strak {
-      position: relative; width: 12px; height: 260px;
+      position: relative; width: 12px; height: 250px;
       border-radius: 6px; cursor: ns-resize; user-select: none; touch-action: none;
-      border: 1px solid rgba(255,255,255,.12);
-      box-shadow: inset 0 1px 5px rgba(0,0,0,.4);
+      border: 1px solid rgba(255,255,255,.11);
+      box-shadow: inset 0 1px 6px rgba(0,0,0,.45);
     }
     .sthumb {
       position: absolute; left: -9px; right: -9px; height: 2px;
-      border-radius: 1px; background: #fff;
-      box-shadow: 0 0 7px rgba(255,255,255,.95);
+      border-radius: 1px; background: rgba(255,255,255,.94);
+      box-shadow: 0 0 8px rgba(255,255,255,.88);
       pointer-events: none; top: 50%;
     }
     .thr-input {
-      width: 72px; padding: 3px 7px;
-      background: rgba(2,11,28,.9); border: 1px solid var(--border);
-      border-radius: 4px; color: var(--text); font: 400 .61rem var(--mono);
+      width: 78px; padding: 4px 7px;
+      background: rgba(2,11,28,.90); border: 1px solid var(--border);
+      border-radius: 5px; color: var(--text); font: 400 .61rem var(--mono);
       text-align: center; transition: border-color .15s;
     }
     .thr-input:focus { border-color: var(--accent2); color: var(--bright); }
     .thr-input::placeholder { color: var(--dim); }
+
+    /* ── Ghost switches (no text inside buttons) ─────────── */
+    .ghost-switches-wrap {
+      flex: 1; display: flex; flex-direction: column; justify-content: center;
+      width: 100%;
+    }
+    .gswitch-row {
+      display: flex; align-items: center; gap: 10px; padding: 11px 16px;
+      border-bottom: 1px solid var(--border); transition: background .13s;
+    }
+    .gswitch-row:last-child { border-bottom: none; }
+    .gswitch-row:hover { background: rgba(36,103,224,.06); }
+    .gswitch-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .gswitch-lbl {
+      flex: 1; font: 600 .58rem var(--mono); letter-spacing: .06em; color: var(--muted);
+    }
+    /* CSS-only toggle pill — no text inside */
+    .gswitch {
+      position: relative; width: 28px; height: 15px; flex-shrink: 0;
+      background: var(--dim); border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.07);
+      cursor: pointer; transition: background .18s;
+    }
+    .gswitch::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--muted); transition: transform .18s, background .18s;
+    }
+    .gswitch.on { background: var(--gswitch-col, var(--accent2)); border-color: transparent; }
+    .gswitch.on::after { transform: translateX(13px); background: #fff; }
 
     /* ── Bottom-center toolbar ────────────────────────────── */
     #toolbar {
@@ -489,10 +558,11 @@
 
       /* Right panel on small screens */
       .strak { height: 160px; }
-      #rpanel { --rpw: 140px; width: 140px; }
-      .slbl { font-size: .50rem; }
-      .sval { font-size: .56rem; }
-      .thr-input { width: 60px; font-size: .59rem; }
+      #rpanel { --rpw: 148px; width: 148px; }
+      .pane-det-name { font-size: .52rem; }
+      .slbl { font-size: .48rem; }
+      .sval { font-size: .54rem; }
+      .thr-input { width: 64px; font-size: .58rem; }
 
       /* Cinema exit button */
       #cinema-exit { bottom: 70px; }
@@ -565,7 +635,9 @@
       text-align: center; padding: 10px 0 6px;
       font: 400 .68rem var(--mono); color: var(--warn);
       display: flex; align-items: center; justify-content: center; gap: 8px;
+      visibility: hidden; /* always reserves space; .running makes it visible */
     }
+    #shot-progress.running { visibility: visible; }
     .shot-spinner {
       width: 14px; height: 14px;
       border: 2px solid var(--border); border-top-color: var(--warn);
@@ -591,6 +663,7 @@
     }
     .shot-save:hover { background: rgba(26,82,192,.40); color: var(--bright); }
     .shot-save:disabled { opacity: 0.4; cursor: default; }
+
   </style>
 </head>
 <body>
@@ -684,6 +757,9 @@
     <circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/>
     <circle cx="17.5" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>
   </symbol>
+  <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+  </symbol>
 </defs></svg>
 
 <canvas id="c"></canvas>
@@ -716,6 +792,10 @@
     <button id="btn-local" class="mbtn">
       <svg class="ic" style="width:12px;height:12px"><use href="#i-folder"/></svg>
       <span data-i18n="btn-local">Local</span>
+    </button>
+    <button id="btn-sample" class="mbtn">
+      <svg class="ic" style="width:12px;height:12px"><use href="#i-star"/></svg>
+      <span data-i18n="btn-sample">Samples</span>
     </button>
   </div>
 
@@ -754,6 +834,12 @@
     <div id="local-list" hidden></div>
   </div>
 
+  <!-- Sample events mode -->
+  <div id="sample-sec" hidden>
+    <div id="sample-list-msg" data-i18n="sample-loading">Loading events…</div>
+    <div id="sample-list"></div>
+  </div>
+
   <!-- Session log -->
   <div id="log-sec">
     <div id="log-head">
@@ -772,62 +858,90 @@
 <!-- ── Right retractable panel ────────────────────────────── -->
 <aside id="rpanel">
   <button id="rpanel-tab" aria-label="Toggle threshold panel">‹</button>
-  <div id="rpanel-head">Thresholds</div>
+
   <div id="det-tab-bar">
-    <button class="det-tab on" id="tab-tile">TILE</button>
-    <button class="det-tab"    id="tab-lar">LAr</button>
-    <button class="det-tab"    id="tab-hec">HEC</button>
-    <button class="det-tab"    id="tab-ghost">Ghost</button>
+    <button class="det-tab on" id="tab-tile"  style="--tab-col:#c87c18">TILE</button>
+    <button class="det-tab"    id="tab-lar"   style="--tab-col:#27b568">LAr</button>
+    <button class="det-tab"    id="tab-hec"   style="--tab-col:#66e0f6">HEC</button>
+    <button class="det-tab"    id="tab-ghost" style="--tab-col:#6080b8">Ghost</button>
   </div>
 
-  <!-- TILE pane -->
+  <!-- ── TILE pane ──────────────────────────────────────── -->
   <div class="det-pane" id="pane-tile">
+    <div class="pane-det-row">
+      <span class="pane-det-dot" style="background:#c87c18"></span>
+      <span class="pane-det-name">TileCal</span>
+    </div>
     <div class="sval">2.00 GeV</div>
     <div class="strak" id="tile-strak"
       style="background:linear-gradient(to top,#ffff00 0%,#800000 100%)">
       <div class="sthumb" id="tile-sthumb"></div>
     </div>
     <div class="sval">0 GeV</div>
-    <div class="slbl">Threshold</div>
+    <div class="slbl" data-i18n="slbl-threshold">Threshold</div>
     <input id="tile-thr-input" class="thr-input" type="text"
-      autocomplete="off" spellcheck="false" placeholder="e.g. 200 MeV">
+      autocomplete="off" spellcheck="false"
+      data-i18n-ph="thr-placeholder" placeholder="e.g. 200 MeV">
   </div>
 
-  <!-- LAr pane (hidden by default) -->
+  <!-- ── LAr pane ───────────────────────────────────────── -->
   <div class="det-pane" id="pane-lar" style="display:none">
+    <div class="pane-det-row">
+      <span class="pane-det-dot" style="background:#27b568"></span>
+      <span class="pane-det-name">LAr EM</span>
+    </div>
     <div class="sval">1.00 GeV</div>
     <div class="strak" id="lar-strak"
       style="background:linear-gradient(to top,#17cf42 0%,#270042 100%)">
       <div class="sthumb" id="lar-sthumb"></div>
     </div>
     <div class="sval">0 GeV</div>
-    <div class="slbl">Threshold</div>
+    <div class="slbl" data-i18n="slbl-threshold">Threshold</div>
     <input id="lar-thr-input" class="thr-input" type="text"
-      autocomplete="off" spellcheck="false" placeholder="e.g. 200 MeV">
+      autocomplete="off" spellcheck="false"
+      data-i18n-ph="thr-placeholder" placeholder="e.g. 200 MeV">
   </div>
 
-  <!-- HEC pane (hidden by default) -->
+  <!-- ── HEC pane ───────────────────────────────────────── -->
   <div class="det-pane" id="pane-hec" style="display:none">
+    <div class="pane-det-row">
+      <span class="pane-det-dot" style="background:#66e0f6"></span>
+      <span class="pane-det-name">LAr HEC</span>
+    </div>
     <div class="sval">5.00 GeV</div>
     <div class="strak" id="hec-strak"
       style="background:linear-gradient(to top,#66e0f6 0%,#0c0368 100%)">
       <div class="sthumb" id="hec-sthumb"></div>
     </div>
     <div class="sval">0 GeV</div>
-    <div class="slbl">Threshold</div>
+    <div class="slbl" data-i18n="slbl-threshold">Threshold</div>
     <input id="hec-thr-input" class="thr-input" type="text"
-      autocomplete="off" spellcheck="false" placeholder="e.g. 200 MeV">
+      autocomplete="off" spellcheck="false"
+      data-i18n-ph="thr-placeholder" placeholder="e.g. 200 MeV">
   </div>
 
-  <!-- Ghost pane (hidden by default) -->
+  <!-- ── Ghost pane ─────────────────────────────────────── -->
   <div class="det-pane" id="pane-ghost" style="display:none">
-    <div class="sval" id="ghost-opacity-lbl">17%</div>
-    <div class="strak" id="ghost-strak"
-      style="background:linear-gradient(to top,rgba(61,114,204,0.05) 0%,#3d72cc 100%)">
-      <div class="sthumb" id="ghost-sthumb"></div>
+    <div class="ghost-switches-wrap">
+      <div class="gswitch-row">
+        <div class="gswitch-dot" style="background:#cca830"></div>
+        <span class="gswitch-lbl">TILE</span>
+        <button class="gswitch" id="gtog-tile" role="switch" aria-checked="false"
+          style="--gswitch-col:#c87c18"></button>
+      </div>
+      <div class="gswitch-row">
+        <div class="gswitch-dot" style="background:#40b870"></div>
+        <span class="gswitch-lbl">LAr</span>
+        <button class="gswitch" id="gtog-lar" role="switch" aria-checked="false"
+          style="--gswitch-col:#27b568"></button>
+      </div>
+      <div class="gswitch-row">
+        <div class="gswitch-dot" style="background:#4ea8d4"></div>
+        <span class="gswitch-lbl">HEC</span>
+        <button class="gswitch" id="gtog-hec" role="switch" aria-checked="false"
+          style="--gswitch-col:#4ea8d4"></button>
+      </div>
     </div>
-    <div class="sval">0%</div>
-    <div class="slbl">Ghost Opacity</div>
   </div>
 </aside>
 
@@ -867,7 +981,7 @@
     data-tip="Toggle LAr HEC cells">HEC</button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-shot"
-    data-tip="Save screenshot (no UI)">
+    data-tip="Save screenshot" data-i18n-tip="tip-shot">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-camera"/></svg>
   </button>
   <button class="tbtn" id="btn-lang"
@@ -901,8 +1015,8 @@
 <!-- ── Screenshot dialog ─────────────────────────────────── -->
 <div id="shot-overlay">
   <div class="shot-card">
-    <div class="shot-title">Save Screenshot</div>
-    <div class="shot-sub">Select output resolution. The scene renders at full quality — UI is excluded. The active tooltip is drawn on top if visible.</div>
+    <div class="shot-title" data-i18n="shot-title">Save Screenshot</div>
+    <div class="shot-sub"   data-i18n="shot-sub">Select resolution. The scene renders at full quality — UI is hidden. The active tooltip is composited if visible.</div>
     <div class="shot-grid">
       <button class="shot-res" data-w="1280"  data-h="720">HD<br><span>1280 × 720</span></button>
       <button class="shot-res" data-w="1920"  data-h="1080">1080p<br><span>1920 × 1080</span></button>
@@ -911,13 +1025,13 @@
       <button class="shot-res" data-w="7680"  data-h="4320">8K<br><span>7680 × 4320</span></button>
       <button class="shot-res" data-w="10240" data-h="5760">10K<br><span>10240 × 5760</span></button>
     </div>
-    <div id="shot-progress" hidden>
+    <div id="shot-progress">
       <span class="shot-spinner"></span>
-      <span id="shot-progress-txt">Rendering…</span>
+      <span id="shot-progress-txt"></span>
     </div>
     <div class="shot-actions">
-      <button class="shot-cancel" id="btn-shot-cancel">Cancel</button>
-      <button class="shot-save"   id="btn-shot-save" disabled>Save PNG</button>
+      <button class="shot-cancel" id="btn-shot-cancel" data-i18n="shot-cancel">Cancel</button>
+      <button class="shot-save"   id="btn-shot-save" disabled data-i18n="shot-save">Save PNG</button>
     </div>
   </div>
 </div>
@@ -980,7 +1094,9 @@ try { ({ LivePoller } = await import('./live_atlas/live_cern/live_poller.js')); 
 const TRANSLATIONS = {
   en: {
     'logo-full': 'Calorimeter Geometry Viewer', 'logo-lab': 'NIPSCERN · ATLAS',
-    'btn-live': 'Live', 'btn-local': 'Local',
+    'btn-live': 'Live', 'btn-local': 'Local', 'btn-sample': 'Samples',
+    'sample-loading': 'Loading events…', 'sample-empty': 'No sample events found.',
+    'sample-error': 'Error loading event list.',
     'live-starting': 'Starting…', 'live-polling': 'Polling…', 'live-same': 'Up to date',
     'live-fetching': 'Fetching…', 'live-error': 'Error', 'live-stopped': 'Stopped',
     'local-folder': 'Select Folder', 'local-or': 'or', 'local-upload': 'Upload XML',
@@ -998,12 +1114,19 @@ const TRANSLATIONS = {
     'about-close': 'Close', 'tip-energy-key': 'Energy',
     'tip-panel': 'Toggle the sidebar panel',
     'tip-cinema': 'Cinema mode — auto-rotation, hide UI',
-    'tip-ghost': 'ATLAS ghost — show sub-detector outlines',
+    'tip-ghost': 'ATLAS ghost — toggle sub-detector outlines',
     'tip-info': 'Cell info — show tooltip and outline on hover',
     'tip-beam': 'Beam axis — show Z-axis N/S direction cones',
     'tip-lang': 'Switch display language',
+    'tip-shot': 'Save screenshot — choose resolution',
     'tip-about': 'About this project', 'tip-pin': 'Pin panel open at all times',
     'tip-poll-play': 'Resume live polling', 'tip-poll-stop': 'Pause live polling',
+    'shot-title': 'Save Screenshot',
+    'shot-sub': 'Select resolution. The scene renders at full quality — UI is hidden. The active tooltip is composited if visible.',
+    'shot-cancel': 'Cancel', 'shot-save': 'Save PNG',
+    'shot-rendering': 'Rendering {w}×{h}…',
+    'shot-done': 'PNG saved — download started',
+    'shot-error': 'Error: {msg}',
     'just-now': 'just now', 's-ago': 's ago', 'm-ago': 'm ago', 'h-ago': 'h ago',
     'log-glb-loaded': 'CaloGeometry.glb loaded',
     'log-glb-notfound': 'CaloGeometry.glb not found',
@@ -1025,7 +1148,9 @@ const TRANSLATIONS = {
   },
   fr: {
     'logo-full': 'Visionneur de Géométrie Calorimétrique', 'logo-lab': 'NIPSCERN · ATLAS',
-    'btn-live': 'Direct', 'btn-local': 'Local',
+    'btn-live': 'Direct', 'btn-local': 'Local', 'btn-sample': 'Exemples',
+    'sample-loading': 'Chargement des événements…', 'sample-empty': 'Aucun événement exemple trouvé.',
+    'sample-error': 'Erreur lors du chargement de la liste.',
     'live-starting': 'Démarrage…', 'live-polling': 'Interrogation…', 'live-same': 'À jour',
     'live-fetching': 'Récupération…', 'live-error': 'Erreur', 'live-stopped': 'Arrêté',
     'local-folder': 'Sélectionner un dossier', 'local-or': 'ou', 'local-upload': 'Charger XML',
@@ -1043,12 +1168,19 @@ const TRANSLATIONS = {
     'about-close': 'Fermer', 'tip-energy-key': 'Énergie',
     'tip-panel': 'Afficher/masquer le panneau latéral',
     'tip-cinema': 'Mode cinéma — rotation automatique, UI masquée',
-    'tip-ghost': 'Fantôme ATLAS — contours des sous-détecteurs',
+    'tip-ghost': 'Fantôme ATLAS — activer/désactiver les contours',
     'tip-info': 'Info cellule — infobulle et contour au survol',
     'tip-beam': 'Axe faisceau — indicateurs N/S sur l\'axe Z',
     'tip-lang': 'Changer la langue d\'affichage',
+    'tip-shot': 'Enregistrer une capture d\'écran',
     'tip-about': 'À propos de ce projet', 'tip-pin': 'Épingler le panneau visible',
     'tip-poll-play': 'Reprendre l\'interrogation en direct', 'tip-poll-stop': 'Suspendre l\'interrogation en direct',
+    'shot-title': 'Enregistrer une capture',
+    'shot-sub': 'Sélectionnez la résolution. La scène est rendue en pleine qualité — l\'interface est masquée. Le tooltip actif est composité si visible.',
+    'shot-cancel': 'Annuler', 'shot-save': 'Enregistrer PNG',
+    'shot-rendering': 'Rendu {w}×{h}…',
+    'shot-done': 'PNG enregistré — téléchargement lancé',
+    'shot-error': 'Erreur : {msg}',
     'just-now': 'à l\'instant', 's-ago': 's', 'm-ago': ' min', 'h-ago': ' h',
     'log-glb-loaded': 'CaloGeometry.glb chargé',
     'log-glb-notfound': 'CaloGeometry.glb introuvable',
@@ -1070,7 +1202,9 @@ const TRANSLATIONS = {
   },
   no: {
     'logo-full': 'Kalorimeter Geometri Visning', 'logo-lab': 'NIPSCERN · ATLAS',
-    'btn-live': 'Direkte', 'btn-local': 'Lokal',
+    'btn-live': 'Direkte', 'btn-local': 'Lokal', 'btn-sample': 'Eksempler',
+    'sample-loading': 'Laster hendelser…', 'sample-empty': 'Ingen eksempelhendelser funnet.',
+    'sample-error': 'Feil ved lasting av listen.',
     'live-starting': 'Starter…', 'live-polling': 'Henter data…', 'live-same': 'Oppdatert',
     'live-fetching': 'Laster ned…', 'live-error': 'Feil', 'live-stopped': 'Stoppet',
     'local-folder': 'Velg mappe', 'local-or': 'eller', 'local-upload': 'Last opp XML',
@@ -1088,12 +1222,19 @@ const TRANSLATIONS = {
     'about-close': 'Lukk', 'tip-energy-key': 'Energi',
     'tip-panel': 'Vis/skjul sidepanelet',
     'tip-cinema': 'Kinomodus — autorotasjon, skjul grensesnitt',
-    'tip-ghost': 'ATLAS-spøkelse — vis underdetektoromriss',
+    'tip-ghost': 'ATLAS-spøkelse — slå av/på underdetektoromriss',
     'tip-info': 'Celleinformasjon — verktøytips og omriss ved hover',
     'tip-beam': 'Stråleaksen — vis N/S-konuser på Z-aksen',
     'tip-lang': 'Bytt visningsspråk',
+    'tip-shot': 'Lagre skjermbilde — velg oppløsning',
     'tip-about': 'Om dette prosjektet', 'tip-pin': 'Fest panelet alltid synlig',
     'tip-poll-play': 'Gjenoppta live-henting', 'tip-poll-stop': 'Sett live-henting på pause',
+    'shot-title': 'Lagre skjermbilde',
+    'shot-sub': 'Velg oppløsning. Scenen gjengis i full kvalitet — grensesnittet er skjult. Aktivt verktøytips legges over hvis synlig.',
+    'shot-cancel': 'Avbryt', 'shot-save': 'Lagre PNG',
+    'shot-rendering': 'Gjengir {w}×{h}…',
+    'shot-done': 'PNG lagret — nedlasting startet',
+    'shot-error': 'Feil: {msg}',
     'just-now': 'akkurat nå', 's-ago': ' s siden', 'm-ago': ' min siden', 'h-ago': ' t siden',
     'log-glb-loaded': 'CaloGeometry.glb lastet inn',
     'log-glb-notfound': 'CaloGeometry.glb ikke funnet',
@@ -1115,7 +1256,9 @@ const TRANSLATIONS = {
   },
   pt: {
     'logo-full': 'Visualizador de Geometria do Calorímetro', 'logo-lab': 'NIPSCERN · ATLAS',
-    'btn-live': 'Ao Vivo', 'btn-local': 'Local',
+    'btn-live': 'Ao Vivo', 'btn-local': 'Local', 'btn-sample': 'Amostras',
+    'sample-loading': 'Carregando eventos…', 'sample-empty': 'Nenhum evento de amostra encontrado.',
+    'sample-error': 'Erro ao carregar a lista de eventos.',
     'live-starting': 'Iniciando…', 'live-polling': 'Verificando…', 'live-same': 'Atualizado',
     'live-fetching': 'Baixando…', 'live-error': 'Erro', 'live-stopped': 'Parado',
     'local-folder': 'Selecionar Pasta', 'local-or': 'ou', 'local-upload': 'Enviar XML',
@@ -1133,12 +1276,19 @@ const TRANSLATIONS = {
     'about-close': 'Fechar', 'tip-energy-key': 'Energia',
     'tip-panel': 'Mostrar/ocultar painel lateral',
     'tip-cinema': 'Modo cinema — rotação automática, ocultar interface',
-    'tip-ghost': 'ATLAS fantasma — exibir contornos dos subdetectores',
+    'tip-ghost': 'ATLAS fantasma — ativar/desativar contornos dos subdetectores',
     'tip-info': 'Info da célula — tooltip e contorno ao passar o mouse',
     'tip-beam': 'Eixo do feixe — cones N/S no eixo Z',
     'tip-lang': 'Mudar idioma de exibição',
+    'tip-shot': 'Salvar captura de tela — escolher resolução',
     'tip-about': 'Sobre este projeto', 'tip-pin': 'Fixar painel sempre visível',
     'tip-poll-play': 'Retomar monitoramento ao vivo', 'tip-poll-stop': 'Pausar monitoramento ao vivo',
+    'shot-title': 'Salvar Captura de Tela',
+    'shot-sub': 'Selecione a resolução. A cena é renderizada em qualidade máxima — a interface é ocultada. O tooltip ativo é composto se visível.',
+    'shot-cancel': 'Cancelar', 'shot-save': 'Salvar PNG',
+    'shot-rendering': 'Renderizando {w}×{h}…',
+    'shot-done': 'PNG salvo — download iniciado',
+    'shot-error': 'Erro: {msg}',
     'just-now': 'agora mesmo', 's-ago': 's atrás', 'm-ago': ' min atrás', 'h-ago': ' h atrás',
     'log-glb-loaded': 'CaloGeometry.glb carregado',
     'log-glb-notfound': 'CaloGeometry.glb não encontrado',
@@ -1208,7 +1358,7 @@ let larMaxMev  = 1, larMinMev  = 0;
 let hecMaxMev  = 1, hecMinMev  = 0;
 let thrTileMev = DEF_THR;
 let thrLArMev  = DEF_THR;
-let thrHecMev  = DEF_THR;
+let thrHecMev  = 1000; // 1 GeV default (HEC energies are typically higher)
 let showHec    = true;
 let wasmOk     = false;
 let sceneOk    = false;
@@ -1219,10 +1369,7 @@ let showInfo   = true;
 let cinemaMode = false;
 let showTile   = true;
 let showLAr    = true;
-let ghostGroup   = null;
-let ghostOn      = false;
-let ghostMat     = null;
-let ghostOpacity = 0.17;
+let showGhostTile = false, showGhostLAr = false, showGhostHec = false;
 let beamGroup  = null;
 let beamOn     = false;
 let panelPinned  = true;
@@ -1317,6 +1464,22 @@ function palMatLAr(eMev) {
   return PAL_LAR[Math.round(tv * (PAL_N - 1))];
 }
 
+// ── Ghost CGV-mesh materials ───────────────────────────────────────────────────
+// Ghost meshes come from the .glb (real .root geometry). Each subsystem has its
+// own semi-transparent material; DoubleSide so hollow shells render fully.
+const GHOST_NAMES = {
+  tile: ['Calorimeter→LBTile_0','Calorimeter→LBTileLArg_0',
+         'Calorimeter→EBTilep_0','Calorimeter→EBTilen_0',
+         'Calorimeter→EBTileHECp_0','Calorimeter→EBTileHECn_0'],
+  lar:  ['Calorimeter→LBLArg_0'],
+  hec:  ['Calorimeter→EBHECp_0','Calorimeter→EBHECn_0'],
+};
+const GHOST_MATS = {
+  tile: new THREE.MeshBasicMaterial({ color:0xcca830, transparent:true, opacity:0.12, depthWrite:false, side:THREE.DoubleSide }),
+  lar:  new THREE.MeshBasicMaterial({ color:0x40b870, transparent:true, opacity:0.12, depthWrite:false, side:THREE.DoubleSide }),
+  hec:  new THREE.MeshBasicMaterial({ color:0x4ea8d4, transparent:true, opacity:0.12, depthWrite:false, side:THREE.DoubleSide }),
+};
+
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true });
@@ -1332,9 +1495,18 @@ const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerH
 camera.position.set(0, 0, 12_000);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
-controls.dampingFactor = 0.055;
+controls.dampingFactor = 0.14;   // faster stop (~2.5× quicker than 0.055)
 controls.zoomSpeed     = 1.2;
-controls.addEventListener('change', () => { dirty = true; if (!cinemaMode) { tooltip.hidden = true; clearOutline(); } });
+// Only clear tooltip while the user is *actively* dragging/panning/zooming.
+// During the damped deceleration phase (after release) we let the tooltip
+// appear normally so it can show as soon as the mouse enters a cell.
+let _ctrlActive = false;
+controls.addEventListener('start',  () => { _ctrlActive = true; });
+controls.addEventListener('end',    () => { _ctrlActive = false; });
+controls.addEventListener('change', () => {
+  dirty = true;
+  if (!cinemaMode && _ctrlActive) { tooltip.hidden = true; clearOutline(); }
+});
 
 // Ambient base + directional key light attached to camera (follows the viewer)
 scene.add(new THREE.AmbientLight(0xffffff, 0.68));
@@ -1769,100 +1941,80 @@ function initDetPanel(hasTile, hasLAr, hasHec) {
   if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasHec) switchTab('hec');
 }
 
-// ── Ghost opacity slider ──────────────────────────────────────────────────────
-const ghostTrack = document.getElementById('ghost-strak');
-const ghostThumb = document.getElementById('ghost-sthumb');
-const ghostLbl   = document.getElementById('ghost-opacity-lbl');
-let   ghostDrag  = false;
+// ── Ghost — CGV mesh visibility + edge segmentation ──────────────────────────
+// Shows/hides the real .root geometry meshes for each sub-detector envelope.
+// Ghost meshes come from the .glb (initially hidden). For each mesh we also
+// lazily build an EdgesGeometry overlay so the .root polygon structure shows.
+const ghostEdgeLines = new Map(); // mesh-name → THREE.LineSegments
 
-function updateGhostUI(opacity) {
-  ghostThumb.style.top = ((1 - opacity) * 100) + '%';
-  ghostLbl.textContent = Math.round(opacity * 100) + '%';
-  if (ghostMat) { ghostMat.opacity = opacity; dirty = true; }
+const GHOST_EDGE_MATS = {
+  tile: new THREE.LineBasicMaterial({ color:0xd4a030, transparent:true, opacity:0.60, depthWrite:false }),
+  lar:  new THREE.LineBasicMaterial({ color:0x50d880, transparent:true, opacity:0.60, depthWrite:false }),
+  hec:  new THREE.LineBasicMaterial({ color:0x70c8e8, transparent:true, opacity:0.60, depthWrite:false }),
+};
+
+function getOrBuildEdges(name, mesh, type) {
+  if (ghostEdgeLines.has(name)) return ghostEdgeLines.get(name);
+  // EdgesGeometry: only emit edges where adjacent faces meet at ≥15° — exposes
+  // the real faceted structure that came out of the ROOT tessellation.
+  const edgeGeo  = new THREE.EdgesGeometry(mesh.geometry, 15);
+  const lines    = new THREE.LineSegments(edgeGeo, GHOST_EDGE_MATS[type]);
+  lines.position.copy(mesh.position);
+  lines.quaternion.copy(mesh.quaternion);
+  lines.scale.copy(mesh.scale);
+  lines.renderOrder = 6;
+  lines.visible = false;
+  scene.add(lines);
+  ghostEdgeLines.set(name, lines);
+  return lines;
 }
 
-ghostTrack.addEventListener('pointerdown', e => {
-  ghostDrag = true; rpanel.classList.add('dragging'); ghostTrack.setPointerCapture(e.pointerId);
-  ghostOpacity = ratioFromPtr(e, ghostTrack); updateGhostUI(ghostOpacity);
-});
-ghostTrack.addEventListener('pointermove', e => {
-  if (!ghostDrag) return;
-  ghostOpacity = ratioFromPtr(e, ghostTrack); updateGhostUI(ghostOpacity);
-});
-['pointerup', 'pointercancel'].forEach(ev =>
-  ghostTrack.addEventListener(ev, () => { ghostDrag = false; rpanel.classList.remove('dragging'); })
-);
-
-// Initialize ghost thumb at default opacity
-updateGhostUI(ghostOpacity);
-
-// ── Ghost ATLAS geometry — solid faces ────────────────────────────────────────
-function buildGhostAtlas() {
-  if (ghostGroup) return;
-
-  ghostMat = new THREE.MeshBasicMaterial({
-    color: 0x3d72cc,
-    transparent: true,
-    opacity: ghostOpacity,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  ghostGroup = new THREE.Group();
-
-  const ROT = Math.PI * 0.5; // CylinderGeometry is along Y; rotate to Z-axis
-
-  // Open cylindrical surface at radius r from z0 to z1
-  function cylWall(r, z0, z1, n = 32) {
-    const geo  = new THREE.CylinderGeometry(r, r, Math.abs(z1 - z0), n, 1, true);
-    const mesh = new THREE.Mesh(geo, ghostMat);
-    mesh.rotation.x = ROT;
-    mesh.position.z  = (z0 + z1) * 0.5;
-    ghostGroup.add(mesh);
+function applyGhostMesh(type, visible) {
+  const mat = GHOST_MATS[type];
+  for (const name of GHOST_NAMES[type]) {
+    const mesh = meshByName.get(name);
+    if (!mesh) continue;
+    if (visible) {
+      mesh.material = mat;
+      mesh.renderOrder = 5;
+      mesh.visible = true;
+      getOrBuildEdges(name, mesh, type).visible = true;
+    } else {
+      mesh.material = origMat.get(name) ?? mesh.material;
+      mesh.renderOrder = 0;
+      mesh.visible = false;
+      const lines = ghostEdgeLines.get(name);
+      if (lines) lines.visible = false;
+    }
   }
-
-  // Flat annular ring (disk with hole) at position z — RingGeometry lies in the
-  // XY plane with normal along +Z, which is already correct for beam-axis caps.
-  function annDisk(rI, rO, z, n = 32) {
-    const geo  = new THREE.RingGeometry(rI, rO, n);
-    const mesh = new THREE.Mesh(geo, ghostMat);
-    mesh.position.z = z;
-    ghostGroup.add(mesh);
-  }
-
-  // Hollow annular cylinder: inner wall + outer wall + two annular end caps
-  function cylBox(rI, rO, z0, z1, n = 32) {
-    cylWall(rI, z0, z1, n);
-    cylWall(rO, z0, z1, n);
-    annDisk(rI, rO, z0, n);
-    annDisk(rI, rO, z1, n);
-  }
-
-  // ── ATLAS calorimeter sub-detector volumes ─────────────────────────────────
-  cylBox(2280, 3835, -2820,  2820, 48);  // TileCal barrel
-  cylBox(2280, 3835,  3600,  6050, 32);  // TileCal ext. barrel A
-  cylBox(2280, 3835, -6050, -3600, 32);  // TileCal ext. barrel C
-  cylBox(1540, 1960, -3170,  3170, 32);  // Inner cylinder (solenoid envelope)
-
-  for (const s of [1, -1]) {
-    annDisk(330, 2100, s * 3700, 32);
-    annDisk(330, 2100, s * 5700, 32);
-    cylWall(330,  s * 3700, s * 5700, 16);
-    cylWall(2100, s * 3700, s * 5700, 32);
-
-    annDisk(375, 2100, s * 4200, 32);
-    annDisk(375, 2100, s * 6100, 32);
-    cylWall(375,  s * 4200, s * 6100, 16);
-    cylWall(2100, s * 4200, s * 6100, 32);
-  }
-
-  ghostGroup.visible = false;
-  scene.add(ghostGroup);
-}
-function toggleGhost() {
-  buildGhostAtlas(); ghostOn = !ghostOn;
-  ghostGroup.visible = ghostOn;
-  document.getElementById('btn-ghost').classList.toggle('on', ghostOn);
   dirty = true;
+}
+
+function toggleGhostType(type) {
+  const prev = { tile: showGhostTile, lar: showGhostLAr, hec: showGhostHec }[type];
+  const next = !prev;
+  if (type === 'tile') showGhostTile = next;
+  else if (type === 'lar') showGhostLAr = next;
+  else showGhostHec = next;
+  applyGhostMesh(type, next);
+  const btn = document.getElementById(`gtog-${type}`);
+  btn.classList.toggle('on', next);
+  btn.setAttribute('aria-checked', next);
+  document.getElementById('btn-ghost').classList.toggle('on',
+    showGhostTile || showGhostLAr || showGhostHec);
+}
+
+function toggleAllGhosts() {
+  const anyOn = showGhostTile || showGhostLAr || showGhostHec;
+  const next  = !anyOn;
+  showGhostTile = showGhostLAr = showGhostHec = next;
+  for (const type of ['tile','lar','hec']) {
+    applyGhostMesh(type, next);
+    const btn = document.getElementById(`gtog-${type}`);
+    btn.classList.toggle('on', next);
+    btn.setAttribute('aria-checked', next);
+  }
+  document.getElementById('btn-ghost').classList.toggle('on', next);
 }
 
 // ── Z-axis beam indicator ─────────────────────────────────────────────────────
@@ -1974,7 +2126,7 @@ function doRaycast(clientX, clientY) {
   }
   clearOutline(); tooltip.hidden = true;
 }
-canvas.addEventListener('mousemove', e => {
+document.addEventListener('mousemove', e => {
   const now = Date.now(); if (now-lastRay < 30) return; lastRay = now;
   doRaycast(e.clientX, e.clientY);
 });
@@ -2006,7 +2158,10 @@ document.getElementById('btn-info').addEventListener('click', () => {
   document.querySelector('#btn-info use').setAttribute('href', showInfo ? '#i-eye' : '#i-eye-off');
   if (!showInfo) { clearOutline(); tooltip.hidden = true; }
 });
-document.getElementById('btn-ghost').addEventListener('click', toggleGhost);
+document.getElementById('btn-ghost').addEventListener('click', toggleAllGhosts);
+document.getElementById('gtog-tile').addEventListener('click', () => toggleGhostType('tile'));
+document.getElementById('gtog-lar').addEventListener('click',  () => toggleGhostType('lar'));
+document.getElementById('gtog-hec').addEventListener('click',  () => toggleGhostType('hec'));
 document.getElementById('btn-beam').addEventListener('click', toggleBeam);
 
 
@@ -2137,22 +2292,25 @@ document.querySelectorAll('[data-tip]').forEach(el => {
 });
 
 // ── Mode toggle ───────────────────────────────────────────────────────────────
-document.getElementById('btn-live').addEventListener('click', () => {
-  if (isLive) return; isLive = true;
-  document.getElementById('btn-live').classList.add('on');
-  document.getElementById('btn-local').classList.remove('on');
-  document.getElementById('live-sec').hidden  = false;
-  document.getElementById('local-sec').hidden = true;
-  if (poller && wasmOk && sceneOk) poller.start();
-});
-document.getElementById('btn-local').addEventListener('click', () => {
-  if (!isLive) return; isLive = false;
-  document.getElementById('btn-local').classList.add('on');
-  document.getElementById('btn-live').classList.remove('on');
-  document.getElementById('local-sec').hidden = false;
-  document.getElementById('live-sec').hidden  = true;
-  if (poller) { poller.stop(); setLiveDot('stopped'); }
-});
+function setMode(mode) {
+  // mode: 'live' | 'local' | 'sample'
+  isLive = (mode === 'live');
+  document.getElementById('btn-live').classList.toggle('on',   mode === 'live');
+  document.getElementById('btn-local').classList.toggle('on',  mode === 'local');
+  document.getElementById('btn-sample').classList.toggle('on', mode === 'sample');
+  document.getElementById('live-sec').hidden   = (mode !== 'live');
+  document.getElementById('local-sec').hidden  = (mode !== 'local');
+  document.getElementById('sample-sec').hidden = (mode !== 'sample');
+  if (mode === 'live') {
+    if (poller && wasmOk && sceneOk) poller.start();
+  } else {
+    if (poller) { poller.stop(); setLiveDot('stopped'); }
+    if (mode === 'sample') loadSampleIndex();
+  }
+}
+document.getElementById('btn-live').addEventListener('click',   () => { if (!isLive) setMode('live'); });
+document.getElementById('btn-local').addEventListener('click',  () => { if (document.getElementById('local-sec').hidden) setMode('local'); });
+document.getElementById('btn-sample').addEventListener('click', () => { if (document.getElementById('sample-sec').hidden) setMode('sample'); });
 
 // ── LivePoller ────────────────────────────────────────────────────────────────
 let poller = null;
@@ -2246,6 +2404,49 @@ document.getElementById('file-in').addEventListener('change', async e => {
   e.target.value = '';
 });
 
+// ── Sample events mode ────────────────────────────────────────────────────────
+let _sampleLoaded = false;
+async function loadSampleIndex() {
+  if (_sampleLoaded) return;
+  const msgEl  = document.getElementById('sample-list-msg');
+  const listEl = document.getElementById('sample-list');
+  msgEl.textContent = t('sample-loading');
+  msgEl.hidden = false;
+  listEl.innerHTML = '';
+  try {
+    const res = await fetch('./default_xml/index.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const names = await res.json();
+    msgEl.hidden = true;
+    if (!names.length) { msgEl.textContent = t('sample-empty'); msgEl.hidden = false; return; }
+    names.forEach(name => {
+      const btn = document.createElement('button');
+      btn.className = 'sample-item';
+      btn.innerHTML = `<svg class="ic sample-item-icon" style="width:11px;height:11px"><use href="#i-star"/></svg><span class="sample-item-name">${esc(name)}</span>`;
+      btn.addEventListener('click', async () => {
+        document.querySelectorAll('.sample-item.cur').forEach(b => b.classList.remove('cur'));
+        btn.classList.add('cur');
+        addLog(t('log-loading') + name); setStatus('Loading sample…');
+        try {
+          const xmlRes = await fetch(`./default_xml/${encodeURIComponent(name)}`);
+          if (!xmlRes.ok) throw new Error(`HTTP ${xmlRes.status}`);
+          processXml(await xmlRes.text());
+        } catch (err) {
+          setStatus(`<span class="err">Error: ${esc(err.message)}</span>`);
+          addLog(t('log-read-error') + err.message, 'err');
+          btn.classList.remove('cur');
+        }
+      });
+      listEl.appendChild(btn);
+    });
+    _sampleLoaded = true;
+  } catch (err) {
+    msgEl.textContent = t('sample-error');
+    msgEl.hidden = false;
+    addLog('Sample index error: ' + err.message, 'err');
+  }
+}
+
 // ── Screenshot ────────────────────────────────────────────────────────────────
 const shotOverlay  = document.getElementById('shot-overlay');
 const shotSaveBtn  = document.getElementById('btn-shot-save');
@@ -2269,7 +2470,8 @@ function closeShotDialog() {
   shotOverlay.classList.remove('open');
   document.querySelectorAll('.shot-res').forEach(b => b.classList.remove('active'));
   shotSaveBtn.disabled = true;
-  shotProgress.hidden = true;
+  shotProgress.classList.remove('running');
+  shotProgTxt.textContent = '';
   shotW = 0; shotH = 0;
 }
 
@@ -2280,19 +2482,19 @@ shotOverlay.addEventListener('click', e => { if (e.target === shotOverlay) close
 shotSaveBtn.addEventListener('click', async () => {
   if (!shotW || !shotH) return;
   shotSaveBtn.disabled = true;
-  shotProgress.hidden = false;
-  shotProgTxt.textContent = `Rendering ${shotW}×${shotH}…`;
+  shotProgTxt.textContent = t('shot-rendering').replace('{w}', shotW).replace('{h}', shotH);
+  shotProgress.classList.add('running');
 
-  // Let the DOM update (spinner visible) before blocking the thread
+  // Let the DOM update (spinner + text visible) before the blocking render
   await new Promise(r => setTimeout(r, 80));
 
   try {
     await renderAndDownload(shotW, shotH);
-    shotProgTxt.textContent = 'Done! Downloading…';
-    await new Promise(r => setTimeout(r, 700));
+    shotProgTxt.textContent = t('shot-done');
+    await new Promise(r => setTimeout(r, 900));
     closeShotDialog();
   } catch (err) {
-    shotProgTxt.textContent = `Error: ${err.message}`;
+    shotProgTxt.textContent = t('shot-error').replace('{msg}', err.message);
     shotSaveBtn.disabled = false;
   }
 });
