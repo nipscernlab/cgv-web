@@ -520,6 +520,77 @@
       .sthumb { left: -12px; right: -12px; height: 3px; }
       .ctrl-btn, .edl { min-width: 36px; min-height: 36px; }
     }
+
+    /* ── Screenshot dialog ───────────────────────────────── */
+    #shot-overlay {
+      position: fixed; inset: 0; z-index: 110;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(1, 6, 16, 0.80); backdrop-filter: blur(8px);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+    #shot-overlay.open { opacity: 1; pointer-events: auto; }
+    .shot-card {
+      background: rgba(3, 18, 44, 0.98);
+      border: 1px solid var(--border2); border-radius: 14px;
+      padding: 24px 26px; max-width: 420px; width: 94%;
+      box-shadow: 0 20px 60px rgba(0,0,0,.70);
+    }
+    .shot-title {
+      font: 600 .92rem var(--font); color: var(--bright);
+      margin-bottom: 4px;
+    }
+    .shot-sub {
+      font: 400 .62rem var(--font); color: var(--muted);
+      margin-bottom: 18px; line-height: 1.5;
+    }
+    .shot-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px;
+      margin-bottom: 18px;
+    }
+    .shot-res {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 10px 6px;
+      background: rgba(26,82,192,.08); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      font: 600 .72rem var(--font); letter-spacing: .04em;
+      cursor: pointer; transition: all .15s;
+    }
+    .shot-res span { font: 400 .56rem var(--mono); color: var(--muted); }
+    .shot-res:hover { background: rgba(26,82,192,.20); border-color: var(--accent); color: var(--bright); }
+    .shot-res:hover span { color: var(--text); }
+    .shot-res.active { background: rgba(26,82,192,.28); border-color: var(--accent2); color: #7ab8ff; }
+    .shot-res.active span { color: var(--text); }
+    #shot-progress {
+      text-align: center; padding: 10px 0 6px;
+      font: 400 .68rem var(--mono); color: var(--warn);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .shot-spinner {
+      width: 14px; height: 14px;
+      border: 2px solid var(--border); border-top-color: var(--warn);
+      border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .shot-actions {
+      display: flex; justify-content: flex-end; gap: 8px;
+    }
+    .shot-cancel {
+      padding: 7px 18px;
+      border: 1px solid var(--border); border-radius: 20px;
+      color: var(--muted); font: 500 .62rem var(--font); letter-spacing: .08em;
+      cursor: pointer; transition: all .16s;
+    }
+    .shot-cancel:hover { color: var(--bright); border-color: var(--accent); }
+    .shot-save {
+      padding: 7px 18px;
+      background: rgba(26,82,192,.24); border: 1px solid var(--accent);
+      border-radius: 20px;
+      color: #7ab8ff; font: 500 .62rem var(--font); letter-spacing: .08em;
+      cursor: pointer; transition: all .16s;
+    }
+    .shot-save:hover { background: rgba(26,82,192,.40); color: var(--bright); }
+    .shot-save:disabled { opacity: 0.4; cursor: default; }
   </style>
 </head>
 <body>
@@ -601,6 +672,10 @@
     <polyline points="9,7 12,3 15,7"/>
     <polyline points="9,17 12,21 15,17"/>
     <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24">
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+    <circle cx="12" cy="13" r="4"/>
   </symbol>
   <symbol id="i-palette" viewBox="0 0 24 24" fill="none">
     <path d="M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8z"/>
@@ -701,6 +776,7 @@
   <div id="det-tab-bar">
     <button class="det-tab on" id="tab-tile">TILE</button>
     <button class="det-tab"    id="tab-lar">LAr</button>
+    <button class="det-tab"    id="tab-hec">HEC</button>
     <button class="det-tab"    id="tab-ghost">Ghost</button>
   </div>
 
@@ -727,6 +803,19 @@
     <div class="sval">0 GeV</div>
     <div class="slbl">Threshold</div>
     <input id="lar-thr-input" class="thr-input" type="text"
+      autocomplete="off" spellcheck="false" placeholder="e.g. 200 MeV">
+  </div>
+
+  <!-- HEC pane (hidden by default) -->
+  <div class="det-pane" id="pane-hec" style="display:none">
+    <div class="sval">5.00 GeV</div>
+    <div class="strak" id="hec-strak"
+      style="background:linear-gradient(to top,#66e0f6 0%,#0c0368 100%)">
+      <div class="sthumb" id="hec-sthumb"></div>
+    </div>
+    <div class="sval">0 GeV</div>
+    <div class="slbl">Threshold</div>
+    <input id="hec-thr-input" class="thr-input" type="text"
       autocomplete="off" spellcheck="false" placeholder="e.g. 200 MeV">
   </div>
 
@@ -774,7 +863,13 @@
     data-tip="Toggle TileCal cells">TILE</button>
   <button class="tbtn tbtn-label on" id="btn-lar"
     data-tip="Toggle LAr EM cells">LAr</button>
+  <button class="tbtn tbtn-label on" id="btn-hec"
+    data-tip="Toggle LAr HEC cells">HEC</button>
   <div class="tbtn-sep"></div>
+  <button class="tbtn" id="btn-shot"
+    data-tip="Save screenshot (no UI)">
+    <svg class="ic" style="width:14px;height:14px"><use href="#i-camera"/></svg>
+  </button>
   <button class="tbtn" id="btn-lang"
     data-tip="Switch display language" data-i18n-tip="tip-lang">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-globe"/></svg>
@@ -802,6 +897,30 @@
   <svg class="ic" style="width:11px;height:11px;stroke-width:2.5"><use href="#i-x"/></svg>
   <span data-i18n="cinema-exit">Exit Cinema</span>
 </button>
+
+<!-- ── Screenshot dialog ─────────────────────────────────── -->
+<div id="shot-overlay">
+  <div class="shot-card">
+    <div class="shot-title">Save Screenshot</div>
+    <div class="shot-sub">Select output resolution. The scene renders at full quality — UI is excluded. The active tooltip is drawn on top if visible.</div>
+    <div class="shot-grid">
+      <button class="shot-res" data-w="1280"  data-h="720">HD<br><span>1280 × 720</span></button>
+      <button class="shot-res" data-w="1920"  data-h="1080">1080p<br><span>1920 × 1080</span></button>
+      <button class="shot-res" data-w="2560"  data-h="1440">2K<br><span>2560 × 1440</span></button>
+      <button class="shot-res" data-w="3840"  data-h="2160">4K<br><span>3840 × 2160</span></button>
+      <button class="shot-res" data-w="7680"  data-h="4320">8K<br><span>7680 × 4320</span></button>
+      <button class="shot-res" data-w="10240" data-h="5760">10K<br><span>10240 × 5760</span></button>
+    </div>
+    <div id="shot-progress" hidden>
+      <span class="shot-spinner"></span>
+      <span id="shot-progress-txt">Rendering…</span>
+    </div>
+    <div class="shot-actions">
+      <button class="shot-cancel" id="btn-shot-cancel">Cancel</button>
+      <button class="shot-save"   id="btn-shot-save" disabled>Save PNG</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Button hint tooltip ───────────────────────────────── -->
 <div id="btn-tip"></div>
@@ -1086,8 +1205,11 @@ let   active     = new Map();
 let   rayTargets = [];
 let tileMaxMev = 1, tileMinMev = 0;
 let larMaxMev  = 1, larMinMev  = 0;
+let hecMaxMev  = 1, hecMinMev  = 0;
 let thrTileMev = DEF_THR;
 let thrLArMev  = DEF_THR;
+let thrHecMev  = DEF_THR;
+let showHec    = true;
 let wasmOk     = false;
 let sceneOk    = false;
 let dirty      = true;
@@ -1148,6 +1270,30 @@ function palMatTile(eMev) {
   return PAL_TILE[Math.round(tv * (PAL_N - 1))];
 }
 
+// ── Palette HEC: #66e0f6 (min) → #0c0368 (max), linear ──────────────────────
+// #66e0f6 = [102,224,246]/255 = [0.4000,0.8784,0.9647]
+// #0c0368 = [12,3,104]/255   = [0.0471,0.0118,0.4078]
+function palColorHec(t) {
+  t = Math.max(0, Math.min(1, t));
+  return new THREE.Color(
+    0.4000 + t * (0.0471 - 0.4000), // R: ~0.40 → ~0.05
+    0.8784 + t * (0.0118 - 0.8784), // G: ~0.88 → ~0.01
+    0.9647 + t * (0.4078 - 0.9647)  // B: ~0.96 → ~0.41
+  );
+}
+const PAL_HEC = Array.from({ length: PAL_N }, (_, i) =>
+  new THREE.MeshPhongMaterial({
+    color: palColorHec(i / (PAL_N - 1)),
+    emissive: palColorHec(i / (PAL_N - 1)), emissiveIntensity: 0.30,
+    shininess: 20, side: THREE.FrontSide,
+  })
+);
+const HEC_SCALE = 5000; // MeV — fixed 0–5 GeV; values above 5 GeV → max colour
+function palMatHec(eMev) {
+  const tv = Math.max(0, Math.min(1, eMev / HEC_SCALE));
+  return PAL_HEC[Math.round(tv * (PAL_N - 1))];
+}
+
 // ── Palette LAr: #17cf42 (min) → #270042 (max), linear ───────────────────────
 // #17cf42 = [23,207,66]/255 = [0.0902,0.8118,0.2588]
 // #270042 = [39,0,66]/255   = [0.1529,0.0000,0.2588]
@@ -1173,7 +1319,7 @@ function palMatLAr(eMev) {
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1291,6 +1437,26 @@ function cellLabel(x, k) {
   }
 }
 
+// ── HEC ID → mesh path ────────────────────────────────────────────────────────
+// sampling 0→HEC1(inner10), 1→HEC23(inner10), 2→HEC45(inner9), 3→HEC67(inner8)
+// cumulative eta = (region===0) ? eta : innerBins + eta
+// subgroup B: HEC1 → B=cum;  HEC23/45/67 → B=max(0, cum-1)
+const HEC_GROUPS_MAP = [
+  { name: '1',  innerBins: 10 },
+  { name: '23', innerBins: 10 },
+  { name: '45', innerBins: 9  },
+  { name: '67', innerBins: 8  },
+];
+function hecMeshPath(be, sampling, region, eta, phi) {
+  const g = HEC_GROUPS_MAP[sampling];
+  if (!g) return null;
+  const Z   = be > 0 ? 'p' : 'n';
+  const cum = region === 0 ? eta : g.innerBins + eta;
+  const B   = g.name === '1' ? cum : Math.max(0, cum - 1);
+  const path = `Calorimeter\u2192HEC${g.name}${Z}_0\u2192HEC${g.name}${Z}${cum}_${B}\u2192cell_${phi}`;
+  return meshByName.has(path) ? path : null;
+}
+
 // ── XML parsers ───────────────────────────────────────────────────────────────
 function parseTile(xmlText) {
   const doc  = new DOMParser().parseFromString(xmlText, 'application/xml');
@@ -1345,6 +1511,32 @@ function parseLAr(xmlText) {
   return cells;
 }
 
+function parseHec(xmlText) {
+  const doc    = new DOMParser().parseFromString(xmlText, 'application/xml');
+  // Find HEC block with any storeGateKey — count is read dynamically, not hardcoded
+  const hecEls = [...doc.getElementsByTagName('HEC')];
+  if (!hecEls.length) return [];
+  const cells = [];
+  for (const hec of hecEls) {
+    let n = 0;
+    for (const ch of hec.children) {
+      const id = ch.getAttribute('id') ?? ch.getAttribute('cellID');
+      const ev = ch.getAttribute('energy') ?? ch.getAttribute('e');
+      if (id && ev) { const e = parseFloat(ev); if (isFinite(e)) { cells.push({ id: id.trim(), energy: e }); n++; } }
+    }
+    if (n) continue;
+    const idEl = hec.querySelector('id, cellID');
+    const eEl  = hec.querySelector('energy, e');
+    if (idEl && eEl) {
+      const ids = idEl.textContent.trim().split(/\s+/);
+      const ens = eEl.textContent.trim().split(/\s+/).map(Number);
+      const m   = Math.min(ids.length, ens.length);
+      for (let i = 0; i < m; i++) if (ids[i] && isFinite(ens[i])) cells.push({ id: ids[i], energy: ens[i] });
+    }
+  }
+  return cells;
+}
+
 // ── LAr EM ID → mesh path (tries cell_ then cell2_ as fallback) ───────────────
 function larMeshPath(bec, samp, eta, phi) {
   const X      = (bec === -1 || bec === 1) ? 'Barrel' : 'EndCap';
@@ -1369,8 +1561,8 @@ function applyThreshold() {
   rayTargets = [];
   for (const [name, { energyMev, det }] of active) {
     const mesh = meshByName.get(name); if (!mesh) continue;
-    const thr   = det === 'LAR' ? thrLArMev  : thrTileMev;
-    const detOn = det === 'LAR' ? showLAr    : showTile;
+    const thr   = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
+    const detOn = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
     const vis = detOn && (!isFinite(thr) || energyMev >= thr);
     mesh.visible = vis; if (vis) rayTargets.push(mesh);
   }
@@ -1383,14 +1575,15 @@ function processXml(xmlText) {
   if (!wasmOk) return;
   const t0 = performance.now();
 
-  // Parse TILE and LAr blocks (parseTile throws only on malformed XML)
-  let tileCells, larCells;
+  // Parse TILE, LAr EM and HEC blocks
+  let tileCells, larCells, hecCells;
   try { tileCells = parseTile(xmlText); }
   catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); addLog(e.message, 'err'); return; }
   try { larCells = parseLAr(xmlText); } catch { larCells = []; }
+  try { hecCells = parseHec(xmlText); } catch { hecCells = []; }
 
-  const total = tileCells.length + larCells.length;
-  if (!total) { setStatus('<span class="warn">No TILE or LAr cells found</span>'); addLog('No cells in XML', 'warn'); return; }
+  const total = tileCells.length + larCells.length + hecCells.length;
+  if (!total) { setStatus('<span class="warn">No TILE, LAr or HEC cells found</span>'); addLog('No cells in XML', 'warn'); return; }
 
   setStatus(`Decoding ${total} cells…`);
   resetScene();
@@ -1398,12 +1591,16 @@ function processXml(xmlText) {
   // Per-detector energy ranges (first pass)
   const tileMevs = tileCells.map(c => c.energy * 1000).filter(v => isFinite(v) && v > 0);
   const larMevs  = larCells .map(c => c.energy * 1000).filter(v => isFinite(v) && v > 0);
+  const hecMevs  = hecCells .map(c => c.energy * 1000).filter(v => isFinite(v) && v > 0);
   tileMinMev = tileMevs.length ? Math.min(...tileMevs) : 0;
   tileMaxMev = tileMevs.length ? Math.max(...tileMevs) : 1;
   larMinMev  = larMevs.length  ? Math.min(...larMevs)  : 0;
   larMaxMev  = larMevs.length  ? Math.max(...larMevs)  : 1;
+  hecMinMev  = hecMevs.length  ? Math.min(...hecMevs)  : 0;
+  hecMaxMev  = hecMevs.length  ? Math.max(...hecMevs)  : 1;
 
-  let nTile = 0, nLAr = 0, nMiss = 0, nSkip = 0;
+  let nTile = 0, nLAr = 0, nHec = 0, nMiss = 0, nSkip = 0;
+  let nHecMiss = 0;
 
   // ── TileCal cells ─────────────────────────────────────────────────────────
   for (const { id, energy } of tileCells) {
@@ -1441,18 +1638,46 @@ function processXml(xmlText) {
     nLAr++;
   }
 
-  initDetPanel(nTile > 0, nLAr > 0);
+  // ── LAr HEC cells ─────────────────────────────────────────────────────────
+  for (const { id, energy } of hecCells) {
+    const eMev = energy * 1000;
+    let p;
+    try { p = parse_atlas_id(id); } catch { nSkip++; continue; }
+    if (!p?.valid || p.subsystem !== 'LAr HEC') { nSkip++; continue; }
+    const f = Object.fromEntries(p.fields.map(({ name, value }) => [name, value]));
+    const be = f['barrel-endcap'];
+    if (be === undefined || f.sampling === undefined || f.region === undefined ||
+        f.eta === undefined || f.phi === undefined) { nHecMiss++; continue; }
+    const path = hecMeshPath(be, f.sampling, f.region, f.eta, f.phi);
+    if (!path) { nHecMiss++; continue; }
+    const mesh = meshByName.get(path);
+    if (!mesh) { nHecMiss++; continue; }
+    mesh.material = palMatHec(eMev); mesh.visible = true; mesh.renderOrder = 2;
+    const side  = be > 0 ? 'HECA' : 'HECC';
+    const sLabel = ['front','middle','back','rear'][f.sampling] ?? `s${f.sampling}`;
+    active.set(path, {
+      energyGev: energy, energyMev: eMev,
+      cellName: `${side} ${sLabel} η=${f.eta} φ=${f.phi}`,
+      det: 'HEC'
+    });
+    nHec++;
+  }
+
+  initDetPanel(nTile > 0, nLAr > 0, nHec > 0);
   applyThreshold();
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
 
   const hitParts = [];
   if (nTile) hitParts.push(`TILE: ${nTile} (${fmtMev(tileMinMev)}–${fmtMev(tileMaxMev)})`);
   if (nLAr)  hitParts.push(`LAr: ${nLAr} (${fmtMev(larMinMev)}–${fmtMev(larMaxMev)})`);
+  if (nHec)  hitParts.push(`HEC: ${nHec} (${fmtMev(hecMinMev)}–${fmtMev(hecMaxMev)})`);
   const hitStr  = hitParts.join(' · ') || '0';
-  const nHit    = nTile + nLAr;
-  const missStr = nMiss ? ` · <span class="warn">${nMiss} unmapped</span>` : '';
+  const nHit    = nTile + nLAr + nHec;
+  const allMiss = nMiss + nHecMiss;
+  const missStr = allMiss ? ` · <span class="warn">${allMiss} unmapped</span>` : '';
   setStatus(`<span class="ok">${nHit} cells</span>${missStr} · ${hitStr}`);
-  addLog(`${nHit} cells — ${hitStr}${nMiss ? ` · ${nMiss} unmapped` : ''} (${dt}s)`, 'ok');
+  if (nHecMiss) addLog(`HEC: ${nHec} mapped · ${nHecMiss} unmapped`, 'warn');
+  addLog(`${nHit} cells — ${hitStr}${allMiss ? ` · ${allMiss} unmapped` : ''} (${dt}s)`, 'ok');
 }
 
 // ── Right panel (rpanel) toggle ───────────────────────────────────────────────
@@ -1464,7 +1689,7 @@ function closeRPanel() { rpanelOpen = false; rpanel.classList.remove('open'); rp
 rpanelTab.addEventListener('click', () => rpanelOpen ? closeRPanel() : openRPanel());
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
-const TAB_IDS = ['tile', 'lar', 'ghost'];
+const TAB_IDS = ['tile', 'lar', 'hec', 'ghost'];
 function switchTab(det) {
   TAB_IDS.forEach(d => {
     document.getElementById('pane-' + d).style.display = d === det ? 'flex' : 'none';
@@ -1528,16 +1753,20 @@ const tileSlider = makeDetSlider('tile-strak', 'tile-sthumb', 'tile-thr-input',
   () => thrTileMev, v => { thrTileMev = v; }, TILE_SCALE);
 const larSlider  = makeDetSlider('lar-strak',  'lar-sthumb',  'lar-thr-input',
   () => thrLArMev,  v => { thrLArMev = v; },  LAR_SCALE);
+const hecSlider  = makeDetSlider('hec-strak',  'hec-sthumb',  'hec-thr-input',
+  () => thrHecMev,  v => { thrHecMev = v; },  HEC_SCALE);
 
 // Initialize thumb positions at default threshold
 tileSlider.updateUI(thrTileMev);
 larSlider.updateUI(thrLArMev);
+hecSlider.updateUI(thrHecMev);
 
-function initDetPanel(hasTile, hasLAr) {
+function initDetPanel(hasTile, hasLAr, hasHec) {
   tileSlider.updateUI(thrTileMev);
   larSlider.updateUI(thrLArMev);
+  hecSlider.updateUI(thrHecMev);
   openRPanel();
-  if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar');
+  if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasHec) switchTab('hec');
 }
 
 // ── Ghost opacity slider ──────────────────────────────────────────────────────
@@ -1792,6 +2021,11 @@ document.getElementById('btn-lar').addEventListener('click', () => {
   document.getElementById('btn-lar').classList.toggle('on', showLAr);
   applyThreshold();
 });
+document.getElementById('btn-hec').addEventListener('click', () => {
+  showHec = !showHec;
+  document.getElementById('btn-hec').classList.toggle('on', showHec);
+  applyThreshold();
+});
 
 // ── Panel resize ──────────────────────────────────────────────────────────────
 const panelEl      = document.getElementById('panel');
@@ -2011,6 +2245,178 @@ document.getElementById('file-in').addEventListener('change', async e => {
   if (f) { addLog(t('log-loading') + f.name); setStatus('Parsing…'); processXml(await f.text()); }
   e.target.value = '';
 });
+
+// ── Screenshot ────────────────────────────────────────────────────────────────
+const shotOverlay  = document.getElementById('shot-overlay');
+const shotSaveBtn  = document.getElementById('btn-shot-save');
+const shotProgress = document.getElementById('shot-progress');
+const shotProgTxt  = document.getElementById('shot-progress-txt');
+let   shotW = 0, shotH = 0;
+
+// Resolution button selection
+document.querySelectorAll('.shot-res').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.shot-res').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    shotW = parseInt(btn.dataset.w, 10);
+    shotH = parseInt(btn.dataset.h, 10);
+    shotSaveBtn.disabled = false;
+  });
+});
+
+function openShotDialog() { shotOverlay.classList.add('open'); }
+function closeShotDialog() {
+  shotOverlay.classList.remove('open');
+  document.querySelectorAll('.shot-res').forEach(b => b.classList.remove('active'));
+  shotSaveBtn.disabled = true;
+  shotProgress.hidden = true;
+  shotW = 0; shotH = 0;
+}
+
+document.getElementById('btn-shot').addEventListener('click', openShotDialog);
+document.getElementById('btn-shot-cancel').addEventListener('click', closeShotDialog);
+shotOverlay.addEventListener('click', e => { if (e.target === shotOverlay) closeShotDialog(); });
+
+shotSaveBtn.addEventListener('click', async () => {
+  if (!shotW || !shotH) return;
+  shotSaveBtn.disabled = true;
+  shotProgress.hidden = false;
+  shotProgTxt.textContent = `Rendering ${shotW}×${shotH}…`;
+
+  // Let the DOM update (spinner visible) before blocking the thread
+  await new Promise(r => setTimeout(r, 80));
+
+  try {
+    await renderAndDownload(shotW, shotH);
+    shotProgTxt.textContent = 'Done! Downloading…';
+    await new Promise(r => setTimeout(r, 700));
+    closeShotDialog();
+  } catch (err) {
+    shotProgTxt.textContent = `Error: ${err.message}`;
+    shotSaveBtn.disabled = false;
+  }
+});
+
+async function renderAndDownload(targetW, targetH) {
+  // ── 1. Save current renderer state ──────────────────────────────────────
+  const origW  = renderer.domElement.width;
+  const origH  = renderer.domElement.height;
+  const origPR = renderer.getPixelRatio();
+  const origAspect = camera.aspect;
+
+  // ── 2. Snapshot tooltip content before any resize ────────────────────────
+  const tipVisible  = !tooltip.hidden;
+  let tipData = null;
+  if (tipVisible) {
+    tipData = {
+      cellName: document.getElementById('tip-cell').textContent,
+      energy:   document.getElementById('tip-e').textContent,
+      // Tooltip position as fraction of the current viewport
+      xFrac: (parseFloat(tooltip.style.left) - canvas.getBoundingClientRect().left) / origW * origPR,
+      yFrac: (parseFloat(tooltip.style.top)  - canvas.getBoundingClientRect().top)  / origH * origPR,
+    };
+  }
+
+  // ── 3. Resize renderer to target resolution ──────────────────────────────
+  renderer.setPixelRatio(1);
+  renderer.setSize(targetW, targetH, false); // false = don't update CSS size
+  camera.aspect = targetW / targetH;
+  camera.updateProjectionMatrix();
+
+  // ── 4. Render one high-quality frame ─────────────────────────────────────
+  renderer.render(scene, camera);
+
+  // ── 5. Grab raw pixels from the WebGL canvas ─────────────────────────────
+  const gl    = renderer.getContext();
+  const pixels = new Uint8Array(targetW * targetH * 4);
+  gl.readPixels(0, 0, targetW, targetH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+  // ── 6. Flip Y (WebGL origin is bottom-left, canvas is top-left) ──────────
+  const offscreen = document.createElement('canvas');
+  offscreen.width  = targetW;
+  offscreen.height = targetH;
+  const ctx = offscreen.getContext('2d');
+  const imgData = ctx.createImageData(targetW, targetH);
+  for (let y = 0; y < targetH; y++) {
+    const srcRow = (targetH - 1 - y) * targetW * 4;
+    imgData.data.set(pixels.subarray(srcRow, srcRow + targetW * 4), y * targetW * 4);
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // ── 7. Draw tooltip overlay if it was visible ────────────────────────────
+  if (tipData) {
+    const scale  = targetW / origW * origPR;   // pixel mapping factor
+    const tx     = tipData.xFrac * targetW;
+    const ty     = tipData.yFrac * targetH;
+    const pad    = 14 * scale;
+    const radius = 7  * scale;
+    const fs     = 14 * scale;
+    const lh     = 20 * scale;
+
+    ctx.save();
+    ctx.font       = `600 ${fs}px Inter, system-ui, sans-serif`;
+    const nameW    = ctx.measureText(tipData.cellName).width;
+    ctx.font       = `400 ${fs * 0.84}px Inter, system-ui, sans-serif`;
+    const eKeyW    = ctx.measureText('ENERGY').width;
+    ctx.font       = `500 ${fs}px "JetBrains Mono", monospace`;
+    const eValW    = ctx.measureText(tipData.energy).width;
+    const boxW     = Math.max(nameW, eKeyW + eValW + pad * 2.5) + pad * 2;
+    const boxH     = lh * 2 + pad * 2 + 8 * scale; // name + divider + energy row
+
+    // Clamp so tooltip doesn't go off-canvas
+    const bx = Math.min(tx, targetW - boxW - 4 * scale);
+    const by = Math.min(ty, targetH - boxH - 4 * scale);
+
+    // Background
+    ctx.beginPath();
+    ctx.roundRect(bx, by, boxW, boxH, radius);
+    ctx.fillStyle = 'rgba(2,11,28,0.95)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(22,72,168,0.55)';
+    ctx.lineWidth = 1 * scale;
+    ctx.stroke();
+
+    // Cell name
+    ctx.font      = `600 ${fs}px Inter, system-ui, sans-serif`;
+    ctx.fillStyle = '#d6eaff';
+    ctx.fillText(tipData.cellName, bx + pad, by + pad + fs);
+
+    // Divider
+    ctx.strokeStyle = 'rgba(22,72,168,0.35)';
+    ctx.lineWidth   = 1 * scale;
+    ctx.beginPath();
+    ctx.moveTo(bx + pad, by + pad + lh + 4 * scale);
+    ctx.lineTo(bx + boxW - pad, by + pad + lh + 4 * scale);
+    ctx.stroke();
+
+    // Energy key + value
+    const ey = by + pad + lh + 4 * scale + lh * 0.9;
+    ctx.font      = `400 ${fs * 0.84}px Inter, system-ui, sans-serif`;
+    ctx.fillStyle = '#2c5270';
+    ctx.fillText('ENERGY', bx + pad, ey);
+    ctx.font      = `500 ${fs}px "JetBrains Mono", monospace`;
+    ctx.fillStyle = '#d6eaff';
+    ctx.textAlign = 'right';
+    ctx.fillText(tipData.energy, bx + boxW - pad, ey);
+    ctx.textAlign = 'left';
+
+    ctx.restore();
+  }
+
+  // ── 8. Restore original renderer state ──────────────────────────────────
+  renderer.setPixelRatio(origPR);
+  renderer.setSize(origW / origPR, origH / origPR, false);
+  camera.aspect = origAspect;
+  camera.updateProjectionMatrix();
+  dirty = true;
+
+  // ── 9. Download ─────────────────────────────────────────────────────────
+  const ts   = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  const link = document.createElement('a');
+  link.download = `CGV_${targetW}x${targetH}_${ts}.png`;
+  link.href = offscreen.toDataURL('image/png');
+  link.click();
+}
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 function fmtMev(v) {
