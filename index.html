@@ -439,6 +439,16 @@
     }
     .gswitch.on { background: var(--gswitch-col, var(--accent2)); border-color: transparent; }
     .gswitch.on::after { transform: translateX(13px); background: #fff; }
+    /* Ghost colour picker */
+    .ghost-cpick-wrap { position:relative; cursor:pointer; display:flex; align-items:center; }
+    .ghost-cpick-wrap input[type=color] {
+      position:absolute; width:0; height:0; opacity:0; pointer-events:none;
+    }
+    .ghost-cpick-swatch {
+      width:22px; height:22px; border-radius:5px; border:1px solid rgba(255,255,255,.18);
+      flex-shrink:0; transition:border-color .15s;
+    }
+    .ghost-cpick-wrap:hover .ghost-cpick-swatch { border-color:rgba(255,255,255,.5); }
 
     /* ── Bottom-center toolbar ────────────────────────────── */
     #toolbar {
@@ -923,23 +933,36 @@
   <!-- ── Ghost pane ─────────────────────────────────────── -->
   <div class="det-pane" id="pane-ghost" style="display:none">
     <div class="ghost-switches-wrap">
+      <!-- TILE toggle -->
       <div class="gswitch-row">
         <div class="gswitch-dot" style="background:#cca830"></div>
         <span class="gswitch-lbl">TILE</span>
         <button class="gswitch" id="gtog-tile" role="switch" aria-checked="false"
           style="--gswitch-col:#c87c18"></button>
       </div>
-      <div class="gswitch-row">
-        <div class="gswitch-dot" style="background:#40b870"></div>
-        <span class="gswitch-lbl">LAr</span>
-        <button class="gswitch" id="gtog-lar" role="switch" aria-checked="false"
-          style="--gswitch-col:#27b568"></button>
+      <!-- Transparency -->
+      <div class="gswitch-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <span class="gswitch-lbl" style="color:var(--text)">Transparency</span>
+        <div style="display:flex;align-items:center;gap:8px;width:100%">
+          <input type="range" id="ghost-alpha-slider" min="0" max="100" value="88"
+            style="flex:1;accent-color:#7ab8ff;cursor:pointer">
+          <span id="ghost-alpha-val" style="font:500 .6rem var(--mono);color:var(--muted);min-width:28px;text-align:right">88%</span>
+        </div>
       </div>
-      <div class="gswitch-row">
-        <div class="gswitch-dot" style="background:#4ea8d4"></div>
-        <span class="gswitch-lbl">HEC</span>
-        <button class="gswitch" id="gtog-hec" role="switch" aria-checked="false"
-          style="--gswitch-col:#4ea8d4"></button>
+      <!-- Color pickers -->
+      <div class="gswitch-row" style="justify-content:space-between">
+        <span class="gswitch-lbl" style="color:var(--text)">Solid</span>
+        <label class="ghost-cpick-wrap" title="Solid fill colour">
+          <input type="color" id="ghost-solid-color" value="#cca830">
+          <span class="ghost-cpick-swatch" id="ghost-solid-swatch" style="background:#cca830"></span>
+        </label>
+      </div>
+      <div class="gswitch-row" style="justify-content:space-between">
+        <span class="gswitch-lbl" style="color:var(--text)">φ-lines</span>
+        <label class="ghost-cpick-wrap" title="Phi-segmentation line colour">
+          <input type="color" id="ghost-phi-color" value="#d4a030">
+          <span class="ghost-cpick-swatch" id="ghost-phi-swatch" style="background:#d4a030"></span>
+        </label>
       </div>
     </div>
   </div>
@@ -1464,21 +1487,148 @@ function palMatLAr(eMev) {
   return PAL_LAR[Math.round(tv * (PAL_N - 1))];
 }
 
-// ── Ghost CGV-mesh materials ───────────────────────────────────────────────────
-// Ghost meshes come from the .glb (real .root geometry). Each subsystem has its
-// own semi-transparent material; DoubleSide so hollow shells render fully.
-const GHOST_NAMES = {
-  tile: ['Calorimeter→LBTile_0','Calorimeter→LBTileLArg_0',
-         'Calorimeter→EBTilep_0','Calorimeter→EBTilen_0',
-         'Calorimeter→EBTileHECp_0','Calorimeter→EBTileHECn_0'],
-  lar:  ['Calorimeter→LBLArg_0'],
-  hec:  ['Calorimeter→EBHECp_0','Calorimeter→EBHECn_0'],
-};
-const GHOST_MATS = {
-  tile: new THREE.MeshBasicMaterial({ color:0xcca830, transparent:true, opacity:0.12, depthWrite:false, side:THREE.DoubleSide }),
-  lar:  new THREE.MeshBasicMaterial({ color:0x40b870, transparent:true, opacity:0.12, depthWrite:false, side:THREE.DoubleSide }),
-  hec:  new THREE.MeshBasicMaterial({ color:0x4ea8d4, transparent:true, opacity:0.12, depthWrite:false, side:THREE.DoubleSide }),
-};
+// ── Ghost — TileCal only ──────────────────────────────────────────────────────
+// Solid envelope meshes from .glb + procedural phi-segmentation lines.
+const GHOST_TILE_NAMES = [
+  'Calorimeter→LBTile_0','Calorimeter→LBTileLArg_0',
+  'Calorimeter→EBTilep_0','Calorimeter→EBTilen_0',
+  'Calorimeter→EBTileHECp_0','Calorimeter→EBTileHECn_0',
+];
+
+// Mutable ghost colours / opacity (updated by UI controls)
+let ghostSolidColor = 0xcca830;
+let ghostPhiColor   = 0xd4a030;
+let ghostSolidOpacity = 0.12;  // (1 - transparency/100)
+
+const ghostSolidMat = new THREE.MeshBasicMaterial({
+  color: ghostSolidColor, transparent: true, opacity: ghostSolidOpacity,
+  depthWrite: false, side: THREE.DoubleSide,
+});
+const ghostPhiMat = new THREE.LineBasicMaterial({
+  color: ghostPhiColor, transparent: true, opacity: ghostSolidOpacity, depthWrite: false,
+});
+
+// ── Phi-segmentation lines (TileCal) ─────────────────────────────────────────
+// 64 radial planes in φ, each as a rectangle: 4 edges at r_inner → r_outer,
+// spanning z_min → z_max of each TileCal barrel+ext-barrel envelope.
+// Geometry constants (mm) from the ATLAS TileCal geometry:
+//   LB  : r_in=2288  r_out=3835  z = ±2820
+//   EB p: r_in=2288  r_out=3835  z = [3600, 6050]
+//   EB n: r_in=2288  r_out=3835  z = [-6050, -3600]
+const TILE_PHI_SEGS = [
+  { rIn: 2288, rOut: 3835, zMin: -2820, zMax:  2820 },  // LB
+  { rIn: 2288, rOut: 3835, zMin:  3600, zMax:  6050 },  // EB+
+  { rIn: 2288, rOut: 3835, zMin: -6050, zMax: -3600 },  // EB-
+];
+const N_PHI = 64;
+let ghostPhiGroup = null;
+
+function buildPhiLines() {
+  if (ghostPhiGroup) { scene.remove(ghostPhiGroup); ghostPhiGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  ghostPhiGroup = new THREE.Group();
+  ghostPhiGroup.renderOrder = 6;
+  ghostPhiGroup.visible = false;
+  for (let i = 0; i < N_PHI; i++) {
+    const phi = (i / N_PHI) * Math.PI * 2;
+    const cx = Math.cos(phi), cy = Math.sin(phi);
+    for (const { rIn, rOut, zMin, zMax } of TILE_PHI_SEGS) {
+      const pts = [
+        new THREE.Vector3(cx * rIn,  cy * rIn,  zMin),
+        new THREE.Vector3(cx * rIn,  cy * rIn,  zMax),
+        new THREE.Vector3(cx * rOut, cy * rOut, zMax),
+        new THREE.Vector3(cx * rOut, cy * rOut, zMin),
+        new THREE.Vector3(cx * rIn,  cy * rIn,  zMin),
+      ];
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      ghostPhiGroup.add(new THREE.Line(geo, ghostPhiMat));
+    }
+  }
+  scene.add(ghostPhiGroup);
+}
+
+function applyGhostMesh(visible) {
+  for (const name of GHOST_TILE_NAMES) {
+    const mesh = meshByName.get(name);
+    if (!mesh) continue;
+    if (visible) {
+      mesh.material  = ghostSolidMat;
+      mesh.renderOrder = 5;
+      mesh.visible   = true;
+    } else {
+      mesh.material  = origMat.get(name) ?? mesh.material;
+      mesh.renderOrder = 0;
+      mesh.visible   = false;
+    }
+  }
+  if (ghostPhiGroup) ghostPhiGroup.visible = visible;
+  dirty = true;
+}
+
+function toggleGhostType(type) {
+  // Only TILE is active; ignore lar/hec calls silently
+  if (type !== 'tile') return;
+  showGhostTile = !showGhostTile;
+  buildPhiLines();
+  applyGhostMesh(showGhostTile);
+  const btn = document.getElementById('gtog-tile');
+  btn.classList.toggle('on', showGhostTile);
+  btn.setAttribute('aria-checked', showGhostTile);
+  document.getElementById('btn-ghost').classList.toggle('on', showGhostTile);
+}
+
+function toggleAllGhosts() {
+  const next = !showGhostTile;
+  showGhostTile = next;
+  showGhostLAr = false; showGhostHec = false;
+  buildPhiLines();
+  applyGhostMesh(next);
+  const btn = document.getElementById('gtog-tile');
+  btn.classList.toggle('on', next);
+  btn.setAttribute('aria-checked', next);
+  document.getElementById('btn-ghost').classList.toggle('on', next);
+}
+
+function updateGhostColors() {
+  ghostSolidMat.color.set(ghostSolidColor);
+  ghostSolidMat.opacity = ghostSolidOpacity;
+  ghostPhiMat.opacity   = ghostSolidOpacity;
+  ghostPhiMat.color.set(ghostPhiColor);
+  if (ghostPhiGroup) ghostPhiGroup.traverse(o => { if (o.material) o.material.needsUpdate = true; });
+  dirty = true;
+}
+
+// ── Ghost UI controls ─────────────────────────────────────────────────────────
+document.getElementById('ghost-alpha-slider').addEventListener('input', e => {
+  const pct = parseInt(e.target.value);
+  document.getElementById('ghost-alpha-val').textContent = pct + '%';
+  ghostSolidOpacity = (100 - pct) / 100 * 0.30;  // max solid opacity = 0.30
+  updateGhostColors();
+});
+
+function hexToInt(hex) { return parseInt(hex.replace('#',''), 16); }
+
+document.getElementById('ghost-solid-color').addEventListener('input', e => {
+  ghostSolidColor = hexToInt(e.target.value);
+  document.getElementById('ghost-solid-swatch').style.background = e.target.value;
+  updateGhostColors();
+});
+document.getElementById('ghost-solid-color').addEventListener('click', e => e.stopPropagation());
+document.getElementById('ghost-solid-swatch').closest('label').addEventListener('click', () => {
+  document.getElementById('ghost-solid-color').click();
+});
+
+document.getElementById('ghost-phi-color').addEventListener('input', e => {
+  ghostPhiColor = hexToInt(e.target.value);
+  document.getElementById('ghost-phi-swatch').style.background = e.target.value;
+  updateGhostColors();
+});
+document.getElementById('ghost-phi-swatch').closest('label').addEventListener('click', () => {
+  document.getElementById('ghost-phi-color').click();
+});
+
+// Legacy compatibility — no-op for lar/hec since switches are removed
+const GHOST_MATS  = {};  // kept to avoid reference errors
+const GHOST_NAMES = { tile: GHOST_TILE_NAMES, lar: [], hec: [] };
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
@@ -1941,81 +2091,7 @@ function initDetPanel(hasTile, hasLAr, hasHec) {
   if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasHec) switchTab('hec');
 }
 
-// ── Ghost — CGV mesh visibility + edge segmentation ──────────────────────────
-// Shows/hides the real .root geometry meshes for each sub-detector envelope.
-// Ghost meshes come from the .glb (initially hidden). For each mesh we also
-// lazily build an EdgesGeometry overlay so the .root polygon structure shows.
-const ghostEdgeLines = new Map(); // mesh-name → THREE.LineSegments
-
-const GHOST_EDGE_MATS = {
-  tile: new THREE.LineBasicMaterial({ color:0xd4a030, transparent:true, opacity:0.60, depthWrite:false }),
-  lar:  new THREE.LineBasicMaterial({ color:0x50d880, transparent:true, opacity:0.60, depthWrite:false }),
-  hec:  new THREE.LineBasicMaterial({ color:0x70c8e8, transparent:true, opacity:0.60, depthWrite:false }),
-};
-
-function getOrBuildEdges(name, mesh, type) {
-  if (ghostEdgeLines.has(name)) return ghostEdgeLines.get(name);
-  // EdgesGeometry: only emit edges where adjacent faces meet at ≥15° — exposes
-  // the real faceted structure that came out of the ROOT tessellation.
-  const edgeGeo  = new THREE.EdgesGeometry(mesh.geometry, 15);
-  const lines    = new THREE.LineSegments(edgeGeo, GHOST_EDGE_MATS[type]);
-  lines.position.copy(mesh.position);
-  lines.quaternion.copy(mesh.quaternion);
-  lines.scale.copy(mesh.scale);
-  lines.renderOrder = 6;
-  lines.visible = false;
-  scene.add(lines);
-  ghostEdgeLines.set(name, lines);
-  return lines;
-}
-
-function applyGhostMesh(type, visible) {
-  const mat = GHOST_MATS[type];
-  for (const name of GHOST_NAMES[type]) {
-    const mesh = meshByName.get(name);
-    if (!mesh) continue;
-    if (visible) {
-      mesh.material = mat;
-      mesh.renderOrder = 5;
-      mesh.visible = true;
-      getOrBuildEdges(name, mesh, type).visible = true;
-    } else {
-      mesh.material = origMat.get(name) ?? mesh.material;
-      mesh.renderOrder = 0;
-      mesh.visible = false;
-      const lines = ghostEdgeLines.get(name);
-      if (lines) lines.visible = false;
-    }
-  }
-  dirty = true;
-}
-
-function toggleGhostType(type) {
-  const prev = { tile: showGhostTile, lar: showGhostLAr, hec: showGhostHec }[type];
-  const next = !prev;
-  if (type === 'tile') showGhostTile = next;
-  else if (type === 'lar') showGhostLAr = next;
-  else showGhostHec = next;
-  applyGhostMesh(type, next);
-  const btn = document.getElementById(`gtog-${type}`);
-  btn.classList.toggle('on', next);
-  btn.setAttribute('aria-checked', next);
-  document.getElementById('btn-ghost').classList.toggle('on',
-    showGhostTile || showGhostLAr || showGhostHec);
-}
-
-function toggleAllGhosts() {
-  const anyOn = showGhostTile || showGhostLAr || showGhostHec;
-  const next  = !anyOn;
-  showGhostTile = showGhostLAr = showGhostHec = next;
-  for (const type of ['tile','lar','hec']) {
-    applyGhostMesh(type, next);
-    const btn = document.getElementById(`gtog-${type}`);
-    btn.classList.toggle('on', next);
-    btn.setAttribute('aria-checked', next);
-  }
-  document.getElementById('btn-ghost').classList.toggle('on', next);
-}
+// (ghost functions defined above near GHOST_TILE_NAMES)
 
 // ── Z-axis beam indicator ─────────────────────────────────────────────────────
 function buildBeamIndicator() {
@@ -2160,8 +2236,6 @@ document.getElementById('btn-info').addEventListener('click', () => {
 });
 document.getElementById('btn-ghost').addEventListener('click', toggleAllGhosts);
 document.getElementById('gtog-tile').addEventListener('click', () => toggleGhostType('tile'));
-document.getElementById('gtog-lar').addEventListener('click',  () => toggleGhostType('lar'));
-document.getElementById('gtog-hec').addEventListener('click',  () => toggleGhostType('hec'));
 document.getElementById('btn-beam').addEventListener('click', toggleBeam);
 
 
