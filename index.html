@@ -1003,6 +1003,11 @@
   <button class="tbtn tbtn-label on" id="btn-hec"
     data-tip="Toggle LAr HEC cells">HEC</button>
   <div class="tbtn-sep"></div>
+  <button class="tbtn" id="btn-reset"
+    data-tip="Reset camera to default position" data-i18n-tip="tip-reset">
+    <i class="ti ti-refresh"></i>
+  </button>
+  <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-shot"
     data-tip="Save screenshot" data-i18n-tip="tip-shot">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-camera"/></svg>
@@ -1142,6 +1147,7 @@ const TRANSLATIONS = {
     'tip-beam': 'Beam axis — show Z-axis N/S direction cones',
     'tip-lang': 'Switch display language',
     'tip-shot': 'Save screenshot — choose resolution',
+    'tip-reset': 'Reset camera to default position',
     'tip-about': 'About this project', 'tip-pin': 'Pin panel open at all times',
     'tip-poll-play': 'Resume live polling', 'tip-poll-stop': 'Pause live polling',
     'shot-title': 'Save Screenshot',
@@ -1196,6 +1202,7 @@ const TRANSLATIONS = {
     'tip-beam': 'Axe faisceau — indicateurs N/S sur l\'axe Z',
     'tip-lang': 'Changer la langue d\'affichage',
     'tip-shot': 'Enregistrer une capture d\'écran',
+    'tip-reset': 'Réinitialiser la caméra à la position par défaut',
     'tip-about': 'À propos de ce projet', 'tip-pin': 'Épingler le panneau visible',
     'tip-poll-play': 'Reprendre l\'interrogation en direct', 'tip-poll-stop': 'Suspendre l\'interrogation en direct',
     'shot-title': 'Enregistrer une capture',
@@ -1250,6 +1257,7 @@ const TRANSLATIONS = {
     'tip-beam': 'Stråleaksen — vis N/S-konuser på Z-aksen',
     'tip-lang': 'Bytt visningsspråk',
     'tip-shot': 'Lagre skjermbilde — velg oppløsning',
+    'tip-reset': 'Tilbakestill kamera til standardposisjon',
     'tip-about': 'Om dette prosjektet', 'tip-pin': 'Fest panelet alltid synlig',
     'tip-poll-play': 'Gjenoppta live-henting', 'tip-poll-stop': 'Sett live-henting på pause',
     'shot-title': 'Lagre skjermbilde',
@@ -1304,6 +1312,7 @@ const TRANSLATIONS = {
     'tip-beam': 'Eixo do feixe — cones N/S no eixo Z',
     'tip-lang': 'Mudar idioma de exibição',
     'tip-shot': 'Salvar captura de tela — escolher resolução',
+    'tip-reset': 'Redefinir câmera para posição padrão',
     'tip-about': 'Sobre este projeto', 'tip-pin': 'Fixar painel sempre visível',
     'tip-poll-play': 'Retomar monitoramento ao vivo', 'tip-poll-stop': 'Pausar monitoramento ao vivo',
     'shot-title': 'Salvar Captura de Tela',
@@ -2220,6 +2229,12 @@ function exitCinema() {
   cinemaMode = false; document.body.classList.remove('cinema');
   controls.autoRotate = false; document.getElementById('btn-cinema').classList.remove('on');
 }
+function resetCamera() {
+  camera.position.set(0, 0, 12_000);
+  controls.target.set(0, 0, 0);
+  controls.update();
+  dirty = true;
+}
 document.getElementById('btn-cinema').addEventListener('click', () => cinemaMode ? exitCinema() : enterCinema());
 document.getElementById('cinema-exit').addEventListener('click', exitCinema);
 let cDragged = false;
@@ -2237,6 +2252,7 @@ document.getElementById('btn-info').addEventListener('click', () => {
 document.getElementById('btn-ghost').addEventListener('click', toggleAllGhosts);
 document.getElementById('gtog-tile').addEventListener('click', () => toggleGhostType('tile'));
 document.getElementById('btn-beam').addEventListener('click', toggleBeam);
+document.getElementById('btn-reset').addEventListener('click', resetCamera);
 
 
 // ── Detector layer toggles ────────────────────────────────────────────────────
