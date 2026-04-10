@@ -1118,7 +1118,12 @@
       <i class="ti ti-layers-intersect"></i>
     </button>
     <div class="tbtn-sep"></div>
-    <button class="tbtn" id="btn-shot"
+    <button class="tbtn" id="btn-reset"
+    data-tip="Reset camera to default position" data-i18n-tip="tip-reset">
+    <i class="ti ti-refresh"></i>
+  </button>
+  <div class="tbtn-sep"></div>
+  <button class="tbtn" id="btn-shot"
       data-tip="Salvar captura" data-i18n-tip="tip-shot" data-kbd="P">
       <svg class="ic" style="width:14px;height:14px"><use href="#i-camera"/></svg>
     </button>
@@ -2429,6 +2434,12 @@ function exitCinema() {
   cinemaMode = false; document.body.classList.remove('cinema');
   controls.autoRotate = false; document.getElementById('btn-cinema').classList.remove('on');
 }
+function resetCamera() {
+  camera.position.set(0, 0, 12_000);
+  controls.target.set(0, 0, 0);
+  controls.update();
+  dirty = true;
+}
 document.getElementById('btn-cinema').addEventListener('click', () => cinemaMode ? exitCinema() : enterCinema());
 document.getElementById('cinema-exit').addEventListener('click', exitCinema);
 let cDragged = false;
@@ -2446,6 +2457,7 @@ function toggleInfo() {
 document.getElementById('btn-info').addEventListener('click', toggleInfo);
 document.getElementById('btn-ghost').addEventListener('click', toggleAllGhosts);
 document.getElementById('btn-beam').addEventListener('click', toggleBeam);
+document.getElementById('btn-reset').addEventListener('click', resetCamera);
 
 // ── About overlay ──────────────────────────────────────────────
 const aboutOverlay = document.getElementById('about-overlay');
