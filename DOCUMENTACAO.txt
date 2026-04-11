@@ -22,7 +22,7 @@ INDICE
       5.3  O arquivo .cgv — indice hierarquico da geometria
       5.4  O arquivo .glb — cena 3D para o navegador
       5.5  O script optimize_glb.mjs — reducao de tamanho
-      5.6  O modulo wasm — decodificador de IDs em WASM
+      5.6  O modulo atlas-id-parser — decodificador de IDs em WASM
   6.  O Visor Web (index.html)
       6.1  Inicializacao
       6.2  Carregamento da geometria GLB
@@ -68,7 +68,7 @@ renderizacao 3D, analise do evento — roda no cliente, usando tecnologias
 web modernas: WebAssembly, WebGL (via Three.js) e ES Modules.
 
 O projeto pode ser servido por qualquer servidor HTTP estatico. Arquivos
-como CaloGeometry.glb e wasm/pkg/ precisam estar acessiveis
+como CaloGeometry.glb e atlas-id-parser/pkg/ precisam estar acessiveis
 no mesmo dominio ou via CORS adequado.
 
 
@@ -149,10 +149,10 @@ O sistema e dividido em duas fases bem separadas:
 
   MODULO AUXILIAR:
 
-    wasm/src/lib.rs  (Rust)
+    atlas-id-parser/src/lib.rs  (Rust)
          |
          v  (compilacao: wasm-pack build)
-    wasm/pkg/        (WASM + JS glue)
+    atlas-id-parser/pkg/        (WASM + JS glue)
 
 
 ================================================================================
@@ -177,7 +177,7 @@ Para compilacao do modulo WASM:
   - wasm-pack
 
   Compilacao:
-    cd wasm
+    cd atlas-id-parser
     wasm-pack build --target web
 
 Para o visor web (runtime):
@@ -336,18 +336,18 @@ Uso:
   node optimize_glb.mjs --input CaloGeometry.glb --output CaloGeometry_opt.glb
   node optimize_glb.mjs --quantize   (com quantizacao)
 
----- 5.6  O modulo wasm — decodificador de IDs em WASM ----
+---- 5.6  O modulo atlas-id-parser — decodificador de IDs em WASM ----
 
-O modulo wasm e uma biblioteca escrita em Rust que implementa
+O modulo atlas-id-parser e uma biblioteca escrita em Rust que implementa
 o algoritmo oficial de decodificacao de IDs compactos do ATLAS. O codigo
-fonte esta em wasm/src/lib.rs (857 linhas).
+fonte esta em atlas-id-parser/src/lib.rs (857 linhas).
 
 Compilacao para WebAssembly:
 
-  cd wasm
+  cd atlas-id-parser
   wasm-pack build --target web
 
-Isso gera a pasta wasm/pkg/ com:
+Isso gera a pasta atlas-id-parser/pkg/ com:
 
   atlas_id_parser.js         -- modulo ES com glue code JavaScript
   atlas_id_parser_bg.wasm    -- binario WebAssembly (~90 KB)
@@ -632,7 +632,7 @@ Para campos "discrete": valor = tabela[indice_extraido]
 
 ---- 8.2  Decodificacao dos campos bit a bit ----
 
-O modulo WASM (wasm) implementa toda a decodificacao. Após
+O modulo WASM (atlas-id-parser) implementa toda a decodificacao. Após
 parse_atlas_id(id_str), os campos relevantes para o mapeamento sao:
 
   section:  1=Barrel (LB), 2=Extended Barrel (EB), 3=ITC/Gap/E-cells
@@ -800,7 +800,7 @@ presentes na geometria 3D (GLB e CGV) mas nao ha codigo para:
   a) Extrair seus IDs do JiveXML (o parser so processa <TILE>)
   b) Converter os campos decodificados pelo WASM para nomes CGV
 
-O modulo WASM wasm JA suporta decodificacao de IDs de LAr (EM,
+O modulo WASM atlas-id-parser JA suporta decodificacao de IDs de LAr (EM,
 HEC, FCAL) — os campos sao decodificados corretamente, incluindo:
   - LAr EM: barrel-endcap, sampling, region, eta, phi
   - LAr HEC: barrel-endcap, sampling, region, eta, phi
@@ -873,7 +873,7 @@ isolado em funcoes puras e o GLB ja contem toda a geometria necessaria.
     Script opcional de pos-processamento do GLB. Remove dados inuteis ao
     visor (UVs, texturas, materiais) e opcionalmente quantiza vertices.
 
-  wasm/
+  atlas-id-parser/
     Modulo Rust compilado para WebAssembly.
     src/lib.rs       -- implementacao do decodificador (857 linhas)
     pkg/             -- saida do wasm-pack (JS glue + .wasm binario)
@@ -948,7 +948,7 @@ PASSO 4 (opcional): Otimizar o GLB
   # renomear o resultado para CaloGeometry.glb se quiser usar
 
 PASSO 5: Compilar o modulo WASM (se necessario recompilar)
-  cd wasm
+  cd atlas-id-parser
   wasm-pack build --target web
   cd ..
 
@@ -1044,7 +1044,7 @@ uma arquitetura generalizavel com diversas aplicacoes potenciais:
    - Experimentos de neutrinos: NOvA, MicroBooNE, DUNE
    - Experimentos de raios cosmicos com geometrias complexas
 
-   O unico componente especifico do ATLAS e o wasm (decodificador
+   O unico componente especifico do ATLAS e o atlas-id-parser (decodificador
    de IDs). Para outros experimentos, um decodificador equivalente precisa
    ser implementado para o esquema de identificacao de celulas daquele
    experimento.

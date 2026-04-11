@@ -1,6 +1,6 @@
 /**
  * decode_lar.mjs
- * Decodes LAr EM IDs from JiveXML using wasm (WASM),
+ * Decodes LAr EM IDs from JiveXML using atlas-id-parser (WASM),
  * computes statistics for each decoded field, and writes lar_em_stats.txt
  *
  * LAr EM filter: subdet=4, part=±1 (LArEM electromagnetic or LArEMdisc)
@@ -14,8 +14,8 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── 1. Initialize WASM module synchronously ─────────────────────────────────
-const { initSync, parse_atlas_id } = await import('./wasm/pkg/atlas_id_parser.js');
-const wasmBuffer = readFileSync(join(__dirname, 'wasm/pkg/atlas_id_parser_bg.wasm'));
+const { initSync, parse_atlas_id } = await import('./atlas-id-parser/pkg/atlas_id_parser.js');
+const wasmBuffer = readFileSync(join(__dirname, 'atlas-id-parser/pkg/atlas_id_parser_bg.wasm'));
 initSync({ module: wasmBuffer });
 console.log('WASM parser initialized.');
 
@@ -122,7 +122,7 @@ const lines = [];
 lines.push(EQ);
 lines.push('  ESTATÍSTICAS — IDs LAr EM (Calorimetro Eletromagnético de Árgônio)');
 lines.push('  Arquivo: JiveXML_516761_840521342.xml  |  Bloco: <LAr storeGateKey="AllCalo">');
-lines.push('  Parser:  wasm (WASM)  |  Filtro: subdet=4, part=±1');
+lines.push('  Parser:  atlas-id-parser (WASM)  |  Filtro: subdet=4, part=±1');
 lines.push(EQ);
 lines.push('');
 lines.push(`  Total de IDs no bloco LAr AllCalo : ${pad(ids.length, 6)}`);

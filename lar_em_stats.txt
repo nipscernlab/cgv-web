@@ -1,7 +1,7 @@
 ════════════════════════════════════════════════════════════════════════
   ESTATÍSTICAS — IDs LAr EM (Calorimetro Eletromagnético de Árgônio)
   Arquivo: JiveXML_516761_840521342.xml  |  Bloco: <LAr storeGateKey="AllCalo">
-  Parser:  wasm (WASM)  |  Filtro: subdet=4, part=±1
+  Parser:  atlas-id-parser (WASM)  |  Filtro: subdet=4, part=±1
 ════════════════════════════════════════════════════════════════════════
 
   Total de IDs no bloco LAr AllCalo :  27694

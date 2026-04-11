@@ -2,7 +2,7 @@
  * map_lar_cells.mjs
  *
  * Reads <LAr storeGateKey="AllCalo"> from JiveXML, decodes every ID
- * with wasm (WASM), then builds mesh-path strings in the form:
+ * with atlas-id-parser (WASM), then builds mesh-path strings in the form:
  *
  *   Calorimeter → EMXYZ_W → EMXYZK_K → cell_P
  *
@@ -29,9 +29,9 @@ const SEP = '\t→\t';   // tab → tab  (matches CGV path format)
 
 // ── 1. Initialize WASM ──────────────────────────────────────────────────────
 const { initSync, parse_atlas_id } =
-  await import('../wasm/atlas_id_parser.js');
+  await import('./atlas-id-parser/pkg/atlas_id_parser.js');
 initSync({
-  module: readFileSync(join(__dirname, '..', 'wasm', 'atlas_id_parser_bg.wasm')),
+  module: readFileSync(join(__dirname, 'atlas-id-parser/pkg/atlas_id_parser_bg.wasm')),
 });
 console.log('WASM initialized.');
 
