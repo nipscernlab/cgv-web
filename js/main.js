@@ -1494,10 +1494,22 @@ document.getElementById('ibtn-stop').addEventListener('click', () => {
 document.getElementById('btn-log-min').addEventListener('click', () => {
   const sec  = document.getElementById('log-sec');
   const icon = document.getElementById('log-min-icon');
-  sec.classList.toggle('log-collapsed');
-  const collapsed = sec.classList.contains('log-collapsed');
-  icon.className = collapsed ? 'ti ti-chevron-up' : 'ti ti-chevron-down';
-  document.getElementById('btn-log-min').dataset.tip = collapsed ? 'Expand session log' : 'Minimize session log';
+  const willCollapse = !sec.classList.contains('log-collapsed');
+  if (willCollapse) {
+    // Preserve any user-resized height so we can restore it on expand,
+    // then clear the inline styles so the .log-collapsed CSS rule can win.
+    sec.dataset.savedMaxH = sec.style.maxHeight || '';
+    sec.dataset.savedMinH = sec.style.minHeight || '';
+    sec.style.maxHeight = '';
+    sec.style.minHeight = '';
+    sec.classList.add('log-collapsed');
+  } else {
+    sec.classList.remove('log-collapsed');
+    if (sec.dataset.savedMaxH) sec.style.maxHeight = sec.dataset.savedMaxH;
+    if (sec.dataset.savedMinH) sec.style.minHeight = sec.dataset.savedMinH;
+  }
+  icon.className = willCollapse ? 'ti ti-chevron-up' : 'ti ti-chevron-down';
+  document.getElementById('btn-log-min').dataset.tip = willCollapse ? 'Expand session log' : 'Minimize session log';
 });
 
 // ── Local mode ────────────────────────────────────────────────────────────────
