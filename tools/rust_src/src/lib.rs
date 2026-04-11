@@ -109,6 +109,8 @@ pub struct ParsedId {
     pub phi: f64,
     /// Summary string with all info
     pub summary: String,
+    /// Debug log messages (emitted to ATLANTIS session log)
+    pub debug_log: Vec<String>,
 }
 
 // ─── TILE physical coordinate helpers ─────────────────────────────────────────
@@ -241,6 +243,31 @@ fn lar_phi(phi_idx: i32, n_phi: i32) -> f64 {
     (phi_idx as f64 + 0.5) * 2.0 * PI / n_phi as f64
 }
 
+/// Compute the global eta index for a LAr EM cell.
+/// Applies a region-dependent offset so that eta indices are unique across regions.
+/// For sampling 0 and 3, no offset is applied.
+fn lar_em_global_eta(be: i32, sampling: i32, region: i32, eta_idx: i32) -> i32 {
+    let abs_be = be.abs();
+    let offset = match (abs_be, sampling, region) {
+        // |barrel-endcap| = 1 (barrel)
+        (1, 1, 1) => 448,
+        (1, 2, 1) => 56,
+        // |barrel-endcap| = 2 (outer endcap)
+        (2, 1, 1) => 1,
+        (2, 1, 2) => 4,
+        (2, 1, 3) => 100,
+        (2, 1, 4) => 148,
+        (2, 1, 5) => 212,
+        (2, 2, 1) => 1,
+        // |barrel-endcap| = 3 (inner endcap)
+        (3, 1, 0) => 216,
+        (3, 2, 0) => 44,
+        // All other cases: no offset
+        _ => 0,
+    };
+    eta_idx + offset
+}
+
 /// Rough total phi bins for LAr EM from dphi column in XML.
 fn lar_em_phi_bins(be: i32, sampling: i32, region: i32) -> i32 {
     let abs_be = be.abs();
@@ -288,6 +315,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                 eta: 0.0,
                 phi: 0.0,
                 summary: format!("Error: {}", $msg),
+                debug_log: vec![],
             }
         };
     }
@@ -419,6 +447,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                 fields, full_id, cell_name,
                 subsystem: "TILECAL".to_string(),
                 eta, phi, summary,
+                debug_log: vec![],
             };
         }
 
@@ -503,7 +532,15 @@ pub fn decode_id(id: u64) -> ParsedId {
                         3 => if be > 0 { "EMECA (inner)" } else { "EMECC (inner)" },
                         _ => "?",
                     };
-                    let cell_name = format!("{} s={} r={} η={} φ={}", region_name, sampling, region, eta_idx, phi_idx);
+                    let global_eta = lar_em_global_eta(be, sampling, region, eta_idx);
+                    let mut debug_log: Vec<String> = vec![];
+                    if region != 0 {
+                        debug_log.push(format!(
+                            "[lar_em_global_eta] |be|={} sampling={} region={} eta_idx={} → global_eta={} (offset={})",
+                            be.abs(), sampling, region, eta_idx, global_eta, global_eta - eta_idx
+                        ));
+                    }
+                    let cell_name = format!("{} s={} r={} η={} φ={}", region_name, sampling, region, global_eta, phi_idx);
 
                     let eta = lar_em_eta(be, sampling, region, eta_idx);
                     let n_phi = lar_em_phi_bins(be, sampling, region);
@@ -517,7 +554,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                          Barrel-Endcap:  {} ({})\n\
                          Sampling:       {} ({})\n\
                          Region:         {}\n\
-                         η index:        {}\n\
+                         η index:        {} (global: {})\n\
                          φ index:        {}\n\
                          ─────────────────────────────\n\
                          Physical η ≈ {:.4}\n\
@@ -525,7 +562,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                         part, part_label,
                         be, be_label,
                         sampling, samp_label,
-                        region, eta_idx, phi_idx,
+                        region, eta_idx, global_eta, phi_idx,
                         eta, phi,
                     );
 
@@ -533,7 +570,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                         id: id_str, valid: true, error: String::new(),
                         fields, full_id, cell_name,
                         subsystem: "LAr EM".to_string(),
-                        eta, phi, summary,
+                        eta, phi, summary, debug_log,
                     };
                 }
 
@@ -615,6 +652,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                         fields, full_id, cell_name,
                         subsystem: "LAr HEC".to_string(),
                         eta, phi, summary,
+                        debug_log: vec![],
                     };
                 }
 
@@ -686,6 +724,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                         fields, full_id, cell_name,
                         subsystem: "LAr FCAL".to_string(),
                         eta, phi, summary,
+                        debug_log: vec![],
                     };
                 }
 
@@ -724,6 +763,7 @@ pub fn parse_atlas_id(id_str: &str) -> JsValue {
                 eta: 0.0,
                 phi: 0.0,
                 summary: format!("Parse error: {}", e),
+                debug_log: vec![],
             };
             return serde_wasm_bindgen::to_value(&result).unwrap();
         }

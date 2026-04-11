@@ -1,0 +1,65 @@
+# LAr EM cells: |barrel-endcap|=1, sampling=1, eta_idx=0
+# Source: C:\Users\chrys\Documents\GitHub\cgv-web\JiveXML_516761_840521342.xml
+# Filtered: 60 cells
+#
+# barrel-endcap	region	eta_idx	global_eta	path_using_eta_idx	path_using_global_eta
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_4	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_4
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_12	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_12
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_13	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_13
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_22	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_22
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_31	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_31
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_34	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_34
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_38	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_38
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_43	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_43
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_58	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_58
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_61	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_61
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_62	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_62
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_70	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_70
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_77	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_77
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_80	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_80
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_81	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_81
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_83	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_83
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_136	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_136
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_138	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_138
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_141	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_141
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_146	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_146
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_165	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_165
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_186	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_186
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_187	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_187
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_190	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_190
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_191	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_191
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_199	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_199
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_234	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_234
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_252	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_252
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_253	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_253
+-1	1	448	448	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_255	Calorimeter→EMBarrel1n_0→EMBarrel1n448_448→cell_255
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_6	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_6
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_7	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_7
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_26	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_26
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_32	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_32
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_56	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_56
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_59	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_59
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_67	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_67
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_73	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_73
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_82	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_82
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_84	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_84
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_95	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_95
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_98	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_98
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_107	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_107
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_109	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_109
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_125	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_125
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_138	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_138
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_147	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_147
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_148	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_148
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_180	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_180
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_181	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_181
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_185	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_185
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_188	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_188
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_194	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_194
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_215	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_215
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_216	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_216
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_217	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_217
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_230	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_230
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_247	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_247
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_250	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_250
+1	1	448	448	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_253	Calorimeter→EMBarrel1p_0→EMBarrel1p448_448→cell_253
