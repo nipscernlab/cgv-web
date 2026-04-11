@@ -21,6 +21,9 @@
   },
   "homepage": "https://github.com/nipscernlab/cgv-web#readme",
   "dependencies": {
+    "@gltf-transform/core": "^4.3.0",
+    "@gltf-transform/extensions": "^4.3.0",
+    "@gltf-transform/functions": "^4.3.0",
     "jsroot": "^7.10.3",
     "three": "^0.162.0"
   }

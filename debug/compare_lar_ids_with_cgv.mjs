@@ -3,10 +3,11 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CGV_PATH = join(__dirname, 'CaloGeometry.cgv');
-const XML_PATH = join(__dirname, 'default_xml', 'JiveXML_516761_840521342.xml');
-const WASM_JS = join(__dirname, '..', 'wasm', 'atlas_id_parser.js');
-const WASM_BIN = join(__dirname, '..', 'wasm', 'atlas_id_parser_bg.wasm');
+const ROOT_DIR = join(__dirname, '..');
+const CGV_PATH = join(ROOT_DIR, 'geometry_data', 'CaloGeometry.cgv');
+const XML_PATH = join(ROOT_DIR, 'default_xml', 'JiveXML_516761_840521342.xml');
+const WASM_JS = join(ROOT_DIR, 'parser', 'pkg', 'atlas_id_parser.js');
+const WASM_BIN = join(ROOT_DIR, 'parser', 'pkg', 'atlas_id_parser_bg.wasm');
 const OUTPUT_PATH = join(__dirname, 'output.txt');
 const SEP = '\t→\t';
 
@@ -89,7 +90,7 @@ async function main() {
   const ids = extractLArIds(xml);
   console.log(`Extracted ${ids.length} IDs from ${XML_PATH}`);
 
-  const { initSync, parse_atlas_id } = await import(`./wasm/pkg/atlas_id_parser.js`);
+  const { initSync, parse_atlas_id } = await import(`../parser/pkg/atlas_id_parser.js`);
   const wasmBytes = readFileSync(WASM_BIN);
   initSync({ module: wasmBytes });
   console.log('WASM parser initialized.');

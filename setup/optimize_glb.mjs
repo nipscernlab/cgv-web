@@ -25,8 +25,8 @@ import { parseArgs }        from 'node:util';
 // ── CLI ──────────────────────────────────────────────────────────────────────
 const { values: opts } = parseArgs({
   options: {
-    input:    { type: 'string',  default: './root_file/CaloGeometry.glb'     },
-    output:   { type: 'string',  default: './root_file/CaloGeometry_opt.glb' },
+    input:    { type: 'string',  default: './geometry_data/CaloGeometry.glb'     },
+    output:   { type: 'string',  default: './geometry_data/CaloGeometry_opt.glb' },
     quantize: { type: 'boolean', default: false },
     help:     { type: 'boolean', default: false },
   },
@@ -35,8 +35,8 @@ const { values: opts } = parseArgs({
 if (opts.help) {
   console.log(`
   Usage: node optimize_glb.mjs [options]
-    --input  <path>   Source GLB          (default: ./root_file/CaloGeometry.glb)
-    --output <path>   Output GLB          (default: ./root_file/CaloGeometry_opt.glb)
+    --input  <path>   Source GLB          (default: ./geometry_data/CaloGeometry.glb)
+    --output <path>   Output GLB          (default: ./geometry_data/CaloGeometry_opt.glb)
     --quantize        Quantize positions/normals (smaller file, visually identical)
     --help            Show this help
   `);

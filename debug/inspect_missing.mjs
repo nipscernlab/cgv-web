@@ -1,8 +1,11 @@
 import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const normalize = (line) => line
   .trim()
   .replace(/\s*→\s*/g, ' → ');
-const cgv = readFileSync('CaloGeometry.cgv', 'utf8')
+const cgv = readFileSync(join(__dirname, '..', 'geometry_data', 'CaloGeometry.cgv'), 'utf8')
   .split(/\r?\n/)
   .map((l) => normalize(l))
   .filter(Boolean);

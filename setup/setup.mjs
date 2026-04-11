@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /**
- * setup.mjs — prepara lib/geobase.mjs e lib/csg.mjs com imports corrigidos.
- * Execute uma única vez após: npm install jsroot --ignore-scripts
+ * setup.mjs — prepara setup/lib/geobase.mjs e setup/lib/csg.mjs com imports corrigidos.
+ * Execute a partir da raiz do projeto, após: npm install jsroot --ignore-scripts
+ *   node setup/setup.mjs
  */
 import { mkdirSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SRC  = 'node_modules/jsroot/modules/geom';
-const DEST = 'lib';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = resolve(__dirname, '..');
+
+const SRC  = join(PROJECT_ROOT, 'node_modules/jsroot/modules/geom');
+const DEST = join(__dirname, 'lib');
 
 mkdirSync(DEST, { recursive: true });
 
@@ -32,4 +37,4 @@ patch('csg.mjs', [
 ]);
 
 console.log('\nSetup concluído. Agora execute:');
-console.log('  node root2scene.mjs <arquivo.root> [opções]\n');
+console.log('  node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data\n');

@@ -6,15 +6,19 @@
  * unmatched paths to a txt file.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { initSync, parse_atlas_id } from './atlas-id-parser/pkg/atlas_id_parser.js';
+import { resolve, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { initSync, parse_atlas_id } from '../parser/pkg/atlas_id_parser.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = join(__dirname, '..');
 
 // ── Init WASM ──
-const wasmBytes = readFileSync(resolve('atlas-id-parser/pkg/atlas_id_parser_bg.wasm'));
+const wasmBytes = readFileSync(join(ROOT_DIR, 'parser/pkg/atlas_id_parser_bg.wasm'));
 initSync({ module: new WebAssembly.Module(wasmBytes) });
 
 // ── Read CGV hierarchy into a Set of known paths ──
-const cgvText = readFileSync(resolve('CaloGeometry.cgv'), 'utf8');
+const cgvText = readFileSync(join(ROOT_DIR, 'geometry_data/CaloGeometry.cgv'), 'utf8');
 const cgvPaths = new Set();
 for (const line of cgvText.split('\n')) {
   if (line.startsWith('#') || !line.trim()) continue;
@@ -25,7 +29,7 @@ for (const line of cgvText.split('\n')) {
 console.log(`CGV paths loaded: ${cgvPaths.size}`);
 
 // ── Read XML ──
-const xmlPath = resolve(process.argv[2] ?? 'JiveXML_516761_840521342.xml');
+const xmlPath = resolve(process.argv[2] ?? join(ROOT_DIR, 'default_xml/JiveXML_516761_840521342.xml'));
 const xml = readFileSync(xmlPath, 'utf8');
 
 function extractIds(xml, tagName, storeGateKey) {

@@ -14,14 +14,14 @@ import { dirname, join } from 'path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── 1. Initialize WASM module synchronously ─────────────────────────────────
-const { initSync, parse_atlas_id } = await import('./atlas-id-parser/pkg/atlas_id_parser.js');
-const wasmBuffer = readFileSync(join(__dirname, 'atlas-id-parser/pkg/atlas_id_parser_bg.wasm'));
+const { initSync, parse_atlas_id } = await import('../parser/pkg/atlas_id_parser.js');
+const wasmBuffer = readFileSync(join(__dirname, '..', 'parser/pkg/atlas_id_parser_bg.wasm'));
 initSync({ module: wasmBuffer });
 console.log('WASM parser initialized.');
 
 // ── 2. Extract LAr AllCalo <id> section from XML ────────────────────────────
 console.log('Reading XML...');
-const xml = readFileSync(join(__dirname, 'JiveXML_516761_840521342.xml'), 'utf8');
+const xml = readFileSync(join(__dirname, '..', 'default_xml', 'JiveXML_516761_840521342.xml'), 'utf8');
 
 const LAR_OPEN  = '<LAr count="27694" storeGateKey="AllCalo">';
 const LAR_CLOSE = '</LAr>';

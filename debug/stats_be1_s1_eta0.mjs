@@ -5,13 +5,16 @@
  * shows region and the global_eta after lar_em_global_eta.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { initSync, parse_atlas_id } from './atlas-id-parser/pkg/atlas_id_parser.js';
+import { resolve, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { initSync, parse_atlas_id } from '../parser/pkg/atlas_id_parser.js';
 
-const wasmBytes = readFileSync(resolve('atlas-id-parser/pkg/atlas_id_parser_bg.wasm'));
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT_DIR = join(__dirname, '..');
+const wasmBytes = readFileSync(join(ROOT_DIR, 'parser/pkg/atlas_id_parser_bg.wasm'));
 initSync({ module: new WebAssembly.Module(wasmBytes) });
 
-const xmlPath = resolve(process.argv[2] ?? 'JiveXML_516761_840521342.xml');
+const xmlPath = resolve(process.argv[2] ?? join(ROOT_DIR, 'default_xml/JiveXML_516761_840521342.xml'));
 const xml = readFileSync(xmlPath, 'utf8');
 
 // Extract LAr IDs
