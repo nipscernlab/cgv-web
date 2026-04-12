@@ -634,7 +634,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 	dphi = 2.0*pi/(float)phi_seg;
 	 phi = dphi/2.0 + pi/2.0;
 
-	for (i = 0; i < phi_seg; i++) 
+	for (i = 0; i < phi_seg; i++)
 	{
 		rot->AddAt(new TGeoRotation("rot", 180.0 + phi*360.0/(2.0*pi), 90.0, 0.0), i);
 		phi += dphi;
@@ -642,10 +642,15 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 
 	// build -------------------------------------------------------------------
 
+	int i0 = 0;
+
+	if (layer2 == 5 && region == 0) i0 = 1;
+	if (layer2 == 7 && region == 0) i0 = 2;
+
 	// first cell
 	if (region == 0) {
 
-	TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), 0));
+	TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), i0));
 
 	r1 = HECz[layer1-1][0];
 	w2 = tan(dphi/2.0)*(HECz[layer1-1][0] + HECdz[layer1-1][0]/2.0);
@@ -664,7 +669,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 		phi += dphi;
 	}
 
-	geo_layer->AddNode(etaslice, 0);} // end of first cell
+	geo_layer->AddNode(etaslice, i0);} // end of first cell
 
 	// other cells
 
@@ -693,7 +698,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 
 	for (i = imin; i < imax; i++)
 	{
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), i+1));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), i+1+i0));
 
 		r1 = HECz[layer1-1][i+1];
 		r2 = HECz[layer2-1][i];
@@ -724,7 +729,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 			phi += dphi;
 		}
 
-		geo_layer->AddNode(etaslice, i);
+		geo_layer->AddNode(etaslice, i+1+i0);
 	}
 
 	Calo->AddNode(geo_layer, 0);
@@ -806,7 +811,7 @@ void CaloBuild()
 	BuildEMEndCap(3, 256, true , false);
 	BuildEMEndCap(3, 256, false, false);
 
-	//BuildOutline();
+	BuildOutline();
 
 	CloseGeometry();
 	gGeoManager->Export("CaloGeometry.root");
