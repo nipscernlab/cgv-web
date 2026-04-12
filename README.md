@@ -73,7 +73,8 @@ own tree. `setup/setup.mjs` copies and patches the two files we need
 (`geobase.mjs`, `csg.mjs`) into `setup/lib/`:
 
 ```bash
-node setup/setup.mjs
+cd setup
+node setup.mjs
 ```
 
 ### 4. Compile `.root` → `.cgv` + `.glb`
