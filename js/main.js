@@ -342,45 +342,45 @@ function bumpReq(label = '') {
 function palColorTile(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
-    1.0,                               // R: always 1.0
-    (1.0 - t) * 0.9,                  // G: 0.9 → 0
-    0.0                                // B: always 0
+    1.000 + t * (0.502 - 1.000),       // R: 1.0 → 0.502
+    1.000 + t * (0.000 - 1.000),       // G: 1.0 → 0.0
+    0.0                                 // B: always 0
   );
 }
 const PAL_TILE = Array.from({ length: PAL_N }, (_, i) => {
   return new THREE.MeshBasicMaterial({ color: palColorTile(i / (PAL_N - 1)), side: THREE.FrontSide });
 });
-const TILE_SCALE = 2000; // MeV — fixed 0–2 GeV
+const TILE_SCALE = 2000;
 function palMatTile(eMev) {
   const tv = Math.max(0, Math.min(1, eMev / TILE_SCALE));
   return PAL_TILE[Math.round(tv * (PAL_N - 1))];
 }
 
-// ── Palette HEC: vivid cyan (min) → deep blue (max), linear ─────────────────
+// ── Palette HEC: #66e0f6 (min) → #0c0368 (max), linear ─────────────────────
 function palColorHec(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
-    (1.0 - t) * 0.10,                 // R: 0.10 → 0
-    (1.0 - t) * 0.94,                 // G: 0.94 → 0
-    0.55 + t * 0.45                    // B: 0.55 → 1.0
+    0.4000 + t * (0.0471 - 0.4000),   // R: 0.40 → 0.05
+    0.8784 + t * (0.0118 - 0.8784),   // G: 0.88 → 0.01
+    0.9647 + t * (0.4078 - 0.9647)    // B: 0.96 → 0.41
   );
 }
 const PAL_HEC = Array.from({ length: PAL_N }, (_, i) => {
   return new THREE.MeshBasicMaterial({ color: palColorHec(i / (PAL_N - 1)), side: THREE.FrontSide });
 });
-const HEC_SCALE = 5000; // MeV — fixed 0–5 GeV; values above 5 GeV → max colour
+const HEC_SCALE = 5000;
 function palMatHec(eMev) {
   const tv = Math.max(0, Math.min(1, eMev / HEC_SCALE));
   return PAL_HEC[Math.round(tv * (PAL_N - 1))];
 }
 
-// ── Palette LAr: vivid green (min) → deep purple (max), linear ──────────────
+// ── Palette LAr: #17cf42 (min) → #270042 (max), linear ──────────────────────
 function palColorLAr(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
-    t * 0.29,                          // R: 0 → 0.29
-    (1.0 - t) * 1.0,                  // G: 1.0 → 0
-    0.25 + t * 0.25                    // B: 0.25 → 0.50
+    0.0902 + t * (0.1529 - 0.0902),   // R: 0.09 → 0.15
+    0.8118 + t * (0.0000 - 0.8118),   // G: 0.81 → 0
+    0.2588                              // B: constant
   );
 }
 const PAL_LAR = Array.from({ length: PAL_N }, (_, i) => {
@@ -538,7 +538,7 @@ const GHOST_NAMES = { tile: GHOST_TILE_NAMES, lar: [], hec: [] };
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
 renderer.setPixelRatio(1);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
