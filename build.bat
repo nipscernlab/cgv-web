@@ -81,7 +81,7 @@ echo.
 
 REM ---- Step 5: Compile .root -> .cgv + optimized .glb (single step) ----
 echo [5/6] Compiling .root to .cgv and optimized .glb...
-call node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data --quantize
+call node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
 if %errorlevel% neq 0 (
     echo ERROR: root2scene.mjs failed.
     exit /b 1

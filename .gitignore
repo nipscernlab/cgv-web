@@ -5,3 +5,8 @@ node_modules/
 package-lock.json
 
 parser/target
+
+geometry_data/CaloGeometry.glb
+
+geometry_data/CaloGeometry.cgv
+
