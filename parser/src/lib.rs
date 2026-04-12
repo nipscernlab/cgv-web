@@ -740,6 +740,119 @@ pub fn decode_id(id: u64) -> ParsedId {
     }
 }
 
+// ─── Compact bulk decoder ─────────────────────────────────────────────────────
+//
+// Subsystem codes written into slot [0] of each 6-i32 record.
+const SUBSYS_INVALID:  i32 = 0;
+const SUBSYS_TILE:     i32 = 1;
+const SUBSYS_LAR_EM:   i32 = 2;
+const SUBSYS_LAR_HEC:  i32 = 3;
+const SUBSYS_LAR_FCAL: i32 = 4;
+
+/// Decode one ATLAS u64 into exactly 6 i32 — no heap allocation.
+///
+/// Layout per record:
+///   [0]  subsystem code (SUBSYS_* above)
+///   TILE:     [1]=section  [2]=side  [3]=module  [4]=tower  [5]=sampling
+///   LAr EM:   [1]=bec      [2]=sampling  [3]=region  [4]=eta(global)  [5]=phi
+///   LAr HEC:  [1]=be       [2]=sampling  [3]=region  [4]=eta  [5]=phi
+///   LAr FCAL: [1]=be       [2]=module    [3]=eta     [4]=phi  [5]=0
+///   invalid:  [1..5]=0
+#[inline]
+fn decode_id_compact(id: u64) -> [i32; 6] {
+    let subdet_values: &[i32] = &[2, 4, 5, 7, 10, 11, 12, 13];
+    let subdet = match subdet_values.get(extract(id, 64, 3)) {
+        Some(&v) => v,
+        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+    };
+
+    match subdet {
+        // ── TILE ──────────────────────────────────────────────────────────────
+        5 => {
+            let section  = continuous(extract(id, 61, 3), 0);
+            let side     = continuous(extract(id, 58, 4), -1);
+            let module   = continuous(extract(id, 54, 8), 0);
+            let tower    = continuous(extract(id, 46, 6), 0);
+            let sampling = continuous(extract(id, 40, 4), 0);
+            [SUBSYS_TILE, section, side, module, tower, sampling]
+        }
+        // ── LAr ───────────────────────────────────────────────────────────────
+        4 => {
+            let part_values: &[i32] = &[-3, -2, -1, 1, 2, 3, 4, 5];
+            let part = match part_values.get(extract(id, 61, 3)) {
+                Some(&v) => v,
+                None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+            };
+            match part.abs() {
+                // LAr EM: bec(3), sampling(2), region(3), eta(9), phi(8)
+                1 => {
+                    let be_values: &[i32] = &[-3, -2, -1, 1, 2, 3];
+                    let be = match be_values.get(extract(id, 58, 3)) {
+                        Some(&v) => v,
+                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                    };
+                    let sampling = continuous(extract(id, 55, 2), 0);
+                    let region   = continuous(extract(id, 53, 3), 0);
+                    let eta_idx  = continuous(extract(id, 50, 9), 0);
+                    let phi_idx  = continuous(extract(id, 41, 8), 0);
+                    let global_eta = lar_em_global_eta(be, sampling, region, eta_idx);
+                    [SUBSYS_LAR_EM, be, sampling, region, global_eta, phi_idx]
+                }
+                // LAr HEC: be(1), sampling(2), region(1), eta(4), phi(6)
+                2 => {
+                    let be_values: &[i32] = &[-2, 2];
+                    let be = match be_values.get(extract(id, 58, 1)) {
+                        Some(&v) => v,
+                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                    };
+                    let sampling = continuous(extract(id, 57, 2), 0);
+                    let region   = continuous(extract(id, 55, 1), 0);
+                    let eta_idx  = continuous(extract(id, 54, 4), 0);
+                    let phi_idx  = continuous(extract(id, 50, 6), 0);
+                    [SUBSYS_LAR_HEC, be, sampling, region, eta_idx, phi_idx]
+                }
+                // LAr FCAL: be(1), module(2), eta(6), phi(4)
+                3 => {
+                    let be_values: &[i32] = &[-2, 2];
+                    let be = match be_values.get(extract(id, 58, 1)) {
+                        Some(&v) => v,
+                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                    };
+                    let mod_values: &[i32] = &[1, 2, 3];
+                    let module = match mod_values.get(extract(id, 57, 2)) {
+                        Some(&v) => v,
+                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                    };
+                    let eta_fcal = continuous(extract(id, 55, 6), 0);
+                    let phi_fcal = continuous(extract(id, 49, 4), 0);
+                    [SUBSYS_LAR_FCAL, be, module, eta_fcal, phi_fcal, 0]
+                }
+                _ => [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+            }
+        }
+        _ => [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+    }
+}
+
+/// Bulk-decode ATLAS compact IDs in a single WASM call.
+///
+/// `ids` — whitespace-separated decimal u64 strings.
+///
+/// Returns a flat `Int32Array` with 6 i32 per input token.
+/// See `decode_id_compact` for the per-record layout.
+#[wasm_bindgen]
+pub fn parse_atlas_ids_bulk(ids: &str) -> Vec<i32> {
+    let mut out = Vec::with_capacity(ids.split_ascii_whitespace().count() * 6);
+    for tok in ids.split_ascii_whitespace() {
+        let record = match tok.parse::<u64>() {
+            Ok(id) => decode_id_compact(id),
+            Err(_) => [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+        };
+        out.extend_from_slice(&record);
+    }
+    out
+}
+
 // ─── WASM public API ──────────────────────────────────────────────────────────
 
 /// Parse an ATLAS compact 64-bit detector ID.

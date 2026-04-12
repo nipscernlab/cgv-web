@@ -15,15 +15,27 @@ export function example_ids(): any;
  */
 export function parse_atlas_id(id_str: string): any;
 
+/**
+ * Bulk-decode ATLAS compact IDs in a single WASM call.
+ *
+ * `ids` — whitespace-separated decimal u64 strings.
+ *
+ * Returns a flat `Int32Array` with 6 i32 per input token.
+ * See `decode_id_compact` for the per-record layout.
+ */
+export function parse_atlas_ids_bulk(ids: string): Int32Array;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly example_ids: () => any;
     readonly parse_atlas_id: (a: number, b: number) => any;
+    readonly parse_atlas_ids_bulk: (a: number, b: number) => [number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
+    readonly __wbindgen_free: (a: number, b: number, c: number) => void;
     readonly __wbindgen_start: () => void;
 }
 
