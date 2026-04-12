@@ -586,9 +586,25 @@ camLight.position.set(0, 0, 1); // +Z in camera space = behind camera = toward s
 camera.add(camLight);
 scene.add(camera); // camera must be in scene for child lights to update
 
+// ── FPS counter ──────────────────────────────────────────────────────────────
+const fpsEl = document.createElement('div');
+Object.assign(fpsEl.style, {
+  position: 'fixed', bottom: '8px', left: '8px', zIndex: '9999',
+  fontFamily: 'monospace', fontSize: '13px', color: '#66ccff',
+  opacity: '0.45', pointerEvents: 'none', userSelect: 'none',
+});
+document.body.appendChild(fpsEl);
+let _fpsFrames = 0, _fpsLast = performance.now();
+
 // ── Render loop ───────────────────────────────────────────────────────────────
 (function loop() {
   requestAnimationFrame(loop);
+  _fpsFrames++;
+  const now = performance.now();
+  if (now - _fpsLast >= 500) {
+    fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
+    _fpsFrames = 0; _fpsLast = now;
+  }
   controls.update();
   if (controls.autoRotate) dirty = true;
   if (!dirty) return;
