@@ -348,11 +348,7 @@ function palColorTile(t) {
   );
 }
 const PAL_TILE = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorTile(i / (PAL_N - 1));
-  return new THREE.MeshLambertMaterial({
-    color: c, emissive: c, emissiveIntensity: 0.55,
-    side: THREE.FrontSide,
-  });
+  return new THREE.MeshBasicMaterial({ color: palColorTile(i / (PAL_N - 1)), side: THREE.FrontSide });
 });
 const TILE_SCALE = 2000; // MeV — fixed 0–2 GeV
 function palMatTile(eMev) {
@@ -370,11 +366,7 @@ function palColorHec(t) {
   );
 }
 const PAL_HEC = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorHec(i / (PAL_N - 1));
-  return new THREE.MeshLambertMaterial({
-    color: c, emissive: c, emissiveIntensity: 0.45,
-    side: THREE.FrontSide,
-  });
+  return new THREE.MeshBasicMaterial({ color: palColorHec(i / (PAL_N - 1)), side: THREE.FrontSide });
 });
 const HEC_SCALE = 5000; // MeV — fixed 0–5 GeV; values above 5 GeV → max colour
 function palMatHec(eMev) {
@@ -392,11 +384,7 @@ function palColorLAr(t) {
   );
 }
 const PAL_LAR = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorLAr(i / (PAL_N - 1));
-  return new THREE.MeshLambertMaterial({
-    color: c, emissive: c, emissiveIntensity: 0.45,
-    side: THREE.FrontSide,
-  });
+  return new THREE.MeshBasicMaterial({ color: palColorLAr(i / (PAL_N - 1)), side: THREE.FrontSide });
 });
 const LAR_SCALE = 1000; // MeV — fixed 0–1 GeV
 function palMatLAr(eMev) {
@@ -550,8 +538,8 @@ const GHOST_NAMES = { tile: GHOST_TILE_NAMES, lar: [], hec: [] };
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
+renderer.setPixelRatio(1);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.sortObjects = false;
@@ -559,6 +547,7 @@ renderer.sortObjects = false;
 // ── Scene / Camera / Controls ─────────────────────────────────────────────────
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x020d1c);
+scene.matrixAutoUpdate = false;  // we manage transforms manually
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 10, 100_000);
 camera.position.set(0, 0, 12_000);
 const controls = new OrbitControls(camera, canvas);
@@ -576,12 +565,7 @@ controls.addEventListener('change', () => {
   if (!cinemaMode && _ctrlActive) { tooltip.hidden = true; clearOutline(); }
 });
 
-// Ambient base + directional key light attached to camera (follows the viewer)
-scene.add(new THREE.AmbientLight(0xffffff, 0.68));
-const camLight = new THREE.DirectionalLight(0xffffff, 1.1);
-camLight.position.set(0, 0, 1); // +Z in camera space = behind camera = toward scene
-camera.add(camLight);
-scene.add(camera); // camera must be in scene for child lights to update
+// No lights needed — all cell materials are MeshBasicMaterial (unlit)
 
 // ── FPS counter ──────────────────────────────────────────────────────────────
 const fpsEl = document.createElement('div');
@@ -594,9 +578,6 @@ document.body.appendChild(fpsEl);
 let _fpsFrames = 0, _fpsLast = performance.now();
 
 // ── Render loop ───────────────────────────────────────────────────────────────
-let _dampFrames = 0;
-controls.addEventListener('start', () => { _dampFrames = 90; });  // ~1.5s of damping frames
-controls.addEventListener('end',   () => { _dampFrames = 90; });
 (function loop() {
   requestAnimationFrame(loop);
   _fpsFrames++;
@@ -605,11 +586,8 @@ controls.addEventListener('end',   () => { _dampFrames = 90; });
     fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
     _fpsFrames = 0; _fpsLast = now;
   }
-  if (_dampFrames > 0 || controls.autoRotate) {
-    controls.update();
-    dirty = true;
-    if (_dampFrames > 0) _dampFrames--;
-  }
+  controls.update();
+  if (controls.autoRotate) dirty = true;
   if (!dirty) return;
   renderer.render(scene, camera);
   dirty = false;
@@ -648,13 +626,19 @@ setLoadProgress(5, 'Loading geometry…');
 new GLTFLoader().load(
   './geometry_data/CaloGeometry.glb',
   ({ scene: g }) => {
-    g.traverse(o => {
-      if (!o.isMesh) return;
-      o.visible = false;
-      meshByName.set(o.name, o);
-      origMat.set(o.name, o.material);
-    });
-    scene.add(g);
+    // Flatten: move all meshes directly under the root scene for fewer traversals
+    const meshes = [];
+    g.traverse(o => { if (o.isMesh) meshes.push(o); });
+    for (const m of meshes) {
+      m.updateWorldMatrix(true, false);
+      m.matrix.copy(m.matrixWorld);
+      m.matrixAutoUpdate = false;
+      m.frustumCulled = false;  // all cells inside camera bounds always
+      m.visible = false;
+      meshByName.set(m.name, m);
+      origMat.set(m.name, m.material);
+      scene.add(m);
+    }
     sceneOk = true; dirty = true;
     setLoadProgress(wasmOk ? 100 : 70, 'Geometry loaded');
     addLog(t('log-glb-loaded'), 'ok');
@@ -964,19 +948,15 @@ function processXml(xmlText) {
   addLog(`${nHit} cells — ${hitStr}${allMiss ? ` · ${allMiss} unmapped` : ''} (${dt}s)`, 'ok');
 }
 
-// ── Right panel (rpanel) toggle ───────────────────────────────────────────────
-// Simplified state machine:
-//   - rpanelPinned: user explicitly opened via the toolbar button (or 'E' key)
-//   - rpanelHovered: temporarily open from edge-hover (auto-closes on leave)
-// Button click => toggle pinned. Hover is only active when NOT pinned.
+// ── Right panel (rpanel) toggle — mirrors left panel behavior ────────────────
 const rpanel = document.getElementById('rpanel');
 const btnRpanel = document.getElementById('btn-rpanel');
-let rpanelPinned = false;
+let rpanelPinned = true;
 let rpanelHovered = false;
 
 function syncRPanelUI() {
   const open = rpanelPinned || rpanelHovered;
-  rpanel.classList.toggle('open', open);
+  rpanel.classList.toggle('collapsed', !open);
   btnRpanel.classList.toggle('on', rpanelPinned);
   document.body.classList.toggle('rpanel-unpinned', !rpanelPinned);
 }
@@ -992,12 +972,16 @@ rpanelEdge.addEventListener('mouseenter', () => {
 rpanel.addEventListener('mouseleave', () => {
   if (!rpanelPinned && rpanelHovered) { rpanelHovered = false; syncRPanelUI(); }
 });
-// Toolbar button — toggle pinned state (single source of truth)
+// Canvas click closes the right panel if it was hovered (not pinned)
+canvas.addEventListener('click', () => {
+  if (!rpanelPinned && rpanelHovered) { rpanelHovered = false; syncRPanelUI(); }
+});
+// Toolbar button — toggle pinned state
 btnRpanel.addEventListener('click', e => {
   e.stopPropagation();
   setPinnedR(!rpanelPinned);
 });
-// Start unpinned (edge hover available)
+// Start collapsed
 setPinnedR(false);
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
@@ -1121,65 +1105,78 @@ function showOutline(mesh) {
   clearOutline();
   mesh.updateWorldMatrix(true, false);
   const uid = mesh.geometry.uuid;
-  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 15));
+  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
   outlineMesh = new THREE.LineSegments(eGeoCache.get(uid), outlineMat);
   outlineMesh.matrix.copy(mesh.matrixWorld); outlineMesh.matrixAutoUpdate = false;
   outlineMesh.renderOrder = 999; outlineMesh.userData.src = mesh.name;
   scene.add(outlineMesh); dirty = true;
 }
 
-// ── All-cells outline (deferred incremental build) ───────────────────────────
+// ── All-cells outline (optimised: cached world-space edges per mesh) ─────────
 const outlineAllMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-let _outlineJobId = 0;
+const _edgeWorldCache = new Map();  // mesh.name → Float32Array (world-space positions)
+let _outlineTimer = 0;
+
+function _getWorldEdges(mesh) {
+  const cached = _edgeWorldCache.get(mesh.name);
+  if (cached) return cached;
+  mesh.updateWorldMatrix(true, false);
+  const uid = mesh.geometry.uuid;
+  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
+  const src = eGeoCache.get(uid).getAttribute('position').array;
+  const m = mesh.matrixWorld.elements;
+  const out = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i += 3) {
+    const x = src[i], y = src[i + 1], z = src[i + 2];
+    out[i]     = m[0] * x + m[4] * y + m[8]  * z + m[12];
+    out[i + 1] = m[1] * x + m[5] * y + m[9]  * z + m[13];
+    out[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+  }
+  _edgeWorldCache.set(mesh.name, out);
+  return out;
+}
+
 function clearAllOutlines() {
-  _outlineJobId++;  // cancel any in-flight deferred build
+  clearTimeout(_outlineTimer);
   if (!allOutlinesMesh) return;
   scene.remove(allOutlinesMesh);
   allOutlinesMesh.geometry.dispose();
   allOutlinesMesh = null;
   dirty = true;
 }
+
 function rebuildAllOutlines() {
   clearAllOutlines();
   if (!rayTargets.length) return;
-  const jobId = ++_outlineJobId;
-  const targets = rayTargets.slice(); // snapshot
-  let idx = 0;
-  const allPos = [];
-  const BATCH = 80; // meshes per idle chunk
+  // Defer 1 frame so the coloured cells render first
+  _outlineTimer = setTimeout(_buildOutlinesNow, 0);
+}
 
-  function processChunk(deadline) {
-    if (jobId !== _outlineJobId) return; // cancelled
-    const end = Math.min(idx + BATCH, targets.length);
-    for (; idx < end; idx++) {
-      const mesh = targets[idx];
-      mesh.updateWorldMatrix(true, false);
-      const uid = mesh.geometry.uuid;
-      if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 15));
-      const posArr = eGeoCache.get(uid).getAttribute('position').array;
-      const m = mesh.matrixWorld.elements;
-      for (let i = 0; i < posArr.length; i += 3) {
-        const x = posArr[i], y = posArr[i+1], z = posArr[i+2];
-        allPos.push(
-          m[0]*x + m[4]*y + m[8]*z  + m[12],
-          m[1]*x + m[5]*y + m[9]*z  + m[13],
-          m[2]*x + m[6]*y + m[10]*z + m[14]
-        );
-      }
-    }
-    if (idx < targets.length) {
-      requestIdleCallback(processChunk, { timeout: 100 });
-    } else {
-      if (jobId !== _outlineJobId) return;
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(allPos), 3));
-      allOutlinesMesh = new THREE.LineSegments(geo, outlineAllMat);
-      allOutlinesMesh.renderOrder = 3;
-      scene.add(allOutlinesMesh);
-      dirty = true;
-    }
+function _buildOutlinesNow() {
+  if (!rayTargets.length) return;
+  // Count total floats needed
+  let total = 0;
+  const edgeArrays = new Array(rayTargets.length);
+  for (let i = 0; i < rayTargets.length; i++) {
+    const arr = _getWorldEdges(rayTargets[i]);
+    edgeArrays[i] = arr;
+    total += arr.length;
   }
-  requestIdleCallback(processChunk, { timeout: 100 });
+  // Single allocation, memcpy each cached array
+  const buf = new Float32Array(total);
+  let offset = 0;
+  for (let i = 0; i < edgeArrays.length; i++) {
+    buf.set(edgeArrays[i], offset);
+    offset += edgeArrays[i].length;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
+  allOutlinesMesh = new THREE.LineSegments(geo, outlineAllMat);
+  allOutlinesMesh.matrixAutoUpdate = false;
+  allOutlinesMesh.frustumCulled = false;
+  allOutlinesMesh.renderOrder = 3;
+  scene.add(allOutlinesMesh);
+  dirty = true;
 }
 
 // ── Hover tooltip — raycasting fix ───────────────────────────────────────────
