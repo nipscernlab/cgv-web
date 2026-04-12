@@ -268,6 +268,9 @@ function applyLang(lang) {
 const PAL_N   = 2048;
 const DEF_THR = 200;
 
+// ── Unmapped cells log buffer ─────────────────────────────────────────────────
+const _missLog = [];
+
 // ── State ─────────────────────────────────────────────────────────────────────
 const meshByName = new Map();
 const origMat    = new Map();
@@ -715,7 +718,7 @@ function hecMeshPath(be, sampling, region, eta, phi) {
   const Z   = be > 0 ? 'p' : 'n';
   const cum = region === 0 ? eta : g.innerBins + eta;
   const B   = g.name === '1' ? cum : Math.max(0, cum - 1);
-  const path = `Calorimeter\u2192HEC${g.name}${Z}_0\u2192HEC${g.name}${Z}${cum}_${B}\u2192cell_${phi}`;
+  const path = `Calorimeter\u2192HEC_${g.name}_${region}_${Z}_0\u2192HEC_${g.name}_${region}_${Z}_${cum}_${B}\u2192cell_${phi}`;
   return meshByName.has(path) ? path : null;
 }
 
@@ -800,11 +803,12 @@ function parseHec(xmlText) {
 }
 
 // ── LAr EM ID → mesh path (tries cell_ then cell2_ as fallback) ───────────────
-function larMeshPath(bec, samp, eta, phi) {
+function larMeshPath(bec, samp, region, eta, phi) {
   const X      = (bec === -1 || bec === 1) ? 'Barrel' : 'EndCap';
   const W      = X === 'Barrel' ? 0 : 1;
   const Z      = bec > 0 ? 'p' : 'n';
-  const prefix = `Calorimeter\u2192EM${X}${samp}${Z}_${W}\u2192EM${X}${samp}${Z}${eta}_${eta}\u2192`;
+  const R      = X === 'EndCap' ? Math.abs(bec) : region;
+  const prefix = `Calorimeter\u2192EM${X}_${samp}_${R}_${Z}_${W}\u2192EM${X}_${samp}_${R}_${Z}_${eta}_${eta}\u2192`;
   if (meshByName.has(prefix + `cell_${phi}`))  return prefix + `cell_${phi}`;
   if (meshByName.has(prefix + `cell2_${phi}`)) return prefix + `cell2_${phi}`;
   return null;
@@ -871,12 +875,12 @@ function processXml(xmlText) {
     try { p = parse_atlas_id(id); } catch { nSkip++; continue; }
     if (!p?.valid || p.subsystem !== 'TILECAL') { nSkip++; continue; }
     const f = Object.fromEntries(p.fields.map(({ name, value }) => [name, value]));
-    const x = compX(f.section, f.sampling, f.tower); if (x === null) { console.warn('[TILE unmapped] compX failed — section=%d sampling=%d tower=%d id=%s', f.section, f.sampling, f.tower, id); nMiss++; continue; }
-    const k = compK(f.tower, f.sampling, x);         if (k === null) { console.warn('[TILE unmapped] compK failed — tower=%d sampling=%d x=%s id=%s', f.tower, f.sampling, x, id); nMiss++; continue; }
+    const x = compX(f.section, f.sampling, f.tower); if (x === null) { const s = `[TILE] id=${id} | compX failed | section=${f.section} sampling=${f.sampling} tower=${f.tower}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
+    const k = compK(f.tower, f.sampling, x);         if (k === null) { const s = `[TILE] id=${id} | compK failed | tower=${f.tower} sampling=${f.sampling} x=${x}`;               console.warn(s); _missLog.push(s); nMiss++; continue; }
     const y    = f.side < 0 ? 'p' : 'n';
     const path = `Calorimeter\u2192Tile${x}${y}_0\u2192Tile${x}${y}${k}_${k}\u2192cell_${f.module}`;
     const mesh = meshByName.get(path);
-    if (!mesh) { console.warn('[TILE unmapped] mesh not found — path=%s id=%s', path, id); nMiss++; continue; }
+    if (!mesh) { const s = `[TILE] id=${id} | ${path}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     active.set(path, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k), det: 'TILE' });
     nTile++;
@@ -891,18 +895,18 @@ function processXml(xmlText) {
     if (p.debug_log?.length) p.debug_log.forEach(msg => addLog(msg, 'info'));
     const f = Object.fromEntries(p.fields.map(({ name, value }) => [name, value]));
     const bec = f['barrel-endcap'];
-    if (bec === undefined || f.sampling === undefined || f.eta === undefined || f.phi === undefined) { console.warn('[LAr EM unmapped] missing fields — bec=%s sampling=%s eta=%s phi=%s id=%s', bec, f.sampling, f.eta, f.phi, id); nMiss++; continue; }
-    const path = larMeshPath(bec, f.sampling, f.eta, f.phi);
+    if (bec === undefined || f.sampling === undefined || f.eta === undefined || f.phi === undefined) { const s = `[LAr EM] id=${id} | missing fields | bec=${bec} sampling=${f.sampling} eta=${f.eta} phi=${f.phi}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
+    const path = larMeshPath(bec, f.sampling, f.region, f.eta, f.phi);
     if (!path) {
       const X = (bec === -1 || bec === 1) ? 'Barrel' : 'EndCap';
       const W = X === 'Barrel' ? 0 : 1;
       const Z = bec > 0 ? 'p' : 'n';
-      const expected = `Calorimeter\u2192EM${X}${f.sampling}${Z}_${W}\u2192EM${X}${f.sampling}${Z}${f.eta}_${f.eta}\u2192cell_${f.phi}`;
-      console.warn('[LAr EM unmapped] path not found — expected=%s id=%s', expected, id);
-      nMiss++; continue;
+      const R  = X === 'EndCap' ? Math.abs(bec) : f.region;
+      const s = `[LAr EM] id=${id} | Calorimeter\u2192EM${X}_${f.sampling}_${R}_${Z}_${W}\u2192EM${X}_${f.sampling}_${R}_${Z}_${f.eta}_${f.eta}\u2192cell_${f.phi}`;
+      console.warn(s); _missLog.push(s); nMiss++; continue;
     }
     const mesh = meshByName.get(path);
-    if (!mesh) { console.warn('[LAr EM unmapped] mesh not found — path=%s id=%s', path, id); nMiss++; continue; }
+    if (!mesh) { const s = `[LAr EM] id=${id} | ${path}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
     mesh.material = palMatLAr(eMev); mesh.visible = true; mesh.renderOrder = 2;
     active.set(path, { energyGev: energy, energyMev: eMev, cellName: p.cell_name ?? `LAr η=${f.eta} φ=${f.phi}`, det: 'LAR' });
     nLAr++;
@@ -917,19 +921,18 @@ function processXml(xmlText) {
     const f = Object.fromEntries(p.fields.map(({ name, value }) => [name, value]));
     const be = f['barrel-endcap'];
     if (be === undefined || f.sampling === undefined || f.region === undefined ||
-        f.eta === undefined || f.phi === undefined) { console.warn('[HEC unmapped] missing fields — be=%s sampling=%s region=%s eta=%s phi=%s id=%s', be, f.sampling, f.region, f.eta, f.phi, id); nHecMiss++; continue; }
+        f.eta === undefined || f.phi === undefined) { const s = `[HEC] id=${id} | missing fields | be=${be} sampling=${f.sampling} region=${f.region} eta=${f.eta} phi=${f.phi}`; console.warn(s); _missLog.push(s); nHecMiss++; continue; }
     const path = hecMeshPath(be, f.sampling, f.region, f.eta, f.phi);
     if (!path) {
       const g = HEC_GROUPS_MAP[f.sampling];
       const Z = be > 0 ? 'p' : 'n';
       const cum = f.region === 0 ? f.eta : (g ? g.innerBins + f.eta : f.eta);
       const B = g?.name === '1' ? cum : Math.max(0, cum - 1);
-      const expected = g ? `Calorimeter\u2192HEC${g.name}${Z}_0\u2192HEC${g.name}${Z}${cum}_${B}\u2192cell_${f.phi}` : `HEC sampling=${f.sampling} (no group)`;
-      console.warn('[HEC unmapped] path not found — expected=%s id=%s', expected, id);
-      nHecMiss++; continue;
+      const s = g ? `[HEC] id=${id} | Calorimeter\u2192HEC_${g.name}_${f.region}_${Z}_0\u2192HEC_${g.name}_${f.region}_${Z}_${cum}_${B}\u2192cell_${f.phi}` : `[HEC] id=${id} | sampling=${f.sampling} (no group)`;
+      console.warn(s); _missLog.push(s); nHecMiss++; continue;
     }
     const mesh = meshByName.get(path);
-    if (!mesh) { console.warn('[HEC unmapped] mesh not found — path=%s id=%s', path, id); nHecMiss++; continue; }
+    if (!mesh) { const s = `[HEC] id=${id} | ${path}`; console.warn(s); _missLog.push(s); nHecMiss++; continue; }
     mesh.material = palMatHec(eMev); mesh.visible = true; mesh.renderOrder = 2;
     const side  = be > 0 ? 'HECA' : 'HECC';
     const sLabel = ['front','middle','back','rear'][f.sampling] ?? `s${f.sampling}`;
@@ -1488,6 +1491,15 @@ document.getElementById('ibtn-stop').addEventListener('click', () => {
   if (!poller) return; poller.stop();
   document.getElementById('ibtn-stop').hidden = true; document.getElementById('ibtn-play').hidden = false;
   setLiveDot('stopped'); addLog(t('log-poll-paused'));
+});
+
+// ── Unmapped cells log download ───────────────────────────────────────────────
+document.getElementById('btn-log-dl').addEventListener('click', () => {
+  if (_missLog.length === 0) { alert('No unmapped cells recorded yet (load an event first).'); return; }
+  const header = `# Unmapped cells — strings not found in CaloGeometry.cgv\n# Generated: ${new Date().toISOString()}\n# Format: [DET] id=<raw_id> | <attempted_path>\n#\n`;
+  const blob = new Blob([header + _missLog.join('\n') + '\n'], { type: 'text/plain' });
+  const a    = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'unmapped_cells.txt' });
+  a.click(); URL.revokeObjectURL(a.href);
 });
 
 // ── Log collapse ──────────────────────────────────────────────────────────────

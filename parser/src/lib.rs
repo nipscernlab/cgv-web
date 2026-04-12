@@ -515,10 +515,18 @@ pub fn decode_id(id: u64) -> ParsedId {
                     let region = continuous(idx, 0);
                     field!("region", region, "sub-region within sampling");
 
-                    // eta: continuous [0..447], 9 bits
+                    // eta: continuous [0..447], 9 bits — then offset to global index via lar_em_global_eta
                     let idx = extract(id, offset, 9); offset -= 9;
                     let eta_idx = continuous(idx, 0);
-                    field!("eta", eta_idx, "eta index");
+                    let global_eta = lar_em_global_eta(be, sampling, region, eta_idx);
+                    let mut debug_log: Vec<String> = vec![];
+                    if region != 0 {
+                        debug_log.push(format!(
+                            "[lar_em_global_eta] |be|={} sampling={} region={} eta_idx={} → global_eta={} (offset={})",
+                            be.abs(), sampling, region, eta_idx, global_eta, global_eta - eta_idx
+                        ));
+                    }
+                    field!("eta", global_eta, "eta index (global)");
 
                     // phi: continuous [0..255], 8 bits
                     let idx = extract(id, offset, 8); offset -= 8;
@@ -532,14 +540,6 @@ pub fn decode_id(id: u64) -> ParsedId {
                         3 => if be > 0 { "EMECA (inner)" } else { "EMECC (inner)" },
                         _ => "?",
                     };
-                    let global_eta = lar_em_global_eta(be, sampling, region, eta_idx);
-                    let mut debug_log: Vec<String> = vec![];
-                    if region != 0 {
-                        debug_log.push(format!(
-                            "[lar_em_global_eta] |be|={} sampling={} region={} eta_idx={} → global_eta={} (offset={})",
-                            be.abs(), sampling, region, eta_idx, global_eta, global_eta - eta_idx
-                        ));
-                    }
                     let cell_name = format!("{} s={} r={} η={} φ={}", region_name, sampling, region, global_eta, phi_idx);
 
                     let eta = lar_em_eta(be, sampling, region, eta_idx);

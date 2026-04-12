@@ -204,7 +204,7 @@ void BuildEMBarrel(Int_t layer, Int_t phi_seg, bool eta_pos, int region)
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("EMBarrel%d%s", layer, eta_sig.Data()));
+	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("EMBarrel_%d_%d_%s", layer, region, eta_sig.Data()));
 	TGeoBBox           *box       = new TGeoBBox("box", 3250.000, 3250.000, 3250.000);
 
 	// prepare phi rotations ---------------------------------------------------
@@ -224,6 +224,8 @@ void BuildEMBarrel(Int_t layer, Int_t phi_seg, bool eta_pos, int region)
 	// segmentation in phi is different in region 0 and region 1 of EMB1, so we need to loop over the cells in two steps
 	if (layer == 1 && region == 0) { i_min =   0; i_max = 448;   }
 	if (layer == 1 && region == 1) { i_min = 448; i_max = 448+3; }
+	if (layer == 2 && region == 0) { i_min =   0; i_max = 56;    }
+	if (layer == 2 && region == 1) { i_min =  56; i_max = 56+1;  }
 
 	for (i = i_min; i < i_max; i++)
 	{
@@ -251,7 +253,7 @@ void BuildEMBarrel(Int_t layer, Int_t phi_seg, bool eta_pos, int region)
 		v[14] = -dx;     v[15] = +dy2;
 
 		TGeoArb8           *arb8     = new TGeoArb8("arb8", (h2-h1)/2.0, v);
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("EMBarrel%d%s%d", layer, eta_sig.Data(), i));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("EMBarrel_%d_%d_%s_%d", layer, region, eta_sig.Data(), i));
 
 		phi = dphi/2.0 + pi/2.0;
 		for (int j = 0; j < phi_seg; j++)
@@ -303,7 +305,8 @@ void BuildEMEndCap(Int_t layer, Int_t phi_seg, bool eta_pos, bool inner)
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("EMEndCap%d%s", layer, eta_sig.Data()));
+	int bec = (inner == 1) ? 3 : 2;
+	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("EMEndCap_%d_%d_%s", layer, bec, eta_sig.Data()));
 	TGeoTube           *box       = new TGeoTube("box", 10.0, 2034.000, 10000.0);
 	gGeoManager->SetNsegments(phi_seg);
 
@@ -323,8 +326,10 @@ void BuildEMEndCap(Int_t layer, Int_t phi_seg, bool eta_pos, bool inner)
 
 	// segmentation in phi is different in inner and outer wheel,
 	// so we need to loop over the cells in two steps
-	if (layer == 2 && inner == false) { i_min =  0; i_max = 44;   } // the first 44 cells - outer whell
-	if (layer == 2 && inner == true ) { i_min = 44; i_max = 44+7; } // the last  7  cells - inner wheel
+	if (layer == 1 && inner == false) { i_min =   0; i_max = 216;  }
+	if (layer == 1 && inner == true ) { i_min = 216; i_max = 216+7;}
+	if (layer == 2 && inner == false) { i_min =   0; i_max = 44;   } // the first 44 cells - outer whell
+	if (layer == 2 && inner == true ) { i_min =  44; i_max = 44+7; } // the last  7  cells - inner wheel
 	
 	for (int i = i_min; i < i_max; i++)
 	{
@@ -368,7 +373,7 @@ void BuildEMEndCap(Int_t layer, Int_t phi_seg, bool eta_pos, bool inner)
 		}
 
 		TGeoArb8 *arb8               = new TGeoArb8("arb8", (h2-h1)/2.0, v);
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("EMEndCap%d%s%d", layer, eta_sig.Data(), i));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("EMEndCap_%d_%d_%s_%d", layer, bec, eta_sig.Data(), i));
 
 		phi = dphi/2 + pi/2;
 		for (int j = 0; j < phi_seg; j++)
@@ -561,7 +566,7 @@ void BuildHEC(Int_t layer, Int_t phi_seg, Double_t h1, Double_t h2, bool eta_pos
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("HEC%d%s", layer, eta_sig.Data()));
+	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("HEC_%d_%d_%s", layer, region, eta_sig.Data()));
 
 	// prepare phi rotations ---------------------------------------------------
 
@@ -576,7 +581,7 @@ void BuildHEC(Int_t layer, Int_t phi_seg, Double_t h1, Double_t h2, bool eta_pos
 	// build -------------------------------------------------------------------
 
 	int i_min = (region == 0) ? 0  : 10;
-	int i_max = (region == 0) ? 10 : HEC_size[layer];
+	int i_max = (region == 0) ? 10 : 14;
 
 	for (i = i_min; i < i_max; i++)
 	{
@@ -586,7 +591,7 @@ void BuildHEC(Int_t layer, Int_t phi_seg, Double_t h1, Double_t h2, bool eta_pos
 		w2 = tan(dphi/2.0)*(HECz[layer-1][i] + HECdz[layer-1][i]/2.0);
 		w1 = tan(dphi/2.0)*(HECz[layer-1][i] - HECdz[layer-1][i]/2.0);
 
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC%d%s%d", layer, eta_sig.Data(), i));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d_%d_%s_%d", layer, region, eta_sig.Data(), i));
 
 		phi = dphi/2.0 + pi/2.0;
 		for (j = 0; j < phi_seg; j++)
@@ -622,7 +627,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("HEC%d%d%s", layer1, layer2, eta_sig.Data()));
+	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s", layer1, layer2, region, eta_sig.Data()));
 
 	// prepare phi rotations ---------------------------------------------------
 
@@ -640,7 +645,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 	// first cell
 	if (region == 0) {
 
-	TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC%d%d%s%d", layer1, layer2, eta_sig.Data(), 0));
+	TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), 0));
 
 	r1 = HECz[layer1-1][0];
 	w2 = tan(dphi/2.0)*(HECz[layer1-1][0] + HECdz[layer1-1][0]/2.0);
@@ -688,7 +693,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 
 	for (i = imin; i < imax; i++)
 	{
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC%d%d%s%d", layer1, layer2, eta_sig.Data(), i+1));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), i+1));
 
 		r1 = HECz[layer1-1][i+1];
 		r2 = HECz[layer2-1][i];
@@ -783,6 +788,8 @@ void CaloBuild()
 	BuildEMBarrel(1, 256, false, 1); // region 1 has more phi segmentation in EMB1
 	BuildEMBarrel(2, 256, true , 0);
 	BuildEMBarrel(2, 256, false, 0);
+	BuildEMBarrel(2, 256, true , 1);
+	BuildEMBarrel(2, 256, false, 1);
 	BuildEMBarrel(3, 256, true , 0);
 	BuildEMBarrel(3, 256, false, 0);
 
@@ -790,6 +797,8 @@ void CaloBuild()
 	BuildEMEndCap(0,  64, false, false);
 	BuildEMEndCap(1,  64, true , false);
 	BuildEMEndCap(1,  64, false, false);
+	BuildEMEndCap(1,  64, true , true );
+	BuildEMEndCap(1,  64, false, true );
 	BuildEMEndCap(2, 256, true , false);
 	BuildEMEndCap(2, 256, false, false);
 	BuildEMEndCap(2,  64, true , true ); // inner wheel has less phi segmentation in EME2
