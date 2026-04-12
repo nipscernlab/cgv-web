@@ -857,7 +857,7 @@ function processXml(xmlText) {
     const eMev = energy * 1000;
     const x = compX(section, sampling, tower); if (x === null) { const s = `[TILE] id=${id} | compX failed | section=${section} sampling=${sampling} tower=${tower}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
     const k = compK(tower, sampling, x);       if (k === null) { const s = `[TILE] id=${id} | compK failed | tower=${tower} sampling=${sampling} x=${x}`;             console.warn(s); _missLog.push(s); nMiss++; continue; }
-    const y    = side < 0 ? 'p' : 'n';
+    const y    = side < 0 ? 'n' : 'p';
     const path = `Calorimeter\u2192Tile${x}${y}_0\u2192Tile${x}${y}${k}_${k}\u2192cell_${module}`;
     const mesh = meshByName.get(path);
     if (!mesh) { const s = `[TILE] id=${id} | ${path}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
