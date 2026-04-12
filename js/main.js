@@ -723,23 +723,20 @@ function hecMeshPath(be, sampling, region, eta, phi) {
 }
 
 // ── XML parsers ───────────────────────────────────────────────────────────────
-function parseTile(xmlText) {
-  const doc  = new DOMParser().parseFromString(xmlText, 'application/xml');
-  const pe   = doc.querySelector('parsererror');
-  if (pe) throw new Error('XML parse error: ' + pe.textContent.slice(0,120));
-  const tiles = [...doc.getElementsByTagName('TILE')];
-  if (!tiles.length) return [];   // no TILE block — not an error, LAr may still exist
+// ── Shared XML cell extractor (operates on a pre-parsed Document) ─────────────
+function extractCells(doc, tagName) {
+  const els = doc.getElementsByTagName(tagName);
   const cells = [];
-  for (const tile of tiles) {
+  for (const el of els) {
     let n = 0;
-    for (const ch of tile.children) {
+    for (const ch of el.children) {
       const id = ch.getAttribute('id') ?? ch.getAttribute('cellID');
       const ev = ch.getAttribute('energy') ?? ch.getAttribute('e');
       if (id && ev) { const e = parseFloat(ev); if (isFinite(e)) { cells.push({ id: id.trim(), energy: e }); n++; } }
     }
     if (n) continue;
-    const idEl = tile.querySelector('id, cellID');
-    const eEl  = tile.querySelector('energy, e');
+    const idEl = el.querySelector('id, cellID');
+    const eEl  = el.querySelector('energy, e');
     if (idEl && eEl) {
       const ids = idEl.textContent.trim().split(/\s+/);
       const ens = eEl.textContent.trim().split(/\s+/).map(Number);
@@ -750,56 +747,25 @@ function parseTile(xmlText) {
   return cells;
 }
 
-function parseLAr(xmlText) {
-  const doc    = new DOMParser().parseFromString(xmlText, 'application/xml');
-  const larEls = [...doc.getElementsByTagName('LAr')]
-                   .filter(el => el.getAttribute('storeGateKey') === 'AllCalo');
-  if (!larEls.length) return [];
-  const cells = [];
-  for (const lar of larEls) {
-    let n = 0;
-    for (const ch of lar.children) {
-      const id = ch.getAttribute('id') ?? ch.getAttribute('cellID');
-      const ev = ch.getAttribute('energy') ?? ch.getAttribute('e');
-      if (id && ev) { const e = parseFloat(ev); if (isFinite(e)) { cells.push({ id: id.trim(), energy: e }); n++; } }
-    }
-    if (n) continue;
-    const idEl = lar.querySelector('id, cellID');
-    const eEl  = lar.querySelector('energy, e');
-    if (idEl && eEl) {
-      const ids = idEl.textContent.trim().split(/\s+/);
-      const ens = eEl.textContent.trim().split(/\s+/).map(Number);
-      const m   = Math.min(ids.length, ens.length);
-      for (let i = 0; i < m; i++) if (ids[i] && isFinite(ens[i])) cells.push({ id: ids[i], energy: ens[i] });
-    }
-  }
-  return cells;
+// ── Single-pass XML parse — returns one Document for all detectors ────────────
+function parseXmlDoc(xmlText) {
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const pe  = doc.querySelector('parsererror');
+  if (pe) throw new Error('XML parse error: ' + pe.textContent.slice(0, 120));
+  return doc;
 }
 
-function parseHec(xmlText) {
-  const doc    = new DOMParser().parseFromString(xmlText, 'application/xml');
-  // Find HEC block with any storeGateKey — count is read dynamically, not hardcoded
-  const hecEls = [...doc.getElementsByTagName('HEC')];
-  if (!hecEls.length) return [];
-  const cells = [];
-  for (const hec of hecEls) {
-    let n = 0;
-    for (const ch of hec.children) {
-      const id = ch.getAttribute('id') ?? ch.getAttribute('cellID');
-      const ev = ch.getAttribute('energy') ?? ch.getAttribute('e');
-      if (id && ev) { const e = parseFloat(ev); if (isFinite(e)) { cells.push({ id: id.trim(), energy: e }); n++; } }
-    }
-    if (n) continue;
-    const idEl = hec.querySelector('id, cellID');
-    const eEl  = hec.querySelector('energy, e');
-    if (idEl && eEl) {
-      const ids = idEl.textContent.trim().split(/\s+/);
-      const ens = eEl.textContent.trim().split(/\s+/).map(Number);
-      const m   = Math.min(ids.length, ens.length);
-      for (let i = 0; i < m; i++) if (ids[i] && isFinite(ens[i])) cells.push({ id: ids[i], energy: ens[i] });
-    }
-  }
-  return cells;
+function parseTile(doc) {
+  const cells = extractCells(doc, 'TILE');
+  return cells; // empty array is fine — LAr may still exist
+}
+
+function parseLAr(doc) {
+  return extractCells(doc, 'LAr');
+}
+
+function parseHec(doc) {
+  return extractCells(doc, 'HEC');
 }
 
 // ── LAr EM ID → mesh path (tries cell_ then cell2_ as fallback) ───────────────
@@ -841,12 +807,13 @@ function processXml(xmlText) {
   if (!wasmOk) return;
   const t0 = performance.now();
 
-  // Parse TILE, LAr EM and HEC blocks
-  let tileCells, larCells, hecCells;
-  try { tileCells = parseTile(xmlText); }
+  // Parse XML once — all detectors share the same Document
+  let doc, tileCells, larCells, hecCells;
+  try { doc = parseXmlDoc(xmlText); }
   catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); addLog(e.message, 'err'); return; }
-  try { larCells = parseLAr(xmlText); } catch { larCells = []; }
-  try { hecCells = parseHec(xmlText); } catch { hecCells = []; }
+  try { tileCells = parseTile(doc); } catch { tileCells = []; }
+  try { larCells  = parseLAr(doc);  } catch { larCells  = []; }
+  try { hecCells  = parseHec(doc);  } catch { hecCells  = []; }
 
   const total = tileCells.length + larCells.length + hecCells.length;
   if (!total) { setStatus('<span class="warn">No TILE, LAr or HEC cells found</span>'); addLog('No cells in XML', 'warn'); return; }
@@ -854,16 +821,15 @@ function processXml(xmlText) {
   setStatus(`Decoding ${total} cells…`);
   resetScene();
 
-  // Per-detector energy ranges (first pass)
-  const tileMevs = tileCells.map(c => c.energy * 1000).filter(v => isFinite(v) && v > 0);
-  const larMevs  = larCells .map(c => c.energy * 1000).filter(v => isFinite(v) && v > 0);
-  const hecMevs  = hecCells .map(c => c.energy * 1000).filter(v => isFinite(v) && v > 0);
-  tileMinMev = tileMevs.length ? Math.min(...tileMevs) : 0;
-  tileMaxMev = tileMevs.length ? Math.max(...tileMevs) : 1;
-  larMinMev  = larMevs.length  ? Math.min(...larMevs)  : 0;
-  larMaxMev  = larMevs.length  ? Math.max(...larMevs)  : 1;
-  hecMinMev  = hecMevs.length  ? Math.min(...hecMevs)  : 0;
-  hecMaxMev  = hecMevs.length  ? Math.max(...hecMevs)  : 1;
+  // Per-detector energy ranges — single loop per detector, avoids spread stack overflow
+  function minMax(cells) {
+    let mn = Infinity, mx = -Infinity;
+    for (const { energy } of cells) { const v = energy * 1000; if (isFinite(v) && v > 0) { if (v < mn) mn = v; if (v > mx) mx = v; } }
+    return mn === Infinity ? [0, 1] : [mn, mx];
+  }
+  [tileMinMev, tileMaxMev] = minMax(tileCells);
+  [larMinMev,  larMaxMev]  = minMax(larCells);
+  [hecMinMev,  hecMaxMev]  = minMax(hecCells);
 
   let nTile = 0, nLAr = 0, nHec = 0, nMiss = 0, nSkip = 0;
   let nHecMiss = 0;
