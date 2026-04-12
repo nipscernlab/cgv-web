@@ -39,8 +39,12 @@ import { parseArgs }              from 'node:util';
 
 // ─── JSROOT ───────────────────────────────────────────────────────────────────
 import { openFile }              from 'jsroot/io';
-import { getRootColors }         from 'jsroot/colors';
 import { THREE }                 from 'jsroot/base3d';
+
+// ─── GLB optimisation pipeline ────────────────────────────────────────────────
+import { NodeIO }                from '@gltf-transform/core';
+import { weld, dedup, prune,
+         quantize as quantizeFn } from '@gltf-transform/functions';
 
 // ─── geobase (não é parte dos exports públicos do JSROOT) ────────────────────
 import {
@@ -82,6 +86,7 @@ function parseCliArgs() {
       'no-cgv':       { type: 'boolean', default: false },
       verbose:        { type: 'boolean', default: false },
       'tilecal-only': { type: 'boolean', default: false },
+      quantize:       { type: 'boolean', default: false },
       help:           { type: 'boolean', default: false },
     },
   });
@@ -97,6 +102,7 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
   --no-gltf          gerar apenas o .cgv, pular o .gltf
   --no-cgv           gerar apenas o .gltf, pular o .cgv
   --tilecal-only     gerar apenas volumes TileCal (Tile1-15)
+  --quantize         quantizar posições (14-bit) — arquivo menor, visualmente idêntico
   --verbose          log detalhado
   --help             esta mensagem
 `);
@@ -114,6 +120,7 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
     noGltf:      values['no-gltf'],
     noCgv:       values['no-cgv'],
     tilecalOnly: values['tilecal-only'],
+    quantize:    values['quantize'],
   };
 }
 
@@ -442,28 +449,12 @@ function buildCgv(geoResult, allKeys, rootPath, opts) {
 //   worldMat — Matrix4 acumulada (composta iterativamente, nunca mutada)
 // ═════════════════════════════════════════════════════════════════════════════
 
-class MaterialCache {
-  #map = new Map();
-  get(color, opacity) {
-    const key = `${color.getHexString()}_${opacity.toFixed(3)}`;
-    if (!this.#map.has(key)) {
-      this.#map.set(key, new THREE.MeshStandardMaterial({
-        color,
-        opacity,
-        transparent : opacity < 1.0,
-        roughness   : 0.55,
-        metalness   : 0.05,
-        side        : THREE.DoubleSide,
-      }));
-    }
-    return this.#map.get(key);
-  }
-}
-
 async function buildGltf(geoResult, rootPath, opts) {
-  const rootColors = getRootColors();
-  const matCache   = new MaterialCache();
   const geoCache   = new Map();   // shapeSignature → BufferGeometry (compartilhada)
+
+  // Single shared material — viewer replaces all materials at runtime anyway.
+  // Using MeshBasicMaterial avoids storing PBR parameters in the GLB.
+  const dummyMat = new THREE.MeshBasicMaterial({ color: 0x888888, side: THREE.DoubleSide });
 
   const scene = new THREE.Scene();
   scene.name  = basename(rootPath, extname(rootPath));
@@ -512,6 +503,13 @@ async function buildGltf(geoResult, rootPath, opts) {
         if (!bufGeo) {
           try {
             bufGeo = createGeometry(shape, opts.maxFaces);
+            if (bufGeo) {
+              // Strip normals and UVs — not stored in GLB.
+              // Normals are unused by the viewer (materials overridden at runtime).
+              // Three.js GLTFLoader recomputes them from geometry if ever needed.
+              bufGeo.deleteAttribute('normal');
+              bufGeo.deleteAttribute('uv');
+            }
           } catch (e) {
             dbg(`createGeometry falhou "${name}" (${shape._typename}): ${e.message}`);
           }
@@ -519,9 +517,7 @@ async function buildGltf(geoResult, rootPath, opts) {
         }
 
         if (bufGeo) {
-          const { color, opacity } = volumeColorThree(volume, rootColors);
-          const mat  = matCache.get(color, opacity);
-          const mesh = new THREE.Mesh(bufGeo, mat);
+          const mesh = new THREE.Mesh(bufGeo, dummyMat);
 
           // Nome = caminho CGV completo (usado como chave no viewer)
           mesh.name = path;
@@ -565,6 +561,37 @@ async function buildGltf(geoResult, rootPath, opts) {
   });
 
   return Buffer.from(glbArrayBuffer);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// GLB OPTIMISATION — weld · dedup · prune · (optional quantize)
+// Runs entirely in memory: no intermediate file written.
+// ═════════════════════════════════════════════════════════════════════════════
+async function optimizeGlb(glbBuf, opts) {
+  const io  = new NodeIO();
+  const doc = await io.readBinary(new Uint8Array(glbBuf));
+
+  // Strip any leftover NORMAL / TEXCOORD / TANGENT / COLOR attributes and materials
+  let stripped = 0;
+  for (const mesh of doc.getRoot().listMeshes()) {
+    for (const prim of mesh.listPrimitives()) {
+      for (const sem of ['NORMAL', 'TEXCOORD_0', 'TEXCOORD_1', 'TANGENT', 'COLOR_0']) {
+        if (prim.getAttribute(sem)) { prim.setAttribute(sem, null); stripped++; }
+      }
+      prim.setMaterial(null);
+    }
+  }
+  for (const m of doc.getRoot().listMaterials()) m.dispose();
+  if (stripped) dbg(`optimizeGlb: stripped ${stripped} unused vertex attributes`);
+
+  const transforms = [weld(), dedup(), prune()];
+  if (opts.quantize) {
+    info('Quantizando posições (14-bit)…');
+    transforms.push(quantizeFn({ quantizePosition: 14 }));
+  }
+  await doc.transform(...transforms);
+
+  return Buffer.from(await io.writeBinary(doc));
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -612,9 +639,12 @@ async function main() {
   if (!opts.noGltf) {
     info('Gerando .glb...');
     const t0  = performance.now();
-    const glb = await buildGltf(geoResult, opts.rootPath, opts);
+    let glb   = await buildGltf(geoResult, opts.rootPath, opts);
+    const rawMb = (glb.length / 1e6).toFixed(1);
+    info(`GLB bruto: ${rawMb} MB — otimizando…`);
+    glb = await optimizeGlb(glb, opts);
     await writeFile(glbPath, glb);
-    ok(`GLB  → ${glbPath}  (${(glb.length / 1024).toFixed(1)} kB, ${(performance.now() - t0).toFixed(0)} ms)`);
+    ok(`GLB  → ${glbPath}  (${(glb.length / 1e6).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms)`);
   }
 
   log(`Concluído em ${((performance.now() - T0) / 1000).toFixed(2)}s`);
