@@ -301,6 +301,7 @@ let panelPinned  = true;
 let panelHovered = false;
 let reqCount     = 0;
 let allOutlinesMesh = null;
+let trackGroup   = null;
 let _readyFired  = false;
 
 // ── Loading screen helpers ─────────────────────────────────────────────────────
@@ -802,6 +803,43 @@ function parseMBTS(doc) {
   return cells;
 }
 
+// ── Track polylines ───────────────────────────────────────────────────────────
+// JiveXML stores polyline coordinates in cm; the Three.js scene uses mm → ×10.
+// numPolyline[i] = number of points for track i.
+// polylineX/Y/Z are the flattened point arrays (one segment per track).
+function parseTracks(doc) {
+  const tracks = [];
+  for (const el of doc.getElementsByTagName('Track')) {
+    const numPolyEl = el.querySelector('numPolyline');
+    const pxEl      = el.querySelector('polylineX');
+    const pyEl      = el.querySelector('polylineY');
+    const pzEl      = el.querySelector('polylineZ');
+    if (!numPolyEl || !pxEl || !pyEl || !pzEl) continue;
+    const numPoly = numPolyEl.textContent.trim().split(/\s+/).map(Number);
+    const xs      = pxEl.textContent.trim().split(/\s+/).map(Number);
+    const ys      = pyEl.textContent.trim().split(/\s+/).map(Number);
+    const zs      = pzEl.textContent.trim().split(/\s+/).map(Number);
+    const ptEl    = el.querySelector('pt');
+    const ptArr   = ptEl ? ptEl.textContent.trim().split(/\s+/).map(Number) : [];
+    let offset = 0;
+    for (let i = 0; i < numPoly.length; i++) {
+      const n = numPoly[i];
+      if (n >= 2) {
+        const pts = [];
+        for (let j = 0; j < n; j++) {
+          const k = offset + j;
+          pts.push(new THREE.Vector3(-xs[k] * 10, -ys[k] * 10, zs[k] * 10));
+        }
+        // pt in XML is in GeV (may be signed — use absolute value)
+        const ptGev = i < ptArr.length ? Math.abs(ptArr[i]) : 0;
+        tracks.push({ pts, ptGev });
+      }
+      offset += n;
+    }
+  }
+  return tracks;
+}
+
 // ── MBTS label → mesh path ────────────────────────────────────────────────────
 // label format: type_{±1}_ch_{0|1}_mod_{0-7}
 // type=+1→p, type=-1→n; ch=0→Tile14, ch=1→Tile15; mod→cell index
@@ -827,6 +865,43 @@ function larMeshPath(bec, samp, region, eta, phi) {
   return null;
 }
 
+// ── Track rendering ───────────────────────────────────────────────────────────
+let thrTrackGev   = 0;
+let trackPtMinGev = 0;
+let trackPtMaxGev = 1;
+
+const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffd700, depthWrite: false });
+
+function clearTracks() {
+  if (!trackGroup) return;
+  trackGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  scene.remove(trackGroup);
+  trackGroup = null;
+}
+
+function applyTrackThreshold() {
+  if (!trackGroup) return;
+  for (const child of trackGroup.children) {
+    child.visible = child.userData.ptGev >= thrTrackGev;
+  }
+  dirty = true;
+}
+
+function drawTracks(tracks) {
+  clearTracks();
+  if (!tracks.length) return;
+  trackGroup = new THREE.Group();
+  trackGroup.renderOrder = 5;
+  for (const { pts, ptGev } of tracks) {
+    const geo  = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(geo, TRACK_MAT);
+    line.userData.ptGev = ptGev;
+    trackGroup.add(line);
+  }
+  scene.add(trackGroup);
+  applyTrackThreshold();
+}
+
 // ── Scene reset ───────────────────────────────────────────────────────────────
 function resetScene() {
   for (const [name, mesh] of meshByName) {
@@ -834,6 +909,7 @@ function resetScene() {
   }
   active.clear(); rayTargets = [];
   clearOutline(); clearAllOutlines();
+  clearTracks();
   tooltip.hidden = true; dirty = true;
 }
 function applyThreshold() {
@@ -868,6 +944,20 @@ function processXml(xmlText) {
 
   setStatus(`Decoding ${total} cells…`);
   resetScene();
+
+  // ── Particle tracks ─────────────────────────────────────────────────────────
+  try {
+    const raw = parseTracks(doc);
+    if (raw.length) {
+      let mn = Infinity, mx = -Infinity;
+      for (const { ptGev } of raw) { if (ptGev < mn) mn = ptGev; if (ptGev > mx) mx = ptGev; }
+      trackPtMinGev = mn === Infinity  ? 0 : mn;
+      trackPtMaxGev = mx === -Infinity ? 1 : mx;
+      thrTrackGev   = trackPtMinGev;
+      trackPtSlider.update(trackPtMinGev, trackPtMaxGev);
+    }
+    drawTracks(raw);
+  } catch (e) { console.warn('Track parse error', e); }
 
   // Per-detector energy ranges — single loop per detector, avoids spread stack overflow
   function minMax(cells) {
@@ -986,7 +1076,7 @@ function processXml(xmlText) {
     nMbts++;
   }
 
-  initDetPanel(nTile > 0, nLAr > 0, nHec > 0);
+  initDetPanel(nTile > 0, nLAr > 0, nHec > 0, trackGroup && trackGroup.children.length > 0);
   applyThreshold();
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
 
@@ -1041,7 +1131,7 @@ btnRpanel.addEventListener('click', e => {
 setPinnedR(false);
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
-const TAB_IDS = ['tile', 'lar', 'hec']; // Ghost tab removed (item 8)
+const TAB_IDS = ['tile', 'lar', 'hec', 'track'];
 function switchTab(det) {
   TAB_IDS.forEach(d => {
     document.getElementById('pane-' + d).style.display = d === det ? 'flex' : 'none';
@@ -1111,17 +1201,83 @@ const larSlider  = makeDetSlider('lar-strak',  'lar-sthumb',  'lar-thr-input',
 const hecSlider  = makeDetSlider('hec-strak',  'hec-sthumb',  'hec-thr-input',
   () => thrHecMev,  v => { thrHecMev = v; },  HEC_SCALE);
 
+// ── Track pT slider (dynamic range — updates each event) ─────────────────────
+function makeTrackPtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
+  const trackEl  = document.getElementById(trackId);
+  const thumbEl  = document.getElementById(thumbId);
+  const inputEl  = document.getElementById(inputId);
+  const maxLblEl = document.getElementById(maxLblId);
+  const minLblEl = document.getElementById(minLblId);
+  let drag = false;
+
+  function fmtGev(v) { return v.toFixed(2) + ' GeV'; }
+
+  function updateUI() {
+    const span = trackPtMaxGev - trackPtMinGev;
+    const r    = span > 0 ? Math.max(0, Math.min(1, (thrTrackGev - trackPtMinGev) / span)) : 0;
+    thumbEl.style.top = ((1 - r) * 100) + '%';
+    if (document.activeElement !== inputEl)
+      inputEl.value = thrTrackGev > trackPtMinGev + 1e-9 ? fmtGev(thrTrackGev) : '';
+  }
+
+  function setFromRatio(r) {
+    const span = trackPtMaxGev - trackPtMinGev;
+    thrTrackGev = r <= 0 ? trackPtMinGev : trackPtMinGev + span * r;
+    updateUI();
+    applyTrackThreshold();
+  }
+
+  trackEl.addEventListener('pointerdown', e => {
+    drag = true; rpanel.classList.add('dragging'); trackEl.setPointerCapture(e.pointerId);
+    setFromRatio(ratioFromPtr(e, trackEl));
+  });
+  trackEl.addEventListener('pointermove', e => { if (drag) setFromRatio(ratioFromPtr(e, trackEl)); });
+  ['pointerup', 'pointercancel'].forEach(ev =>
+    trackEl.addEventListener(ev, () => { drag = false; rpanel.classList.remove('dragging'); })
+  );
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') inputEl.blur(); });
+  inputEl.addEventListener('blur', () => {
+    const s = inputEl.value.trim().toLowerCase();
+    if (!s || s === 'all') {
+      thrTrackGev = trackPtMinGev;
+    } else {
+      const g = s.match(/^([\d.]+)\s*gev$/i);
+      const v = g ? parseFloat(g[1]) : parseFloat(s);
+      if (isFinite(v)) thrTrackGev = Math.max(trackPtMinGev, Math.min(trackPtMaxGev, v));
+    }
+    updateUI();
+    applyTrackThreshold();
+  });
+
+  function update(minGev, maxGev) {
+    trackPtMinGev = minGev;
+    trackPtMaxGev = maxGev;
+    thrTrackGev   = minGev; // reset to show all on new event
+    if (maxLblEl) maxLblEl.textContent = fmtGev(maxGev);
+    if (minLblEl) minLblEl.textContent = fmtGev(minGev);
+    updateUI();
+  }
+
+  return { updateUI, update };
+}
+
+const trackPtSlider = makeTrackPtSlider(
+  'track-strak', 'track-sthumb', 'track-thr-input',
+  'track-sval-max', 'track-sval-min'
+);
+
 // Initialize thumb positions at default threshold
 tileSlider.updateUI(thrTileMev);
 larSlider.updateUI(thrLArMev);
 hecSlider.updateUI(thrHecMev);
 
-function initDetPanel(hasTile, hasLAr, hasHec) {
+function initDetPanel(hasTile, hasLAr, hasHec, hasTracks) {
   tileSlider.updateUI(thrTileMev);
   larSlider.updateUI(thrLArMev);
   hecSlider.updateUI(thrHecMev);
   openRPanel();
   if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasHec) switchTab('hec');
+  else if (hasTracks) switchTab('track');
 }
 
 // (ghost functions defined above near GHOST_TILE_NAMES)
