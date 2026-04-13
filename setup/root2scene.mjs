@@ -2,9 +2,8 @@
 /**
  * root2scene.mjs
  * ─────────────────────────────────────────────────────────────────────────────
- * Converte um arquivo CERN .root em dois arquivos:
+ * Converte um arquivo CERN .root em um arquivo:
  *
- *   <stem>.cgv   — Árvore hierárquica completa no formato XML/CGV
  *   <stem>.gltf  — Cena 3-D pronta para Three.js (GLTF 2.0 JSON)
  *
  * Uso:
@@ -15,8 +14,6 @@
  *   --max-faces <n>    limite de faces por shape  (padrão: 0 = ilimitado)
  *   --depth <n>        profundidade máxima da árvore (padrão: 0 = toda)
  *   --visible-only     ignorar volumes invisíveis (bit kVisThis = 0x08)
- *   --no-gltf          gerar apenas o .cgv
- *   --no-cgv           gerar apenas o .gltf
  *   --verbose          log detalhado
  *   --help             exibe esta ajuda
  *
@@ -82,8 +79,6 @@ function parseCliArgs() {
       depth:          { type: 'string'  },
       subtree:        { type: 'string'  },   // prefixo dos filhos diretos do root a manter
       'visible-only': { type: 'boolean', default: false },
-      'no-gltf':      { type: 'boolean', default: false },
-      'no-cgv':       { type: 'boolean', default: false },
       verbose:        { type: 'boolean', default: false },
       'tilecal-only': { type: 'boolean', default: false },
       quantize:       { type: 'boolean', default: false },
@@ -97,10 +92,8 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
 
   --out <dir>        diretório de saída (padrão: mesmo dir do .root)
   --max-faces <n>    limite de faces por shape (0 = ilimitado)
-  --depth <n>        profundidade máxima da árvore CGV (0 = toda)
+  --depth <n>        profundidade máxima da árvore de geometria (0 = toda)
   --visible-only     pular volumes invisíveis (bit kVisThis)
-  --no-gltf          gerar apenas o .cgv, pular o .gltf
-  --no-cgv           gerar apenas o .gltf, pular o .cgv
   --tilecal-only     gerar apenas volumes TileCal (Tile1-15)
   --quantize         quantizar posições (14-bit) — arquivo menor, visualmente idêntico
   --verbose          log detalhado
@@ -117,8 +110,6 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
     maxDepth:    parseInt(values['depth']     ?? '0', 10),
     subtree:     values['subtree'] ?? null,
     visibleOnly: values['visible-only'],
-    noGltf:      values['no-gltf'],
-    noCgv:       values['no-cgv'],
     tilecalOnly: values['tilecal-only'],
     quantize:    values['quantize'],
   };
@@ -152,49 +143,6 @@ async function findGeoManager(file, keys) {
 // ═════════════════════════════════════════════════════════════════════════════
 // HELPERS COMPARTILHADOS
 // ═════════════════════════════════════════════════════════════════════════════
-
-/** Escapa caracteres especiais XML */
-const xmlEsc = (v) =>
-  String(v ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-function colorHex(idx, rootColors) {
-  const c = rootColors?.[idx];
-  if (!c) return '#888888';
-  if (c.startsWith('#')) return c;
-  const m = c.match(/rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
-  if (m) {
-    const h = (n) => parseInt(n).toString(16).padStart(2, '0');
-    return `#${h(m[1])}${h(m[2])}${h(m[3])}`;
-  }
-  return '#888888';
-}
-
-function volumeColorCss(volume, rootColors) {
-  let hex = '#888888', opacity = 1.0;
-  if (!volume) return { hex, opacity };
-
-  if ((volume.fFillColor ?? 0) > 1)
-    hex = colorHex(volume.fFillColor, rootColors);
-  else if ((volume.fLineColor ?? -1) >= 0)
-    hex = colorHex(volume.fLineColor, rootColors);
-
-  const mat = volume.fMedium?.fMaterial;
-  if (mat) {
-    const fs = mat.fFillStyle ?? 0;
-    if (fs >= 3000 && fs <= 3100)
-      opacity = (100 - (fs - 3000)) / 100;
-    if (hex === '#888888' && (mat.fFillColor ?? 0) >= 0)
-      hex = colorHex(mat.fFillColor, rootColors);
-  }
-  return { hex, opacity: Math.max(0, Math.min(1, opacity)) };
-}
-
-function volumeColorThree(volume, rootColors) {
-  const { hex, opacity } = volumeColorCss(volume, rootColors);
-  return { color: new THREE.Color(hex), opacity };
-}
 
 function nodeToMatrix4(node) {
   const m = node?.fMatrix;
@@ -381,74 +329,6 @@ function shapeAttrs(shape) {
 //
 // Separador: → (U+2192, implicação material da lógica proposicional)
 // ═════════════════════════════════════════════════════════════════════════════
-function buildCgv(geoResult, allKeys, rootPath, opts) {
-  const now     = new Date().toISOString();
-  const srcName = basename(rootPath);
-  const lines   = [];
-
-  lines.push(`# Calorimeter Geometry Viewer (CGVWEB)`);
-  lines.push(`# source   : ${srcName}`);
-  lines.push(`# generated: ${now}`);
-  lines.push(`# format   : name \\t → \\t name \\t → \\t … \\t → \\t leaf`);
-  lines.push('');
-
-  if (geoResult) {
-    const { obj, key } = geoResult;
-
-    const topNode = (obj._typename === 'TGeoManager')
-      ? {
-          _typename : 'TGeoManager',
-          fName     : key.fName,
-          fTitle    : key.fTitle ?? '',
-          fVolume   : obj.fMasterVolume,
-          fGeoAtt   : 0xFF,
-          fMatrix   : null,
-        }
-      : obj;
-
-    // pilha: { node, ancestors[] }
-    const stack = [{ node: topNode, ancestors: [] }];
-
-    while (stack.length > 0) {
-      const { node, ancestors } = stack.pop();
-
-      const volume = node.fVolume ?? node;
-      const geoAtt = node.fGeoAtt ?? volume?.fGeoAtt ?? 0xFF;
-      if (opts.visibleOnly && !Boolean(geoAtt & 0x08)) continue;
-
-      const name = node.fName ?? volume?.fName ?? '?';
-      const segments = [...ancestors, name];
-      lines.push(segments.join('\t→\t'));
-
-      const children = volume?.fNodes?.arr ?? node.fElements?.arr ?? [];
-      const depth    = ancestors.length;
-      if (children.length > 0 && (opts.maxDepth === 0 || depth < opts.maxDepth)) {
-        for (let i = children.length - 1; i >= 0; i--) {
-          stack.push({ node: children[i], ancestors: segments });
-        }
-      }
-    }
-  } else {
-    lines.push(`# (nenhum TGeoManager/TGeoVolume encontrado)`);
-  }
-
-  return lines.join('\n') + '\n';
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// GERAÇÃO DO .GLB — um mesh nomeado por célula, geometrias compartilhadas
-//
-// Cada nó com geometria vira um THREE.Mesh cujo nome é o caminho CGV completo
-// (separador \t→\t), permitindo lookup direto no viewer pelo path do .cgv.
-//
-// Otimização: nós com a mesma assinatura de shape compartilham a mesma
-// instância BufferGeometry → o GLTFExporter deduplica e emite o dado
-// binário uma única vez no .glb (múltiplos nodes GLTF → mesmo mesh GLTF).
-//
-// Pilha: { node, worldMat, ancestorPath, depth }
-//   worldMat — Matrix4 acumulada (composta iterativamente, nunca mutada)
-// ═════════════════════════════════════════════════════════════════════════════
-
 async function buildGltf(geoResult, rootPath, opts) {
   const geoCache   = new Map();   // shapeSignature → BufferGeometry (compartilhada)
 
@@ -519,7 +399,6 @@ async function buildGltf(geoResult, rootPath, opts) {
         if (bufGeo) {
           const mesh = new THREE.Mesh(bufGeo, dummyMat);
 
-          // Nome = caminho CGV completo (usado como chave no viewer)
           mesh.name = path;
 
           // Transform mundo → TRS do mesh (filho direto da scene = espaço mundo)
@@ -608,10 +487,9 @@ async function main() {
   if (opts.maxDepth > 0) log(`  depth     : ${opts.maxDepth}`);
 
   mkdirSync(opts.outDir, { recursive: true });
-
   const stem    = basename(opts.rootPath, extname(opts.rootPath));
-  const cgvPath = join(opts.outDir, `${stem}.cgv`);
   const glbPath = join(opts.outDir, `${stem}.glb`);
+
 
   // 1. Abre o .root
   const { file, keys } = await openRootFile(opts.rootPath);
@@ -626,26 +504,14 @@ async function main() {
   else
     ok(`Geo: "${geoResult.key.fName}" (${geoResult.key.fClassName})`);
 
-  // 3. Gera .cgv
-  if (!opts.noCgv) {
-    info('Gerando .cgv...');
-    const t0  = performance.now();
-    const cgv = buildCgv(geoResult, keys, opts.rootPath, opts);
-    await writeFile(cgvPath, cgv, 'utf8');
-    ok(`CGV  → ${cgvPath}  (${(cgv.length / 1024).toFixed(1)} kB, ${(performance.now() - t0).toFixed(0)} ms)`);
-  }
-
-  // 4. Gera .glb
-  if (!opts.noGltf) {
-    info('Gerando .glb...');
-    const t0  = performance.now();
-    let glb   = await buildGltf(geoResult, opts.rootPath, opts);
-    const rawMb = (glb.length / 1e6).toFixed(1);
-    info(`GLB bruto: ${rawMb} MB — otimizando…`);
-    glb = await optimizeGlb(glb, opts);
-    await writeFile(glbPath, glb);
-    ok(`GLB  → ${glbPath}  (${(glb.length / 1e6).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms)`);
-  }
+  info('Gerando .glb...');
+  const t0  = performance.now();
+  let glb   = await buildGltf(geoResult, opts.rootPath, opts);
+  const rawMb = (glb.length / 1e6).toFixed(1);
+  info(`GLB bruto: ${rawMb} MB - otimizando...`);
+  glb = await optimizeGlb(glb, opts);
+  await writeFile(glbPath, glb);
+  ok(`GLB  -> ${glbPath}  (${(glb.length / 1e6).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms)`);
 
   log(`Concluído em ${((performance.now() - T0) / 1000).toFixed(2)}s`);
 }

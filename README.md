@@ -32,14 +32,14 @@ build step is required to view the app.
 
 The build pipeline is only needed if you want to:
 
-- regenerate `CaloGeometry.cgv` / `CaloGeometry.glb` from a new `.root` file, or
+- regenerate `CaloGeometry.glb` from a new `.root` file, or
 - rebuild the Rust ATLAS-ID parser WASM module.
 
 ### 1. Required tools
 
 | Tool         | Version    | Purpose                                  |
 |--------------|------------|------------------------------------------|
-| Node.js      | ≥ 18       | Runs the `.root` → `.cgv`/`.glb` pipeline |
+| Node.js      | ≥ 18       | Runs the `.root` → `.glb` pipeline |
 | npm          | bundled    | Installs JS dependencies                 |
 | Rust         | stable     | Compiles the ATLAS ID parser             |
 | `wasm-pack`  | ≥ 0.12     | Builds the parser to WebAssembly         |
@@ -77,7 +77,7 @@ cd setup
 node setup.mjs
 ```
 
-### 4. Compile `.root` → `.cgv` + `.glb`
+### 4. Compile `.root` → `.glb`
 
 Place the source file at `geometry_data/CaloGeometry.root`, then run:
 
@@ -85,10 +85,9 @@ Place the source file at `geometry_data/CaloGeometry.root`, then run:
 node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
 ```
 
-Outputs:
+Output:
 
-- `geometry_data/CaloGeometry.cgv` — compact custom binary mesh format used by the viewer
-- `geometry_data/CaloGeometry.glb` — glTF binary (unoptimized, ~300+ MB)
+- `geometry_data/CaloGeometry.glb` — glTF binary (optimized, ~50+ MB)
 
 ### 5. Optimize the GLB
 
@@ -137,11 +136,10 @@ cgv-web/
 │   └── pkg/                    wasm-pack output (committed)
 ├── geometry_data/
 │   ├── CaloGeometry.root       source geometry (input)
-│   ├── CaloGeometry.cgv        compiled mesh (viewer input)
 │   └── CaloGeometry.glb        optimized glTF binary
 ├── setup/                      build pipeline scripts
 │   ├── setup.mjs               patches jsroot modules
-│   ├── root2scene.mjs          .root → .cgv/.glb compiler
+│   ├── root2scene.mjs          .root → .glb compiler
 │   ├── optimize_glb.mjs        GLB stripper / quantizer
 │   └── lib/                    patched jsroot modules
 ├── live_atlas/                 live ATLANTIS bridge (optional)
