@@ -62,9 +62,8 @@ cd /d "%~dp0"
 echo Done.
 echo.
 
-REM ---- Step 3: Delete old .cgv and .glb files ----
-echo [3/6] Deleting old CaloGeometry.cgv and CaloGeometry.glb...
-if exist "geometry_data\CaloGeometry.cgv" del "geometry_data\CaloGeometry.cgv"
+REM ---- Step 3: Delete old .glb file ----
+echo [3/6] Deleting old CaloGeometry.glb...
 if exist "geometry_data\CaloGeometry.glb" del "geometry_data\CaloGeometry.glb"
 echo Done.
 echo.
@@ -79,8 +78,8 @@ if not exist "geometry_data\CaloGeometry.root" (
 echo Found geometry_data\CaloGeometry.root
 echo.
 
-REM ---- Step 5: Compile .root -> .cgv + optimized .glb (single step) ----
-echo [5/6] Compiling .root to .cgv and optimized .glb...
+REM ---- Step 5: Compile .root -> optimized .glb (single step) ----
+echo [5/6] Compiling .root to optimized .glb...
 call node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
 if %errorlevel% neq 0 (
     echo ERROR: root2scene.mjs failed.
@@ -108,7 +107,6 @@ echo   Build complete!
 echo ============================================
 echo.
 echo Output files:
-echo   - geometry_data\CaloGeometry.cgv
 echo   - geometry_data\CaloGeometry.glb (optimized + quantized)
 echo   - parser\pkg\atlas_id_parser.js
 echo   - parser\pkg\atlas_id_parser_bg.wasm
