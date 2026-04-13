@@ -309,7 +309,13 @@ const _loadBar = document.getElementById('loading-bar');
 const _loadMsg = document.getElementById('loading-msg');
 function setLoadProgress(pct, msg) {
   if (_loadBar) _loadBar.style.width = Math.round(pct) + '%';
-  if (_loadMsg) _loadMsg.textContent = msg;
+  if (_loadMsg && msg) _loadMsg.textContent = msg;
+}
+const _loadState = { wasm: 0, glb: 0 };
+function updateLoadProgress(msg) {
+  // Weighted: WASM 25%, geometry 75% (geometry is the largest asset)
+  const pct = _loadState.wasm * 0.25 + _loadState.glb * 0.75;
+  setLoadProgress(pct, msg);
 }
 function dismissLoadingScreen() {
   const overlay = document.getElementById('loading-overlay');
@@ -322,6 +328,7 @@ function dismissLoadingScreen() {
 const logListEl = document.getElementById('log-list');
 const reqBadge  = document.getElementById('req-badge');
 function addLog(msg, type = '') {
+  if (!logListEl) return;
   const ts = new Date().toLocaleTimeString(document.documentElement.lang || 'en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const el = document.createElement('div');
   el.className = 'logrow' + (type ? ' ' + type : '');
@@ -332,7 +339,7 @@ function addLog(msg, type = '') {
 }
 function bumpReq(label = '') {
   reqCount++;
-  reqBadge.textContent = `${reqCount} req`;
+  if (reqBadge) reqBadge.textContent = `${reqCount} req`;
   if (label) addLog(label);
 }
 
@@ -574,7 +581,7 @@ controls.addEventListener('change', () => {
 // ── FPS counter ──────────────────────────────────────────────────────────────
 const fpsEl = document.createElement('div');
 Object.assign(fpsEl.style, {
-  position: 'fixed', bottom: '8px', left: '8px', zIndex: '9999',
+  position: 'fixed', bottom: '8px', right: '10px', zIndex: '9999',
   fontFamily: 'monospace', fontSize: '13px', color: '#66ccff',
   opacity: '0.45', pointerEvents: 'none', userSelect: 'none',
 });
@@ -611,6 +618,7 @@ function checkReady() {
   setStatus(t('status-ready'));
   if (!_readyFired) {
     _readyFired = true;
+    _loadState.wasm = 100; _loadState.glb = 100;
     setLoadProgress(100, 'Ready');
     // Enable ghost frame and beam axis on startup
     toggleAllGhosts();
@@ -626,7 +634,7 @@ function checkReady() {
 }
 
 // ── GLB loader ────────────────────────────────────────────────────────────────
-setLoadProgress(5, 'Loading geometry…');
+updateLoadProgress('Loading geometry…');
 new GLTFLoader().load(
   './geometry_data/CaloGeometry.glb',
   ({ scene: g }) => {
@@ -644,31 +652,37 @@ new GLTFLoader().load(
       scene.add(m);
     }
     sceneOk = true; dirty = true;
-    setLoadProgress(wasmOk ? 100 : 70, 'Geometry loaded');
+    _loadState.glb = 100;
+    updateLoadProgress('Geometry loaded');
     addLog(t('log-glb-loaded'), 'ok');
     checkReady();
   },
   x => {
     if (x.total) {
-      const pct = Math.round(x.loaded / x.total * 60);
-      setLoadProgress(5 + pct, `Loading geometry… ${pct}%`);
-      setStatus(`Loading geometry: ${pct}%`);
+      _loadState.glb = (x.loaded / x.total) * 100;
+    } else {
+      // Estimate when Content-Length unavailable: smooth ramp up to 90%
+      _loadState.glb = Math.min(90, _loadState.glb + 3);
     }
+    updateLoadProgress(`Loading geometry… ${Math.round(_loadState.glb)}%`);
+    setStatus(`Loading geometry: ${Math.round(_loadState.glb)}%`);
   },
   () => {
     setStatus('<span class="warn">CaloGeometry.glb not found.</span>');
     addLog(t('log-glb-notfound'), 'warn');
-    setLoadProgress(wasmOk ? 100 : 70, 'Geometry skipped');
+    _loadState.glb = 100;
+    updateLoadProgress('Geometry skipped');
     sceneOk = true; checkReady();
   }
 );
 
 // ── WASM ──────────────────────────────────────────────────────────────────────
-setLoadProgress(5, 'Loading WASM parser…');
+updateLoadProgress('Loading WASM parser…');
 wasmInit()
   .then(() => {
     wasmOk = true;
-    setLoadProgress(sceneOk ? 100 : 35, 'WASM parser ready');
+    _loadState.wasm = 100;
+    updateLoadProgress('WASM parser ready');
     addLog(t('log-wasm-ready'), 'ok');
     checkReady();
   })
@@ -946,7 +960,7 @@ let thrTrackGev   = 0;
 let trackPtMinGev = 0;
 let trackPtMaxGev = 1;
 
-const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffd700, depthWrite: false });
+const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, depthWrite: false });
 
 function clearTracks() {
   if (!trackGroup) return;
@@ -1164,18 +1178,13 @@ function processXml(xmlText) {
   applyThreshold();
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
 
-  const hitParts = [];
-  if (nTile || nMbts) hitParts.push(`TILE: ${nTile + nMbts} (${fmtMev(tileMinMev)}–${fmtMev(tileMaxMev)})`);
-  if (nLAr)  hitParts.push(`LAr: ${nLAr} (${fmtMev(larMinMev)}–${fmtMev(larMaxMev)})`);
-  if (nHec)  hitParts.push(`HEC: ${nHec} (${fmtMev(hecMinMev)}–${fmtMev(hecMaxMev)})`);
-  const hitStr  = hitParts.join(' · ') || '0';
   const nHit    = nTile + nMbts + nLAr + nHec;
   const allMiss = nMiss + nHecMiss + nMbtsMiss;
   const missStr = allMiss ? ` · <span class="warn">${allMiss} unmapped</span>` : '';
-  setStatus(`<span class="ok">${nHit} cells</span>${missStr} · ${hitStr}`);
+  setStatus(`<span class="ok">${nHit} cells</span>${missStr}`);
   if (nHecMiss)  addLog(`HEC: ${nHec} mapped · ${nHecMiss} unmapped`, 'warn');
   if (nMbtsMiss) addLog(`MBTS: ${nMbts} mapped · ${nMbtsMiss} unmapped`, 'warn');
-  addLog(`${nHit} cells — ${hitStr}${allMiss ? ` · ${allMiss} unmapped` : ''} (${dt}s)`, 'ok');
+  addLog(`${nHit} cells${allMiss ? ` · ${allMiss} unmapped` : ''} (${dt}s)`, 'ok');
 }
 
 // ── Right panel (rpanel) toggle — mirrors left panel behavior ────────────────
@@ -1778,9 +1787,12 @@ function renderEvtList() {
   el.innerHTML = '';
   // Show empty state when no events available
   if (empty) empty.hidden = list.length > 0;
+  let marked = false;
   list.slice(0, 10).forEach((entry, idx) => {
     const row = document.createElement('div');
-    row.className = 'erow' + (entry.id === curEvtId ? ' cur' : '');
+    const isCur = !marked && entry.id === curEvtId;
+    if (isCur) marked = true;
+    row.className = 'erow' + (isCur ? ' cur' : '');
     row.innerHTML = `
       <div class="einfo">
         <div class="ename">${esc(entry.name)}</div>
@@ -1824,9 +1836,10 @@ document.getElementById('ibtn-stop').addEventListener('click', () => {
 
 
 // ── Log collapse ──────────────────────────────────────────────────────────────
-document.getElementById('btn-log-min').addEventListener('click', () => {
+document.getElementById('btn-log-min')?.addEventListener('click', () => {
   const sec  = document.getElementById('log-sec');
   const icon = document.getElementById('log-min-icon');
+  if (!sec) return;
   const willCollapse = !sec.classList.contains('log-collapsed');
   if (willCollapse) {
     // Preserve any user-resized height so we can restore it on expand,
@@ -1841,8 +1854,9 @@ document.getElementById('btn-log-min').addEventListener('click', () => {
     if (sec.dataset.savedMaxH) sec.style.maxHeight = sec.dataset.savedMaxH;
     if (sec.dataset.savedMinH) sec.style.minHeight = sec.dataset.savedMinH;
   }
-  icon.className = willCollapse ? 'ti ti-chevron-up' : 'ti ti-chevron-down';
-  document.getElementById('btn-log-min').dataset.tip = willCollapse ? 'Expand session log' : 'Minimize session log';
+  if (icon) icon.className = willCollapse ? 'ti ti-chevron-up' : 'ti ti-chevron-down';
+  const btn = document.getElementById('btn-log-min');
+  if (btn) btn.dataset.tip = willCollapse ? 'Expand session log' : 'Minimize session log';
 });
 
 // ── Local mode ────────────────────────────────────────────────────────────────
@@ -1912,7 +1926,7 @@ function renderLocalList() {
     row.addEventListener('click', async () => {
       document.querySelectorAll('#local-list .lrow.cur').forEach(r => r.classList.remove('cur'));
       row.classList.add('cur'); addLog(t('log-loading') + file.name); setStatus('Reading file…');
-      startProgress(); advanceProgress('acquire');
+      startProgress('local'); advanceProgress('acquire');
       try {
         const text = await file.text();
         advanceProgress('load');
@@ -1929,9 +1943,48 @@ function renderLocalList() {
 }
 document.getElementById('file-in').addEventListener('change', async e => {
   const f = e.target.files?.[0];
-  if (f) { addLog(t('log-loading') + f.name); setStatus('Parsing…'); processXml(await f.text()); }
+  if (f) {
+    addLog(t('log-loading') + f.name); setStatus('Parsing…');
+    startProgress('local'); advanceProgress('acquire');
+    try { processXml(await f.text()); advanceProgress('load'); endProgress(); }
+    catch (err) { endProgress(); setStatus(`<span class="err">${esc(err.message)}</span>`); }
+  }
   e.target.value = '';
 });
+
+// ── Drag & drop XML onto Local tab ────────────────────────────────────────────
+(function initLocalDnD() {
+  const sec = document.getElementById('local-sec');
+  if (!sec) return;
+  ['dragenter','dragover'].forEach(ev => sec.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation();
+    sec.classList.add('dragover');
+    e.dataTransfer.dropEffect = 'copy';
+  }));
+  ['dragleave','dragend'].forEach(ev => sec.addEventListener(ev, e => {
+    if (e.target === sec) sec.classList.remove('dragover');
+  }));
+  sec.addEventListener('drop', async e => {
+    e.preventDefault(); e.stopPropagation();
+    sec.classList.remove('dragover');
+    const items = e.dataTransfer?.files ? [...e.dataTransfer.files] : [];
+    const xmls = items.filter(f => f.name.toLowerCase().endsWith('.xml'));
+    if (!xmls.length) { addLog('No .xml files in drop','warn'); return; }
+    if (xmls.length === 1) {
+      const f = xmls[0];
+      addLog(t('log-loading') + f.name); setStatus('Reading file…');
+      startProgress('local'); advanceProgress('acquire');
+      try { processXml(await f.text()); advanceProgress('load'); endProgress(); }
+      catch (err) { endProgress(); setStatus(`<span class="err">${esc(err.message)}</span>`); }
+    } else {
+      localFiles = xmls.sort((a,b) => a.name.localeCompare(b.name));
+      renderLocalList();
+      addLog(`Dropped ${localFiles.length} XML files`, 'ok');
+    }
+    // Switch to local tab
+    document.getElementById('btn-local')?.click();
+  });
+})();
 
 // ── Sample events mode ────────────────────────────────────────────────────────
 let _sampleLoaded = false;
@@ -2181,6 +2234,7 @@ function relTime(ts) {
 (function () {
   const logSec    = document.getElementById('log-sec');
   const logResize = document.getElementById('log-resize');
+  if (!logSec || !logResize) return;
   let lrDrag = false, lrStartY = 0, lrStartH = 0;
   logResize.addEventListener('pointerdown', e => {
     lrDrag = true; lrStartY = e.clientY;
@@ -2206,35 +2260,46 @@ function relTime(ts) {
 const DL_STAGES = ['request', 'recogn', 'download', 'acquire', 'load'];
 const DL_PCTS   = { request: 10, recogn: 28, download: 58, acquire: 78, load: 95 };
 let _dlTimer = null;
-function startProgress() {
+function startProgress(kind = 'live') {
   const pEl = document.getElementById('dl-progress');
+  if (!pEl) return;
+  pEl.classList.toggle('local', kind === 'local');
+  pEl.classList.toggle('live',  kind !== 'local');
   pEl.hidden = false;
   DL_STAGES.forEach(s => {
     const el = document.getElementById('dlst-' + s);
-    el.classList.remove('active','done');
+    if (el) el.classList.remove('active','done');
   });
-  document.getElementById('dl-bar-fill').style.width = '0%';
+  const bar = document.getElementById('dl-bar-fill');
+  if (bar) bar.style.width = '0%';
   advanceProgress('request');
 }
 function advanceProgress(stage) {
   if (_dlTimer) clearTimeout(_dlTimer);
+  const pEl = document.getElementById('dl-progress');
+  if (!pEl) return;
   const idx = DL_STAGES.indexOf(stage);
   DL_STAGES.forEach((s, i) => {
     const el = document.getElementById('dlst-' + s);
+    if (!el) return;
     el.classList.toggle('done',   i < idx);
     el.classList.toggle('active', i === idx);
   });
-  document.getElementById('dl-bar-fill').style.width = (DL_PCTS[stage] || 0) + '%';
+  const bar = document.getElementById('dl-bar-fill');
+  if (bar) bar.style.width = (DL_PCTS[stage] || 0) + '%';
 }
 function endProgress() {
-  document.getElementById('dl-bar-fill').style.width = '100%';
+  const bar = document.getElementById('dl-bar-fill');
+  if (!bar) return;
+  bar.style.width = '100%';
   DL_STAGES.forEach(s => {
     const el = document.getElementById('dlst-' + s);
-    el.classList.remove('active'); el.classList.add('done');
+    if (el) { el.classList.remove('active'); el.classList.add('done'); }
   });
   _dlTimer = setTimeout(() => {
-    document.getElementById('dl-progress').hidden = true;
-    document.getElementById('dl-bar-fill').style.width = '0%';
+    const p = document.getElementById('dl-progress');
+    if (p) p.hidden = true;
+    bar.style.width = '0%';
   }, 900);
 }
 
