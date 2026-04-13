@@ -1,8 +1,8 @@
 @echo off
 setlocal
 
-set "SRC=c:\Users\chrys\Documents\GitHub\cgv-web"
-set "DEST=c:\Users\chrys\Documents\GitHub\nipscernweb\projects\cgvweb"
+set "SRC=."
+set "DEST=..\nipscernweb\projects\cgvweb"
 
 echo ============================================
 echo   CGV-Web Deploy to nipscernweb
