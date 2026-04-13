@@ -273,9 +273,6 @@ function applyLang(lang) {
 const PAL_N   = 256;
 const DEF_THR = 200;
 
-// ── Unmapped cells log buffer ─────────────────────────────────────────────────
-const _missLog = [];
-
 // ── State ─────────────────────────────────────────────────────────────────────
 const meshByName = new Map();
 const origMat    = new Map();
@@ -870,12 +867,12 @@ function processXml(xmlText) {
     const sampling = tilePacked[base + 5];
     const { id, energy } = tileCells[i];
     const eMev = energy * 1000;
-    const x = compX(section, sampling, tower); if (x === null) { const s = `[TILE] id=${id} | compX failed | section=${section} sampling=${sampling} tower=${tower}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
-    const k = compK(tower, sampling, x);       if (k === null) { const s = `[TILE] id=${id} | compK failed | tower=${tower} sampling=${sampling} x=${x}`;             console.warn(s); _missLog.push(s); nMiss++; continue; }
+    const x = compX(section, sampling, tower); if (x === null) { console.warn(`[TILE] id=${id} | compX failed | section=${section} sampling=${sampling} tower=${tower}`); nMiss++; continue; }
+    const k = compK(tower, sampling, x);       if (k === null) { console.warn(`[TILE] id=${id} | compK failed | tower=${tower} sampling=${sampling} x=${x}`);             nMiss++; continue; }
     const y    = side < 0 ? 'n' : 'p';
     const path = `Calorimeter\u2192Tile${x}${y}_0\u2192Tile${x}${y}${k}_${k}\u2192cell_${module}`;
     const mesh = meshByName.get(path);
-    if (!mesh) { const s = `[TILE] id=${id} | ${path}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
+    if (!mesh) { console.warn(`[TILE] id=${id} | ${path}`); nMiss++; continue; }
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     active.set(path, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k), det: 'TILE' });
     nTile++;
@@ -898,11 +895,11 @@ function processXml(xmlText) {
       const W = X === 'Barrel' ? 0 : 1;
       const Z = bec > 0 ? 'p' : 'n';
       const R = X === 'EndCap' ? Math.abs(bec) : region;
-      const s = `[LAr EM] id=${id} | Calorimeter\u2192EM${X}_${sampling}_${R}_${Z}_${W}\u2192EM${X}_${sampling}_${R}_${Z}_${eta}_${eta}\u2192cell_${phi}`;
-      console.warn(s); _missLog.push(s); nMiss++; continue;
+      console.warn(`[LAr EM] id=${id} | Calorimeter\u2192EM${X}_${sampling}_${R}_${Z}_${W}\u2192EM${X}_${sampling}_${R}_${Z}_${eta}_${eta}\u2192cell_${phi}`);
+      nMiss++; continue;
     }
     const mesh = meshByName.get(path);
-    if (!mesh) { const s = `[LAr EM] id=${id} | ${path}`; console.warn(s); _missLog.push(s); nMiss++; continue; }
+    if (!mesh) { console.warn(`[LAr EM] id=${id} | ${path}`); nMiss++; continue; }
     mesh.material = palMatLAr(eMev); mesh.visible = true; mesh.renderOrder = 2;
     const rName = Math.abs(bec) === 1 ? (bec > 0 ? 'EMBA' : 'EMBC') : Math.abs(bec) === 2 ? (bec > 0 ? 'EMECA' : 'EMECC') : (bec > 0 ? 'EMECA (inner)' : 'EMECC (inner)');
     active.set(path, { energyGev: energy, energyMev: eMev, cellName: `${rName} s=${sampling} r=${region} η=${eta} φ=${phi}`, det: 'LAR' });
@@ -925,11 +922,11 @@ function processXml(xmlText) {
       const g = HEC_GROUPS_MAP[sampling];
       const Z = be > 0 ? 'p' : 'n';
       const cum = region === 0 ? eta : (g ? g.innerBins + eta : eta);
-      const s = g ? `[HEC] id=${id} | Calorimeter\u2192HEC_${g.name}_${region}_${Z}_0\u2192HEC_${g.name}_${region}_${Z}_${cum}_${cum}\u2192cell_${phi}` : `[HEC] id=${id} | sampling=${sampling} (no group)`;
-      console.warn(s); _missLog.push(s); nHecMiss++; continue;
+      console.warn(g ? `[HEC] id=${id} | Calorimeter\u2192HEC_${g.name}_${region}_${Z}_0\u2192HEC_${g.name}_${region}_${Z}_${cum}_${cum}\u2192cell_${phi}` : `[HEC] id=${id} | sampling=${sampling} (no group)`);
+      nHecMiss++; continue;
     }
     const mesh = meshByName.get(path);
-    if (!mesh) { const s = `[HEC] id=${id} | ${path}`; console.warn(s); _missLog.push(s); nHecMiss++; continue; }
+    if (!mesh) { console.warn(`[HEC] id=${id} | ${path}`); nHecMiss++; continue; }
     mesh.material = palMatHec(eMev); mesh.visible = true; mesh.renderOrder = 2;
     const side   = be > 0 ? 'HECA' : 'HECC';
     const sLabel = ['front','middle','back','rear'][sampling] ?? `s${sampling}`;
@@ -1518,14 +1515,6 @@ document.getElementById('ibtn-stop').addEventListener('click', () => {
   setLiveDot('stopped'); addLog(t('log-poll-paused'));
 });
 
-// ── Unmapped cells log download ───────────────────────────────────────────────
-document.getElementById('btn-log-dl').addEventListener('click', () => {
-  if (_missLog.length === 0) { alert('No unmapped cells recorded yet (load an event first).'); return; }
-  const header = `# Unmapped cells — strings not found in CaloGeometry.cgv\n# Generated: ${new Date().toISOString()}\n# Format: [DET] id=<raw_id> | <attempted_path>\n#\n`;
-  const blob = new Blob([header + _missLog.join('\n') + '\n'], { type: 'text/plain' });
-  const a    = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'unmapped_cells.txt' });
-  a.click(); URL.revokeObjectURL(a.href);
-});
 
 // ── Log collapse ──────────────────────────────────────────────────────────────
 document.getElementById('btn-log-min').addEventListener('click', () => {

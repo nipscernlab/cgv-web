@@ -7,7 +7,7 @@
 export function example_ids() {
     const ret = wasm.example_ids();
     return ret;
-} 
+}
 
 /**
  * Parse an ATLAS compact 64-bit detector ID.

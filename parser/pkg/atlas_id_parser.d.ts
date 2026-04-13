@@ -5,7 +5,7 @@
  * Return a JSON array of example IDs for the UI.
  */
 export function example_ids(): any;
- 
+
 /**
  * Parse an ATLAS compact 64-bit detector ID.
  * Returns a JSON string with all decoded fields, physical coordinates, and a summary.
