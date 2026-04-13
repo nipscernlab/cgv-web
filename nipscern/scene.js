@@ -305,48 +305,9 @@ document.addEventListener('mousemove', e => {
 });
 canvas.addEventListener('mouseleave', () => { clearOutline(); });
 
-// ── Cell ID helpers ──────────────────────────────────────────────────────────
-function compX(sec, samp, tow) {
-  if (sec < 3) {
-    if (samp === 0) return sec === 1 ? 1 : 5;
-    if (samp === 1) return sec === 1 ? 23 : 6;
-    if (samp === 2) return sec === 1 ? 4 : 7;
-  } else {
-    if (tow === 8) return 8; if (tow === 9) return 9;
-    if (tow === 10) return 10; if (tow === 11) return 11;
-    if (tow === 13) return 12; if (tow === 15) return 13;
-  }
-  return null;
-}
-function compK(tow, samp, x) {
-  if (tow < 8) return samp === 2 ? Math.floor(tow / 2) : tow;
-  if (tow === 8) return (x === 0 || x === 1) ? 8 : 0;
-  if (tow === 9) { if (x === 1) return 9; if (x === 9) return 0; return null; }
-  if (tow === 10) return 0;
-  if (tow === 11) { if (x === 11 || x === 5) return 0; if (x === 6) return 1; return null; }
-  if (tow === 12) { if (x === 5) return 1; if (x === 6) return 2; if (x === 7) return 1; return null; }
-  if (tow === 13) { if (x === 12) return 0; if (x === 5) return 2; if (x === 6) return 3; return null; }
-  if (tow === 14) { if (x === 5) return 3; if (x === 6) return 4; return null; }
-  if (tow === 15) { if (x === 13) return 0; if (x === 5) return 4; return null; }
-  return null;
-}
-
-// ── HEC mesh path ────────────────────────────────────────────────────────────
-const HEC_GROUPS_MAP = [
-  { name: '1', innerBins: 10 },
-  { name: '23', innerBins: 10 },
-  { name: '45', innerBins: 9 },
-  { name: '67', innerBins: 8 },
-];
-function hecMeshPath(be, sampling, region, eta, phi) {
-  const g = HEC_GROUPS_MAP[sampling];
-  if (!g) return null;
-  const Z = be > 0 ? 'p' : 'n';
-  const cum = region === 0 ? eta : g.innerBins + eta;
-  const B = cum;
-  const path = `Calorimeter\u2192HEC_${g.name}_${region}_${Z}_0\u2192HEC_${g.name}_${region}_${Z}_${cum}_${B}\u2192cell_${phi}`;
-  return meshByName.has(path) ? path : null;
-}
+// ── HEC group names — for physLarHecEta reconstruction ───────────────────────
+const HEC_NAMES = ['1', '23', '45', '67'];
+const HEC_INNER = [10, 10, 9, 8];
 
 // ── MBTS mesh path ───────────────────────────────────────────────────────────
 function mbtsMeshPath(label) {
@@ -359,17 +320,6 @@ function mbtsMeshPath(label) {
   return meshByName.has(path) ? path : null;
 }
 
-// ── LAr EM mesh path ─────────────────────────────────────────────────────────
-function larMeshPath(bec, samp, region, eta, phi) {
-  const X = (bec === -1 || bec === 1) ? 'Barrel' : 'EndCap';
-  const W = X === 'Barrel' ? 0 : 1;
-  const Z = bec > 0 ? 'p' : 'n';
-  const R = X === 'EndCap' ? Math.abs(bec) : region;
-  const prefix = `Calorimeter\u2192EM${X}_${samp}_${R}_${Z}_${W}\u2192EM${X}_${samp}_${R}_${Z}_${eta}_${eta}\u2192`;
-  if (meshByName.has(prefix + `cell_${phi}`)) return prefix + `cell_${phi}`;
-  if (meshByName.has(prefix + `cell2_${phi}`)) return prefix + `cell2_${phi}`;
-  return null;
-}
 
 // ── XML parsers ──────────────────────────────────────────────────────────────
 function extractCells(doc, tagName) {
@@ -518,16 +468,16 @@ function processXml(xmlText) {
 
   // TileCal
   for (let i = 0; i < tileCells.length; i++) {
-    const base = i * 6;
+    const base    = i * 8;
     if (tilePacked[base] !== SUBSYS_TILE) continue;
-    const section = tilePacked[base + 1], side = tilePacked[base + 2],
-      module = tilePacked[base + 3], tower = tilePacked[base + 4], sampling = tilePacked[base + 5];
-    const eMev = tileCells[i].energy * 1000;
-    const x = compX(section, sampling, tower); if (x === null) continue;
-    const k = compK(tower, sampling, x); if (k === null) continue;
-    const y = side < 0 ? 'n' : 'p';
-    const path = `Calorimeter\u2192Tile${x}${y}_0\u2192Tile${x}${y}${k}_${k}\u2192cell_${module}`;
-    const mesh = meshByName.get(path);
+    const x      = tilePacked[base + 1];
+    const k      = tilePacked[base + 2];
+    const side   = tilePacked[base + 3];
+    const module = tilePacked[base + 4];
+    const eMev   = tileCells[i].energy * 1000;
+    const y      = side < 0 ? 'n' : 'p';
+    const path   = `Calorimeter\u2192Tile${x}${y}_0\u2192Tile${x}${y}${k}_${k}\u2192cell_${module}`;
+    const mesh   = meshByName.get(path);
     if (!mesh) continue;
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     active.set(path, { energyMev: eMev, det: 'TILE' });
@@ -535,12 +485,21 @@ function processXml(xmlText) {
 
   // LAr EM
   for (let i = 0; i < larCells.length; i++) {
-    const base = i * 6;
+    const base    = i * 8;
     if (larPacked[base] !== SUBSYS_LAR_EM) continue;
-    const bec = larPacked[base + 1], sampling = larPacked[base + 2],
-      region = larPacked[base + 3], eta = larPacked[base + 4], phi = larPacked[base + 5];
-    const eMev = larCells[i].energy * 1000;
-    const path = larMeshPath(bec, sampling, region, eta, phi);
+    const abs_be  = larPacked[base + 1];
+    const sampling= larPacked[base + 2];
+    const z_pos   = larPacked[base + 4];
+    const R       = larPacked[base + 5];
+    const eta     = larPacked[base + 6];
+    const phi     = larPacked[base + 7];
+    const eMev    = larCells[i].energy * 1000;
+    const X       = abs_be === 1 ? 'Barrel' : 'EndCap';
+    const W       = abs_be === 1 ? 0 : 1;
+    const Z       = z_pos  ? 'p' : 'n';
+    const prefix  = `Calorimeter\u2192EM${X}_${sampling}_${R}_${Z}_${W}\u2192EM${X}_${sampling}_${R}_${Z}_${eta}_${eta}\u2192`;
+    const path    = meshByName.has(prefix + `cell_${phi}`)  ? prefix + `cell_${phi}`  :
+                    meshByName.has(prefix + `cell2_${phi}`) ? prefix + `cell2_${phi}` : null;
     if (!path) continue;
     const mesh = meshByName.get(path);
     if (!mesh) continue;
@@ -550,13 +509,18 @@ function processXml(xmlText) {
 
   // HEC
   for (let i = 0; i < hecCells.length; i++) {
-    const base = i * 6;
+    const base    = i * 8;
     if (hecPacked[base] !== SUBSYS_LAR_HEC) continue;
-    const be = hecPacked[base + 1], sampling = hecPacked[base + 2],
-      region = hecPacked[base + 3], eta = hecPacked[base + 4], phi = hecPacked[base + 5];
-    const eMev = hecCells[i].energy * 1000;
-    const path = hecMeshPath(be, sampling, region, eta, phi);
-    if (!path) continue;
+    const group   = hecPacked[base + 1];
+    const region  = hecPacked[base + 2];
+    const z_pos   = hecPacked[base + 3];
+    const cum_eta = hecPacked[base + 4];
+    const phi     = hecPacked[base + 5];
+    const eMev    = hecCells[i].energy * 1000;
+    const Z       = z_pos ? 'p' : 'n';
+    const name    = HEC_NAMES[group];
+    const path    = `Calorimeter\u2192HEC_${name}_${region}_${Z}_0\u2192HEC_${name}_${region}_${Z}_${cum_eta}_${cum_eta}\u2192cell_${phi}`;
+    if (!meshByName.has(path)) continue;
     const mesh = meshByName.get(path);
     if (!mesh) continue;
     mesh.material = palMatHec(eMev); mesh.visible = true; mesh.renderOrder = 2;

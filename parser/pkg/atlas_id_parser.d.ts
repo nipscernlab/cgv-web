@@ -20,7 +20,7 @@ export function parse_atlas_id(id_str: string): any;
  *
  * `ids` — whitespace-separated decimal u64 strings.
  *
- * Returns a flat `Int32Array` with 6 i32 per input token.
+ * Returns a flat `Int32Array` with 8 i32 per input token.
  * See `decode_id_compact` for the per-record layout.
  */
 export function parse_atlas_ids_bulk(ids: string): Int32Array;

@@ -749,21 +749,80 @@ const SUBSYS_LAR_EM:   i32 = 2;
 const SUBSYS_LAR_HEC:  i32 = 3;
 const SUBSYS_LAR_FCAL: i32 = 4;
 
-/// Decode one ATLAS u64 into exactly 6 i32 — no heap allocation.
+// ─── TILE mesh-path helpers ───────────────────────────────────────────────────
+// These mirror the JS compX / compK functions that map ATLAS TILE fields to the
+// integer indices used in the CaloGeometry.glb mesh names.
+//
+// compX: (section, sampling, tower) → x  (the layer/group index in the mesh name)
+// compK: (tower, sampling, x)       → k  (the cell index within the group)
+
+fn tile_comp_x(section: i32, sampling: i32, tower: i32) -> Option<i32> {
+    if section < 3 {
+        match sampling {
+            0 => Some(if section == 1 {  1 } else {  5 }),
+            1 => Some(if section == 1 { 23 } else {  6 }),
+            2 => Some(if section == 1 {  4 } else {  7 }),
+            _ => None,
+        }
+    } else {
+        // ITC / gap scintillators — routed by tower
+        match tower {
+             8 => Some( 8),
+             9 => Some( 9),
+            10 => Some(10),
+            11 => Some(11),
+            13 => Some(12),
+            15 => Some(13),
+            _ => None,
+        }
+    }
+}
+
+fn tile_comp_k(tower: i32, sampling: i32, x: i32) -> Option<i32> {
+    if tower < 8 {
+        return Some(if sampling == 2 { tower / 2 } else { tower });
+    }
+    match tower {
+        8  => Some(if x == 0 || x == 1 { 8 } else { 0 }),
+        9  => { if x == 1 { Some(9) } else if x == 9 { Some(0) } else { None } }
+        10 => Some(0),
+        11 => { if x == 11 || x == 5 { Some(0) } else if x == 6 { Some(1) } else { None } }
+        12 => { if x == 5 { Some(1) } else if x == 6 { Some(2) } else if x == 7 { Some(1) } else { None } }
+        13 => { if x == 12 { Some(0) } else if x == 5 { Some(2) } else if x == 6 { Some(3) } else { None } }
+        14 => { if x == 5 { Some(3) } else if x == 6 { Some(4) } else { None } }
+        15 => { if x == 13 { Some(0) } else if x == 5 { Some(4) } else { None } }
+        _  => None,
+    }
+}
+
+/// Decode one ATLAS u64 into exactly 8 i32 — no heap allocation.
 ///
-/// Layout per record:
-///   [0]  subsystem code (SUBSYS_* above)
-///   TILE:     [1]=section  [2]=side  [3]=module  [4]=tower  [5]=sampling
-///   LAr EM:   [1]=bec      [2]=sampling  [3]=region  [4]=eta(global)  [5]=phi
-///   LAr HEC:  [1]=be       [2]=sampling  [3]=region  [4]=eta  [5]=phi
-///   LAr FCAL: [1]=be       [2]=module    [3]=eta     [4]=phi  [5]=0
-///   invalid:  [1..5]=0
+/// Layout per record (8 slots):
+///   [0]  subsystem code (SUBSYS_* constants)
+///
+///   TILE:     [1]=x        [2]=k        [3]=side    [4]=module  [5]=section  [6]=tower  [7]=sampling
+///             x,k are mesh-path indices (from tile_comp_x/tile_comp_k).
+///             section/tower/sampling kept for physTileEta. SUBSYS_INVALID if x or k unmappable.
+///
+///   LAr EM:   [1]=abs_be   [2]=sampling [3]=region  [4]=z_pos   [5]=R        [6]=eta    [7]=phi
+///             abs_be = |bec| ∈ {1,2,3}.  z_pos = bec>0 ? 1 : 0.
+///             R = (abs_be==1) ? region : abs_be  — direct path component.
+///             eta = global eta index.  Reconstruct bec = abs_be*(z_pos?1:-1) for physics.
+///
+///   LAr HEC:  [1]=group_idx [2]=region  [3]=z_pos   [4]=cum_eta [5]=phi      [6]=0      [7]=0
+///             group_idx = sampling (0-3) → name {"1","23","45","67"} and innerBins {10,10,9,8}.
+///             cum_eta = (region==0) ? eta : innerBins[group_idx] + eta  — direct path component.
+///             z_pos = be>0 ? 1 : 0.  Reconstruct be=z_pos?2:-2 and eta_idx for physics.
+///
+///   LAr FCAL: [1]=be        [2]=module  [3]=eta     [4]=phi     [5..7]=0
+///
+///   invalid:  [0..7]=0
 #[inline]
-fn decode_id_compact(id: u64) -> [i32; 6] {
+fn decode_id_compact(id: u64) -> [i32; 8] {
     let subdet_values: &[i32] = &[2, 4, 5, 7, 10, 11, 12, 13];
     let subdet = match subdet_values.get(extract(id, 64, 3)) {
         Some(&v) => v,
-        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
     };
 
     match subdet {
@@ -774,14 +833,22 @@ fn decode_id_compact(id: u64) -> [i32; 6] {
             let module   = continuous(extract(id, 54, 8), 0);
             let tower    = continuous(extract(id, 46, 6), 0);
             let sampling = continuous(extract(id, 40, 4), 0);
-            [SUBSYS_TILE, section, side, module, tower, sampling]
+            let x = match tile_comp_x(section, sampling, tower) {
+                Some(v) => v,
+                None    => return [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
+            };
+            let k = match tile_comp_k(tower, sampling, x) {
+                Some(v) => v,
+                None    => return [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
+            };
+            [SUBSYS_TILE, x, k, side, module, section, tower, sampling]
         }
         // ── LAr ───────────────────────────────────────────────────────────────
         4 => {
             let part_values: &[i32] = &[-3, -2, -1, 1, 2, 3, 4, 5];
             let part = match part_values.get(extract(id, 61, 3)) {
                 Some(&v) => v,
-                None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
             };
             match part.abs() {
                 // LAr EM: bec(3), sampling(2), region(3), eta(9), phi(8)
@@ -789,48 +856,55 @@ fn decode_id_compact(id: u64) -> [i32; 6] {
                     let be_values: &[i32] = &[-3, -2, -1, 1, 2, 3];
                     let be = match be_values.get(extract(id, 58, 3)) {
                         Some(&v) => v,
-                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
                     };
-                    let sampling = continuous(extract(id, 55, 2), 0);
-                    let region   = continuous(extract(id, 53, 3), 0);
-                    let eta_idx  = continuous(extract(id, 50, 9), 0);
-                    let phi_idx  = continuous(extract(id, 41, 8), 0);
+                    let sampling   = continuous(extract(id, 55, 2), 0);
+                    let region     = continuous(extract(id, 53, 3), 0);
+                    let eta_idx    = continuous(extract(id, 50, 9), 0);
+                    let phi_idx    = continuous(extract(id, 41, 8), 0);
                     let global_eta = lar_em_global_eta(be, sampling, region, eta_idx);
-                    [SUBSYS_LAR_EM, be, sampling, region, global_eta, phi_idx]
+                    let abs_be     = be.abs();
+                    let z_pos      = if be > 0 { 1 } else { 0 };
+                    let r          = if abs_be == 1 { region } else { abs_be };
+                    [SUBSYS_LAR_EM, abs_be, sampling, region, z_pos, r, global_eta, phi_idx]
                 }
                 // LAr HEC: be(1), sampling(2), region(1), eta(4), phi(6)
                 2 => {
                     let be_values: &[i32] = &[-2, 2];
                     let be = match be_values.get(extract(id, 58, 1)) {
                         Some(&v) => v,
-                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
                     };
                     let sampling = continuous(extract(id, 57, 2), 0);
                     let region   = continuous(extract(id, 55, 1), 0);
                     let eta_idx  = continuous(extract(id, 54, 4), 0);
                     let phi_idx  = continuous(extract(id, 50, 6), 0);
-                    [SUBSYS_LAR_HEC, be, sampling, region, eta_idx, phi_idx]
+                    let group_idx   = sampling; // 0-3, same value
+                    let inner_bins: i32 = match sampling { 0 => 10, 1 => 10, 2 => 9, _ => 8 };
+                    let cum_eta  = if region == 0 { eta_idx } else { inner_bins + eta_idx };
+                    let z_pos    = if be > 0 { 1 } else { 0 };
+                    [SUBSYS_LAR_HEC, group_idx, region, z_pos, cum_eta, phi_idx, 0, 0]
                 }
                 // LAr FCAL: be(1), module(2), eta(6), phi(4)
                 3 => {
                     let be_values: &[i32] = &[-2, 2];
                     let be = match be_values.get(extract(id, 58, 1)) {
                         Some(&v) => v,
-                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
                     };
                     let mod_values: &[i32] = &[1, 2, 3];
                     let module = match mod_values.get(extract(id, 57, 2)) {
                         Some(&v) => v,
-                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                        None => return [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
                     };
                     let eta_fcal = continuous(extract(id, 55, 6), 0);
                     let phi_fcal = continuous(extract(id, 49, 4), 0);
-                    [SUBSYS_LAR_FCAL, be, module, eta_fcal, phi_fcal, 0]
+                    [SUBSYS_LAR_FCAL, be, module, eta_fcal, phi_fcal, 0, 0, 0]
                 }
-                _ => [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+                _ => [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
             }
         }
-        _ => [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+        _ => [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
     }
 }
 
@@ -838,15 +912,15 @@ fn decode_id_compact(id: u64) -> [i32; 6] {
 ///
 /// `ids` — whitespace-separated decimal u64 strings.
 ///
-/// Returns a flat `Int32Array` with 6 i32 per input token.
+/// Returns a flat `Int32Array` with 8 i32 per input token.
 /// See `decode_id_compact` for the per-record layout.
 #[wasm_bindgen]
 pub fn parse_atlas_ids_bulk(ids: &str) -> Vec<i32> {
-    let mut out = Vec::with_capacity(ids.split_ascii_whitespace().count() * 6);
+    let mut out = Vec::with_capacity(ids.split_ascii_whitespace().count() * 8);
     for tok in ids.split_ascii_whitespace() {
         let record = match tok.parse::<u64>() {
             Ok(id) => decode_id_compact(id),
-            Err(_) => [SUBSYS_INVALID, 0, 0, 0, 0, 0],
+            Err(_) => [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
         };
         out.extend_from_slice(&record);
     }
