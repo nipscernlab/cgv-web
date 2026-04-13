@@ -1107,7 +1107,9 @@ function showOutline(mesh) {
   const uid = mesh.geometry.uuid;
   if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
   outlineMesh = new THREE.LineSegments(eGeoCache.get(uid), outlineMat);
-  outlineMesh.matrix.copy(mesh.matrixWorld); outlineMesh.matrixAutoUpdate = false;
+  outlineMesh.matrixAutoUpdate = false;
+  outlineMesh.matrix.copy(mesh.matrixWorld);
+  outlineMesh.matrixWorld.copy(mesh.matrixWorld);
   outlineMesh.renderOrder = 999; outlineMesh.userData.src = mesh.name;
   scene.add(outlineMesh); dirty = true;
 }
@@ -1148,8 +1150,7 @@ function clearAllOutlines() {
 function rebuildAllOutlines() {
   clearAllOutlines();
   if (!rayTargets.length) return;
-  // Defer 1 frame so the coloured cells render first
-  _outlineTimer = setTimeout(_buildOutlinesNow, 0);
+  _buildOutlinesNow();
 }
 
 function _buildOutlinesNow() {
