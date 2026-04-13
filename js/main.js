@@ -734,6 +734,82 @@ function hecMeshPath(be, sampling, region, eta, phi) {
   return meshByName.has(path) ? path : null;
 }
 
+// ── Physical η / φ coordinate helpers ────────────────────────────────────────
+// Mirror the formulas from parser/src/lib.rs so the tooltip shows real values.
+
+function _larEmGlobalEtaOffset(absbe, sampling, region) {
+  if (absbe===1 && sampling===1 && region===1) return 448;
+  if (absbe===1 && sampling===2 && region===1) return 56;
+  if (absbe===2 && sampling===1 && region===1) return 1;
+  if (absbe===2 && sampling===1 && region===2) return 4;
+  if (absbe===2 && sampling===1 && region===3) return 100;
+  if (absbe===2 && sampling===1 && region===4) return 148;
+  if (absbe===2 && sampling===1 && region===5) return 212;
+  if (absbe===2 && sampling===2 && region===1) return 1;
+  if (absbe===3 && sampling===1 && region===0) return 216;
+  if (absbe===3 && sampling===2 && region===0) return 44;
+  return 0;
+}
+const _LAR_EM_ETA_TABLE = {
+  '1,0,0':[0.0,0.025],     '1,1,0':[0.003125,0.003125], '1,1,1':[1.4,0.025],
+  '1,2,0':[0.0,0.025],     '1,2,1':[1.4,0.075],         '1,3,0':[0.0,0.05],
+  '2,0,0':[1.5,0.025],     '2,1,0':[1.375,0.05],        '2,1,1':[1.425,0.025],
+  '2,1,2':[1.5,0.003125],  '2,1,3':[1.8,0.004167],      '2,1,4':[2.0,0.00625],
+  '2,1,5':[2.4,0.025],     '2,2,0':[1.375,0.05],        '2,2,1':[1.425,0.025],
+  '2,3,0':[1.5,0.05],      '3,1,0':[2.5,0.1],           '3,2,0':[2.5,0.1],
+};
+function physLarEmEta(be, sampling, region, globalEta) {
+  const absbe  = Math.abs(be);
+  const offset = _larEmGlobalEtaOffset(absbe, sampling, region);
+  const etaIdx = globalEta - offset;
+  const [eta0, deta] = _LAR_EM_ETA_TABLE[`${absbe},${sampling},${region}`] ?? [0.0, 0.1];
+  const absEta = eta0 + etaIdx * deta + deta / 2;
+  return be < 0 ? -absEta : absEta;
+}
+function physLarEmPhi(be, sampling, region, phiIdx) {
+  const absbe = Math.abs(be);
+  let nPhi = 64;
+  if (absbe===1 && region===1)              nPhi = 256;
+  else if (absbe===1 && (sampling===2 || sampling===3)) nPhi = 256;
+  else if (absbe===2 && (sampling===2 || sampling===3)) nPhi = 256;
+  return _wrapPhi((phiIdx + 0.5) * 2 * Math.PI / nPhi);
+}
+
+const _LAR_HEC_ETA_TABLE = {
+  '0,0':[1.5,0.1], '1,0':[1.5,0.1], '2,0':[1.6,0.1], '3,0':[1.7,0.1],
+  '0,1':[2.5,0.2], '1,1':[2.5,0.2], '2,1':[2.5,0.2], '3,1':[2.5,0.2],
+};
+function physLarHecEta(be, sampling, region, etaIdx) {
+  const [eta0, deta] = _LAR_HEC_ETA_TABLE[`${sampling},${region}`] ?? [1.5, 0.1];
+  const absEta = eta0 + etaIdx * deta + deta / 2;
+  return be < 0 ? -absEta : absEta;
+}
+function physLarHecPhi(region, phiIdx) {
+  const nPhi = region === 0 ? 64 : 32;
+  return _wrapPhi((phiIdx + 0.5) * 2 * Math.PI / nPhi);
+}
+
+function physTileEta(section, side, tower, sampling) {
+  let absEta;
+  if (section === 3) {
+    if      (tower === 8)  absEta = 0.8;
+    else if (tower === 9)  absEta = 1.05;
+    else if (tower === 10) absEta = 1.15;
+    else if (tower === 11) absEta = 1.25;
+    else if (tower === 13) absEta = 1.45;
+    else if (tower === 15) absEta = 1.65;
+    else absEta = 0.05 + 0.1 * tower;
+  } else if (sampling === 2) {
+    // D cells: Δη=0.2, each cell covers 2 towers → centre at k×0.2 where k=floor(tower/2)
+    absEta = Math.floor(tower / 2) * 0.2;
+  } else {
+    absEta = 0.05 + 0.1 * tower;
+  }
+  return side < 0 ? -absEta : absEta;
+}
+function _wrapPhi(phi) { return phi > Math.PI ? phi - 2 * Math.PI : phi; }
+function physTilePhi(module) { return _wrapPhi((module + 0.5) * 2 * Math.PI / 64); }
+
 // ── XML parsers ───────────────────────────────────────────────────────────────
 // ── Shared XML cell extractor (operates on a pre-parsed Document) ─────────────
 function extractCells(doc, tagName) {
@@ -1004,7 +1080,9 @@ function processXml(xmlText) {
     const mesh = meshByName.get(path);
     if (!mesh) { console.warn(`[TILE] id=${id} | ${path}`); nMiss++; continue; }
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
-    active.set(path, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k), det: 'TILE' });
+    const tEta = physTileEta(section, side, tower, sampling);
+    const tPhi = physTilePhi(module);
+    active.set(path, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k), coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, det: 'TILE' });
     nTile++;
   }
 
@@ -1031,8 +1109,10 @@ function processXml(xmlText) {
     const mesh = meshByName.get(path);
     if (!mesh) { console.warn(`[LAr EM] id=${id} | ${path}`); nMiss++; continue; }
     mesh.material = palMatLAr(eMev); mesh.visible = true; mesh.renderOrder = 2;
-    const rName = Math.abs(bec) === 1 ? (bec > 0 ? 'EMBA' : 'EMBC') : Math.abs(bec) === 2 ? (bec > 0 ? 'EMECA' : 'EMECC') : (bec > 0 ? 'EMECA (inner)' : 'EMECC (inner)');
-    active.set(path, { energyGev: energy, energyMev: eMev, cellName: `${rName} s=${sampling} r=${region} η=${eta} φ=${phi}`, det: 'LAR' });
+    const rName = Math.abs(bec) === 1 ? `EMB${sampling}` : Math.abs(bec) === 2 ? `EMEC${sampling}` : `EMEC${sampling} (inner)`;
+    const lEta = physLarEmEta(bec, sampling, region, eta);
+    const lPhi = physLarEmPhi(bec, sampling, region, phi);
+    active.set(path, { energyGev: energy, energyMev: eMev, cellName: rName, coords: `η = ${lEta.toFixed(3)}   φ = ${lPhi.toFixed(3)} rad`, det: 'LAR' });
     nLAr++;
   }
 
@@ -1058,9 +1138,10 @@ function processXml(xmlText) {
     const mesh = meshByName.get(path);
     if (!mesh) { console.warn(`[HEC] id=${id} | ${path}`); nHecMiss++; continue; }
     mesh.material = palMatHec(eMev); mesh.visible = true; mesh.renderOrder = 2;
-    const side   = be > 0 ? 'HECA' : 'HECC';
-    const sLabel = ['front','middle','back','rear'][sampling] ?? `s${sampling}`;
-    active.set(path, { energyGev: energy, energyMev: eMev, cellName: `${side} ${sLabel} η=${eta} φ=${phi}`, det: 'HEC' });
+    const hLabel = `HEC${sampling + 1}`;
+    const hEta = physLarHecEta(be, sampling, region, eta);
+    const hPhi = physLarHecPhi(region, phi);
+    active.set(path, { energyGev: energy, energyMev: eMev, cellName: hLabel, coords: `η = ${hEta.toFixed(3)}   φ = ${hPhi.toFixed(3)} rad`, det: 'HEC' });
     nHec++;
   }
 
@@ -1073,7 +1154,9 @@ function processXml(xmlText) {
     const mesh = meshByName.get(path);
     if (!mesh) { console.warn(`[MBTS] label=${label} | ${path}`); nMbtsMiss++; continue; }
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
-    active.set(path, { energyGev: energy, energyMev: eMev, cellName: `MBTS ${label}`, det: 'TILE' });
+    const _mbts = /^type_(-?1)_ch_([01])_mod_([0-7])$/.exec(label);
+    const mbtsCoords = _mbts ? `η = ${((_mbts[1]==='1'?1:-1)*(_mbts[2]==='0'?2.76:3.84)).toFixed(3)}   φ = ${_wrapPhi(2*Math.PI/16+parseInt(_mbts[3])*2*Math.PI/8).toFixed(3)} rad` : '';
+    active.set(path, { energyGev: energy, energyMev: eMev, cellName: 'MBTS', coords: mbtsCoords, det: 'TILE' });
     nMbts++;
   }
 
@@ -1418,8 +1501,9 @@ function doRaycast(clientX, clientY) {
     const data = active.get(hits[0].object.name);
     if (data) {
       showOutline(hits[0].object);
-      document.getElementById('tip-cell').textContent = data.cellName;
-      document.getElementById('tip-e').textContent    = `${data.energyGev.toFixed(4)} GeV`;
+      document.getElementById('tip-cell').textContent  = data.cellName;
+      document.getElementById('tip-coords').textContent = data.coords ?? '';
+      document.getElementById('tip-e').textContent      = `${data.energyGev.toFixed(4)} GeV`;
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
       tooltip.hidden = false; dirty = true; return;

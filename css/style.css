@@ -525,7 +525,8 @@
       border: 1px solid var(--border); border-radius: var(--r);
       box-shadow: 0 4px 24px rgba(0,0,0,.55); white-space: nowrap;
     }
-    #tip-cell { font: 600 1.0rem var(--font); color: var(--bright); margin-bottom: 6px; }
+    #tip-cell   { font: 600 1.0rem var(--font); color: var(--bright); margin-bottom: 2px; }
+    #tip-coords { font: 400 0.72rem var(--mono); color: var(--muted); margin-bottom: 4px; }
     .tdiv { border: none; border-top: 1px solid var(--border); margin: 5px 0; }
     .trow { display: flex; justify-content: space-between; gap: 20px; margin-top: 3px; }
     .tkey { font: 400 .58rem var(--font); color: var(--muted); text-transform: uppercase; letter-spacing: .09em; align-self: center; }
