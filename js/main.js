@@ -779,6 +779,42 @@ function parseHec(doc) {
   return extractCells(doc, 'HEC');
 }
 
+function parseMBTS(doc) {
+  const cells = [];
+  const els = doc.getElementsByTagName('MBTS');
+  for (const el of els) {
+    let n = 0;
+    for (const ch of el.children) {
+      const label = ch.getAttribute('label');
+      const ev    = ch.getAttribute('energy') ?? ch.getAttribute('e');
+      if (label && ev) { const e = parseFloat(ev); if (isFinite(e)) { cells.push({ label: label.trim(), energy: e }); n++; } }
+    }
+    if (n) continue;
+    const lblEl = el.querySelector('label');
+    const eEl   = el.querySelector('energy, e');
+    if (lblEl && eEl) {
+      const labels = lblEl.textContent.trim().split(/\s+/);
+      const ens    = eEl.textContent.trim().split(/\s+/).map(Number);
+      const m      = Math.min(labels.length, ens.length);
+      for (let i = 0; i < m; i++) if (labels[i] && isFinite(ens[i])) cells.push({ label: labels[i], energy: ens[i] });
+    }
+  }
+  return cells;
+}
+
+// ── MBTS label → mesh path ────────────────────────────────────────────────────
+// label format: type_{±1}_ch_{0|1}_mod_{0-7}
+// type=+1→p, type=-1→n; ch=0→Tile14, ch=1→Tile15; mod→cell index
+function mbtsMeshPath(label) {
+  const m = /^type_(-?1)_ch_([01])_mod_([0-7])$/.exec(label);
+  if (!m) return null;
+  const side    = m[1] === '1' ? 'p' : 'n';
+  const tileNum = m[2] === '0' ? 14 : 15;
+  const mod     = m[3];
+  const path    = `Calorimeter\u2192Tile${tileNum}${side}_0\u2192Tile${tileNum}${side}0_0\u2192cell_${mod}`;
+  return meshByName.has(path) ? path : null;
+}
+
 // ── LAr EM ID → mesh path (tries cell_ then cell2_ as fallback) ───────────────
 function larMeshPath(bec, samp, region, eta, phi) {
   const X      = (bec === -1 || bec === 1) ? 'Barrel' : 'EndCap';
@@ -819,15 +855,16 @@ function processXml(xmlText) {
   const t0 = performance.now();
 
   // Parse XML once — all detectors share the same Document
-  let doc, tileCells, larCells, hecCells;
+  let doc, tileCells, larCells, hecCells, mbtsCells;
   try { doc = parseXmlDoc(xmlText); }
   catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); addLog(e.message, 'err'); return; }
   try { tileCells = parseTile(doc); } catch { tileCells = []; }
   try { larCells  = parseLAr(doc);  } catch { larCells  = []; }
   try { hecCells  = parseHec(doc);  } catch { hecCells  = []; }
+  try { mbtsCells = parseMBTS(doc); } catch { mbtsCells = []; }
 
-  const total = tileCells.length + larCells.length + hecCells.length;
-  if (!total) { setStatus('<span class="warn">No TILE, LAr or HEC cells found</span>'); addLog('No cells in XML', 'warn'); return; }
+  const total = tileCells.length + larCells.length + hecCells.length + mbtsCells.length;
+  if (!total) { setStatus('<span class="warn">No TILE, LAr, HEC or MBTS cells found</span>'); addLog('No cells in XML', 'warn'); return; }
 
   setStatus(`Decoding ${total} cells…`);
   resetScene();
@@ -838,12 +875,14 @@ function processXml(xmlText) {
     for (const { energy } of cells) { const v = energy * 1000; if (isFinite(v) && v > 0) { if (v < mn) mn = v; if (v > mx) mx = v; } }
     return mn === Infinity ? [0, 1] : [mn, mx];
   }
-  [tileMinMev, tileMaxMev] = minMax(tileCells);
+  // MBTS shares the Tile palette — merge its range with Tile's
+  const allTileCells = tileCells.concat(mbtsCells);
+  [tileMinMev, tileMaxMev] = minMax(allTileCells);
   [larMinMev,  larMaxMev]  = minMax(larCells);
   [hecMinMev,  hecMaxMev]  = minMax(hecCells);
 
-  let nTile = 0, nLAr = 0, nHec = 0, nMiss = 0, nSkip = 0;
-  let nHecMiss = 0;
+  let nTile = 0, nLAr = 0, nHec = 0, nMbts = 0, nMiss = 0, nSkip = 0;
+  let nHecMiss = 0, nMbtsMiss = 0;
 
   // ── Bulk decode: one WASM call per detector replaces N individual FFI calls ──
   // Build ID strings without intermediate array allocation
@@ -934,20 +973,34 @@ function processXml(xmlText) {
     nHec++;
   }
 
+  // ── MBTS cells (direct label→path, no WASM needed) ────────────────────────
+  for (let i = 0; i < mbtsCells.length; i++) {
+    const { label, energy } = mbtsCells[i];
+    const eMev = energy * 1000;
+    const path = mbtsMeshPath(label);
+    if (!path) { console.warn(`[MBTS] label=${label} | no mesh`); nMbtsMiss++; continue; }
+    const mesh = meshByName.get(path);
+    if (!mesh) { console.warn(`[MBTS] label=${label} | ${path}`); nMbtsMiss++; continue; }
+    mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
+    active.set(path, { energyGev: energy, energyMev: eMev, cellName: `MBTS ${label}`, det: 'TILE' });
+    nMbts++;
+  }
+
   initDetPanel(nTile > 0, nLAr > 0, nHec > 0);
   applyThreshold();
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
 
   const hitParts = [];
-  if (nTile) hitParts.push(`TILE: ${nTile} (${fmtMev(tileMinMev)}–${fmtMev(tileMaxMev)})`);
+  if (nTile || nMbts) hitParts.push(`TILE: ${nTile + nMbts} (${fmtMev(tileMinMev)}–${fmtMev(tileMaxMev)})`);
   if (nLAr)  hitParts.push(`LAr: ${nLAr} (${fmtMev(larMinMev)}–${fmtMev(larMaxMev)})`);
   if (nHec)  hitParts.push(`HEC: ${nHec} (${fmtMev(hecMinMev)}–${fmtMev(hecMaxMev)})`);
   const hitStr  = hitParts.join(' · ') || '0';
-  const nHit    = nTile + nLAr + nHec;
-  const allMiss = nMiss + nHecMiss;
+  const nHit    = nTile + nMbts + nLAr + nHec;
+  const allMiss = nMiss + nHecMiss + nMbtsMiss;
   const missStr = allMiss ? ` · <span class="warn">${allMiss} unmapped</span>` : '';
   setStatus(`<span class="ok">${nHit} cells</span>${missStr} · ${hitStr}`);
-  if (nHecMiss) addLog(`HEC: ${nHec} mapped · ${nHecMiss} unmapped`, 'warn');
+  if (nHecMiss)  addLog(`HEC: ${nHec} mapped · ${nHecMiss} unmapped`, 'warn');
+  if (nMbtsMiss) addLog(`MBTS: ${nMbts} mapped · ${nMbtsMiss} unmapped`, 'warn');
   addLog(`${nHit} cells — ${hitStr}${allMiss ? ` · ${allMiss} unmapped` : ''} (${dt}s)`, 'ok');
 }
 
