@@ -18,7 +18,7 @@
       --blur:    blur(20px) saturate(1.7);
       --r:       10px;
       --pw:      250px;
-      --rpw:     140px;
+      --rpw:     100px;
       --pt:      0.34s;
     }
 
@@ -358,20 +358,20 @@
 
     /* ── Detector tab bar ────────────────────────────────── */
     #det-tab-bar {
-      display: flex; flex-shrink: 0;
-      border-bottom: 2px solid var(--border);
+      display: flex; flex-direction: column; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
     }
     .det-tab {
-      flex: 1; padding: 6px 2px 5px;
+      flex: none; padding: 5px 8px;
       font: 600 .54rem var(--mono); letter-spacing: .04em;
-      color: var(--muted); border: none;
-      border-bottom: 2px solid transparent; margin-bottom: -2px;
+      color: var(--muted); border: none; text-align: center;
+      border-left: 2px solid transparent;
       cursor: pointer; transition: color .14s, border-color .14s, background .14s;
     }
     .det-tab:hover { color: var(--text); }
     .det-tab.on {
       color: var(--bright);
-      border-bottom-color: var(--tab-col, var(--accent2));
+      border-left-color: var(--tab-col, var(--accent2));
       background: rgba(36,103,224,.06);
     }
 
@@ -406,7 +406,7 @@
       pointer-events: none; top: 50%;
     }
     .thr-input {
-      width: 72px; padding: 3px 5px;
+      width: 68px; padding: 3px 4px;
       background: rgba(2,11,28,.90); border: 1px solid var(--border);
       border-radius: 4px; color: var(--text); font: 400 .54rem var(--mono);
       text-align: center; transition: border-color .15s;
@@ -555,7 +555,7 @@
        user is expected to rotate to landscape. A small tip can be shown
        by the UI if needed. */
     @media (orientation: landscape) and (max-height: 520px) {
-      :root { --pw: 240px; --rpw: 120px; }
+      :root { --pw: 240px; --rpw: 100px; }
 
       /* Panel: full height, edge-attached */
       #panel {
