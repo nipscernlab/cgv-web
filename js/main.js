@@ -348,7 +348,9 @@ function palColorTile(t) {
   );
 }
 const PAL_TILE = Array.from({ length: PAL_N }, (_, i) => {
-  return new THREE.MeshBasicMaterial({ color: palColorTile(i / (PAL_N - 1)), side: THREE.FrontSide });
+  const c = palColorTile(i / (PAL_N - 1));
+  c.offsetHSL(0, 0.35, 0);  // boost saturation, keep hue & lightness
+  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
 });
 const TILE_SCALE = 2000;
 function palMatTile(eMev) {
@@ -366,7 +368,9 @@ function palColorHec(t) {
   );
 }
 const PAL_HEC = Array.from({ length: PAL_N }, (_, i) => {
-  return new THREE.MeshBasicMaterial({ color: palColorHec(i / (PAL_N - 1)), side: THREE.FrontSide });
+  const c = palColorHec(i / (PAL_N - 1));
+  c.offsetHSL(0, 0.35, 0);
+  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
 });
 const HEC_SCALE = 5000;
 function palMatHec(eMev) {
@@ -384,7 +388,9 @@ function palColorLAr(t) {
   );
 }
 const PAL_LAR = Array.from({ length: PAL_N }, (_, i) => {
-  return new THREE.MeshBasicMaterial({ color: palColorLAr(i / (PAL_N - 1)), side: THREE.FrontSide });
+  const c = palColorLAr(i / (PAL_N - 1));
+  c.offsetHSL(0, 0.35, 0);
+  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
 });
 const LAR_SCALE = 1000; // MeV — fixed 0–1 GeV
 function palMatLAr(eMev) {
@@ -539,7 +545,7 @@ const GHOST_NAMES = { tile: GHOST_TILE_NAMES, lar: [], hec: [] };
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
-renderer.setPixelRatio(1);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.sortObjects = false;
