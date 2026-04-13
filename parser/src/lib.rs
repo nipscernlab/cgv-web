@@ -246,25 +246,40 @@ fn lar_phi(phi_idx: i32, n_phi: i32) -> f64 {
 /// Compute the global eta index for a LAr EM cell.
 /// Applies a region-dependent offset so that eta indices are unique across regions.
 /// For sampling 0 and 3, no offset is applied.
-fn lar_em_global_eta(be: i32, sampling: i32, region: i32, eta_idx: i32) -> i32 {
-    let abs_be = be.abs();
-    let offset = match (abs_be, sampling, region) {
-        // |barrel-endcap| = 1 (barrel)
-        (1, 1, 1) => 448,
-        (1, 2, 1) => 56,
-        // |barrel-endcap| = 2 (outer endcap)
-        (2, 1, 1) => 1,
-        (2, 1, 2) => 4,
-        (2, 1, 3) => 100,
-        (2, 1, 4) => 148,
-        (2, 1, 5) => 212,
-        (2, 2, 1) => 1,
-        // |barrel-endcap| = 3 (inner endcap)
-        (3, 1, 0) => 216,
-        (3, 2, 0) => 44,
-        // All other cases: no offset
-        _ => 0,
-    };
+/// Static eta-offset table for LAr EM.
+/// Index = (abs_be - 1) * 24 + sampling * 6 + region
+/// abs_be ∈ {1,2,3}, sampling ∈ 0..=3, region ∈ 0..=5  →  72 entries
+static LAR_EM_ETA_OFFSET: [i32; 72] = [
+    // abs_be=1, sampling=0
+    0, 0, 0, 0, 0, 0,
+    // abs_be=1, sampling=1:  region 0=0, 1=448, rest=0
+    0, 448, 0, 0, 0, 0,
+    // abs_be=1, sampling=2:  region 0=0, 1=56, rest=0
+    0, 56, 0, 0, 0, 0,
+    // abs_be=1, sampling=3
+    0, 0, 0, 0, 0, 0,
+    // abs_be=2, sampling=0
+    0, 0, 0, 0, 0, 0,
+    // abs_be=2, sampling=1:  r0=0, r1=1, r2=4, r3=100, r4=148, r5=212
+    0, 1, 4, 100, 148, 212,
+    // abs_be=2, sampling=2:  r0=0, r1=1, rest=0
+    0, 1, 0, 0, 0, 0,
+    // abs_be=2, sampling=3
+    0, 0, 0, 0, 0, 0,
+    // abs_be=3, sampling=0
+    0, 0, 0, 0, 0, 0,
+    // abs_be=3, sampling=1:  r0=216, rest=0
+    216, 0, 0, 0, 0, 0,
+    // abs_be=3, sampling=2:  r0=44, rest=0
+    44, 0, 0, 0, 0, 0,
+    // abs_be=3, sampling=3
+    0, 0, 0, 0, 0, 0,
+];
+
+#[inline]
+fn lar_em_global_eta(abs_be: i32, sampling: i32, region: i32, eta_idx: i32) -> i32 {
+    let idx = (abs_be - 1) * 24 + sampling * 6 + region;
+    let offset = LAR_EM_ETA_OFFSET.get(idx as usize).copied().unwrap_or(0);
     eta_idx + offset
 }
 
@@ -518,7 +533,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                     // eta: continuous [0..447], 9 bits — then offset to global index via lar_em_global_eta
                     let idx = extract(id, offset, 9); offset -= 9;
                     let eta_idx = continuous(idx, 0);
-                    let global_eta = lar_em_global_eta(be, sampling, region, eta_idx);
+                    let global_eta = lar_em_global_eta(be.abs(), sampling, region, eta_idx);
                     let mut debug_log: Vec<String> = vec![];
                     if region != 0 {
                         debug_log.push(format!(
@@ -862,9 +877,9 @@ fn decode_id_compact(id: u64) -> [i32; 8] {
                     let region     = continuous(extract(id, 53, 3), 0);
                     let eta_idx    = continuous(extract(id, 50, 9), 0);
                     let phi_idx    = continuous(extract(id, 41, 8), 0);
-                    let global_eta = lar_em_global_eta(be, sampling, region, eta_idx);
                     let abs_be     = be.abs();
                     let z_pos      = if be > 0 { 1 } else { 0 };
+                    let global_eta = lar_em_global_eta(abs_be, sampling, region, eta_idx);
                     let r          = if abs_be == 1 { region } else { abs_be };
                     [SUBSYS_LAR_EM, abs_be, sampling, region, z_pos, r, global_eta, phi_idx]
                 }
@@ -916,7 +931,9 @@ fn decode_id_compact(id: u64) -> [i32; 8] {
 /// See `decode_id_compact` for the per-record layout.
 #[wasm_bindgen]
 pub fn parse_atlas_ids_bulk(ids: &str) -> Vec<i32> {
-    let mut out = Vec::with_capacity(ids.split_ascii_whitespace().count() * 8);
+    // Estimate capacity from byte length: ATLAS IDs are ~19 decimal digits + 1 separator = ~20 bytes each.
+    // This avoids a double-pass over the input string.
+    let mut out = Vec::with_capacity((ids.len() / 20 + 1) * 8);
     for tok in ids.split_ascii_whitespace() {
         let record = match tok.parse::<u64>() {
             Ok(id) => decode_id_compact(id),
