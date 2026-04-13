@@ -30,6 +30,10 @@ copy "%SRC%\index.html" "%DEST%\index.html" >nul
 echo   - index.html
 
 REM assets
+xcopy "%SRC%\nipscern" "%DEST%\nipscern\" /e /i /q >nul
+echo   - assets\
+
+REM assets
 xcopy "%SRC%\assets" "%DEST%\assets\" /e /i /q >nul
 echo   - assets\
 
