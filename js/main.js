@@ -946,9 +946,9 @@ function parseTracks(doc) {
 
 
 // ── Track rendering ───────────────────────────────────────────────────────────
-let thrTrackGev   = 0;
+let thrTrackGev   = 2;
 let trackPtMinGev = 0;
-let trackPtMaxGev = 1;
+let trackPtMaxGev = 5;
 
 const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, depthWrite: false });
 
@@ -1029,12 +1029,10 @@ function processXml(xmlText) {
   try {
     const raw = parseTracks(doc);
     if (raw.length) {
-      let mn = Infinity, mx = -Infinity;
-      for (const { ptGev } of raw) { if (ptGev < mn) mn = ptGev; if (ptGev > mx) mx = ptGev; }
-      trackPtMinGev = mn === Infinity  ? 0 : mn;
-      trackPtMaxGev = mx === -Infinity ? 1 : mx;
-      thrTrackGev   = trackPtMinGev;
-      trackPtSlider.update(trackPtMinGev, trackPtMaxGev);
+      trackPtMinGev = 0;
+      trackPtMaxGev = 5;
+      thrTrackGev   = 2;
+      trackPtSlider.update(0, 5);
     }
     drawTracks(raw);
   } catch (e) { console.warn('Track parse error', e); }
@@ -1328,7 +1326,7 @@ function makeTrackPtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
   function update(minGev, maxGev) {
     trackPtMinGev = minGev;
     trackPtMaxGev = maxGev;
-    thrTrackGev   = minGev; // reset to show all on new event
+    thrTrackGev   = 2; // fixed initial threshold
     if (maxLblEl) maxLblEl.textContent = fmtGev(maxGev);
     if (minLblEl) minLblEl.textContent = fmtGev(minGev);
     updateUI();
