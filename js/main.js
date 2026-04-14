@@ -1090,8 +1090,10 @@ function drawTracks(tracks) {
     line.userData.ptGev        = ptGev;
     line.userData.hitIds       = hitIds;
     line.userData.storeGateKey = storeGateKey;
+    line.matrixAutoUpdate = false;
     trackGroup.add(line);
   }
+  trackGroup.matrixAutoUpdate = false;
   scene.add(trackGroup);
   applyTrackThreshold();
 }
@@ -1182,8 +1184,10 @@ function drawClusters(clusters) {
     line.computeLineDistances();
     line.userData.etGev        = etGev;
     line.userData.storeGateKey = storeGateKey ?? '';
+    line.matrixAutoUpdate = false;
     clusterGroup.add(line);
   }
+  clusterGroup.matrixAutoUpdate = false;
   scene.add(clusterGroup);
   applyClusterThreshold();
 }
