@@ -423,6 +423,34 @@
     }
     .thr-input:focus { border-color: var(--accent2); color: var(--bright); }
     .thr-input::placeholder { color: var(--dim); }
+    .cluster-filter-btn {
+      width: 78px; padding: 4px 6px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 6px;
+      color: var(--muted);
+      font: 600 .47rem var(--mono);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background .15s, border-color .15s, color .15s, box-shadow .15s, opacity .15s;
+    }
+    .cluster-filter-btn:hover { color: var(--text); border-color: rgba(255,255,255,.18); }
+    .cluster-filter-btn.on {
+      color: var(--muted);
+      background: rgba(255,255,255,.05);
+      border-color: rgba(255,255,255,.10);
+      box-shadow: none;
+    }
+    #pane-cluster.cluster-filter-disabled .sval,
+    #pane-cluster.cluster-filter-disabled .slbl,
+    #pane-cluster.cluster-filter-disabled .thr-input,
+    #pane-cluster.cluster-filter-disabled .strak {
+      opacity: .38;
+    }
+    #pane-cluster.cluster-filter-disabled .strak {
+      cursor: default;
+    }
 
     /* ── Ghost switches (no text inside buttons) ─────────── */
     .ghost-switches-wrap {

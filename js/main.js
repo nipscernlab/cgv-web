@@ -348,6 +348,7 @@ let clusterGroup  = null;
 let lastClusterData       = null;  // { collections: [{key, clusters: [{eta,phi,etGev,cells:{TILE,LAR_EM,HEC,OTHER}}]}] }
 let activeClusterCellIds  = null;  // null = no cluster filter; Set<string> = only these cell IDs are visible
 let activeMbtsLabels      = null;  // null = no cluster filter; Set<string> = MBTS labels activated by cluster eta/phi
+let clusterFilterEnabled  = true;
 let _readyFired  = false;
 
 // ── Loading screen helpers ─────────────────────────────────────────────────────
@@ -1128,7 +1129,7 @@ function clearClusters() {
 }
 
 function rebuildActiveClusterCellIds() {
-  if (!lastClusterData) { activeClusterCellIds = null; activeMbtsLabels = null; return; }
+  if (!clusterFilterEnabled || !lastClusterData) { activeClusterCellIds = null; activeMbtsLabels = null; return; }
   const ids  = new Set();
   const mbts = new Set();
   for (const { clusters } of lastClusterData.collections) {
@@ -1155,7 +1156,7 @@ function rebuildActiveClusterCellIds() {
 function applyClusterThreshold() {
   if (clusterGroup)
     for (const child of clusterGroup.children)
-      child.visible = child.userData.etGev >= thrClusterEtGev;
+      child.visible = clusterFilterEnabled && child.userData.etGev >= thrClusterEtGev;
   rebuildActiveClusterCellIds();
   applyThreshold();
   applyTrackThreshold();
@@ -1597,6 +1598,7 @@ function makeClusterEtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
   }
 
   function setFromRatio(r) {
+    if (!clusterFilterEnabled) return;
     const span = clusterEtMaxGev - clusterEtMinGev;
     thrClusterEtGev = r <= 0 ? clusterEtMinGev : clusterEtMinGev + span * r;
     updateUI();
@@ -1613,6 +1615,10 @@ function makeClusterEtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
   );
   inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') inputEl.blur(); });
   inputEl.addEventListener('blur', () => {
+    if (!clusterFilterEnabled) {
+      updateUI();
+      return;
+    }
     const s = inputEl.value.trim().toLowerCase();
     if (!s || s === 'all') {
       thrClusterEtGev = clusterEtMinGev;
@@ -1642,6 +1648,18 @@ const clusterEtSlider = makeClusterEtSlider(
   'cluster-sval-max', 'cluster-sval-min'
 );
 
+function syncClusterFilterToggle() {
+  const btn  = document.getElementById('cluster-filter-toggle');
+  const pane = document.getElementById('pane-cluster');
+  const input = document.getElementById('cluster-thr-input');
+  if (!btn || !pane) return;
+  btn.classList.toggle('on', clusterFilterEnabled);
+  btn.setAttribute('aria-checked', clusterFilterEnabled ? 'true' : 'false');
+  btn.textContent = clusterFilterEnabled ? 'On' : 'Off';
+  pane.classList.toggle('cluster-filter-disabled', !clusterFilterEnabled);
+  if (input) input.disabled = !clusterFilterEnabled;
+}
+
 // Initialize thumb positions at default threshold
 tileSlider.updateUI(thrTileMev);
 larSlider.updateUI(thrLArMev);
@@ -1652,6 +1670,7 @@ function initDetPanel(hasTile, hasLAr, hasHec, hasTracks) {
   larSlider.updateUI(thrLArMev);
   hecSlider.updateUI(thrHecMev);
   clusterEtSlider.updateUI();
+  syncClusterFilterToggle();
   openRPanel();
   if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasHec) switchTab('hec');
   else if (hasTracks) switchTab('track');
@@ -1910,6 +1929,11 @@ document.getElementById('ltog-lar') .addEventListener('click', () => { showLAr  
 document.getElementById('ltog-hec') .addEventListener('click', () => { showHec  = !showHec;  syncLayerToggles(); applyThreshold(); });
 document.getElementById('lbtn-all') .addEventListener('click', () => { showTile = showLAr = showHec = true;  syncLayerToggles(); applyThreshold(); });
 document.getElementById('lbtn-none').addEventListener('click', () => { showTile = showLAr = showHec = false; syncLayerToggles(); applyThreshold(); });
+document.getElementById('cluster-filter-toggle').addEventListener('click', () => {
+  clusterFilterEnabled = !clusterFilterEnabled;
+  syncClusterFilterToggle();
+  applyClusterThreshold();
+});
 
 // Layers panel open / close
 const layersPanel = document.getElementById('layers-panel');
