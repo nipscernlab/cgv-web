@@ -347,6 +347,7 @@ let trackGroup    = null;
 let clusterGroup  = null;
 let lastClusterData       = null;  // { collections: [{key, clusters: [{eta,phi,etGev,cells:{TILE,LAR_EM,HEC,OTHER}}]}] }
 let activeClusterCellIds  = null;  // null = no cluster filter; Set<string> = only these cell IDs are visible
+let activeMbtsLabels      = null;  // null = no cluster filter; Set<string> = MBTS labels activated by cluster eta/phi
 let _readyFired  = false;
 
 // ── Loading screen helpers ─────────────────────────────────────────────────────
@@ -1003,7 +1004,6 @@ function decodeCellSubdet(idStr) {
 // ── Cluster (eta/phi) parser ──────────────────────────────────────────────────
 // Returns flat [{eta, phi, etGev, cells, storeGateKey}] where cells is:
 //   { TILE: string[], LAR_EM: string[], HEC: string[], OTHER: string[] }
-// Also populates lastClusterData with per-collection grouping for download.
 function parseClusters(doc) {
   const flat        = [];
   const collections = [];
@@ -1126,14 +1126,28 @@ function clearClusters() {
 }
 
 function rebuildActiveClusterCellIds() {
-  if (!lastClusterData) { activeClusterCellIds = null; return; }
-  const ids = new Set();
-  for (const { clusters } of lastClusterData.collections)
-    for (const { etGev, cells } of clusters)
-      if (etGev >= thrClusterEtGev)
-        for (const k of ['TILE', 'LAR_EM', 'HEC', 'TRACK', 'OTHER'])
-          for (const id of cells[k]) ids.add(id);
+  if (!lastClusterData) { activeClusterCellIds = null; activeMbtsLabels = null; return; }
+  const ids  = new Set();
+  const mbts = new Set();
+  for (const { clusters } of lastClusterData.collections) {
+    for (const { eta, phi: rawPhi, etGev, cells } of clusters) {
+      if (etGev < thrClusterEtGev) continue;
+      for (const k of ['TILE', 'LAR_EM', 'HEC', 'TRACK', 'OTHER'])
+        for (const id of cells[k]) ids.add(id);
+      // MBTS activation: map cluster (eta, phi) → type_X_ch_Y_mod_Z
+      const absEta = Math.abs(eta);
+      let ch;
+      if      (absEta >= 2.78 && absEta <= 3.86) ch = 1;
+      else if (absEta >= 2.08 && absEta <  2.78) ch = 0;
+      else continue; // outside MBTS eta range
+      const type    = eta >= 0 ? 1 : -1;
+      const phiPos  = rawPhi < 0 ? rawPhi + 2 * Math.PI : rawPhi;
+      const mod     = Math.floor(phiPos / (2 * Math.PI / 8)) % 8;
+      mbts.add(`type_${type}_ch_${ch}_mod_${mod}`);
+    }
+  }
   activeClusterCellIds = ids;
+  activeMbtsLabels     = mbts;
 }
 
 function applyClusterThreshold() {
@@ -1170,108 +1184,6 @@ function drawClusters(clusters) {
   applyClusterThreshold();
 }
 
-// ── Cluster statistics download ───────────────────────────────────────────────
-function downloadClusterStats() {
-  if (!lastClusterData) return;
-  const { collections } = lastClusterData;
-
-  const SEP   = '─'.repeat(80);
-  const SEP2  = '═'.repeat(80);
-  const pad   = (s, n) => String(s).padEnd(n);
-  const SDETS = ['TILE', 'LAR_EM', 'HEC', 'TRACK', 'OTHER'];
-
-  // Aggregate totals across all collections
-  const grandTotal = { clusters: 0, TILE: 0, LAR_EM: 0, HEC: 0, TRACK: 0, OTHER: 0, cells: 0 };
-  for (const { clusters } of collections) {
-    grandTotal.clusters += clusters.length;
-    for (const { cells } of clusters)
-      for (const k of SDETS) { grandTotal[k] += cells[k].length; grandTotal.cells += cells[k].length; }
-  }
-
-  const lines = [];
-  lines.push('ATLAS CGV-Web — Cluster Statistics');
-  lines.push(`Generated   : ${new Date().toISOString()}`);
-  lines.push(SEP);
-  lines.push(`Collections : ${collections.length}`);
-  lines.push(`Clusters    : ${grandTotal.clusters}`);
-  lines.push(`Cell refs   : ${grandTotal.cells}  (TILE: ${grandTotal.TILE}  LAr EM: ${grandTotal.LAR_EM}  HEC: ${grandTotal.HEC}  Track: ${grandTotal.TRACK}  Other: ${grandTotal.OTHER})`);
-  lines.push('');
-
-  // Helper: dump cell IDs wrapped at 6 per sub-line
-  function dumpIds(label, ids, indent) {
-    if (!ids.length) return;
-    const w = 6;
-    const pfx = `${indent}${pad(label, 10)}(${String(ids.length).padStart(4)}): `;
-    const ind2 = ' '.repeat(pfx.length);
-    for (let j = 0; j < ids.length; j += w) {
-      lines.push((j === 0 ? pfx : ind2) + ids.slice(j, j + w).join('  '));
-    }
-  }
-
-  for (const { key, clusters } of collections) {
-    // Collection-level subdet totals
-    const ct = { TILE: 0, LAR_EM: 0, HEC: 0, TRACK: 0, OTHER: 0 };
-    for (const { cells } of clusters) for (const k of SDETS) ct[k] += cells[k].length;
-    const ctTotal = SDETS.reduce((s, k) => s + ct[k], 0);
-
-    lines.push(SEP2);
-    lines.push(`Collection : ${key}`);
-    lines.push(`Clusters   : ${clusters.length}   |   Cell refs : ${ctTotal}`);
-    lines.push(`Subdet     :  TILE: ${ct.TILE}   LAr EM: ${ct.LAR_EM}   HEC: ${ct.HEC}   Track: ${ct.TRACK}   Other: ${ct.OTHER}`);
-    lines.push(SEP2);
-
-    // Et statistics
-    const ets    = clusters.map(c => c.etGev);
-    const etMean = ets.reduce((s, v) => s + v, 0) / ets.length;
-    const etStd  = Math.sqrt(ets.reduce((s, v) => s + (v - etMean) ** 2, 0) / ets.length);
-    lines.push(`  Et   min=${Math.min(...ets).toFixed(4)} GeV   max=${Math.max(...ets).toFixed(4)} GeV   mean=${etMean.toFixed(4)} GeV   σ=${etStd.toFixed(4)} GeV`);
-
-    // nCells statistics
-    const ncs    = clusters.map(c => SDETS.reduce((s, k) => s + c.cells[k].length, 0));
-    const ncMean = ncs.reduce((s, v) => s + v, 0) / ncs.length;
-    lines.push(`  nCells  min=${Math.min(...ncs)}   max=${Math.max(...ncs)}   mean=${ncMean.toFixed(1)}`);
-    lines.push(SEP);
-
-    // Per-cluster table
-    lines.push(`  ${'#'.padStart(4)}  ${'η'.padEnd(11)} ${'φ (rad)'.padEnd(11)} ${'Et (GeV)'.padEnd(10)} ${'nCells'.padEnd(7)} TILE    LAr EM  HEC     Track   Other`);
-    lines.push(`  ${'─'.repeat(4)}  ${'─'.repeat(11)} ${'─'.repeat(11)} ${'─'.repeat(10)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)}`);
-
-    clusters.forEach(({ eta, phi, etGev, cells }, i) => {
-      const nc = SDETS.reduce((s, k) => s + cells[k].length, 0);
-      lines.push(
-        `  ${String(i+1).padStart(4)}  ${pad(eta.toFixed(5),11)} ${pad(phi.toFixed(5),11)}` +
-        ` ${pad(etGev.toFixed(4),10)} ${pad(nc,7)}` +
-        ` ${pad(cells.TILE.length,7)} ${pad(cells.LAR_EM.length,7)} ${pad(cells.HEC.length,7)} ${pad(cells.TRACK.length,7)} ${cells.OTHER.length}`
-      );
-      // Cell IDs grouped by subdetector
-      const ind = '         ';
-      dumpIds('TILE',   cells.TILE,   ind);
-      dumpIds('LAr EM', cells.LAR_EM, ind);
-      dumpIds('HEC',    cells.HEC,    ind);
-      dumpIds('Track',  cells.TRACK,  ind);
-      // For OTHER, group by actual subdet value so the user can see what they are
-      if (cells.OTHER.length) {
-        const bySubdet = {};
-        for (const idStr of cells.OTHER) {
-          const sd = _CELL_SUBDET_MAP[Number((BigInt(idStr) >> 61n) & 7n)] ?? '?';
-          (bySubdet[sd] ??= []).push(idStr);
-        }
-        for (const [sd, ids] of Object.entries(bySubdet).sort((a,b) => a[0]-b[0]))
-          dumpIds(`Other(${sd})`, ids, ind);
-      }
-    });
-    lines.push('');
-  }
-
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.download = `cluster_stats_${new Date().toISOString().slice(0,19).replace(/[:.]/g,'-')}.txt`;
-  a.href = url;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 // ── Scene reset ───────────────────────────────────────────────────────────────
 function resetScene() {
   for (const [name, mesh] of meshByName) {
@@ -1283,16 +1195,24 @@ function resetScene() {
   clearClusters();
   lastClusterData      = null;
   activeClusterCellIds = null;
+  activeMbtsLabels     = null;
   tooltip.hidden = true; dirty = true;
 }
 function applyThreshold() {
   rayTargets = [];
-  for (const [mesh, { energyMev, det, cellId }] of active) {
+  for (const [mesh, { energyMev, det, cellId, mbtsLabel }] of active) {
     const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
     const detOn  = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
-    const inCluster = activeClusterCellIds === null   // no cluster data → no filter
-                   || cellId == null                   // MBTS / cells without ID → always pass
-                   || activeClusterCellIds.has(cellId);
+    let inCluster;
+    if (activeClusterCellIds === null) {
+      inCluster = true;                                           // no cluster data → no filter
+    } else if (mbtsLabel != null) {
+      inCluster = activeMbtsLabels !== null && activeMbtsLabels.has(mbtsLabel); // MBTS: cluster eta/phi match
+    } else if (cellId != null) {
+      inCluster = activeClusterCellIds.has(cellId);              // normal cell: ID match
+    } else {
+      inCluster = true;                                           // no ID and not MBTS → always pass
+    }
     const vis = detOn && (!isFinite(thr) || energyMev >= thr) && inCluster;
     mesh.visible = vis; if (vis) rayTargets.push(mesh);
   }
@@ -1465,7 +1385,7 @@ function processXml(xmlText) {
     if (!mesh) { console.warn(`[MBTS] label=${label} | no mesh`); nMbtsMiss++; continue; }
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     const mbtsCoords = `η = ${((s_bit?1:-1)*(_m[2]==='0'?2.76:3.84)).toFixed(3)}   φ = ${_wrapPhi(2*Math.PI/16+mod*2*Math.PI/8).toFixed(3)} rad`;
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: 'MBTS', coords: mbtsCoords, det: 'TILE' });
+    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: 'MBTS', coords: mbtsCoords, det: 'TILE', mbtsLabel: label });
     nMbts++;
   }
 
@@ -1718,8 +1638,6 @@ const clusterEtSlider = makeClusterEtSlider(
   'cluster-strak', 'cluster-sthumb', 'cluster-thr-input',
   'cluster-sval-max', 'cluster-sval-min'
 );
-
-document.getElementById('btn-cluster-dl').addEventListener('click', downloadClusterStats);
 
 // Initialize thumb positions at default threshold
 tileSlider.updateUI(thrTileMev);
