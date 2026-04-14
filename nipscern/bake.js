@@ -69,6 +69,47 @@ function extractMbts(doc){
   }
   return cells;
 }
+const CLUSTER_THR_GEV = 3;
+const CLUSTER_CYL_IN_R = 1400, CLUSTER_CYL_IN_HALF_H = 3200;
+const CLUSTER_CYL_OUT_R = 3820, CLUSTER_CYL_OUT_HALF_H = 6000;
+function _cylIntersect(dx, dy, dz, r, halfH){
+  const rT = Math.sqrt(dx*dx + dy*dy);
+  if(rT > 1e-9){
+    const tB = r / rT;
+    if(Math.abs(dz * tB) <= halfH) return tB;
+  }
+  return halfH / Math.abs(dz);
+}
+function parseClusters(doc){
+  const out = [];
+  for(const el of doc.getElementsByTagName('Cluster')){
+    const etaEl = el.querySelector('eta');
+    const phiEl = el.querySelector('phi');
+    const etEl  = el.querySelector('et');
+    if(!etaEl || !phiEl) continue;
+    const etas = etaEl.textContent.trim().split(/\s+/).map(Number);
+    const phis = phiEl.textContent.trim().split(/\s+/).map(Number);
+    const ets  = etEl ? etEl.textContent.trim().split(/\s+/).map(Number) : [];
+    const m = Math.min(etas.length, phis.length);
+    for(let i=0;i<m;i++){
+      const eta = etas[i], phi = phis[i], et = isFinite(ets[i]) ? ets[i] : 0;
+      if(!isFinite(eta) || !isFinite(phi)) continue;
+      if(et < CLUSTER_THR_GEV) continue;
+      const theta = 2 * Math.atan(Math.exp(-eta));
+      const sinT = Math.sin(theta);
+      const dx = -sinT * Math.cos(phi);
+      const dy = -sinT * Math.sin(phi);
+      const dz =  Math.cos(theta);
+      const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R,  CLUSTER_CYL_IN_HALF_H);
+      const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
+      const arr = new Float32Array(6);
+      arr[0] = dx*t0; arr[1] = dy*t0; arr[2] = dz*t0;
+      arr[3] = dx*t1; arr[4] = dy*t1; arr[5] = dz*t1;
+      out.push(arr);
+    }
+  }
+  return out;
+}
 function parseTracks(doc){
   const out=[];
   for(const el of doc.getElementsByTagName('Track')){
@@ -173,6 +214,8 @@ async function main(){
 
   const tracks = parseTracks(doc);
   log('  tracks:', tracks.length);
+  const clusters = parseClusters(doc);
+  log('  clusters (Et >= '+CLUSTER_THR_GEV+' GeV):', clusters.length);
 
   // Resolve to (meshName, energyMev, det)
   const idsToStr = cs => cs.map(c=>c.id).join(' ');
@@ -270,6 +313,12 @@ async function main(){
     trackHeaders.push(pushChunk(arr));
   }
 
+  log('Packing clusters...');
+  const clusterHeaders = [];
+  for(const arr of clusters){
+    clusterHeaders.push(pushChunk(arr));
+  }
+
   // Assemble body buffer
   const body = new ArrayBuffer(byteCursor);
   const bodyU8 = new Uint8Array(body);
@@ -278,10 +327,11 @@ async function main(){
   }
 
   const header = {
-    v: 1,
+    v: 2,
     cells: cellHeaders,
     ghosts: ghostHeaders,
     tracks: trackHeaders,
+    clusters: clusterHeaders,
   };
   let headerJson = JSON.stringify(header);
   // Pad header so (4 + headerLen) is 4-aligned for typed-array views into body

@@ -1062,7 +1062,7 @@ let thrClusterEtGev   = 0;
 let clusterEtMinGev   = 0;
 let clusterEtMaxGev   = 1;
 
-const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, depthWrite: false });
+const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, linewidth: 2 });
 
 function clearTracks() {
   if (!trackGroup) return;
@@ -1102,7 +1102,7 @@ function drawTracks(tracks) {
 // Lines are drawn from the origin in the η/φ direction, 5 m = 5000 mm long.
 // Coordinate convention matches tracks: Three.js X = −ATLAS x, Y = −ATLAS y.
 const CLUSTER_MAT = new THREE.LineDashedMaterial({
-  color: 0xff4400, transparent: true, opacity: 0.10,
+  color: 0xff4400, transparent: true, opacity: 0.55,
   dashSize: 40, gapSize: 60, depthWrite: false,
 });
 // Inner cylinder (start): r = 1.4 m, h = 6.4 m
@@ -1169,6 +1169,7 @@ function drawClusters(clusters) {
   if (!clusters.length) return;
   clusterGroup = new THREE.Group();
   clusterGroup.renderOrder = 6;
+  clusterGroup.visible = (typeof clustersVisible === 'undefined') ? true : clustersVisible;
   for (const { eta, phi, etGev, storeGateKey } of clusters) {
     const theta = 2 * Math.atan(Math.exp(-eta));
     const sinT  = Math.sin(theta);
@@ -1982,6 +1983,19 @@ function toggleTracks() {
   dirty = true;
 }
 document.getElementById('btn-tracks').addEventListener('click', toggleTracks);
+
+// ── Cluster η/φ lines toggle ────────────────────────────────────────────────
+let clustersVisible = true;
+function syncClustersBtn() {
+  document.getElementById('btn-cluster').classList.toggle('on', clustersVisible);
+}
+function toggleClusters() {
+  clustersVisible = !clustersVisible;
+  if (clusterGroup) clusterGroup.visible = clustersVisible;
+  syncClustersBtn();
+  dirty = true;
+}
+document.getElementById('btn-cluster').addEventListener('click', toggleClusters);
 document.addEventListener('click', () => { if (layersPanelOpen) closeLayersPanel(); });
 layersPanel.addEventListener('click', e => e.stopPropagation());
 
@@ -2809,6 +2823,9 @@ document.addEventListener('keydown', e => {
       break;
     case 'J':
       document.getElementById('btn-tracks').click();
+      break;
+    case 'K':
+      document.getElementById('btn-cluster').click();
       break;
     case 'ESCAPE':
       if (cinemaMode)          { exitCinema(); return; }

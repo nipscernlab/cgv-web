@@ -81,7 +81,11 @@ function buildPhiLines(){
 const ghostSolidMat = new THREE.MeshBasicMaterial({color:0x5C5F66, transparent:true, opacity:0.04, depthWrite:false, side:THREE.DoubleSide});
 const outlineAllMat = new THREE.LineBasicMaterial({color:0x000000});
 const outlineHoverMat = new THREE.LineBasicMaterial({color:0xffffff});
-const trackMat = new THREE.LineBasicMaterial({color:0xffea00, depthWrite:false});
+const trackMat = new THREE.LineBasicMaterial({color:0xffea00});
+const clusterMat = new THREE.LineDashedMaterial({
+  color:0xff4400, transparent:true, opacity:0.55,
+  dashSize:40, gapSize:60, depthWrite:false,
+});
 
 const matCache = new Map();
 function matForRgb(r, g, b){
@@ -218,7 +222,7 @@ async function main(){
   }
 
   // Tracks
-  if(header.tracks.length){
+  if(header.tracks && header.tracks.length){
     const group = new THREE.Group();
     group.renderOrder = 5;
     for(const [off, byteLen] of header.tracks){
@@ -226,6 +230,21 @@ async function main(){
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
       group.add(new THREE.Line(geo, trackMat));
+    }
+    scene.add(group);
+  }
+
+  // Clusters
+  if(header.clusters && header.clusters.length){
+    const group = new THREE.Group();
+    group.renderOrder = 6;
+    for(const [off, byteLen] of header.clusters){
+      const pts = f32(off, byteLen);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+      const line = new THREE.Line(geo, clusterMat);
+      line.computeLineDistances();
+      group.add(line);
     }
     scene.add(group);
   }
