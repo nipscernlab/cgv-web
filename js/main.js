@@ -325,7 +325,7 @@ let larMaxMev  = 1, larMinMev  = 0;
 let hecMaxMev  = 1, hecMinMev  = 0;
 let thrTileMev = 50;    // 0.05 GeV default
 let thrLArMev  = 0;    // 0 GeV default
-let thrHecMev  = 1000; // 1 GeV default (HEC energies are typically higher)
+let thrHecMev  = 600;  // 0.6 GeV default
 let showHec    = true;
 let wasmOk     = false;
 let sceneOk    = false;
@@ -953,6 +953,7 @@ function parseTracks(doc) {
     const numHitsArr = numHitsEl ? numHitsEl.textContent.trim().split(/\s+/).map(Number) : [];
     const allHitStrs = hitsEl    ? hitsEl.textContent.trim().split(/\s+/)                : [];
 
+    const storeGateKey = el.getAttribute('storeGateKey') ?? '';
     let offset = 0, hitOffset = 0;
     for (let i = 0; i < numPoly.length; i++) {
       const n  = numPoly[i];
@@ -966,7 +967,7 @@ function parseTracks(doc) {
           pts.push(new THREE.Vector3(-xs[k] * 10, -ys[k] * 10, zs[k] * 10));
         }
         const ptGev = i < ptArr.length ? Math.abs(ptArr[i]) : 0;
-        tracks.push({ pts, ptGev, hitIds });
+        tracks.push({ pts, ptGev, hitIds, storeGateKey });
       }
       offset += n;
     }
@@ -1082,11 +1083,12 @@ function drawTracks(tracks) {
   trackGroup = new THREE.Group();
   trackGroup.renderOrder = 5;
   trackGroup.visible = (typeof tracksVisible === 'undefined') ? true : tracksVisible;
-  for (const { pts, ptGev, hitIds } of tracks) {
+  for (const { pts, ptGev, hitIds, storeGateKey } of tracks) {
     const geo  = new THREE.BufferGeometry().setFromPoints(pts);
     const line = new THREE.Line(geo, TRACK_MAT);
-    line.userData.ptGev  = ptGev;
-    line.userData.hitIds = hitIds;
+    line.userData.ptGev        = ptGev;
+    line.userData.hitIds       = hitIds;
+    line.userData.storeGateKey = storeGateKey;
     trackGroup.add(line);
   }
   scene.add(trackGroup);
@@ -1164,7 +1166,7 @@ function drawClusters(clusters) {
   if (!clusters.length) return;
   clusterGroup = new THREE.Group();
   clusterGroup.renderOrder = 6;
-  for (const { eta, phi, etGev } of clusters) {
+  for (const { eta, phi, etGev, storeGateKey } of clusters) {
     const theta = 2 * Math.atan(Math.exp(-eta));
     const sinT  = Math.sin(theta);
     const dx = -sinT * Math.cos(phi);
@@ -1177,7 +1179,8 @@ function drawClusters(clusters) {
     const geo  = new THREE.BufferGeometry().setFromPoints([start, end]);
     const line = new THREE.Line(geo, CLUSTER_MAT);
     line.computeLineDistances();
-    line.userData.etGev = etGev;
+    line.userData.etGev        = etGev;
+    line.userData.storeGateKey = storeGateKey ?? '';
     clusterGroup.add(line);
   }
   scene.add(clusterGroup);
@@ -1769,13 +1772,16 @@ function _buildOutlinesNow() {
 // ── Hover tooltip — raycasting fix ───────────────────────────────────────────
 const raycast  = new THREE.Raycaster();
 raycast.firstHitOnly = true;  // stop after first intersection (much faster)
+raycast.params.Line = { threshold: 25 };  // 25 mm hit zone for track lines
 const mxy      = new THREE.Vector2();
 const tooltip  = document.getElementById('tip');
 let   lastRay  = 0;
 let   mousePos = { x: 0, y: 0 };
 document.addEventListener('mousemove', e => { mousePos.x = e.clientX; mousePos.y = e.clientY; });
 function doRaycast(clientX, clientY) {
-  if (!showInfo || cinemaMode || !active.size) { tooltip.hidden = true; clearOutline(); return; }
+  const hasTrackLines   = trackGroup   && trackGroup.visible   && trackGroup.children.length   > 0;
+  const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
+  if (!showInfo || cinemaMode || (!active.size && !hasTrackLines && !hasClusterLines)) { tooltip.hidden = true; clearOutline(); return; }
   // Don't show cell info when the pointer is over any UI element (panels, toolbar, overlays)
   const topEl = document.elementFromPoint(clientX, clientY);
   if (topEl && topEl !== canvas) { tooltip.hidden = true; clearOutline(); return; }
@@ -1786,14 +1792,56 @@ function doRaycast(clientX, clientY) {
   mxy.set(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
   camera.updateMatrixWorld();
   raycast.setFromCamera(mxy, camera);
-  const hits = raycast.intersectObjects(rayTargets, false);
-  if (hits.length) {
-    const data = active.get(hits[0].object);
-    if (data) {
-      showOutline(hits[0].object);
-      document.getElementById('tip-cell').textContent  = data.cellName;
-      document.getElementById('tip-coords').textContent = data.coords ?? '';
-      document.getElementById('tip-e').textContent      = `${data.energyGev.toFixed(4)} GeV`;
+  const tipEKeyEl = document.querySelector('#tip .tkey');
+  // ── Cell hit ──────────────────────────────────────────────────────────────
+  if (active.size) {
+    const hits = raycast.intersectObjects(rayTargets, false);
+    if (hits.length) {
+      const data = active.get(hits[0].object);
+      if (data) {
+        showOutline(hits[0].object);
+        document.getElementById('tip-cell').textContent   = data.cellName;
+        document.getElementById('tip-coords').textContent = data.coords ?? '';
+        document.getElementById('tip-e').textContent      = `${data.energyGev.toFixed(4)} GeV`;
+        if (tipEKeyEl) tipEKeyEl.textContent = t('tip-energy-key');
+        tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
+        tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
+        tooltip.hidden = false; dirty = true; return;
+      }
+    }
+  }
+  // ── Track hit ─────────────────────────────────────────────────────────────
+  if (hasTrackLines) {
+    const visibleTracks = trackGroup.children.filter(c => c.visible);
+    const trackHits = raycast.intersectObjects(visibleTracks, false);
+    if (trackHits.length) {
+      const line         = trackHits[0].object;
+      const ptGev        = line.userData.ptGev        ?? 0;
+      const storeGateKey = line.userData.storeGateKey ?? '';
+      clearOutline();
+      document.getElementById('tip-cell').textContent   = 'Track';
+      document.getElementById('tip-coords').textContent = storeGateKey;
+      document.getElementById('tip-e').textContent      = `${ptGev.toFixed(3)} GeV`;
+      if (tipEKeyEl) tipEKeyEl.textContent = 'pT';
+      tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
+      tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
+      tooltip.hidden = false; dirty = true; return;
+    }
+  }
+  // ── Cluster hit ───────────────────────────────────────────────────────────
+  if (hasClusterLines) {
+    const visibleClusters = clusterGroup.children.filter(c => c.visible);
+    const clusterHits = raycast.intersectObjects(visibleClusters, false);
+    if (clusterHits.length) {
+      const line         = clusterHits[0].object;
+      console.log('[cluster hit] userData:', JSON.stringify(line.userData));
+      const etGev        = line.userData.etGev        ?? 0;
+      const storeGateKey = line.userData.storeGateKey ?? '';
+      clearOutline();
+      document.getElementById('tip-cell').textContent   = 'Cluster';
+      document.getElementById('tip-coords').textContent = storeGateKey;
+      document.getElementById('tip-e').textContent      = `${etGev.toFixed(3)} GeV`;
+      if (tipEKeyEl) tipEKeyEl.innerHTML = 'E<sub>T</sub>';
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
       tooltip.hidden = false; dirty = true; return;
