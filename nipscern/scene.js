@@ -1,586 +1,236 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import wasmInit, { parse_atlas_ids_bulk } from './atlas_id_parser.js';
 
-const SUBSYS_TILE = 1;
-const SUBSYS_LAR_EM = 2;
-const SUBSYS_LAR_HEC = 3;
-
-const PAL_N = 256;
-const DEF_THR = 200;
-
-const meshByName = new Map();
-const origMat = new Map();
-let active = new Map();
-let rayTargets = [];
-let thrTileMev = DEF_THR;
-let thrLArMev = DEF_THR;
-let thrHecMev = 1000;
-let showTile = true;
-let showLAr = true;
-let showHec = true;
-let wasmOk = false;
-let sceneOk = false;
-let dirty = true;
-let beamGroup = null;
-let beamOn = false;
-let allOutlinesMesh = null;
-let trackGroup = null;
-let showGhostTile = false;
-let ghostPhiGroup = null;
-
-// ── Palettes ─────────────────────────────────────────────────────────────────
-function palColorTile(t) {
-  t = Math.max(0, Math.min(1, t));
-  return new THREE.Color(1.0 + t * (0.502 - 1.0), 1.0 + t * (0.0 - 1.0), 0.0);
-}
-const PAL_TILE = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorTile(i / (PAL_N - 1));
-  c.offsetHSL(0, 0.35, 0);
-  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
-});
-const TILE_SCALE = 2000;
-function palMatTile(eMev) {
-  return PAL_TILE[Math.round(Math.max(0, Math.min(1, eMev / TILE_SCALE)) * (PAL_N - 1))];
-}
-
-function palColorHec(t) {
-  t = Math.max(0, Math.min(1, t));
-  return new THREE.Color(0.4 + t * (0.0471 - 0.4), 0.8784 + t * (0.0118 - 0.8784), 0.9647 + t * (0.4078 - 0.9647));
-}
-const PAL_HEC = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorHec(i / (PAL_N - 1));
-  c.offsetHSL(0, 0.35, 0);
-  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
-});
-const HEC_SCALE = 5000;
-function palMatHec(eMev) {
-  return PAL_HEC[Math.round(Math.max(0, Math.min(1, eMev / HEC_SCALE)) * (PAL_N - 1))];
-}
-
-function palColorLAr(t) {
-  t = Math.max(0, Math.min(1, t));
-  return new THREE.Color(0.0902 + t * (0.1529 - 0.0902), 0.8118 + t * (0.0 - 0.8118), 0.2588);
-}
-const PAL_LAR = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorLAr(i / (PAL_N - 1));
-  c.offsetHSL(0, 0.35, 0);
-  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
-});
-const LAR_SCALE = 1000;
-function palMatLAr(eMev) {
-  return PAL_LAR[Math.round(Math.max(0, Math.min(1, eMev / LAR_SCALE)) * (PAL_N - 1))];
-}
-
-// ── Ghost ────────────────────────────────────────────────────────────────────
-const GHOST_TILE_NAMES = [
-  'Calorimeter→LBTile_0', 'Calorimeter→LBTileLArg_0',
-  'Calorimeter→EBTilep_0', 'Calorimeter→EBTilen_0',
-  'Calorimeter→EBTileHECp_0', 'Calorimeter→EBTileHECn_0',
-];
-const ghostSolidMat = new THREE.MeshBasicMaterial({
-  color: 0x5C5F66, transparent: true, opacity: 0.04,
-  depthWrite: false, side: THREE.DoubleSide,
-});
-const ghostPhiMat = new THREE.LineBasicMaterial({
-  color: 0xFFFFFF, transparent: true, opacity: 0.04, depthWrite: false,
-});
-
-const TILE_PHI_SEGS = [
-  { rIn: 2288, rOut: 3835, zMin: -2820, zMax: 2820 },
-  { rIn: 2288, rOut: 3835, zMin: 3600, zMax: 6050 },
-  { rIn: 2288, rOut: 3835, zMin: -6050, zMax: -3600 },
-];
-const N_PHI = 64;
-
-function buildPhiLines() {
-  if (ghostPhiGroup) { scene.remove(ghostPhiGroup); ghostPhiGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-  ghostPhiGroup = new THREE.Group();
-  ghostPhiGroup.renderOrder = 6;
-  ghostPhiGroup.visible = false;
-  for (let i = 0; i < N_PHI; i++) {
-    const phi = (i / N_PHI) * Math.PI * 2;
-    const cx = Math.cos(phi), cy = Math.sin(phi);
-    for (const { rIn, rOut, zMin, zMax } of TILE_PHI_SEGS) {
-      const pts = [
-        new THREE.Vector3(cx * rIn, cy * rIn, zMin),
-        new THREE.Vector3(cx * rIn, cy * rIn, zMax),
-        new THREE.Vector3(cx * rOut, cy * rOut, zMax),
-        new THREE.Vector3(cx * rOut, cy * rOut, zMin),
-        new THREE.Vector3(cx * rIn, cy * rIn, zMin),
-      ];
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      ghostPhiGroup.add(new THREE.Line(geo, ghostPhiMat));
-    }
-  }
-  scene.add(ghostPhiGroup);
-}
-
-function applyGhostMesh(visible) {
-  for (const name of GHOST_TILE_NAMES) {
-    const mesh = meshByName.get(name);
-    if (!mesh) continue;
-    if (visible) {
-      mesh.material = ghostSolidMat;
-      mesh.renderOrder = 5;
-      mesh.visible = true;
-    } else {
-      mesh.material = origMat.get(name) ?? mesh.material;
-      mesh.renderOrder = 0;
-      mesh.visible = false;
-    }
-  }
-  if (ghostPhiGroup) ghostPhiGroup.visible = visible;
-  dirty = true;
-}
-
-function toggleAllGhosts() {
-  showGhostTile = !showGhostTile;
-  buildPhiLines();
-  applyGhostMesh(showGhostTile);
-}
-
-// ── Renderer ─────────────────────────────────────────────────────────────────
+// ── Renderer / scene / camera ────────────────────────────────────────────────
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: false, stencil: false, depth: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, powerPreference:'high-performance', precision:'mediump', preserveDrawingBuffer:false, stencil:false, depth:true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.sortObjects = false;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x5070f);
+scene.background = new THREE.Color(0x05070f);
 scene.matrixAutoUpdate = false;
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 10, 100_000);
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 10, 100_000);
 camera.position.set(0, 0, 12_000);
 const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.14;
-controls.zoomSpeed = 1.2;
-controls.addEventListener('change', () => { dirty = true; });
+controls.enableDamping = true; controls.dampingFactor = 0.14; controls.zoomSpeed = 1.2;
 
-(function loop() {
+let dirty = true;
+controls.addEventListener('change', () => { dirty = true; });
+(function loop(){
   requestAnimationFrame(loop);
   controls.update();
-  if (controls.autoRotate) dirty = true;
-  if (!dirty) return;
+  if(controls.autoRotate) dirty = true;
+  if(!dirty) return;
   renderer.render(scene, camera);
   dirty = false;
 })();
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
-  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
   dirty = true;
 });
 
 // ── Beam indicator ───────────────────────────────────────────────────────────
-function buildBeamIndicator() {
-  if (beamGroup) return;
-  beamGroup = new THREE.Group();
-  const axisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, -13000), new THREE.Vector3(0, 0, 13000)]);
-  beamGroup.add(new THREE.Line(axisGeo, new THREE.LineBasicMaterial({ color: 0x4a7fcc, transparent: true, opacity: 0.50, depthWrite: false })));
-  const northMesh = new THREE.Mesh(new THREE.ConeGeometry(90, 520, 24, 1, false), new THREE.MeshBasicMaterial({ color: 0xee2222 }));
-  northMesh.rotation.x = Math.PI / 2; northMesh.position.z = 13260; beamGroup.add(northMesh);
-  const ringN = new THREE.Mesh(new THREE.TorusGeometry(90, 8, 8, 24), new THREE.MeshBasicMaterial({ color: 0xff6666, transparent: true, opacity: 0.55 }));
-  ringN.rotation.x = Math.PI / 2; ringN.position.z = 13000; beamGroup.add(ringN);
-  const southMesh = new THREE.Mesh(new THREE.ConeGeometry(90, 520, 24, 1, false), new THREE.MeshBasicMaterial({ color: 0x2244ee }));
-  southMesh.rotation.x = -Math.PI / 2; southMesh.position.z = -13260; beamGroup.add(southMesh);
-  const ringS = new THREE.Mesh(new THREE.TorusGeometry(90, 8, 8, 24), new THREE.MeshBasicMaterial({ color: 0x6699ff, transparent: true, opacity: 0.55 }));
-  ringS.rotation.x = Math.PI / 2; ringS.position.z = -13000; beamGroup.add(ringS);
-  beamGroup.visible = false; scene.add(beamGroup);
+function buildBeam(){
+  const g = new THREE.Group();
+  const axisGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,-13000), new THREE.Vector3(0,0,13000)]);
+  g.add(new THREE.Line(axisGeo, new THREE.LineBasicMaterial({color:0x4a7fcc, transparent:true, opacity:0.50, depthWrite:false})));
+  const north = new THREE.Mesh(new THREE.ConeGeometry(90,520,24,1,false), new THREE.MeshBasicMaterial({color:0xee2222}));
+  north.rotation.x = Math.PI/2; north.position.z = 13260; g.add(north);
+  const ringN = new THREE.Mesh(new THREE.TorusGeometry(90,8,8,24), new THREE.MeshBasicMaterial({color:0xff6666, transparent:true, opacity:0.55}));
+  ringN.rotation.x = Math.PI/2; ringN.position.z = 13000; g.add(ringN);
+  const south = new THREE.Mesh(new THREE.ConeGeometry(90,520,24,1,false), new THREE.MeshBasicMaterial({color:0x2244ee}));
+  south.rotation.x = -Math.PI/2; south.position.z = -13260; g.add(south);
+  const ringS = new THREE.Mesh(new THREE.TorusGeometry(90,8,8,24), new THREE.MeshBasicMaterial({color:0x6699ff, transparent:true, opacity:0.55}));
+  ringS.rotation.x = Math.PI/2; ringS.position.z = -13000; g.add(ringS);
+  scene.add(g);
 }
-function toggleBeam() {
-  buildBeamIndicator();
-  beamOn = !beamOn;
-  beamGroup.visible = beamOn;
+
+// ── Phi ghost lines (procedural — no data needed) ────────────────────────────
+const TILE_PHI_SEGS = [
+  { rIn:2288, rOut:3835, zMin:-2820, zMax:2820 },
+  { rIn:2288, rOut:3835, zMin:3600,  zMax:6050 },
+  { rIn:2288, rOut:3835, zMin:-6050, zMax:-3600 },
+];
+const N_PHI = 64;
+function buildPhiLines(){
+  const group = new THREE.Group();
+  group.renderOrder = 6;
+  const mat = new THREE.LineBasicMaterial({color:0xFFFFFF, transparent:true, opacity:0.04, depthWrite:false});
+  for(let i=0;i<N_PHI;i++){
+    const phi=(i/N_PHI)*Math.PI*2; const cx=Math.cos(phi), cy=Math.sin(phi);
+    for(const {rIn,rOut,zMin,zMax} of TILE_PHI_SEGS){
+      const pts=[
+        new THREE.Vector3(cx*rIn,  cy*rIn,  zMin),
+        new THREE.Vector3(cx*rIn,  cy*rIn,  zMax),
+        new THREE.Vector3(cx*rOut, cy*rOut, zMax),
+        new THREE.Vector3(cx*rOut, cy*rOut, zMin),
+        new THREE.Vector3(cx*rIn,  cy*rIn,  zMin),
+      ];
+      group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
+    }
+  }
+  scene.add(group);
+}
+
+// ── Materials / runtime state ────────────────────────────────────────────────
+const ghostSolidMat = new THREE.MeshBasicMaterial({color:0x5C5F66, transparent:true, opacity:0.04, depthWrite:false, side:THREE.DoubleSide});
+const outlineAllMat = new THREE.LineBasicMaterial({color:0x000000});
+const outlineHoverMat = new THREE.LineBasicMaterial({color:0xffffff});
+const trackMat = new THREE.LineBasicMaterial({color:0xffea00, depthWrite:false});
+
+const matCache = new Map();
+function matForRgb(r, g, b){
+  const key = (Math.round(r*255)<<16) | (Math.round(g*255)<<8) | Math.round(b*255);
+  let m = matCache.get(key);
+  if(!m){
+    m = new THREE.MeshBasicMaterial({color: new THREE.Color(r,g,b), side:THREE.FrontSide});
+    matCache.set(key, m);
+  }
+  return m;
+}
+
+const rayTargets = [];
+const cellEdgeBufByName = new Map(); // name -> Float32Array (baked edge positions)
+
+// ── Hover white outline ──────────────────────────────────────────────────────
+let hoverMesh = null;
+function clearHover(){
+  if(!hoverMesh) return;
+  scene.remove(hoverMesh);
+  hoverMesh.geometry.dispose();
+  hoverMesh = null;
   dirty = true;
 }
-
-// ── Hover outline (white, single cell) ───────────────────────────────────────
-const eGeoCache = new Map();
-const outlineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-let outlineMesh = null;
-function clearOutline() {
-  if (!outlineMesh) return; scene.remove(outlineMesh); outlineMesh = null; dirty = true;
-}
-function showOutline(mesh) {
-  if (outlineMesh?.userData.src === mesh.name) return;
-  clearOutline();
-  mesh.updateWorldMatrix(true, false);
-  const uid = mesh.geometry.uuid;
-  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
-  outlineMesh = new THREE.LineSegments(eGeoCache.get(uid), outlineMat);
-  outlineMesh.matrixAutoUpdate = false;
-  outlineMesh.matrix.copy(mesh.matrixWorld);
-  outlineMesh.matrixWorld.copy(mesh.matrixWorld);
-  outlineMesh.renderOrder = 999; outlineMesh.userData.src = mesh.name;
-  scene.add(outlineMesh); dirty = true;
-}
-
-// ── All-cells outline (black, global) ────────────────────────────────────────
-const outlineAllMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-const _edgeWorldCache = new Map();
-
-function _getWorldEdges(mesh) {
-  const cached = _edgeWorldCache.get(mesh.name);
-  if (cached) return cached;
-  mesh.updateWorldMatrix(true, false);
-  const uid = mesh.geometry.uuid;
-  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
-  const src = eGeoCache.get(uid).getAttribute('position').array;
-  const m = mesh.matrixWorld.elements;
-  const out = new Float32Array(src.length);
-  for (let i = 0; i < src.length; i += 3) {
-    const x = src[i], y = src[i + 1], z = src[i + 2];
-    out[i] = m[0] * x + m[4] * y + m[8] * z + m[12];
-    out[i + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
-    out[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
-  }
-  _edgeWorldCache.set(mesh.name, out);
-  return out;
-}
-
-function clearAllOutlines() {
-  if (!allOutlinesMesh) return;
-  scene.remove(allOutlinesMesh);
-  allOutlinesMesh.geometry.dispose();
-  allOutlinesMesh = null;
-  dirty = true;
-}
-
-function rebuildAllOutlines() {
-  clearAllOutlines();
-  if (!rayTargets.length) return;
-  let total = 0;
-  const edgeArrays = new Array(rayTargets.length);
-  for (let i = 0; i < rayTargets.length; i++) {
-    const arr = _getWorldEdges(rayTargets[i]);
-    edgeArrays[i] = arr;
-    total += arr.length;
-  }
-  const buf = new Float32Array(total);
-  let offset = 0;
-  for (let i = 0; i < edgeArrays.length; i++) {
-    buf.set(edgeArrays[i], offset);
-    offset += edgeArrays[i].length;
-  }
+function showHover(mesh){
+  if(hoverMesh && hoverMesh.userData.src === mesh.name) return;
+  clearHover();
+  const edgeBuf = cellEdgeBufByName.get(mesh.name);
+  if(!edgeBuf) return;
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
-  allOutlinesMesh = new THREE.LineSegments(geo, outlineAllMat);
-  allOutlinesMesh.matrixAutoUpdate = false;
-  allOutlinesMesh.frustumCulled = false;
-  allOutlinesMesh.renderOrder = 3;
-  scene.add(allOutlinesMesh);
+  geo.setAttribute('position', new THREE.BufferAttribute(edgeBuf, 3));
+  hoverMesh = new THREE.LineSegments(geo, outlineHoverMat);
+  hoverMesh.matrixAutoUpdate = false;
+  hoverMesh.frustumCulled = false;
+  hoverMesh.renderOrder = 999;
+  hoverMesh.userData.src = mesh.name;
+  scene.add(hoverMesh);
   dirty = true;
 }
 
-// ── Raycasting (hover — white outline only, no tooltip) ──────────────────────
+// ── Raycast hover ────────────────────────────────────────────────────────────
 const raycast = new THREE.Raycaster();
 raycast.firstHitOnly = true;
 const mxy = new THREE.Vector2();
 let lastRay = 0;
-function doRaycast(clientX, clientY) {
-  if (!active.size) { clearOutline(); return; }
-  const topEl = document.elementFromPoint(clientX, clientY);
-  if (topEl && topEl !== canvas) { clearOutline(); return; }
+function doRaycast(x, y){
+  if(!rayTargets.length){ clearHover(); return; }
+  const top = document.elementFromPoint(x, y);
+  if(top && top !== canvas){ clearHover(); return; }
   const rect = canvas.getBoundingClientRect();
-  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
-    clearOutline(); return;
-  }
-  mxy.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+  if(x<rect.left||x>rect.right||y<rect.top||y>rect.bottom){ clearHover(); return; }
+  mxy.set(((x-rect.left)/rect.width)*2-1, -((y-rect.top)/rect.height)*2+1);
   camera.updateMatrixWorld();
   raycast.setFromCamera(mxy, camera);
   const hits = raycast.intersectObjects(rayTargets, false);
-  if (hits.length && active.has(hits[0].object.name)) {
-    showOutline(hits[0].object);
-  } else {
-    clearOutline();
-  }
+  if(hits.length) showHover(hits[0].object); else clearHover();
 }
 document.addEventListener('mousemove', e => {
-  const now = Date.now(); if (now - lastRay < 50) return; lastRay = now;
+  const now = Date.now(); if(now - lastRay < 50) return; lastRay = now;
   doRaycast(e.clientX, e.clientY);
 });
-canvas.addEventListener('mouseleave', () => { clearOutline(); });
+canvas.addEventListener('mouseleave', clearHover);
 
-// ── HEC group names — for physLarHecEta reconstruction ───────────────────────
-const HEC_NAMES = ['1', '23', '45', '67'];
-const HEC_INNER = [10, 10, 9, 8];
-
-// ── MBTS mesh path ───────────────────────────────────────────────────────────
-function mbtsMeshPath(label) {
-  const m = /^type_(-?1)_ch_([01])_mod_([0-7])$/.exec(label);
-  if (!m) return null;
-  const side = m[1] === '1' ? 'p' : 'n';
-  const tileNum = m[2] === '0' ? 14 : 15;
-  const mod = m[3];
-  const path = `Calorimeter\u2192Tile${tileNum}${side}_0\u2192Tile${tileNum}${side}0_0\u2192cell_${mod}`;
-  return meshByName.has(path) ? path : null;
+// ── Load scene_data.bin ──────────────────────────────────────────────────────
+async function loadSceneData(){
+  const buf = await (await fetch('./scene_data.bin')).arrayBuffer();
+  const headerLen = new DataView(buf).getUint32(0, true);
+  const headerJson = new TextDecoder().decode(new Uint8Array(buf, 4, headerLen));
+  const header = JSON.parse(headerJson);
+  const bodyOffset = 4 + headerLen;
+  const f32 = (off, byteLen) => new Float32Array(buf, bodyOffset + off, byteLen/4);
+  const u32 = (off, byteLen) => new Uint32Array(buf, bodyOffset + off, byteLen/4);
+  return { header, f32, u32 };
 }
 
+async function main(){
+  buildBeam();
+  buildPhiLines();
 
-// ── XML parsers ──────────────────────────────────────────────────────────────
-function extractCells(doc, tagName) {
-  const els = doc.getElementsByTagName(tagName);
-  const cells = [];
-  for (const el of els) {
-    let n = 0;
-    for (const ch of el.children) {
-      const id = ch.getAttribute('id') ?? ch.getAttribute('cellID');
-      const ev = ch.getAttribute('energy') ?? ch.getAttribute('e');
-      if (id && ev) { const e = parseFloat(ev); if (isFinite(e)) { cells.push({ id: id.trim(), energy: e }); n++; } }
-    }
-    if (n) continue;
-    const idEl = el.querySelector('id, cellID');
-    const eEl = el.querySelector('energy, e');
-    if (idEl && eEl) {
-      const ids = idEl.textContent.trim().split(/\s+/);
-      const ens = eEl.textContent.trim().split(/\s+/).map(Number);
-      const m = Math.min(ids.length, ens.length);
-      for (let i = 0; i < m; i++) if (ids[i] && isFinite(ens[i])) cells.push({ id: ids[i], energy: ens[i] });
-    }
-  }
-  return cells;
-}
+  const { header, f32, u32 } = await loadSceneData();
 
-function parseTracks(doc) {
-  const tracks = [];
-  for (const el of doc.getElementsByTagName('Track')) {
-    const numPolyEl = el.querySelector('numPolyline');
-    const pxEl = el.querySelector('polylineX');
-    const pyEl = el.querySelector('polylineY');
-    const pzEl = el.querySelector('polylineZ');
-    if (!numPolyEl || !pxEl || !pyEl || !pzEl) continue;
-    const numPoly = numPolyEl.textContent.trim().split(/\s+/).map(Number);
-    const xs = pxEl.textContent.trim().split(/\s+/).map(Number);
-    const ys = pyEl.textContent.trim().split(/\s+/).map(Number);
-    const zs = pzEl.textContent.trim().split(/\s+/).map(Number);
-    const ptEl = el.querySelector('pt');
-    const ptArr = ptEl ? ptEl.textContent.trim().split(/\s+/).map(Number) : [];
-    let offset = 0;
-    for (let i = 0; i < numPoly.length; i++) {
-      const n = numPoly[i];
-      if (n >= 2) {
-        const pts = [];
-        for (let j = 0; j < n; j++) {
-          const k = offset + j;
-          pts.push(new THREE.Vector3(-xs[k] * 10, -ys[k] * 10, zs[k] * 10));
-        }
-        tracks.push({ pts, ptGev: i < ptArr.length ? Math.abs(ptArr[i]) : 0 });
-      }
-      offset += n;
-    }
-  }
-  return tracks;
-}
+  // Cells
+  let totalEdgeFloats = 0;
+  for(const c of header.cells) totalEdgeFloats += c.edge[1]/4;
+  const allEdges = new Float32Array(totalEdgeFloats);
+  let edgeCursor = 0;
 
-// ── Track rendering ──────────────────────────────────────────────────────────
-const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, depthWrite: false });
-function drawTracks(tracks) {
-  if (trackGroup) {
-    trackGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
-    scene.remove(trackGroup);
-  }
-  trackGroup = null;
-  if (!tracks.length) return;
-  trackGroup = new THREE.Group();
-  trackGroup.renderOrder = 5;
-  for (const { pts } of tracks) {
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    trackGroup.add(new THREE.Line(geo, TRACK_MAT));
-  }
-  scene.add(trackGroup);
-}
+  for(let i=0;i<header.cells.length;i++){
+    const c = header.cells[i];
+    const pos  = f32(c.pos[0],  c.pos[1]);
+    const idx  = u32(c.idx[0],  c.idx[1]);
+    const edge = f32(c.edge[0], c.edge[1]);
 
-// ── Scene reset / threshold ──────────────────────────────────────────────────
-function resetScene() {
-  for (const [name, mesh] of meshByName) {
-    mesh.visible = false; mesh.material = origMat.get(name) ?? mesh.material; mesh.renderOrder = 0;
-  }
-  active.clear(); rayTargets = [];
-  clearOutline(); clearAllOutlines();
-  if (trackGroup) { trackGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); scene.remove(trackGroup); trackGroup = null; }
-  dirty = true;
-}
-function applyThreshold() {
-  rayTargets = [];
-  for (const [name, { energyMev, det }] of active) {
-    const mesh = meshByName.get(name); if (!mesh) continue;
-    const thr = det === 'LAR' ? thrLArMev : det === 'HEC' ? thrHecMev : thrTileMev;
-    const detOn = det === 'LAR' ? showLAr : det === 'HEC' ? showHec : showTile;
-    const vis = detOn && (!isFinite(thr) || energyMev >= thr);
-    mesh.visible = vis; if (vis) rayTargets.push(mesh);
-  }
-  rebuildAllOutlines();
-  dirty = true;
-}
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
 
-// ── Process XML ──────────────────────────────────────────────────────────────
-function processXml(xmlText) {
-  if (!wasmOk) return;
-  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
-  const pe = doc.querySelector('parsererror');
-  if (pe) { console.error('XML parse error:', pe.textContent.slice(0, 120)); return; }
+    const mesh = new THREE.Mesh(geo, matForRgb(c.rgb[0], c.rgb[1], c.rgb[2]));
+    mesh.matrixAutoUpdate = false;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 2;
+    mesh.name = 'cell_' + i;
+    scene.add(mesh);
+    rayTargets.push(mesh);
+    cellEdgeBufByName.set(mesh.name, edge);
 
-  const tileCells = extractCells(doc, 'TILE');
-  const larCells = extractCells(doc, 'LAr');
-  const hecCells = extractCells(doc, 'HEC');
-
-  const mbtsCells = [];
-  const mbtsEls = doc.getElementsByTagName('MBTS');
-  for (const el of mbtsEls) {
-    let n = 0;
-    for (const ch of el.children) {
-      const label = ch.getAttribute('label');
-      const ev = ch.getAttribute('energy') ?? ch.getAttribute('e');
-      if (label && ev) { const e = parseFloat(ev); if (isFinite(e)) { mbtsCells.push({ label: label.trim(), energy: e }); n++; } }
-    }
-    if (n) continue;
-    const lblEl = el.querySelector('label');
-    const eEl = el.querySelector('energy, e');
-    if (lblEl && eEl) {
-      const labels = lblEl.textContent.trim().split(/\s+/);
-      const ens = eEl.textContent.trim().split(/\s+/).map(Number);
-      const m = Math.min(labels.length, ens.length);
-      for (let i = 0; i < m; i++) if (labels[i] && isFinite(ens[i])) mbtsCells.push({ label: labels[i], energy: ens[i] });
-    }
+    allEdges.set(edge, edgeCursor);
+    edgeCursor += edge.length;
   }
 
-  const total = tileCells.length + larCells.length + hecCells.length + mbtsCells.length;
-  if (!total) { console.warn('No cells found in XML'); return; }
+  // Single big LineSegments for black outline
+  if(totalEdgeFloats){
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(allEdges, 3));
+    const m = new THREE.LineSegments(geo, outlineAllMat);
+    m.matrixAutoUpdate = false;
+    m.frustumCulled = false;
+    m.renderOrder = 3;
+    scene.add(m);
+  }
 
-  resetScene();
+  // Ghosts
+  for(const g of header.ghosts){
+    const pos = f32(g.pos[0], g.pos[1]);
+    const idx = u32(g.idx[0], g.idx[1]);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    const mesh = new THREE.Mesh(geo, ghostSolidMat);
+    mesh.matrixAutoUpdate = false;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 5;
+    scene.add(mesh);
+  }
 
   // Tracks
-  try { drawTracks(parseTracks(doc)); } catch (e) { console.warn('Track error', e); }
-
-  // Bulk WASM decode
-  function idsToStr(cells) {
-    let s = cells[0].id;
-    for (let i = 1; i < cells.length; i++) s += ' ' + cells[i].id;
-    return s;
-  }
-  const tilePacked = tileCells.length ? parse_atlas_ids_bulk(idsToStr(tileCells)) : null;
-  const larPacked = larCells.length ? parse_atlas_ids_bulk(idsToStr(larCells)) : null;
-  const hecPacked = hecCells.length ? parse_atlas_ids_bulk(idsToStr(hecCells)) : null;
-
-  // TileCal
-  for (let i = 0; i < tileCells.length; i++) {
-    const base    = i * 8;
-    if (tilePacked[base] !== SUBSYS_TILE) continue;
-    const x      = tilePacked[base + 1];
-    const k      = tilePacked[base + 2];
-    const side   = tilePacked[base + 3];
-    const module = tilePacked[base + 4];
-    const eMev   = tileCells[i].energy * 1000;
-    const y      = side < 0 ? 'n' : 'p';
-    const path   = `Calorimeter\u2192Tile${x}${y}_0\u2192Tile${x}${y}${k}_${k}\u2192cell_${module}`;
-    const mesh   = meshByName.get(path);
-    if (!mesh) continue;
-    mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
-    active.set(path, { energyMev: eMev, det: 'TILE' });
-  }
-
-  // LAr EM
-  for (let i = 0; i < larCells.length; i++) {
-    const base    = i * 8;
-    if (larPacked[base] !== SUBSYS_LAR_EM) continue;
-    const abs_be  = larPacked[base + 1];
-    const sampling= larPacked[base + 2];
-    const z_pos   = larPacked[base + 4];
-    const R       = larPacked[base + 5];
-    const eta     = larPacked[base + 6];
-    const phi     = larPacked[base + 7];
-    const eMev    = larCells[i].energy * 1000;
-    const X       = abs_be === 1 ? 'Barrel' : 'EndCap';
-    const W       = abs_be === 1 ? 0 : 1;
-    const Z       = z_pos  ? 'p' : 'n';
-    const prefix  = `Calorimeter\u2192EM${X}_${sampling}_${R}_${Z}_${W}\u2192EM${X}_${sampling}_${R}_${Z}_${eta}_${eta}\u2192`;
-    const path    = meshByName.has(prefix + `cell_${phi}`)  ? prefix + `cell_${phi}`  :
-                    meshByName.has(prefix + `cell2_${phi}`) ? prefix + `cell2_${phi}` : null;
-    if (!path) continue;
-    const mesh = meshByName.get(path);
-    if (!mesh) continue;
-    mesh.material = palMatLAr(eMev); mesh.visible = true; mesh.renderOrder = 2;
-    active.set(path, { energyMev: eMev, det: 'LAR' });
-  }
-
-  // HEC
-  for (let i = 0; i < hecCells.length; i++) {
-    const base    = i * 8;
-    if (hecPacked[base] !== SUBSYS_LAR_HEC) continue;
-    const group   = hecPacked[base + 1];
-    const region  = hecPacked[base + 2];
-    const z_pos   = hecPacked[base + 3];
-    const cum_eta = hecPacked[base + 4];
-    const phi     = hecPacked[base + 5];
-    const eMev    = hecCells[i].energy * 1000;
-    const Z       = z_pos ? 'p' : 'n';
-    const name    = HEC_NAMES[group];
-    const path    = `Calorimeter\u2192HEC_${name}_${region}_${Z}_0\u2192HEC_${name}_${region}_${Z}_${cum_eta}_${cum_eta}\u2192cell_${phi}`;
-    if (!meshByName.has(path)) continue;
-    const mesh = meshByName.get(path);
-    if (!mesh) continue;
-    mesh.material = palMatHec(eMev); mesh.visible = true; mesh.renderOrder = 2;
-    active.set(path, { energyMev: eMev, det: 'HEC' });
-  }
-
-  // MBTS
-  for (let i = 0; i < mbtsCells.length; i++) {
-    const { label, energy } = mbtsCells[i];
-    const eMev = energy * 1000;
-    const path = mbtsMeshPath(label);
-    if (!path) continue;
-    const mesh = meshByName.get(path);
-    if (!mesh) continue;
-    mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
-    active.set(path, { energyMev: eMev, det: 'TILE' });
-  }
-
-  applyThreshold();
-
-  // Re-apply ghost + beam (they were toggled on before)
-  if (showGhostTile) applyGhostMesh(true);
-}
-
-// ── Boot ─────────────────────────────────────────────────────────────────────
-let _glbDone = false, _wasmDone = false;
-
-function tryStart() {
-  if (!_glbDone || !_wasmDone) return;
-  toggleAllGhosts();
-  toggleBeam();
-  fetch('./JiveXML_518084_14173642443.xml')
-    .then(r => r.text())
-    .then(xml => { processXml(xml); dirty = true; })
-    .catch(e => console.error('Failed to load XML:', e));
-}
-
-new GLTFLoader().load(
-  './CaloGeometry.glb',
-  ({ scene: g }) => {
-    const meshes = [];
-    g.traverse(o => { if (o.isMesh) meshes.push(o); });
-    for (const m of meshes) {
-      m.updateWorldMatrix(true, false);
-      m.matrix.copy(m.matrixWorld);
-      m.matrixAutoUpdate = false;
-      m.frustumCulled = false;
-      m.visible = false;
-      meshByName.set(m.name, m);
-      origMat.set(m.name, m.material);
-      scene.add(m);
+  if(header.tracks.length){
+    const group = new THREE.Group();
+    group.renderOrder = 5;
+    for(const [off, byteLen] of header.tracks){
+      const pts = f32(off, byteLen);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+      group.add(new THREE.Line(geo, trackMat));
     }
-    sceneOk = true; dirty = true;
-    _glbDone = true;
-    tryStart();
-  },
-  undefined,
-  (err) => { console.error('GLB load error:', err); _glbDone = true; tryStart(); }
-);
+    scene.add(group);
+  }
 
-wasmInit()
-  .then(() => { wasmOk = true; _wasmDone = true; tryStart(); })
-  .catch(e => console.error('WASM init error:', e));
+  dirty = true;
+}
+
+main().catch(e => console.error('scene.js load error:', e));
