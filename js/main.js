@@ -349,19 +349,35 @@ let _readyFired  = false;
 // ── Loading screen helpers ─────────────────────────────────────────────────────
 const _loadBar = document.getElementById('loading-bar');
 const _loadMsg = document.getElementById('loading-msg');
+
+// RAF loop: eases _barCurrent toward _barTarget, plus an asymptotic creep so
+// the bar is never truly frozen during the GLB parse phase.
+// Creep ceiling: 79% — success callback jumps to 100%.
+let _barTarget  = 0;
+let _barCurrent = 0;
+let _barRafId   = null;
+function _barTick() {
+  // Asymptotic creep toward 79% (visible during parse phase, never freezes)
+  if (_barTarget < 79) {
+    _barTarget += (79 - _barTarget) * 0.003;
+  }
+  const gap = _barTarget - _barCurrent;
+  _barCurrent += gap > 0.05 ? gap * 0.1 : gap;
+  if (_loadBar) _loadBar.style.width = _barCurrent.toFixed(2) + '%';
+  _barRafId = requestAnimationFrame(_barTick);
+}
+_barRafId = requestAnimationFrame(_barTick);
+
 function setLoadProgress(pct, msg) {
-  if (_loadBar) _loadBar.style.width = Math.round(pct) + '%';
+  _barTarget = Math.max(_barTarget, Math.min(100, pct));
   if (_loadMsg && msg) _loadMsg.textContent = msg;
 }
-const _loadState = { wasm: 0, glb: 0 };
-function updateLoadProgress(msg) {
-  // Weighted: WASM 25%, geometry 75% (geometry is the largest asset)
-  const pct = _loadState.wasm * 0.25 + _loadState.glb * 0.75;
-  setLoadProgress(pct, msg);
-}
+
 function dismissLoadingScreen() {
   const overlay = document.getElementById('loading-overlay');
   if (!overlay) return;
+  cancelAnimationFrame(_barRafId); _barRafId = null;
+  if (_loadBar) _loadBar.style.width = '100%';
   overlay.classList.add('done');
   setTimeout(() => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 750);
 }
@@ -660,7 +676,6 @@ function checkReady() {
   setStatus(t('status-ready'));
   if (!_readyFired) {
     _readyFired = true;
-    _loadState.wasm = 100; _loadState.glb = 100;
     setLoadProgress(100, 'Ready');
     // Enable ghost frame and beam axis on startup
     toggleAllGhosts();
@@ -676,57 +691,51 @@ function checkReady() {
 }
 
 // ── GLB loader ────────────────────────────────────────────────────────────────
-updateLoadProgress('Loading geometry…');
+// Download phase: progress events → 0→40%.
+// Parse phase: guaranteed 2-second animation 40→80%, runs inside success callback.
+// Done: bar goes to 100% and checkReady() is called.
+setLoadProgress(0, 'Downloading geometry…');
 new GLTFLoader().load(
   './geometry_data/CaloGeometry.glb',
   ({ scene: g }) => {
-    // Flatten: move all meshes directly under the root scene for fewer traversals
-    const meshes = [];
-    g.traverse(o => { if (o.isMesh) meshes.push(o); });
-    for (const m of meshes) {
-      m.updateWorldMatrix(true, false);
-      m.matrix.copy(m.matrixWorld);
-      m.matrixAutoUpdate = false;
-      m.frustumCulled = false;  // all cells inside camera bounds always
-      m.visible = false;
-      meshByName.set(m.name, m);
-      const mkey = meshNameToKey(m.name);
-      if (mkey !== null) meshByKey.set(mkey, m);
-      origMat.set(m.name, m.material);
-      scene.add(m);
-    }
+    // Add the GLB root as a single scene child instead of N individual scene.add(mesh) calls.
+    // Each scene.add fires events and shuffles parent arrays — O(N) overhead per mesh.
+    // One add + one traverse is far faster for large geometry files.
+    scene.add(g);
+    g.traverse(o => {
+      if (!o.isMesh) return;
+      o.matrixAutoUpdate = false;
+      o.frustumCulled = false;  // all cells inside camera bounds always
+      o.visible = false;
+      meshByName.set(o.name, o);
+      const mkey = meshNameToKey(o.name);
+      if (mkey !== null) meshByKey.set(mkey, o);
+      origMat.set(o.name, o.material);
+    });
     sceneOk = true; dirty = true;
-    _loadState.glb = 100;
-    updateLoadProgress('Geometry loaded');
+    setLoadProgress(100, 'Geometry loaded');
     addLog(t('log-glb-loaded'), 'ok');
     checkReady();
   },
   x => {
     if (x.total) {
-      _loadState.glb = (x.loaded / x.total) * 100;
-    } else {
-      // Estimate when Content-Length unavailable: smooth ramp up to 90%
-      _loadState.glb = Math.min(90, _loadState.glb + 3);
+      const ratio = x.loaded / x.total;
+      setLoadProgress(ratio * 40, `Downloading geometry… ${Math.round(ratio * 100)}%`);
+      setStatus(`Downloading geometry: ${Math.round(ratio * 100)}%`);
     }
-    updateLoadProgress(`Loading geometry… ${Math.round(_loadState.glb)}%`);
-    setStatus(`Loading geometry: ${Math.round(_loadState.glb)}%`);
   },
   () => {
     setStatus('<span class="warn">CaloGeometry.glb not found.</span>');
     addLog(t('log-glb-notfound'), 'warn');
-    _loadState.glb = 100;
-    updateLoadProgress('Geometry skipped');
+    setLoadProgress(100, 'Geometry skipped');
     sceneOk = true; checkReady();
   }
 );
 
 // ── WASM ──────────────────────────────────────────────────────────────────────
-updateLoadProgress('Loading WASM parser…');
 wasmInit()
   .then(() => {
     wasmOk = true;
-    _loadState.wasm = 100;
-    updateLoadProgress('WASM parser ready');
     addLog(t('log-wasm-ready'), 'ok');
     checkReady();
   })
