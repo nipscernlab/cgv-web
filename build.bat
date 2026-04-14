@@ -62,14 +62,15 @@ cd /d "%~dp0"
 echo Done.
 echo.
 
-REM ---- Step 3: Delete old .glb file ----
-echo [3/6] Deleting old CaloGeometry.glb...
-if exist "geometry_data\CaloGeometry.glb" del "geometry_data\CaloGeometry.glb"
+REM ---- Step 3: Delete old .glb / .glb.gz files ----
+echo [3/7] Deleting old CaloGeometry.glb and .glb.gz...
+if exist "geometry_data\CaloGeometry.glb"    del "geometry_data\CaloGeometry.glb"
+if exist "geometry_data\CaloGeometry.glb.gz" del "geometry_data\CaloGeometry.glb.gz"
 echo Done.
 echo.
 
 REM ---- Step 4: Check that .root file exists ----
-echo [4/6] Checking for source .root file...
+echo [4/7] Checking for source .root file...
 if not exist "geometry_data\CaloGeometry.root" (
     echo ERROR: geometry_data\CaloGeometry.root not found!
     echo Place the .root file in geometry_data\ before running this script.
@@ -79,7 +80,7 @@ echo Found geometry_data\CaloGeometry.root
 echo.
 
 REM ---- Step 5: Compile .root -> optimized .glb (single step) ----
-echo [5/6] Compiling .root to optimized .glb...
+echo [5/7] Compiling .root to optimized .glb...
 call node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
 if %errorlevel% neq 0 (
     echo ERROR: root2scene.mjs failed.
@@ -88,8 +89,25 @@ if %errorlevel% neq 0 (
 echo Done.
 echo.
 
-REM ---- Step 6: Build Rust ATLAS-ID parser (WASM) ----
-echo [6/6] Building Rust ATLAS-ID parser (WASM)...
+REM ---- Step 6: GZip the .glb file ----
+echo [6/7] Compressing CaloGeometry.glb to CaloGeometry.glb.gz...
+powershell -NoProfile -Command ^
+  "$src = 'geometry_data\CaloGeometry.glb';" ^
+  "$dst = 'geometry_data\CaloGeometry.glb.gz';" ^
+  "$in  = [System.IO.File]::OpenRead($src);" ^
+  "$out = [System.IO.File]::Create($dst);" ^
+  "$gz  = New-Object System.IO.Compression.GZipStream($out, [System.IO.Compression.CompressionMode]::Compress);" ^
+  "$in.CopyTo($gz); $gz.Close(); $out.Close(); $in.Close();" ^
+  "Write-Host ('Compressed to ' + [math]::Round((Get-Item $dst).Length/1MB,2) + ' MB')"
+if %errorlevel% neq 0 (
+    echo ERROR: GZip compression failed.
+    exit /b 1
+)
+echo Done.
+echo.
+
+REM ---- Step 7: Build Rust ATLAS-ID parser (WASM) ----
+echo [7/7] Building Rust ATLAS-ID parser (WASM)...
 cd /d "%~dp0parser"
 call wasm-pack build --target web --release
 if %errorlevel% neq 0 (
@@ -108,6 +126,7 @@ echo ============================================
 echo.
 echo Output files:
 echo   - geometry_data\CaloGeometry.glb (optimized + quantized)
+echo   - geometry_data\CaloGeometry.glb.gz (gzip-compressed)
 echo   - parser\pkg\atlas_id_parser.js
 echo   - parser\pkg\atlas_id_parser_bg.wasm
 echo.

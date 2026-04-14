@@ -323,8 +323,8 @@ function meshNameToKey(name) {
 let tileMaxMev = 1, tileMinMev = 0;
 let larMaxMev  = 1, larMinMev  = 0;
 let hecMaxMev  = 1, hecMinMev  = 0;
-let thrTileMev = DEF_THR;
-let thrLArMev  = DEF_THR;
+let thrTileMev = 50;    // 0.05 GeV default
+let thrLArMev  = 0;    // 0 GeV default
 let thrHecMev  = 1000; // 1 GeV default (HEC energies are typically higher)
 let showHec    = true;
 let wasmOk     = false;
@@ -343,7 +343,10 @@ let panelPinned  = true;
 let panelHovered = false;
 let reqCount     = 0;
 let allOutlinesMesh = null;
-let trackGroup   = null;
+let trackGroup    = null;
+let clusterGroup  = null;
+let lastClusterData       = null;  // { collections: [{key, clusters: [{eta,phi,etGev,cells:{TILE,LAR_EM,HEC,OTHER}}]}] }
+let activeClusterCellIds  = null;  // null = no cluster filter; Set<string> = only these cell IDs are visible
 let _readyFired  = false;
 
 // ── Loading screen helpers ─────────────────────────────────────────────────────
@@ -942,18 +945,27 @@ function parseTracks(doc) {
     const zs      = pzEl.textContent.trim().split(/\s+/).map(Number);
     const ptEl    = el.querySelector('pt');
     const ptArr   = ptEl ? ptEl.textContent.trim().split(/\s+/).map(Number) : [];
-    let offset = 0;
+
+    // Hit IDs (subdet=2): numHits[i] hits belong to track i, flattened in <hits>
+    const numHitsEl  = el.querySelector('numHits');
+    const hitsEl     = el.querySelector('hits');
+    const numHitsArr = numHitsEl ? numHitsEl.textContent.trim().split(/\s+/).map(Number) : [];
+    const allHitStrs = hitsEl    ? hitsEl.textContent.trim().split(/\s+/)                : [];
+
+    let offset = 0, hitOffset = 0;
     for (let i = 0; i < numPoly.length; i++) {
-      const n = numPoly[i];
+      const n  = numPoly[i];
+      const nh = numHitsArr[i] ?? 0;
+      const hitIds = allHitStrs.slice(hitOffset, hitOffset + nh);
+      hitOffset += nh;
       if (n >= 2) {
         const pts = [];
         for (let j = 0; j < n; j++) {
           const k = offset + j;
           pts.push(new THREE.Vector3(-xs[k] * 10, -ys[k] * 10, zs[k] * 10));
         }
-        // pt in XML is in GeV (may be signed — use absolute value)
         const ptGev = i < ptArr.length ? Math.abs(ptArr[i]) : 0;
-        tracks.push({ pts, ptGev });
+        tracks.push({ pts, ptGev, hitIds });
       }
       offset += n;
     }
@@ -963,10 +975,90 @@ function parseTracks(doc) {
 
 
 
+// ── Cell-ID subdetector decoder ───────────────────────────────────────────────
+// Uses BigInt to safely handle 64-bit IDs.
+// Bit layout (MSB-first, per ATLAS IdDict / lib.rs):
+//   bits 63-61 (3 bits): subdet index → maps to [2,4,5,7,10,11,12,13]
+//     4 = LArCalorimeter, 5 = TileCalorimeter
+//   bits 60-58 (3 bits, only when subdet=4): part index → maps to [-3,-2,-1,1,2,3,4,5]
+//     |part|=1 → LAr EM,  |part|=2 → LAr HEC
+const _CELL_SUBDET_MAP = [2, 4, 5, 7, 10, 11, 12, 13];
+const _CELL_PART_MAP   = [-3, -2, -1, 1, 2, 3, 4, 5];
+
+function decodeCellSubdet(idStr) {
+  const id     = BigInt(idStr);
+  const sdIdx  = Number((id >> 61n) & 7n);
+  const subdet = _CELL_SUBDET_MAP[sdIdx];
+  if (subdet === 5) return 'TILE';
+  if (subdet === 2) return 'TRACK';
+  if (subdet === 4) {
+    const ptIdx = Number((id >> 58n) & 7n);
+    const part  = Math.abs(_CELL_PART_MAP[ptIdx] ?? 0);
+    if (part === 1) return 'LAR_EM';
+    if (part === 2) return 'HEC';
+  }
+  return 'OTHER';
+}
+
+// ── Cluster (eta/phi) parser ──────────────────────────────────────────────────
+// Returns flat [{eta, phi, etGev, cells, storeGateKey}] where cells is:
+//   { TILE: string[], LAR_EM: string[], HEC: string[], OTHER: string[] }
+// Also populates lastClusterData with per-collection grouping for download.
+function parseClusters(doc) {
+  const flat        = [];
+  const collections = [];
+
+  for (const el of doc.getElementsByTagName('Cluster')) {
+    const key        = el.getAttribute('storeGateKey') ?? '';
+    const etaEl      = el.querySelector('eta');
+    const phiEl      = el.querySelector('phi');
+    const etEl       = el.querySelector('et');
+    const numCellsEl = el.querySelector('numCells');
+    const cellsEl    = el.querySelector('cells');
+    if (!etaEl || !phiEl) continue;
+
+    const etas        = etaEl.textContent.trim().split(/\s+/).map(Number);
+    const phis        = phiEl.textContent.trim().split(/\s+/).map(Number);
+    const ets         = etEl       ? etEl.textContent.trim().split(/\s+/).map(Number) : [];
+    const numCellsArr = numCellsEl ? numCellsEl.textContent.trim().split(/\s+/).map(Number) : [];
+    const allCellStrs = cellsEl    ? cellsEl.textContent.trim().split(/\s+/)            : [];
+
+    const m = Math.min(etas.length, phis.length);
+    const collClusters = [];
+    let offset = 0;
+    for (let i = 0; i < m; i++) {
+      const nc      = numCellsArr[i] ?? 0;
+      const rawIds  = allCellStrs.slice(offset, offset + nc);
+      offset += nc;
+      if (!isFinite(etas[i]) || !isFinite(phis[i])) continue;
+
+      // Group cell IDs by subdetector
+      const cells = { TILE: [], LAR_EM: [], HEC: [], TRACK: [], OTHER: [] };
+      for (const idStr of rawIds) {
+        if (!idStr) continue;
+        cells[decodeCellSubdet(idStr)].push(idStr);
+      }
+
+      const entry = { eta: etas[i], phi: phis[i], etGev: isFinite(ets[i]) ? ets[i] : 0, cells };
+      collClusters.push(entry);
+      flat.push({ ...entry, storeGateKey: key });
+    }
+    if (collClusters.length) collections.push({ key, clusters: collClusters });
+  }
+
+  lastClusterData = { collections };
+  return flat;
+}
+
 // ── Track rendering ───────────────────────────────────────────────────────────
 let thrTrackGev   = 2;
 let trackPtMinGev = 0;
 let trackPtMaxGev = 5;
+
+// ── Cluster Et threshold ──────────────────────────────────────────────────────
+let thrClusterEtGev   = 0;
+let clusterEtMinGev   = 0;
+let clusterEtMaxGev   = 1;
 
 const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, depthWrite: false });
 
@@ -979,9 +1071,8 @@ function clearTracks() {
 
 function applyTrackThreshold() {
   if (!trackGroup) return;
-  for (const child of trackGroup.children) {
+  for (const child of trackGroup.children)
     child.visible = child.userData.ptGev >= thrTrackGev;
-  }
   dirty = true;
 }
 
@@ -991,14 +1082,194 @@ function drawTracks(tracks) {
   trackGroup = new THREE.Group();
   trackGroup.renderOrder = 5;
   trackGroup.visible = (typeof tracksVisible === 'undefined') ? true : tracksVisible;
-  for (const { pts, ptGev } of tracks) {
+  for (const { pts, ptGev, hitIds } of tracks) {
     const geo  = new THREE.BufferGeometry().setFromPoints(pts);
     const line = new THREE.Line(geo, TRACK_MAT);
-    line.userData.ptGev = ptGev;
+    line.userData.ptGev  = ptGev;
+    line.userData.hitIds = hitIds;
     trackGroup.add(line);
   }
   scene.add(trackGroup);
   applyTrackThreshold();
+}
+
+// ── Cluster line rendering ────────────────────────────────────────────────────
+// Lines are drawn from the origin in the η/φ direction, 5 m = 5000 mm long.
+// Coordinate convention matches tracks: Three.js X = −ATLAS x, Y = −ATLAS y.
+const CLUSTER_MAT = new THREE.LineDashedMaterial({
+  color: 0xff4400, transparent: true, opacity: 0.10,
+  dashSize: 40, gapSize: 60, depthWrite: false,
+});
+// Inner cylinder (start): r = 1.4 m, h = 6.4 m
+const CLUSTER_CYL_IN_R      = 1400;
+const CLUSTER_CYL_IN_HALF_H = 3200;
+// Outer cylinder (end):   r = 4.25 m, h = 12 m
+const CLUSTER_CYL_OUT_R      = 3820;
+const CLUSTER_CYL_OUT_HALF_H = 6000;
+
+// Returns t at which the unit-direction ray (dx,dy,dz) from the origin hits
+// the surface of a cylinder with given radius and half-height.
+function _cylIntersect(dx, dy, dz, r, halfH) {
+  const rT = Math.sqrt(dx * dx + dy * dy);
+  if (rT > 1e-9) {
+    const tBarrel = r / rT;
+    if (Math.abs(dz * tBarrel) <= halfH) return tBarrel;
+  }
+  return halfH / Math.abs(dz);
+}
+
+function clearClusters() {
+  if (!clusterGroup) return;
+  clusterGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  scene.remove(clusterGroup);
+  clusterGroup = null;
+}
+
+function rebuildActiveClusterCellIds() {
+  if (!lastClusterData) { activeClusterCellIds = null; return; }
+  const ids = new Set();
+  for (const { clusters } of lastClusterData.collections)
+    for (const { etGev, cells } of clusters)
+      if (etGev >= thrClusterEtGev)
+        for (const k of ['TILE', 'LAR_EM', 'HEC', 'TRACK', 'OTHER'])
+          for (const id of cells[k]) ids.add(id);
+  activeClusterCellIds = ids;
+}
+
+function applyClusterThreshold() {
+  if (clusterGroup)
+    for (const child of clusterGroup.children)
+      child.visible = child.userData.etGev >= thrClusterEtGev;
+  rebuildActiveClusterCellIds();
+  applyThreshold();
+  applyTrackThreshold();
+}
+
+function drawClusters(clusters) {
+  clearClusters();
+  if (!clusters.length) return;
+  clusterGroup = new THREE.Group();
+  clusterGroup.renderOrder = 6;
+  for (const { eta, phi, etGev } of clusters) {
+    const theta = 2 * Math.atan(Math.exp(-eta));
+    const sinT  = Math.sin(theta);
+    const dx = -sinT * Math.cos(phi);
+    const dy = -sinT * Math.sin(phi);
+    const dz =  Math.cos(theta);
+    const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R,  CLUSTER_CYL_IN_HALF_H);
+    const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
+    const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
+    const end   = new THREE.Vector3(dx * t1, dy * t1, dz * t1);
+    const geo  = new THREE.BufferGeometry().setFromPoints([start, end]);
+    const line = new THREE.Line(geo, CLUSTER_MAT);
+    line.computeLineDistances();
+    line.userData.etGev = etGev;
+    clusterGroup.add(line);
+  }
+  scene.add(clusterGroup);
+  applyClusterThreshold();
+}
+
+// ── Cluster statistics download ───────────────────────────────────────────────
+function downloadClusterStats() {
+  if (!lastClusterData) return;
+  const { collections } = lastClusterData;
+
+  const SEP   = '─'.repeat(80);
+  const SEP2  = '═'.repeat(80);
+  const pad   = (s, n) => String(s).padEnd(n);
+  const SDETS = ['TILE', 'LAR_EM', 'HEC', 'TRACK', 'OTHER'];
+
+  // Aggregate totals across all collections
+  const grandTotal = { clusters: 0, TILE: 0, LAR_EM: 0, HEC: 0, TRACK: 0, OTHER: 0, cells: 0 };
+  for (const { clusters } of collections) {
+    grandTotal.clusters += clusters.length;
+    for (const { cells } of clusters)
+      for (const k of SDETS) { grandTotal[k] += cells[k].length; grandTotal.cells += cells[k].length; }
+  }
+
+  const lines = [];
+  lines.push('ATLAS CGV-Web — Cluster Statistics');
+  lines.push(`Generated   : ${new Date().toISOString()}`);
+  lines.push(SEP);
+  lines.push(`Collections : ${collections.length}`);
+  lines.push(`Clusters    : ${grandTotal.clusters}`);
+  lines.push(`Cell refs   : ${grandTotal.cells}  (TILE: ${grandTotal.TILE}  LAr EM: ${grandTotal.LAR_EM}  HEC: ${grandTotal.HEC}  Track: ${grandTotal.TRACK}  Other: ${grandTotal.OTHER})`);
+  lines.push('');
+
+  // Helper: dump cell IDs wrapped at 6 per sub-line
+  function dumpIds(label, ids, indent) {
+    if (!ids.length) return;
+    const w = 6;
+    const pfx = `${indent}${pad(label, 10)}(${String(ids.length).padStart(4)}): `;
+    const ind2 = ' '.repeat(pfx.length);
+    for (let j = 0; j < ids.length; j += w) {
+      lines.push((j === 0 ? pfx : ind2) + ids.slice(j, j + w).join('  '));
+    }
+  }
+
+  for (const { key, clusters } of collections) {
+    // Collection-level subdet totals
+    const ct = { TILE: 0, LAR_EM: 0, HEC: 0, TRACK: 0, OTHER: 0 };
+    for (const { cells } of clusters) for (const k of SDETS) ct[k] += cells[k].length;
+    const ctTotal = SDETS.reduce((s, k) => s + ct[k], 0);
+
+    lines.push(SEP2);
+    lines.push(`Collection : ${key}`);
+    lines.push(`Clusters   : ${clusters.length}   |   Cell refs : ${ctTotal}`);
+    lines.push(`Subdet     :  TILE: ${ct.TILE}   LAr EM: ${ct.LAR_EM}   HEC: ${ct.HEC}   Track: ${ct.TRACK}   Other: ${ct.OTHER}`);
+    lines.push(SEP2);
+
+    // Et statistics
+    const ets    = clusters.map(c => c.etGev);
+    const etMean = ets.reduce((s, v) => s + v, 0) / ets.length;
+    const etStd  = Math.sqrt(ets.reduce((s, v) => s + (v - etMean) ** 2, 0) / ets.length);
+    lines.push(`  Et   min=${Math.min(...ets).toFixed(4)} GeV   max=${Math.max(...ets).toFixed(4)} GeV   mean=${etMean.toFixed(4)} GeV   σ=${etStd.toFixed(4)} GeV`);
+
+    // nCells statistics
+    const ncs    = clusters.map(c => SDETS.reduce((s, k) => s + c.cells[k].length, 0));
+    const ncMean = ncs.reduce((s, v) => s + v, 0) / ncs.length;
+    lines.push(`  nCells  min=${Math.min(...ncs)}   max=${Math.max(...ncs)}   mean=${ncMean.toFixed(1)}`);
+    lines.push(SEP);
+
+    // Per-cluster table
+    lines.push(`  ${'#'.padStart(4)}  ${'η'.padEnd(11)} ${'φ (rad)'.padEnd(11)} ${'Et (GeV)'.padEnd(10)} ${'nCells'.padEnd(7)} TILE    LAr EM  HEC     Track   Other`);
+    lines.push(`  ${'─'.repeat(4)}  ${'─'.repeat(11)} ${'─'.repeat(11)} ${'─'.repeat(10)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)} ${'─'.repeat(7)}`);
+
+    clusters.forEach(({ eta, phi, etGev, cells }, i) => {
+      const nc = SDETS.reduce((s, k) => s + cells[k].length, 0);
+      lines.push(
+        `  ${String(i+1).padStart(4)}  ${pad(eta.toFixed(5),11)} ${pad(phi.toFixed(5),11)}` +
+        ` ${pad(etGev.toFixed(4),10)} ${pad(nc,7)}` +
+        ` ${pad(cells.TILE.length,7)} ${pad(cells.LAR_EM.length,7)} ${pad(cells.HEC.length,7)} ${pad(cells.TRACK.length,7)} ${cells.OTHER.length}`
+      );
+      // Cell IDs grouped by subdetector
+      const ind = '         ';
+      dumpIds('TILE',   cells.TILE,   ind);
+      dumpIds('LAr EM', cells.LAR_EM, ind);
+      dumpIds('HEC',    cells.HEC,    ind);
+      dumpIds('Track',  cells.TRACK,  ind);
+      // For OTHER, group by actual subdet value so the user can see what they are
+      if (cells.OTHER.length) {
+        const bySubdet = {};
+        for (const idStr of cells.OTHER) {
+          const sd = _CELL_SUBDET_MAP[Number((BigInt(idStr) >> 61n) & 7n)] ?? '?';
+          (bySubdet[sd] ??= []).push(idStr);
+        }
+        for (const [sd, ids] of Object.entries(bySubdet).sort((a,b) => a[0]-b[0]))
+          dumpIds(`Other(${sd})`, ids, ind);
+      }
+    });
+    lines.push('');
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.download = `cluster_stats_${new Date().toISOString().slice(0,19).replace(/[:.]/g,'-')}.txt`;
+  a.href = url;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ── Scene reset ───────────────────────────────────────────────────────────────
@@ -1009,14 +1280,20 @@ function resetScene() {
   active.clear(); rayTargets = [];
   clearOutline(); clearAllOutlines();
   clearTracks();
+  clearClusters();
+  lastClusterData      = null;
+  activeClusterCellIds = null;
   tooltip.hidden = true; dirty = true;
 }
 function applyThreshold() {
   rayTargets = [];
-  for (const [mesh, { energyMev, det }] of active) {
-    const thr   = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
-    const detOn = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
-    const vis = detOn && (!isFinite(thr) || energyMev >= thr);
+  for (const [mesh, { energyMev, det, cellId }] of active) {
+    const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
+    const detOn  = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
+    const inCluster = activeClusterCellIds === null   // no cluster data → no filter
+                   || cellId == null                   // MBTS / cells without ID → always pass
+                   || activeClusterCellIds.has(cellId);
+    const vis = detOn && (!isFinite(thr) || energyMev >= thr) && inCluster;
     mesh.visible = vis; if (vis) rayTargets.push(mesh);
   }
   rebuildAllOutlines();
@@ -1054,6 +1331,25 @@ function processXml(xmlText) {
     }
     drawTracks(raw);
   } catch (e) { console.warn('Track parse error', e); }
+
+  // ── Cluster η/φ lines ────────────────────────────────────────────────────────
+  try {
+    const rawClusters = parseClusters(doc);
+    if (rawClusters.length) {
+      let etMin = Infinity, etMax = -Infinity;
+      for (const { etGev } of rawClusters) {
+        if (etGev < etMin) etMin = etGev;
+        if (etGev > etMax) etMax = etGev;
+      }
+      clusterEtSlider.update(
+        etMin === Infinity ? 0 : Math.max(0, etMin),
+        etMax === -Infinity ? 1 : etMax,
+      );
+    }
+    drawClusters(rawClusters);
+    rebuildActiveClusterCellIds();
+  } catch (e) { console.warn('Cluster parse error', e); }
+
 
   // Per-detector energy ranges — single loop per detector, avoids spread stack overflow
   function minMax(cells) {
@@ -1100,7 +1396,7 @@ function processXml(xmlText) {
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     const tEta = physTileEta(section, side, tower, sampling);
     const tPhi = physTilePhi(module);
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k), coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, det: 'TILE' });
+    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k), coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, det: 'TILE', cellId: id });
     nTile++;
   }
 
@@ -1128,7 +1424,7 @@ function processXml(xmlText) {
     const bec   = abs_be * (z_pos ? 1 : -1);
     const lEta  = physLarEmEta(bec, sampling, region, eta);
     const lPhi  = physLarEmPhi(bec, sampling, region, phi);
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: rName, coords: `η = ${lEta.toFixed(3)}   φ = ${lPhi.toFixed(3)} rad`, det: 'LAR' });
+    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: rName, coords: `η = ${lEta.toFixed(3)}   φ = ${lPhi.toFixed(3)} rad`, det: 'LAR', cellId: id });
     nLAr++;
   }
 
@@ -1154,7 +1450,7 @@ function processXml(xmlText) {
     const hLabel  = `HEC${group + 1}`;
     const hEta    = physLarHecEta(be, group, region, eta_idx);
     const hPhi    = physLarHecPhi(region, phi);
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: hLabel, coords: `η = ${hEta.toFixed(3)}   φ = ${hPhi.toFixed(3)} rad`, det: 'HEC' });
+    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: hLabel, coords: `η = ${hEta.toFixed(3)}   φ = ${hPhi.toFixed(3)} rad`, det: 'HEC', cellId: id });
     nHec++;
   }
 
@@ -1173,7 +1469,7 @@ function processXml(xmlText) {
     nMbts++;
   }
 
-  initDetPanel(nTile > 0, nLAr > 0, nHec > 0, trackGroup && trackGroup.children.length > 0);
+  initDetPanel(nTile > 0, nLAr > 0, nHec > 0, trackGroup && trackGroup.children.length > 0, clusterGroup && clusterGroup.children.length > 0);
   applyThreshold();
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
 
@@ -1187,14 +1483,14 @@ function processXml(xmlText) {
 }
 
 // ── Right panel (rpanel) toggle — mirrors left panel behavior ────────────────
-const rpanel = document.getElementById('rpanel');
-const btnRpanel = document.getElementById('btn-rpanel');
+const rpanelWrap = document.getElementById('rpanel-wrap');
+const btnRpanel  = document.getElementById('btn-rpanel');
 let rpanelPinned = true;
 let rpanelHovered = false;
 
 function syncRPanelUI() {
   const open = rpanelPinned || rpanelHovered;
-  rpanel.classList.toggle('collapsed', !open);
+  rpanelWrap.classList.toggle('collapsed', !open);
   btnRpanel.classList.toggle('on', rpanelPinned);
   document.body.classList.toggle('rpanel-unpinned', !rpanelPinned);
 }
@@ -1207,7 +1503,7 @@ const rpanelEdge = document.getElementById('rpanel-edge');
 rpanelEdge.addEventListener('mouseenter', () => {
   if (!rpanelPinned && autoOpenEnabled) { rpanelHovered = true; syncRPanelUI(); }
 });
-rpanel.addEventListener('mouseleave', () => {
+rpanelWrap.addEventListener('mouseleave', () => {
   if (!rpanelPinned && rpanelHovered) { rpanelHovered = false; syncRPanelUI(); }
 });
 // Canvas click closes the right panel if it was hovered (not pinned)
@@ -1264,7 +1560,7 @@ function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev) {
   }
 
   track.addEventListener('pointerdown', e => {
-    drag = true; rpanel.classList.add('dragging'); track.setPointerCapture(e.pointerId);
+    drag = true; rpanelWrap.classList.add('dragging'); track.setPointerCapture(e.pointerId);
     const r = ratioFromPtr(e, track); setThr(r <= 0 ? -Infinity : maxMev * r);
     updateUI(getThr()); applyThreshold();
   });
@@ -1274,7 +1570,7 @@ function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev) {
     updateUI(getThr()); applyThreshold();
   });
   ['pointerup', 'pointercancel'].forEach(ev =>
-    track.addEventListener(ev, () => { drag = false; rpanel.classList.remove('dragging'); })
+    track.addEventListener(ev, () => { drag = false; rpanelWrap.classList.remove('dragging'); })
   );
   input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
   input.addEventListener('blur', () => {
@@ -1320,12 +1616,12 @@ function makeTrackPtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
   }
 
   trackEl.addEventListener('pointerdown', e => {
-    drag = true; rpanel.classList.add('dragging'); trackEl.setPointerCapture(e.pointerId);
+    drag = true; rpanelWrap.classList.add('dragging'); trackEl.setPointerCapture(e.pointerId);
     setFromRatio(ratioFromPtr(e, trackEl));
   });
   trackEl.addEventListener('pointermove', e => { if (drag) setFromRatio(ratioFromPtr(e, trackEl)); });
   ['pointerup', 'pointercancel'].forEach(ev =>
-    trackEl.addEventListener(ev, () => { drag = false; rpanel.classList.remove('dragging'); })
+    trackEl.addEventListener(ev, () => { drag = false; rpanelWrap.classList.remove('dragging'); })
   );
   inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') inputEl.blur(); });
   inputEl.addEventListener('blur', () => {
@@ -1358,6 +1654,73 @@ const trackPtSlider = makeTrackPtSlider(
   'track-sval-max', 'track-sval-min'
 );
 
+// ── Cluster Et slider (dynamic range — updates each event) ───────────────────
+function makeClusterEtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
+  const trackEl  = document.getElementById(trackId);
+  const thumbEl  = document.getElementById(thumbId);
+  const inputEl  = document.getElementById(inputId);
+  const maxLblEl = document.getElementById(maxLblId);
+  const minLblEl = document.getElementById(minLblId);
+  let drag = false;
+
+  function fmtGev(v) { return v.toFixed(2) + ' GeV'; }
+
+  function updateUI() {
+    const span = clusterEtMaxGev - clusterEtMinGev;
+    const r    = span > 0 ? Math.max(0, Math.min(1, (thrClusterEtGev - clusterEtMinGev) / span)) : 0;
+    thumbEl.style.top = ((1 - r) * 100) + '%';
+    if (document.activeElement !== inputEl)
+      inputEl.value = thrClusterEtGev > clusterEtMinGev + 1e-9 ? fmtGev(thrClusterEtGev) : '';
+  }
+
+  function setFromRatio(r) {
+    const span = clusterEtMaxGev - clusterEtMinGev;
+    thrClusterEtGev = r <= 0 ? clusterEtMinGev : clusterEtMinGev + span * r;
+    updateUI();
+    applyClusterThreshold();
+  }
+
+  trackEl.addEventListener('pointerdown', e => {
+    drag = true; rpanelWrap.classList.add('dragging'); trackEl.setPointerCapture(e.pointerId);
+    setFromRatio(ratioFromPtr(e, trackEl));
+  });
+  trackEl.addEventListener('pointermove', e => { if (drag) setFromRatio(ratioFromPtr(e, trackEl)); });
+  ['pointerup', 'pointercancel'].forEach(ev =>
+    trackEl.addEventListener(ev, () => { drag = false; rpanelWrap.classList.remove('dragging'); })
+  );
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') inputEl.blur(); });
+  inputEl.addEventListener('blur', () => {
+    const s = inputEl.value.trim().toLowerCase();
+    if (!s || s === 'all') {
+      thrClusterEtGev = clusterEtMinGev;
+    } else {
+      const g = s.match(/^([\d.]+)\s*gev$/i);
+      const v = g ? parseFloat(g[1]) : parseFloat(s);
+      if (isFinite(v)) thrClusterEtGev = Math.max(clusterEtMinGev, Math.min(clusterEtMaxGev, v));
+    }
+    updateUI();
+    applyClusterThreshold();
+  });
+
+  function update(minGev, maxGev) {
+    clusterEtMinGev   = minGev;
+    clusterEtMaxGev   = maxGev;
+    thrClusterEtGev   = Math.max(3, minGev); // default 3 GeV
+    if (maxLblEl) maxLblEl.textContent = fmtGev(maxGev);
+    if (minLblEl) minLblEl.textContent = fmtGev(minGev);
+    updateUI();
+  }
+
+  return { updateUI, update };
+}
+
+const clusterEtSlider = makeClusterEtSlider(
+  'cluster-strak', 'cluster-sthumb', 'cluster-thr-input',
+  'cluster-sval-max', 'cluster-sval-min'
+);
+
+document.getElementById('btn-cluster-dl').addEventListener('click', downloadClusterStats);
+
 // Initialize thumb positions at default threshold
 tileSlider.updateUI(thrTileMev);
 larSlider.updateUI(thrLArMev);
@@ -1367,6 +1730,7 @@ function initDetPanel(hasTile, hasLAr, hasHec, hasTracks) {
   tileSlider.updateUI(thrTileMev);
   larSlider.updateUI(thrLArMev);
   hecSlider.updateUI(thrHecMev);
+  clusterEtSlider.updateUI();
   openRPanel();
   if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasHec) switchTab('hec');
   else if (hasTracks) switchTab('track');
