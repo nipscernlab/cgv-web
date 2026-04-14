@@ -691,46 +691,64 @@ function checkReady() {
 }
 
 // ── GLB loader ────────────────────────────────────────────────────────────────
-// Download phase: progress events → 0→40%.
-// Parse phase: guaranteed 2-second animation 40→80%, runs inside success callback.
-// Done: bar goes to 100% and checkReady() is called.
+// Fetches CaloGeometry.glb.gz, stream-decompresses via DecompressionStream (native
+// browser API, no extra library), then parses with GLTFLoader.parse().
+// Progress tracks the compressed download bytes → 0–40% of the loading bar.
 setLoadProgress(0, 'Downloading geometry…');
-new GLTFLoader().load(
-  './geometry_data/CaloGeometry.glb',
-  ({ scene: g }) => {
-    // Add the GLB root as a single scene child instead of N individual scene.add(mesh) calls.
-    // Each scene.add fires events and shuffles parent arrays — O(N) overhead per mesh.
-    // One add + one traverse is far faster for large geometry files.
-    scene.add(g);
-    g.traverse(o => {
-      if (!o.isMesh) return;
-      o.matrixAutoUpdate = false;
-      o.frustumCulled = false;  // all cells inside camera bounds always
-      o.visible = false;
-      meshByName.set(o.name, o);
-      const mkey = meshNameToKey(o.name);
-      if (mkey !== null) meshByKey.set(mkey, o);
-      origMat.set(o.name, o.material);
-    });
-    sceneOk = true; dirty = true;
-    setLoadProgress(100, 'Geometry loaded');
-    addLog(t('log-glb-loaded'), 'ok');
-    checkReady();
-  },
-  x => {
-    if (x.total) {
-      const ratio = x.loaded / x.total;
-      setLoadProgress(ratio * 40, `Downloading geometry… ${Math.round(ratio * 100)}%`);
-      setStatus(`Downloading geometry: ${Math.round(ratio * 100)}%`);
-    }
-  },
-  () => {
-    setStatus('<span class="warn">CaloGeometry.glb not found.</span>');
+(async () => {
+  let buffer;
+  try {
+    const res = await fetch('./geometry_data/CaloGeometry.glb.gz');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const total  = parseInt(res.headers.get('Content-Length') || '0', 10);
+    let   loaded = 0;
+    // TransformStream counts compressed bytes for the progress bar,
+    // then DecompressionStream inflates the gzip payload on the fly.
+    const counter = new TransformStream({ transform(chunk, ctrl) {
+      loaded += chunk.byteLength;
+      if (total) {
+        const pct = loaded / total;
+        setLoadProgress(pct * 40, `Downloading geometry… ${Math.round(pct * 100)}%`);
+        setStatus(`Downloading geometry: ${Math.round(pct * 100)}%`);
+      }
+      ctrl.enqueue(chunk);
+    }});
+    buffer = await new Response(
+      res.body.pipeThrough(counter).pipeThrough(new DecompressionStream('gzip'))
+    ).arrayBuffer();
+  } catch (e) {
+    setStatus('<span class="warn">CaloGeometry.glb.gz not found.</span>');
     addLog(t('log-glb-notfound'), 'warn');
     setLoadProgress(100, 'Geometry skipped');
     sceneOk = true; checkReady();
+    return;
   }
-);
+  new GLTFLoader().parse(
+    buffer, './',
+    ({ scene: g }) => {
+      // Add the GLB root as a single scene child instead of N individual scene.add(mesh) calls.
+      scene.add(g);
+      g.traverse(o => {
+        if (!o.isMesh) return;
+        o.matrixAutoUpdate = false;
+        o.frustumCulled = false;  // all cells inside camera bounds always
+        o.visible = false;
+        meshByName.set(o.name, o);
+        const mkey = meshNameToKey(o.name);
+        if (mkey !== null) meshByKey.set(mkey, o);
+        origMat.set(o.name, o.material);
+      });
+      sceneOk = true; dirty = true;
+      setLoadProgress(100, 'Geometry loaded');
+      addLog(t('log-glb-loaded'), 'ok');
+      checkReady();
+    },
+    e => {
+      setStatus(`<span class="warn">GLB parse error: ${esc(e.message)}</span>`);
+      addLog('GLB parse error: ' + e.message, 'err');
+    }
+  );
+})();
 
 // ── WASM ──────────────────────────────────────────────────────────────────────
 wasmInit()
