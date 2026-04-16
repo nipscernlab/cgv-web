@@ -338,7 +338,7 @@ let showInfo   = true;
 let cinemaMode = false;
 let showTile   = true;
 let showLAr    = true;
-let showGhostTile = false, showGhostLAr = false, showGhostHec = false;
+// Ghost visibility is tracked per-mesh in `ghostVisible` (see GHOST_MESH_NAMES).
 let beamGroup  = null;
 let beamOn     = false;
 let panelPinned  = true;
@@ -485,13 +485,45 @@ function palColorFcalRgb(t) {
   ];
 }
 
-// ── Ghost — TileCal only ──────────────────────────────────────────────────────
-// Solid envelope meshes from .glb + procedural phi-segmentation lines.
-const GHOST_TILE_NAMES = [
-  'Calorimeter→LBTile_0','Calorimeter→LBTileLArg_0',
-  'Calorimeter→EBTilep_0','Calorimeter→EBTilen_0',
-  'Calorimeter→EBTileHECp_0','Calorimeter→EBTileHECn_0',
+// ── Ghost — Calorimeter envelope meshes ──────────────────────────────────────
+// All envelope meshes from the .glb share a single ghost material (same color,
+// same opacity) so they render as a visually unified outline regardless of any
+// material that might have been assigned by the exporter.
+const GHOST_MESH_NAMES = [
+  'Calorimeter→LBTile_0',
+  'Calorimeter→LBTileLArg_0',
+  'Calorimeter→LBLArg_0',
+  'Calorimeter→EBTilep_0',
+  'Calorimeter→EBTilen_0',
+  'Calorimeter→EBTileHECp_0',
+  'Calorimeter→EBTileHECn_0',
+  'Calorimeter→EBHECp_0',
+  'Calorimeter→EBHECn_0',
 ];
+// Per-ghost UI metadata: short id used for DOM ids, label / sub-label in panel.
+const GHOST_META = {
+  'Calorimeter→LBTile_0':     { id:'LBTile',     label:'LB Tile',        sub:'Long barrel · Tile',      color:'#c87c18' },
+  'Calorimeter→LBTileLArg_0': { id:'LBTileLArg', label:'LB Tile·LAr',    sub:'Long barrel · Tile/LAr',  color:'#9b8a30' },
+  'Calorimeter→LBLArg_0':     { id:'LBLArg',     label:'LB LAr',         sub:'Long barrel · LAr',       color:'#27b568' },
+  'Calorimeter→EBTilep_0':    { id:'EBTilep',    label:'EB Tile +',      sub:'Extended barrel + · Tile',color:'#c87c18' },
+  'Calorimeter→EBTilen_0':    { id:'EBTilen',    label:'EB Tile −',      sub:'Extended barrel − · Tile',color:'#c87c18' },
+  'Calorimeter→EBTileHECp_0': { id:'EBTileHECp', label:'EB Tile·HEC +',  sub:'Ext. barrel + · Tile/HEC',color:'#a47042' },
+  'Calorimeter→EBTileHECn_0': { id:'EBTileHECn', label:'EB Tile·HEC −',  sub:'Ext. barrel − · Tile/HEC',color:'#a47042' },
+  'Calorimeter→EBHECp_0':     { id:'EBHECp',     label:'EB HEC +',       sub:'Extended barrel + · HEC', color:'#66e0f6' },
+  'Calorimeter→EBHECn_0':     { id:'EBHECn',     label:'EB HEC −',       sub:'Extended barrel − · HEC', color:'#66e0f6' },
+};
+// Ghosts enabled by default on startup (the TileCal envelopes).
+const GHOST_DEFAULT_ON = new Set([
+  'Calorimeter→LBTile_0',
+  'Calorimeter→LBTileLArg_0',
+  'Calorimeter→EBTilep_0',
+  'Calorimeter→EBTilen_0',
+  'Calorimeter→EBTileHECp_0',
+  'Calorimeter→EBTileHECn_0',
+]);
+// Per-ghost visibility state (name → bool); seeded from defaults at boot.
+const ghostVisible = new Map();
+for (const n of GHOST_MESH_NAMES) ghostVisible.set(n, GHOST_DEFAULT_ON.has(n));
 
 // Mutable ghost colours / opacity (updated by UI controls)
 // RGB(92,95,102) = #5C5F66; 90% transparency = 10% opacity
@@ -549,61 +581,78 @@ function buildPhiLines() {
   scene.add(ghostPhiGroup);
 }
 
-function applyGhostMesh(visible) {
-  for (const name of GHOST_TILE_NAMES) {
-    const mesh = meshByName.get(name);
-    if (!mesh) continue;
-    if (visible) {
-      mesh.material  = ghostSolidMat;
-      mesh.renderOrder = 5;
-      mesh.visible   = true;
-    } else {
-      mesh.material  = origMat.get(name) ?? mesh.material;
-      mesh.renderOrder = 0;
-      mesh.visible   = false;
-    }
+function anyGhostOn() {
+  for (const v of ghostVisible.values()) if (v) return true;
+  return false;
+}
+
+// Apply a single ghost mesh's visibility + force the unified ghost material.
+function applyGhostMeshOne(name, visible) {
+  const mesh = meshByName.get(name);
+  if (!mesh) return;
+  if (visible) {
+    mesh.material    = ghostSolidMat;
+    mesh.renderOrder = 5;
+    mesh.visible     = true;
+  } else {
+    mesh.material    = origMat.get(name) ?? mesh.material;
+    mesh.renderOrder = 0;
+    mesh.visible     = false;
   }
-  if (ghostPhiGroup) ghostPhiGroup.visible = visible;
+}
+
+// Re-apply every ghost's visibility from the ghostVisible map. Safe to call
+// after resetScene, which hides all meshes and restores original materials.
+function applyAllGhostMeshes() {
+  for (const [name, v] of ghostVisible) applyGhostMeshOne(name, v);
+  if (ghostPhiGroup) ghostPhiGroup.visible = anyGhostOn();
   dirty = true;
 }
 
 function syncGhostToggles() {
-  const tTile = document.getElementById('gtog-tile');
-  const tLAr  = document.getElementById('gtog-lar');
-  const tHec  = document.getElementById('gtog-hec');
-  if (tTile) { tTile.classList.toggle('on', showGhostTile); tTile.setAttribute('aria-checked', showGhostTile); }
-  if (tLAr)  { tLAr .classList.toggle('on', showGhostLAr);  tLAr .setAttribute('aria-checked', showGhostLAr);  }
-  if (tHec)  { tHec .classList.toggle('on', showGhostHec);  tHec .setAttribute('aria-checked', showGhostHec);  }
-  document.getElementById('btn-ghost').classList.toggle('on', showGhostTile || showGhostLAr || showGhostHec);
+  for (const name of GHOST_MESH_NAMES) {
+    const el = document.getElementById('gtog-' + GHOST_META[name].id);
+    if (!el) continue;
+    const v = ghostVisible.get(name);
+    el.classList.toggle('on', v);
+    el.setAttribute('aria-checked', String(v));
+  }
+  document.getElementById('btn-ghost').classList.toggle('on', anyGhostOn());
 }
 
-function toggleGhostType(type) {
-  if (type === 'tile') {
-    showGhostTile = !showGhostTile;
-    buildPhiLines();
-    applyGhostMesh(showGhostTile);
-  } else if (type === 'lar') {
-    // LAr ghost envelope not yet shipped — track state only (no-op visually).
-    showGhostLAr = !showGhostLAr;
-  } else if (type === 'hec') {
-    showGhostHec = !showGhostHec;
-  }
+function toggleGhostByName(name) {
+  if (!ghostVisible.has(name)) return;
+  const next = !ghostVisible.get(name);
+  ghostVisible.set(name, next);
+  if (next && !ghostPhiGroup) buildPhiLines();
+  applyGhostMeshOne(name, next);
+  if (ghostPhiGroup) ghostPhiGroup.visible = anyGhostOn();
   syncGhostToggles();
+  dirty = true;
 }
 
 function setAllGhosts(on) {
-  showGhostTile = on;
-  showGhostLAr  = on;
-  showGhostHec  = on;
-  buildPhiLines();
-  applyGhostMesh(showGhostTile);
+  for (const name of GHOST_MESH_NAMES) ghostVisible.set(name, on);
+  if (on && !ghostPhiGroup) buildPhiLines();
+  applyAllGhostMeshes();
   syncGhostToggles();
 }
 
-// Retained for the keyboard shortcut (G) — toggles the combined ghost state.
+// Keyboard shortcut (G): toggles combined ghost visibility — if any is on,
+// turn everything off; otherwise restore the default TileCal ghost set.
 function toggleAllGhosts() {
-  const anyOn = showGhostTile || showGhostLAr || showGhostHec;
-  setAllGhosts(!anyOn);
+  if (anyGhostOn()) { setAllGhosts(false); return; }
+  for (const name of GHOST_MESH_NAMES) ghostVisible.set(name, GHOST_DEFAULT_ON.has(name));
+  if (!ghostPhiGroup) buildPhiLines();
+  applyAllGhostMeshes();
+  syncGhostToggles();
+}
+
+// Startup: materialise the default ghost set (same path resetScene uses).
+function enableDefaultGhosts() {
+  buildPhiLines();
+  applyAllGhostMeshes();
+  syncGhostToggles();
 }
 
 function updateGhostColors() {
@@ -644,10 +693,6 @@ document.getElementById('ghost-phi-color').addEventListener('input', e => {
 document.getElementById('ghost-phi-swatch').closest('label').addEventListener('click', () => {
   document.getElementById('ghost-phi-color').click();
 });
-
-// Legacy compatibility — no-op for lar/hec since switches are removed
-const GHOST_MATS  = {};  // kept to avoid reference errors
-const GHOST_NAMES = { tile: GHOST_TILE_NAMES, lar: [], hec: [] };
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
@@ -722,9 +767,8 @@ function checkReady() {
   if (!_readyFired) {
     _readyFired = true;
     setLoadProgress(100, 'Ready');
-    // Enable ghost frame (TILE only — LAr/HEC envelopes aren't rendered yet)
-    // and beam axis on startup.
-    toggleGhostType('tile');
+    // Enable the default TileCal ghost envelopes + beam axis on startup.
+    enableDefaultGhosts();
     toggleBeam();
     // Dismiss loading screen after a brief moment so 100% is visible
     setTimeout(dismissLoadingScreen, 280);
@@ -1240,7 +1284,7 @@ function drawTracks(tracks) {
 // Lines are drawn from the origin in the η/φ direction, 5 m = 5000 mm long.
 // Coordinate convention matches tracks: Three.js X = −ATLAS x, Y = −ATLAS y.
 const CLUSTER_MAT = new THREE.LineDashedMaterial({
-  color: 0xff4400, transparent: true, opacity: 0.55,
+  color: 0xff4400, transparent: true, opacity: 0.38,
   dashSize: 40, gapSize: 60, depthWrite: false,
 });
 // Inner cylinder (start): r = 1.4 m, h = 6.4 m
@@ -1480,9 +1524,9 @@ function resetScene() {
     mesh.visible = false; mesh.material = origMat.get(name) ?? mesh.material; mesh.renderOrder = 0;
   }
   // Re-apply ghost state: resetScene hides all meshes (including ghost envelopes),
-  // which would desync the visible state from `showGhostTile` and make the ghost
-  // look transparent/recolored on next toggle because only phi lines are visible.
-  applyGhostMesh(showGhostTile);
+  // which would desync the ghostVisible map and make the next ghost toggle
+  // render only the phi lines without the solid envelopes.
+  applyAllGhostMeshes();
   active.clear(); rayTargets = [];
   clearOutline(); clearAllOutlines();
   clearTracks();
@@ -2024,7 +2068,7 @@ function initDetPanel(hasTile, hasLAr, hasHec, hasTracks, hasFcal) {
   else if (hasHec) switchTab('hec'); else if (hasTracks) switchTab('track');
 }
 
-// (ghost functions defined above near GHOST_TILE_NAMES)
+// (ghost functions defined above near GHOST_MESH_NAMES)
 
 // ── Z-axis beam indicator ─────────────────────────────────────────────────────
 function buildBeamIndicator() {
@@ -2337,9 +2381,10 @@ document.getElementById('btn-ghost').addEventListener('click', e => {
   e.stopPropagation();
   ghostPanelOpen ? closeGhostPanel() : openGhostPanel();
 });
-document.getElementById('gtog-tile').addEventListener('click', () => toggleGhostType('tile'));
-document.getElementById('gtog-lar') .addEventListener('click', () => toggleGhostType('lar'));
-document.getElementById('gtog-hec') .addEventListener('click', () => toggleGhostType('hec'));
+for (const name of GHOST_MESH_NAMES) {
+  const el = document.getElementById('gtog-' + GHOST_META[name].id);
+  if (el) el.addEventListener('click', () => toggleGhostByName(name));
+}
 document.getElementById('gbtn-all') .addEventListener('click', () => setAllGhosts(true));
 document.getElementById('gbtn-none').addEventListener('click', () => setAllGhosts(false));
 // Click outside closes the ghost panel
