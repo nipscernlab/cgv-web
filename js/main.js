@@ -326,7 +326,9 @@ let hecMaxMev  = 1, hecMinMev  = 0;
 let thrTileMev = 50;    // 0.05 GeV default
 let thrLArMev  = 0;    // 0 GeV default
 let thrHecMev  = 600;  // 0.6 GeV default
+let thrFcalMev = 0;    // 0 GeV default
 let showHec    = true;
+let showFcal   = true;
 let wasmOk     = false;
 let sceneOk    = false;
 let dirty      = true;
@@ -345,6 +347,10 @@ let reqCount     = 0;
 let allOutlinesMesh = null;
 let trackGroup    = null;
 let clusterGroup  = null;
+let fcalGroup     = null;
+let fcalCellsData  = [];   // cached for threshold rebuilds
+let fcalMaxMev     = 1;    // actual data max, used for palette normalisation
+let fcalVisibleMap = [];   // [instanceId] → cell object for the current visible set
 let lastClusterData       = null;  // { collections: [{key, clusters: [{eta,phi,etGev,cells:{TILE,LAR_EM,HEC,OTHER}}]}] }
 let activeClusterCellIds  = null;  // null = no cluster filter; Set<string> = only these cell IDs are visible
 let activeMbtsLabels      = null;  // null = no cluster filter; Set<string> = MBTS labels activated by cluster eta/phi
@@ -464,6 +470,19 @@ const LAR_SCALE = 1000; // MeV — fixed 0–1 GeV
 function palMatLAr(eMev) {
   const tv = Math.max(0, Math.min(1, eMev / LAR_SCALE));
   return PAL_LAR[Math.round(tv * (PAL_N - 1))];
+}
+
+// ── Palette FCAL: light copper (#e8a06a) → dark copper (#3d1000), linear ──────
+// Returns [r, g, b] in [0,1] for use with vertex colours on LineSegments.
+// Normalisation is against fcalMaxMev (actual per-event maximum).
+const FCAL_SCALE = 10000; // MeV slider range (10 GeV)
+function palColorFcalRgb(t) {
+  t = Math.max(0, Math.min(1, t));
+  return [
+    0.910 + t * (0.239 - 0.910),  // R: #e8 → #3d
+    0.627 + t * (0.063 - 0.627),  // G: #a0 → #10
+    0.416 + t * (0.000 - 0.416),  // B: #6a → #00
+  ];
 }
 
 // ── Ghost — TileCal only ──────────────────────────────────────────────────────
@@ -958,6 +977,71 @@ function parseHec(doc) {
   return extractCells(doc, 'HEC');
 }
 
+// ── FCAL ID decoder ────────────────────────────────────────────────────────────
+// Bit layout (MSB-first, from IdDictLArCalorimeter; see pdf_geometrias.pdf §4):
+//   offset 64  3 b  subdet   = 4
+//   offset 61  3 b  part     = ±3 (LArFCAL)
+//   offset 58  1 b  be       — 0 → C-side (η<0), 1 → A-side (η>0)
+//   offset 57  2 b  module   — 0,1,2 → FCAL1,2,3
+//   offset 55  6 b  eta-fcal — 0–63
+//   offset 49  4 b  phi-fcal — 0–15
+// Physical coords: |η| = η₀ + eta_idx·Δη + Δη/2,  φ = (phi_idx+0.5)·2π/16
+const _FCAL_ETA_PARAMS = [[3.2, 0.025], [3.2, 0.05], [3.2, 0.1]]; // indexed by module_raw 0,1,2
+
+function decodeFcalId(idStr) {
+  const id     = BigInt(idStr);
+  const beSign = Number((id >> 57n) & 1n) ? 1 : -1;   // +1 = A-side, -1 = C-side
+  const modRaw = Number((id >> 55n) & 3n);              // 0,1,2 → FCAL1,2,3
+  const etaIdx = Number((id >> 49n) & 63n);
+  const phiIdx = Number((id >> 45n) & 15n);
+  const [eta0, deta] = _FCAL_ETA_PARAMS[modRaw] ?? [3.2, 0.025];
+  const eta = beSign * (eta0 + etaIdx * deta + deta / 2);
+  const phi = (phiIdx + 0.5) * (2 * Math.PI / 16);
+  return { module: modRaw + 1, etaIdx, phiIdx, eta, phi };  // module label 1,2,3
+}
+
+// ── FCAL parser ────────────────────────────────────────────────────────────────
+// JiveXML stores FCAL cell centres (x,y,z) and half-extents (dx,dy,dz) in cm.
+// energy is in GeV. <id> carries the 64-bit compact ID decoded above.
+function parseFcal(doc) {
+  const cells = [];
+  for (const el of doc.getElementsByTagName('FCAL')) {
+    const xEl  = el.querySelector('x');
+    const yEl  = el.querySelector('y');
+    const zEl  = el.querySelector('z');
+    const dxEl = el.querySelector('dx');
+    const dyEl = el.querySelector('dy');
+    const dzEl = el.querySelector('dz');
+    const eEl  = el.querySelector('energy');
+    const idEl = el.querySelector('id');
+    if (!xEl || !yEl || !zEl || !dxEl || !dyEl || !dzEl) continue;
+    const xs  = xEl.textContent.trim().split(/\s+/).map(Number);
+    const ys  = yEl.textContent.trim().split(/\s+/).map(Number);
+    const zs  = zEl.textContent.trim().split(/\s+/).map(Number);
+    const dxs = dxEl.textContent.trim().split(/\s+/).map(Number);
+    const dys = dyEl.textContent.trim().split(/\s+/).map(Number);
+    const dzs = dzEl.textContent.trim().split(/\s+/).map(Number);
+    const ens = eEl  ? eEl.textContent.trim().split(/\s+/).map(Number) : [];
+    const ids = idEl ? idEl.textContent.trim().split(/\s+/)            : [];
+    const n = Math.min(xs.length, ys.length, zs.length, dxs.length, dys.length, dzs.length);
+    for (let i = 0; i < n; i++) {
+      if (!isFinite(xs[i]) || !isFinite(ys[i]) || !isFinite(zs[i])) continue;
+      let module = 0, eta = 0, phi = 0, cellId = ids[i] ?? '';
+      if (cellId) {
+        try { const d = decodeFcalId(cellId); module = d.module; eta = d.eta; phi = d.phi; }
+        catch { /* leave defaults */ }
+      }
+      cells.push({
+        x: xs[i], y: ys[i], z: zs[i],
+        dx: dxs[i] || 0, dy: dys[i] || 0, dz: dzs[i] || 0,
+        energy: isFinite(ens[i]) ? ens[i] : 0,
+        id: cellId, module, eta, phi,
+      });
+    }
+  }
+  return cells;
+}
+
 function parseMBTS(doc) {
   const cells = [];
   const els = doc.getElementsByTagName('MBTS');
@@ -1182,6 +1266,135 @@ function clearClusters() {
   clusterGroup = null;
 }
 
+// ── FCAL tube rendering ────────────────────────────────────────────────────────
+// Each cell is an InstancedMesh cylinder: centre at midpoint, aligned to (dx,dy,dz),
+// radius 25 mm (diameter 50 mm), colour from copper palette keyed on |energy|.
+// Uses MeshBasicMaterial (no lighting response) + per-instance colour via setColorAt,
+// matching the approach used for Tile/LAr/HEC cell materials.
+// Coordinate convention: ATLAS x→–X, y→–Y, z→Z ; cm × 10 = mm.
+
+function clearFcal() {
+  if (!fcalGroup) return;
+  fcalGroup.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) o.material.dispose();
+  });
+  scene.remove(fcalGroup);
+  fcalGroup = null;
+}
+
+function drawFcal(cells) {
+  clearFcal();
+  fcalCellsData = cells;
+  if (!cells.length) return;
+  let mx = 0;
+  for (const { energy } of cells) { const v = Math.abs(energy) * 1000; if (v > mx) mx = v; }
+  fcalMaxMev = mx || 1;
+  _applyFcalDraw();
+}
+
+// Rebuild visible tubes from fcalCellsData with current threshold/show state.
+// Keeps fcalGroup in the scene; only replaces its child InstancedMesh.
+function applyFcalThreshold() {
+  if (!fcalCellsData.length) return;
+  if (fcalGroup) {
+    for (const child of [...fcalGroup.children]) {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+      fcalGroup.remove(child);
+    }
+  }
+  _applyFcalDraw();
+}
+
+// Reusable helpers — allocated once, reused across rebuilds.
+const _fcalUp    = new THREE.Vector3(0, 1, 0);
+const _fcalDir   = new THREE.Vector3();
+const _fcalDummy = new THREE.Object3D();
+const _fcalCol   = new THREE.Color();
+const _fcalMat4  = new THREE.Matrix4();
+// Edge base for outline: local-space positions of all edges of CylinderGeometry(25,25,1,6).
+// Lazily computed once (same parameters every time).
+let _fcalEdgeBase = null;
+function _getFcalEdgeBase() {
+  if (_fcalEdgeBase) return _fcalEdgeBase;
+  const tmpGeo  = new THREE.CylinderGeometry(25, 25, 1, 6, 1, false);
+  const edgeGeo = new THREE.EdgesGeometry(tmpGeo, 30);
+  tmpGeo.dispose();
+  _fcalEdgeBase = edgeGeo.getAttribute('position').array.slice(); // copy — edgeGeo is discarded
+  edgeGeo.dispose();
+  return _fcalEdgeBase;
+}
+
+function _applyFcalDraw() {
+  const visible = fcalCellsData.filter(c => showFcal && Math.abs(c.energy) * 1000 >= thrFcalMev);
+  fcalVisibleMap = visible;   // instance index i → visible[i] for tooltip lookup
+  if (!fcalGroup) {
+    fcalGroup = new THREE.Group();
+    fcalGroup.matrixAutoUpdate = false;
+    scene.add(fcalGroup);
+  }
+  if (!visible.length) { dirty = true; return; }
+
+  const n      = visible.length;
+  // Shared geometry: unit-height cylinder (height scaled per instance via matrix).
+  // 6 radial segments keeps poly count low; openEnded:false adds caps.
+  const cylGeo = new THREE.CylinderGeometry(25, 25, 1, 6, 1, false);
+  // MeshBasicMaterial, colour 0xffffff so per-instance colour shows directly.
+  const cylMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.FrontSide });
+  const iMesh  = new THREE.InstancedMesh(cylGeo, cylMat, n);
+  iMesh.matrixAutoUpdate = false;
+
+  for (let i = 0; i < n; i++) {
+    const { x, y, z, dz, energy } = visible[i];
+    // Tube runs along Z only: centre at (x, y, z), length = 2·dz (full cell depth).
+    // dx/dy are transverse half-widths — not the tube direction.
+    const len = Math.abs(dz) * 2 * 10;   // cm → mm, full depth
+    const cx  = -x * 10,  cy = -y * 10,  cz = z * 10;
+    // Direction: +Z or -Z depending on which side of the detector
+    _fcalDir.set(0, 0, dz >= 0 ? 1 : -1);
+    // Place cylinder: centre at cell centre, Y-axis aligned to ±Z, scaled to length
+    _fcalDummy.position.set(cx, cy, cz);
+    _fcalDummy.scale.set(1, len > 1e-6 ? len : 1, 1);
+    _fcalDummy.quaternion.setFromUnitVectors(_fcalUp, _fcalDir);
+    _fcalDummy.updateMatrix();
+    iMesh.setMatrixAt(i, _fcalDummy.matrix);
+    // Per-instance colour from copper palette
+    const [r, g, b] = palColorFcalRgb(Math.abs(energy) * 1000 / fcalMaxMev);
+    _fcalCol.setRGB(r, g, b);
+    iMesh.setColorAt(i, _fcalCol);
+  }
+  iMesh.instanceMatrix.needsUpdate = true;
+  if (iMesh.instanceColor) iMesh.instanceColor.needsUpdate = true;
+  fcalGroup.add(iMesh);
+
+  // ── Outline: transform local cylinder edges into world-space for every instance ──
+  // Mirrors the strategy used by _buildOutlinesNow for Tile/LAr/HEC cells:
+  // collect all edge segments into a single flat Float32Array, one LineSegments draw call.
+  const eb      = _getFcalEdgeBase();          // local-space edge positions, 3 floats/vert
+  const outBuf  = new Float32Array(n * eb.length);
+  let op = 0;
+  for (let i = 0; i < n; i++) {
+    iMesh.getMatrixAt(i, _fcalMat4);
+    const m = _fcalMat4.elements;
+    for (let j = 0; j < eb.length; j += 3) {
+      const lx = eb[j], ly = eb[j + 1], lz = eb[j + 2];
+      outBuf[op++] = m[0]*lx + m[4]*ly + m[8]*lz  + m[12];
+      outBuf[op++] = m[1]*lx + m[5]*ly + m[9]*lz  + m[13];
+      outBuf[op++] = m[2]*lx + m[6]*ly + m[10]*lz + m[14];
+    }
+  }
+  const outGeo   = new THREE.BufferGeometry();
+  outGeo.setAttribute('position', new THREE.BufferAttribute(outBuf, 3));
+  const outLines = new THREE.LineSegments(outGeo, new THREE.LineBasicMaterial({ color: 0x000000 }));
+  outLines.matrixAutoUpdate = false;
+  outLines.frustumCulled   = false;
+  outLines.renderOrder     = 3;
+  fcalGroup.add(outLines);
+
+  dirty = true;
+}
+
 function rebuildActiveClusterCellIds() {
   if (!clusterFilterEnabled || !lastClusterData) { activeClusterCellIds = null; activeMbtsLabels = null; return; }
   const ids  = new Set();
@@ -1258,6 +1471,7 @@ function resetScene() {
   clearOutline(); clearAllOutlines();
   clearTracks();
   clearClusters();
+  clearFcal();
   lastClusterData      = null;
   activeClusterCellIds = null;
   activeMbtsLabels     = null;
@@ -1292,7 +1506,7 @@ function processXml(xmlText) {
   const t0 = performance.now();
 
   // Parse XML once — all detectors share the same Document
-  let doc, tileCells, larCells, hecCells, mbtsCells;
+  let doc, tileCells, larCells, hecCells, mbtsCells, fcalCells;
   try { doc = parseXmlDoc(xmlText); }
   catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); addLog(e.message, 'err'); return; }
   currentEventInfo = parseEventInfo(doc);
@@ -1300,9 +1514,10 @@ function processXml(xmlText) {
   try { larCells  = parseLAr(doc);  } catch { larCells  = []; }
   try { hecCells  = parseHec(doc);  } catch { hecCells  = []; }
   try { mbtsCells = parseMBTS(doc); } catch { mbtsCells = []; }
+  try { fcalCells = parseFcal(doc); } catch { fcalCells = []; }
 
   const total = tileCells.length + larCells.length + hecCells.length + mbtsCells.length;
-  if (!total) { setStatus('<span class="warn">No TILE, LAr, HEC or MBTS cells found</span>'); addLog('No cells in XML', 'warn'); return; }
+  if (!total && !fcalCells.length) { setStatus('<span class="warn">No TILE, LAr, HEC, MBTS or FCAL cells found</span>'); addLog('No cells in XML', 'warn'); return; }
 
   setStatus(`Decoding ${total} cells…`);
   resetScene();
@@ -1337,6 +1552,8 @@ function processXml(xmlText) {
     rebuildActiveClusterCellIds();
   } catch (e) { console.warn('Cluster parse error', e); }
 
+  // ── FCAL cells ───────────────────────────────────────────────────────────────
+  try { drawFcal(fcalCells); } catch (e) { console.warn('FCAL draw error', e); }
 
   // Per-detector energy ranges — single loop per detector, avoids spread stack overflow
   function minMax(cells) {
@@ -1456,7 +1673,7 @@ function processXml(xmlText) {
     nMbts++;
   }
 
-  initDetPanel(nTile > 0, nLAr > 0, nHec > 0, trackGroup && trackGroup.children.length > 0, clusterGroup && clusterGroup.children.length > 0);
+  initDetPanel(nTile > 0, nLAr > 0, nHec > 0, trackGroup && trackGroup.children.length > 0, fcalCells.length > 0);
   applyThreshold();
   const dt = ((performance.now() - t0) / 1000).toFixed(2);
 
@@ -1467,6 +1684,7 @@ function processXml(xmlText) {
   showEventInfo(currentEventInfo);
   if (nHecMiss)  addLog(`HEC: ${nHec} mapped · ${nHecMiss} unmapped`, 'warn');
   if (nMbtsMiss) addLog(`MBTS: ${nMbts} mapped · ${nMbtsMiss} unmapped`, 'warn');
+  if (fcalCells.length) addLog(`FCAL: ${fcalCells.length} lines`, 'ok');
   addLog(`${nHit} cells${allMiss ? ` · ${allMiss} unmapped` : ''} (${dt}s)`, 'ok');
 }
 
@@ -1507,7 +1725,7 @@ btnRpanel.addEventListener('click', e => {
 setPinnedR(false);
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
-const TAB_IDS = ['tile', 'lar', 'hec', 'track'];
+const TAB_IDS = ['tile', 'lar', 'fcal', 'hec', 'track'];
 function switchTab(det) {
   const tabs = [...TAB_IDS];
   // Include 'cluster' only when its pane has been moved into #rpanel (mobile mode).
@@ -1616,6 +1834,8 @@ const tileSlider = makeDetSlider('tile-strak', 'tile-sthumb', 'tile-thr-input',
   () => thrTileMev, v => { thrTileMev = v; }, TILE_SCALE);
 const larSlider  = makeDetSlider('lar-strak',  'lar-sthumb',  'lar-thr-input',
   () => thrLArMev,  v => { thrLArMev = v; },  LAR_SCALE);
+const fcalSlider = makeDetSlider('fcal-strak', 'fcal-sthumb', 'fcal-thr-input',
+  () => thrFcalMev, v => { thrFcalMev = v; applyFcalThreshold(); }, FCAL_SCALE);
 const hecSlider  = makeDetSlider('hec-strak',  'hec-sthumb',  'hec-thr-input',
   () => thrHecMev,  v => { thrHecMev = v; },  HEC_SCALE);
 
@@ -1769,17 +1989,19 @@ function syncClusterFilterToggle() {
 // Initialize thumb positions at default threshold
 tileSlider.updateUI(thrTileMev);
 larSlider.updateUI(thrLArMev);
+fcalSlider.updateUI(thrFcalMev);
 hecSlider.updateUI(thrHecMev);
 
-function initDetPanel(hasTile, hasLAr, hasHec, hasTracks) {
+function initDetPanel(hasTile, hasLAr, hasHec, hasTracks, hasFcal) {
   tileSlider.updateUI(thrTileMev);
   larSlider.updateUI(thrLArMev);
+  fcalSlider.updateUI(thrFcalMev);
   hecSlider.updateUI(thrHecMev);
   clusterEtSlider.updateUI();
   syncClusterFilterToggle();
   openRPanel();
-  if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasHec) switchTab('hec');
-  else if (hasTracks) switchTab('track');
+  if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasFcal) switchTab('fcal');
+  else if (hasHec) switchTab('hec'); else if (hasTracks) switchTab('track');
 }
 
 // (ghost functions defined above near GHOST_TILE_NAMES)
@@ -1825,6 +2047,33 @@ function showOutline(mesh) {
   outlineMesh.matrix.copy(mesh.matrixWorld);
   outlineMesh.matrixWorld.copy(mesh.matrixWorld);
   outlineMesh.renderOrder = 999; outlineMesh.userData.src = mesh.name;
+  scene.add(outlineMesh); dirty = true;
+}
+
+// Show hover outline (white) for a specific FCAL InstancedMesh instance.
+// Mirrors showOutline but transforms the shared cylinder edge base by the instance matrix.
+function showFcalOutline(instanceId) {
+  const src = 'fcal_' + instanceId;
+  if (outlineMesh?.userData.src === src) return;
+  clearOutline();
+  const iMesh = fcalGroup?.children.find(c => c.isInstancedMesh);
+  if (!iMesh) return;
+  iMesh.getMatrixAt(instanceId, _fcalMat4);
+  const eb  = _getFcalEdgeBase();
+  const buf = new Float32Array(eb.length);
+  const m   = _fcalMat4.elements;
+  for (let j = 0; j < eb.length; j += 3) {
+    const lx = eb[j], ly = eb[j + 1], lz = eb[j + 2];
+    buf[j]     = m[0]*lx + m[4]*ly + m[8]*lz  + m[12];
+    buf[j + 1] = m[1]*lx + m[5]*ly + m[9]*lz  + m[13];
+    buf[j + 2] = m[2]*lx + m[6]*ly + m[10]*lz + m[14];
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
+  outlineMesh = new THREE.LineSegments(geo, outlineMat);
+  outlineMesh.matrixAutoUpdate = false;
+  outlineMesh.renderOrder = 999;
+  outlineMesh.userData.src = src;
   scene.add(outlineMesh); dirty = true;
 }
 
@@ -1906,7 +2155,8 @@ document.addEventListener('mousemove', e => { mousePos.x = e.clientX; mousePos.y
 function doRaycast(clientX, clientY) {
   const hasTrackLines   = trackGroup   && trackGroup.visible   && trackGroup.children.length   > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
-  if (!showInfo || cinemaMode || (!active.size && !hasTrackLines && !hasClusterLines)) { tooltip.hidden = true; clearOutline(); return; }
+  const hasFcalTubes    = fcalGroup && fcalGroup.children.some(c => c.isInstancedMesh) && fcalVisibleMap.length > 0;
+  if (!showInfo || cinemaMode || (!active.size && !hasTrackLines && !hasClusterLines && !hasFcalTubes)) { tooltip.hidden = true; clearOutline(); return; }
   // Don't show cell info when the pointer is over any UI element (panels, toolbar, overlays)
   const topEl = document.elementFromPoint(clientX, clientY);
   if (topEl && topEl !== canvas) { tooltip.hidden = true; clearOutline(); return; }
@@ -1918,21 +2168,48 @@ function doRaycast(clientX, clientY) {
   camera.updateMatrixWorld();
   raycast.setFromCamera(mxy, camera);
   const tipEKeyEl = document.querySelector('#tip .tkey');
-  // ── Cell hit ──────────────────────────────────────────────────────────────
-  if (active.size) {
-    const hits = raycast.intersectObjects(rayTargets, false);
-    if (hits.length) {
-      const data = active.get(hits[0].object);
-      if (data) {
-        showOutline(hits[0].object);
-        document.getElementById('tip-cell').textContent   = data.cellName;
-        document.getElementById('tip-coords').textContent = data.coords ?? '';
-        document.getElementById('tip-e').textContent      = `${data.energyGev.toFixed(4)} GeV`;
-        if (tipEKeyEl) tipEKeyEl.textContent = t('tip-energy-key');
-        tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
-        tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
-        tooltip.hidden = false; dirty = true; return;
+  // ── Cell + FCAL hit (same priority — pick closest) ────────────────────────
+  {
+    let cellHit = null, cellDist = Infinity;
+    if (active.size) {
+      const hits = raycast.intersectObjects(rayTargets, false);
+      if (hits.length && active.get(hits[0].object)) {
+        cellHit = hits[0]; cellDist = hits[0].distance;
       }
+    }
+    let fcalHit = null, fcalDist = Infinity;
+    if (hasFcalTubes) {
+      const iMesh = fcalGroup.children.find(c => c.isInstancedMesh);
+      if (iMesh) {
+        const hits = raycast.intersectObject(iMesh, false);
+        if (hits.length && hits[0].instanceId != null && fcalVisibleMap[hits[0].instanceId]) {
+          fcalHit = hits[0]; fcalDist = hits[0].distance;
+        }
+      }
+    }
+    if (cellHit && cellDist <= fcalDist) {
+      const data = active.get(cellHit.object);
+      showOutline(cellHit.object);
+      document.getElementById('tip-cell').textContent   = data.cellName;
+      document.getElementById('tip-coords').textContent = data.coords ?? '';
+      document.getElementById('tip-e').textContent      = `${data.energyGev.toFixed(4)} GeV`;
+      if (tipEKeyEl) tipEKeyEl.textContent = t('tip-energy-key');
+      tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
+      tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
+      tooltip.hidden = false; dirty = true; return;
+    }
+    if (fcalHit) {
+      const iid  = fcalHit.instanceId;
+      const cell = fcalVisibleMap[iid];
+      showFcalOutline(iid);
+      const side = cell.eta >= 0 ? 'A' : 'C';
+      document.getElementById('tip-cell').textContent   = `FCAL${cell.module} (${side}-side)`;
+      document.getElementById('tip-coords').textContent = `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`;
+      document.getElementById('tip-e').textContent      = `${cell.energy.toFixed(4)} GeV`;
+      if (tipEKeyEl) tipEKeyEl.textContent = t('tip-energy-key');
+      tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
+      tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
+      tooltip.hidden = false; dirty = true; return;
     }
   }
   // ── Track hit ─────────────────────────────────────────────────────────────

@@ -372,6 +372,7 @@
   <div id="det-tab-bar">
     <button class="det-tab on" id="tab-tile"  style="--tab-col:#c87c18">TILE</button>
     <button class="det-tab"    id="tab-lar"   style="--tab-col:#27b568">LAr</button>
+    <button class="det-tab"    id="tab-fcal"  style="--tab-col:#b87333">FCAL</button>
     <button class="det-tab"    id="tab-hec"   style="--tab-col:#66e0f6">HEC</button>
     <button class="det-tab"    id="tab-track" style="--tab-col:#ffea00">Track</button>
     <button class="det-tab mobile-only" id="tab-cluster" style="--tab-col:#ff4400">Cluster</button>
@@ -409,6 +410,24 @@
     <div class="sval">0 GeV</div>
     <div class="slbl" data-i18n="slbl-threshold">Threshold</div>
     <input id="lar-thr-input" class="thr-input" type="text"
+      autocomplete="off" spellcheck="false"
+      data-i18n-ph="thr-placeholder" placeholder="e.g. 200 MeV">
+  </div>
+
+  <!-- ── FCAL pane ──────────────────────────────────────── -->
+  <div class="det-pane" id="pane-fcal" style="display:none">
+    <div class="pane-det-row">
+      <span class="pane-det-dot" style="background:#b87333"></span>
+      <span class="pane-det-name">LAr FCAL</span>
+    </div>
+    <div class="sval">10.00 GeV</div>
+    <div class="strak" id="fcal-strak"
+      style="background:linear-gradient(to top,#e8a06a 0%,#3d1000 100%)">
+      <div class="sthumb" id="fcal-sthumb"></div>
+    </div>
+    <div class="sval">0 GeV</div>
+    <div class="slbl" data-i18n="slbl-threshold">Threshold</div>
+    <input id="fcal-thr-input" class="thr-input" type="text"
       autocomplete="off" spellcheck="false"
       data-i18n-ph="thr-placeholder" placeholder="e.g. 200 MeV">
   </div>
