@@ -1313,12 +1313,15 @@ const _fcalDir   = new THREE.Vector3();
 const _fcalDummy = new THREE.Object3D();
 const _fcalCol   = new THREE.Color();
 const _fcalMat4  = new THREE.Matrix4();
+const _fcalTwist = new THREE.Quaternion();
+const _fcalTwistAxis = new THREE.Vector3(0, 1, 0);
+const _FCAL_TWIST_RAD = (2 * Math.PI) / 16;
 // Edge base for outline: local-space positions of all edges of CylinderGeometry(25,25,1,6).
 // Lazily computed once (same parameters every time).
 let _fcalEdgeBase = null;
 function _getFcalEdgeBase() {
   if (_fcalEdgeBase) return _fcalEdgeBase;
-  const tmpGeo  = new THREE.CylinderGeometry(25, 25, 1, 6, 1, false);
+  const tmpGeo  = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
   const edgeGeo = new THREE.EdgesGeometry(tmpGeo, 30);
   tmpGeo.dispose();
   _fcalEdgeBase = edgeGeo.getAttribute('position').array.slice(); // copy — edgeGeo is discarded
@@ -1339,24 +1342,28 @@ function _applyFcalDraw() {
   const n      = visible.length;
   // Shared geometry: unit-height cylinder (height scaled per instance via matrix).
   // 6 radial segments keeps poly count low; openEnded:false adds caps.
-  const cylGeo = new THREE.CylinderGeometry(25, 25, 1, 6, 1, false);
+  const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
   // MeshBasicMaterial, colour 0xffffff so per-instance colour shows directly.
   const cylMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.FrontSide });
   const iMesh  = new THREE.InstancedMesh(cylGeo, cylMat, n);
   iMesh.matrixAutoUpdate = false;
 
   for (let i = 0; i < n; i++) {
-    const { x, y, z, dz, energy } = visible[i];
+    const { x, y, z, dx, dy, dz, energy } = visible[i];
     // Tube runs along Z only: centre at (x, y, z), length = 2·dz (full cell depth).
     // dx/dy are transverse half-widths — not the tube direction.
-    const len = Math.abs(dz) * 2 * 10;   // cm → mm, full depth
+    const rx  = Math.max(Math.abs(dx) * 5, 1e-3);
+    const ry  = Math.max(Math.abs(dy) * 5, 1e-3);
+    const len = Math.max(Math.abs(dz) * 2 * 10, 1e-3);   // cm → mm, full depth
     const cx  = -x * 10,  cy = -y * 10,  cz = z * 10;
     // Direction: +Z or -Z depending on which side of the detector
     _fcalDir.set(0, 0, dz >= 0 ? 1 : -1);
     // Place cylinder: centre at cell centre, Y-axis aligned to ±Z, scaled to length
     _fcalDummy.position.set(cx, cy, cz);
-    _fcalDummy.scale.set(1, len > 1e-6 ? len : 1, 1);
+    _fcalDummy.scale.set(rx, len, ry);
     _fcalDummy.quaternion.setFromUnitVectors(_fcalUp, _fcalDir);
+    _fcalTwist.setFromAxisAngle(_fcalTwistAxis, _FCAL_TWIST_RAD);
+    _fcalDummy.quaternion.multiply(_fcalTwist);
     _fcalDummy.updateMatrix();
     iMesh.setMatrixAt(i, _fcalDummy.matrix);
     // Per-instance colour from copper palette
