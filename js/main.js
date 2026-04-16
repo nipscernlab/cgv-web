@@ -1132,16 +1132,18 @@ function decodeCellSubdet(idStr) {
   if (subdet === 2) return 'TRACK';
   if (subdet === 4) {
     const ptIdx = Number((id >> 58n) & 7n);
-    const part  = Math.abs(_CELL_PART_MAP[ptIdx] ?? 0);
-    if (part === 1) return 'LAR_EM';
-    if (part === 2) return 'HEC';
+    const part  = _CELL_PART_MAP[ptIdx] ?? 0;
+    const absPart = Math.abs(part);
+    if (absPart === 1) return 'LAR_EM';
+    if (absPart === 2) return 'HEC';
+    if (absPart === 3) return 'FCAL';
   }
   return 'OTHER';
 }
 
 // ── Cluster (eta/phi) parser ──────────────────────────────────────────────────
 // Returns flat [{eta, phi, etGev, cells, storeGateKey}] where cells is:
-//   { TILE: string[], LAR_EM: string[], HEC: string[], OTHER: string[] }
+//   { TILE: string[], LAR_EM: string[], HEC: string[], FCAL: string[], OTHER: string[] }
 function parseClusters(doc) {
   const flat        = [];
   const collections = [];
@@ -1171,7 +1173,7 @@ function parseClusters(doc) {
       if (!isFinite(etas[i]) || !isFinite(phis[i])) continue;
 
       // Group cell IDs by subdetector
-      const cells = { TILE: [], LAR_EM: [], HEC: [], TRACK: [], OTHER: [] };
+      const cells = { TILE: [], LAR_EM: [], HEC: [], FCAL: [], TRACK: [], OTHER: [] };
       for (const idStr of rawIds) {
         if (!idStr) continue;
         cells[decodeCellSubdet(idStr)].push(idStr);
@@ -1330,7 +1332,13 @@ function _getFcalEdgeBase() {
 }
 
 function _applyFcalDraw() {
-  const visible = fcalCellsData.filter(c => showFcal && Math.abs(c.energy) * 1000 >= thrFcalMev);
+  const visible = fcalCellsData.filter(c => {
+    if (!showFcal) return false;
+    if (Math.abs(c.energy) * 1000 < thrFcalMev) return false;
+    if (activeClusterCellIds === null) return true;
+    if (!c.id) return true;
+    return activeClusterCellIds.has(c.id);
+  });
   fcalVisibleMap = visible;   // instance index i → visible[i] for tooltip lookup
   if (!fcalGroup) {
     fcalGroup = new THREE.Group();
@@ -1409,7 +1417,7 @@ function rebuildActiveClusterCellIds() {
   for (const { clusters } of lastClusterData.collections) {
     for (const { eta, phi: rawPhi, etGev, cells } of clusters) {
       if (etGev < thrClusterEtGev) continue;
-      for (const k of ['TILE', 'LAR_EM', 'HEC', 'TRACK', 'OTHER'])
+      for (const k of ['TILE', 'LAR_EM', 'HEC', 'FCAL', 'TRACK', 'OTHER'])
         for (const id of cells[k]) ids.add(id);
       // MBTS activation: map cluster (eta, phi) → type_X_ch_Y_mod_Z
       const absEta = Math.abs(eta);
@@ -1433,6 +1441,7 @@ function applyClusterThreshold() {
       child.visible = clusterFilterEnabled && child.userData.etGev >= thrClusterEtGev;
   rebuildActiveClusterCellIds();
   applyThreshold();
+  applyFcalThreshold();
   applyTrackThreshold();
 }
 
@@ -1830,7 +1839,11 @@ function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev) {
   input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
   input.addEventListener('blur', () => {
     const v = parseMevInput(input.value);
-    if (v !== null) { setThr(v); applyThreshold(); }
+    if (v !== null) {
+      const clamped = v === -Infinity ? v : Math.max(0, Math.min(maxMev, v));
+      setThr(clamped);
+      applyThreshold();
+    }
     updateUI(getThr());
   });
 
