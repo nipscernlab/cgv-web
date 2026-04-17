@@ -1660,7 +1660,8 @@ function processXml(xmlText) {
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     const tEta = physTileEta(section, side, tower, sampling);
     const tPhi = physTilePhi(module);
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: cellLabel(x, k), coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, det: 'TILE', cellId: id });
+    const tilePrefix = `${section === 1 ? 'LB' : 'EB'}${side >= 0 ? 'A' : 'C'}${module + 1}`;
+    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: `${tilePrefix} ${cellLabel(x, k)}`, coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, det: 'TILE', cellId: id });
     nTile++;
   }
 
