@@ -161,12 +161,24 @@
 <!-- ── Left panel ─────────────────────────────────────────── -->
 <aside id="panel">
   <div id="panel-head">
-    <div class="logo-block">
+    <div class="panel-head-row panel-head-row-top">
       <div class="logo">CGV</div>
+      <div class="head-btns">
+        <button class="icon-btn" id="btn-about"
+          data-tip="About — project credits" data-i18n-tip="tip-about">
+          <svg class="ic"><use href="#i-info"/></svg>
+        </button>
+        <button class="icon-btn on" id="btn-pin"
+          data-tip="Pin panel open at all times" data-i18n-tip="tip-pin">
+          <svg class="ic" id="pin-icon"><use href="#i-panel-pin"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="logo-block">
       <div class="logo-full" data-i18n="logo-full">Calorimeter Geometry Viewer</div>
       <div class="logo-lab" data-i18n="logo-lab">NIPSCERN · ATLAS</div>
     </div>
-    <!-- External links strip — inline with CGV logo -->
+    <!-- External links strip — full-width row below the title -->
     <div id="ext-links-top">
       <a href="https://atlas-live.cern.ch" target="_blank" rel="noopener"
         data-tip="ATLAS Live — ATLANTIS project">
@@ -184,16 +196,6 @@
         data-tip="NIPSCERN Laboratory — UFJF">
         <i class="ti ti-microscope"></i>
       </a>
-    </div>
-    <div class="head-btns">
-      <button class="icon-btn" id="btn-about"
-        data-tip="About — project credits" data-i18n-tip="tip-about">
-        <svg class="ic"><use href="#i-info"/></svg>
-      </button>
-      <button class="icon-btn on" id="btn-pin"
-        data-tip="Pin panel open at all times" data-i18n-tip="tip-pin">
-        <svg class="ic" id="pin-icon"><use href="#i-panel-pin"/></svg>
-      </button>
     </div>
   </div>
 
@@ -495,8 +497,8 @@
   </button>
   <div class="tbtn-sep"></div>
   <!-- Tabler ghost icon (proper library icon) -->
-  <button class="tbtn" id="btn-ghost"
-    data-tip="ATLAS ghost — show sub-detector outlines" data-i18n-tip="tip-ghost">
+  <button class="tbtn on" id="btn-ghost"
+    data-tip="ATLAS ghost — toggle sub-detector outlines (G)" data-i18n-tip="tip-ghost">
     <i class="ti ti-ghost"></i>
   </button>
   <div class="tbtn-sep"></div>
@@ -538,6 +540,18 @@
   <button class="tbtn" id="btn-shot"
     data-tip="Save screenshot" data-i18n-tip="tip-shot">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-camera"/></svg>
+  </button>
+  <div class="tbtn-sep"></div>
+  <button class="tbtn" id="btn-bgcolor"
+    data-tip="Background color — pick scene background (Shift+B)">
+    <i class="ti ti-color-swatch" style="font-size:15px"></i>
+    <input type="color" id="bgcolor-input" value="#020d1c"
+      style="position:absolute;inset:0;opacity:0;cursor:pointer;border:0">
+  </button>
+  <div class="tbtn-sep"></div>
+  <button class="tbtn" id="btn-slicer"
+    data-tip="Slicer — add 3D cylindrical cut plane (hides all visible cells/clusters/tracks) (Shift+S)">
+    <i class="ti ti-3d-cube-sphere" style="font-size:15px"></i>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-settings"
@@ -625,8 +639,8 @@
   </div>
 </div>
 
-<!-- ── Ghost panel — per-envelope toggles ──────────────── -->
-<div id="ghost-panel">
+<!-- ── Ghost panel — per-envelope toggles (legacy, now hidden; ghost is a simple on/off toggle) ── -->
+<div id="ghost-panel" hidden aria-hidden="true">
   <div class="layers-head">
     <span class="layers-title">ATLAS Ghost</span>
     <div class="layers-quick">
@@ -802,6 +816,10 @@
       <button class="shot-res" data-w="7680"  data-h="4320">8K<br><span>7680 × 4320</span></button>
       <button class="shot-res" data-w="10240" data-h="5760">10K<br><span>10240 × 5760</span></button>
     </div>
+    <label class="shot-opt" for="shot-transparent">
+      <input type="checkbox" id="shot-transparent">
+      <span>Transparent background — PNG is saved without the scene background (alpha channel)</span>
+    </label>
     <div id="shot-progress">
       <span class="shot-spinner"></span>
       <span id="shot-progress-txt"></span>

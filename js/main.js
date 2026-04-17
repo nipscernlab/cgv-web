@@ -695,7 +695,7 @@ document.getElementById('ghost-phi-swatch').closest('label').addEventListener('c
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -1283,7 +1283,7 @@ function drawTracks(tracks) {
 // Lines are drawn from the origin in the η/φ direction, 5 m = 5000 mm long.
 // Coordinate convention matches tracks: Three.js X = −ATLAS x, Y = −ATLAS y.
 const CLUSTER_MAT = new THREE.LineDashedMaterial({
-  color: 0xff4400, transparent: true, opacity: 0.38,
+  color: 0xff4400, transparent: true, opacity: 0.20,
   dashSize: 40, gapSize: 60, depthWrite: false,
 });
 // Inner cylinder (start): r = 1.4 m, h = 6.4 m
@@ -1374,6 +1374,8 @@ function _getFcalEdgeBase() {
 function _applyFcalDraw() {
   const visible = fcalCellsData.filter(c => {
     if (!showFcal) return false;
+    // Hide cells with negative energy — they aren't physically meaningful for display.
+    if (c.energy < 0) return false;
     if (c.energy * 1000 < thrFcalMev) return false;
     if (activeClusterCellIds === null) return true;
     if (!c.id) return true;
@@ -1548,7 +1550,8 @@ function applyThreshold() {
     } else {
       inCluster = true;                                           // no ID and not MBTS → always pass
     }
-    const vis = detOn && (!isFinite(thr) || energyMev >= thr) && inCluster;
+    // Hide cells with negative energy regardless of threshold.
+    const vis = detOn && energyMev >= 0 && (!isFinite(thr) || energyMev >= thr) && inCluster;
     mesh.visible = vis; if (vis) rayTargets.push(mesh);
   }
   rebuildAllOutlines();
@@ -2300,7 +2303,7 @@ function doRaycast(clientX, clientY) {
       document.getElementById('tip-cell').textContent   = 'Track';
       document.getElementById('tip-coords').textContent = storeGateKey;
       document.getElementById('tip-e').textContent      = `${ptGev.toFixed(3)} GeV`;
-      if (tipEKeyEl) tipEKeyEl.textContent = 'pT';
+      if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
       tooltip.hidden = false; dirty = true; return;
@@ -2391,20 +2394,16 @@ function closeGhostPanel() {
 }
 document.getElementById('btn-ghost').addEventListener('click', e => {
   e.stopPropagation();
-  ghostPanelOpen ? closeGhostPanel() : openGhostPanel();
+  toggleAllGhosts();
 });
 for (const name of GHOST_MESH_NAMES) {
   const el = document.getElementById('gtog-' + GHOST_META[name].id);
   if (el) el.addEventListener('click', () => toggleGhostByName(name));
 }
-document.getElementById('gbtn-all') .addEventListener('click', () => setAllGhosts(true));
-document.getElementById('gbtn-none').addEventListener('click', () => setAllGhosts(false));
-// Click outside closes the ghost panel
-document.addEventListener('click', e => {
-  if (!ghostPanelOpen) return;
-  if (ghostPanel.contains(e.target) || e.target.closest('#btn-ghost')) return;
-  closeGhostPanel();
-});
+const _gbtnAll  = document.getElementById('gbtn-all');
+const _gbtnNone = document.getElementById('gbtn-none');
+if (_gbtnAll)  _gbtnAll .addEventListener('click', () => setAllGhosts(true));
+if (_gbtnNone) _gbtnNone.addEventListener('click', () => setAllGhosts(false));
 document.getElementById('btn-beam').addEventListener('click', toggleBeam);
 document.getElementById('btn-reset').addEventListener('click', resetCamera);
 
@@ -2659,9 +2658,10 @@ function renderEvtList() {
     const isCur = !marked && entry.id === curEvtId;
     if (isCur) marked = true;
     row.className = 'erow' + (isCur ? ' cur' : '');
+    const displayName = /\.xml$/i.test(entry.name) ? entry.name : entry.name + '.xml';
     row.innerHTML = `
       <div class="einfo">
-        <div class="ename">${esc(entry.name)}</div>
+        <div class="ename">${esc(displayName)}</div>
         <div class="etime" data-ts="${entry.timestamp}">${relTime(entry.timestamp)}</div>
       </div>
       <button class="edl"><svg class="ic" style="width:11px;height:11px"><use href="#i-dl"/></svg></button>`;
@@ -2953,6 +2953,29 @@ shotSaveBtn.addEventListener('click', async () => {
   }
 });
 
+// ── Background color picker ───────────────────────────────────────────────────
+(function () {
+  const input = document.getElementById('bgcolor-input');
+  if (!input) return;
+  const saved = localStorage.getItem('cgv-bg-color');
+  if (saved && /^#[0-9a-f]{6}$/i.test(saved)) {
+    input.value = saved;
+    scene.background = new THREE.Color(saved);
+    dirty = true;
+  }
+  input.addEventListener('input', e => {
+    const v = e.target.value;
+    scene.background = new THREE.Color(v);
+    dirty = true;
+  });
+  input.addEventListener('change', e => {
+    const v = e.target.value;
+    scene.background = new THREE.Color(v);
+    localStorage.setItem('cgv-bg-color', v);
+    dirty = true;
+  });
+})();
+
 async function renderAndDownload(targetW, targetH) {
   // ── 1. Save current renderer state ──────────────────────────────────────
   const origW  = renderer.domElement.width;
@@ -2980,6 +3003,14 @@ async function renderAndDownload(targetW, targetH) {
   camera.updateProjectionMatrix();
 
   // ── 4. Render one high-quality frame ─────────────────────────────────────
+  // If transparent-bg screenshot is requested, temporarily drop scene.background
+  // so the alpha channel is preserved when we read pixels.
+  const transparentBg = !!document.getElementById('shot-transparent')?.checked;
+  const savedBg = scene.background;
+  if (transparentBg) {
+    scene.background = null;
+    renderer.setClearColor(0x000000, 0);
+  }
   renderer.render(scene, camera);
 
   // ── 5. Grab raw pixels from the WebGL canvas ─────────────────────────────
@@ -3060,6 +3091,10 @@ async function renderAndDownload(targetW, targetH) {
   }
 
   // ── 8. Restore original renderer state ──────────────────────────────────
+  if (transparentBg) {
+    scene.background = savedBg;
+    renderer.setClearColor(0x000000, 1);
+  }
   renderer.setPixelRatio(origPR);
   renderer.setSize(origW / origPR, origH / origPR, false);
   camera.aspect = origAspect;
