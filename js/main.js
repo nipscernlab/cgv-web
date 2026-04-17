@@ -1611,17 +1611,25 @@ function processXml(xmlText) {
   // ── FCAL cells ───────────────────────────────────────────────────────────────
   try { drawFcal(fcalCells); } catch (e) { console.warn('FCAL draw error', e); }
 
-  // Per-detector energy ranges — single loop per detector, avoids spread stack overflow
+  // Per-detector energy ranges — min + 97th-percentile as max (top 3% above slider max)
   function minMax(cells) {
-    let mn = Infinity, mx = -Infinity;
-    for (const { energy } of cells) { const v = energy * 1000; if (isFinite(v) && v > 0) { if (v < mn) mn = v; if (v > mx) mx = v; } }
-    return mn === Infinity ? [0, 1] : [mn, mx];
+    const vals = [];
+    for (const { energy } of cells) { const v = energy * 1000; if (isFinite(v) && v > 0) vals.push(v); }
+    if (!vals.length) return [0, 1];
+    vals.sort((a, b) => a - b);
+    const p97 = vals[Math.floor(0.97 * vals.length)];
+    return [vals[0], p97 ?? vals[vals.length - 1]];
   }
   // MBTS shares the Tile palette — merge its range with Tile's
   const allTileCells = tileCells.concat(mbtsCells);
   [tileMinMev, tileMaxMev] = minMax(allTileCells);
   [larMinMev,  larMaxMev]  = minMax(larCells);
   [hecMinMev,  hecMaxMev]  = minMax(hecCells);
+  const fcalMaxMev = (() => { const [, mx] = minMax(fcalCells); return mx; })();
+  tileSlider.update(tileMaxMev);
+  larSlider.update(larMaxMev);
+  hecSlider.update(hecMaxMev);
+  fcalSlider.update(fcalMaxMev);
 
   let nTile = 0, nLAr = 0, nHec = 0, nMbts = 0, nMiss = 0, nSkip = 0;
   let nHecMiss = 0, nMbtsMiss = 0;
@@ -1851,11 +1859,12 @@ function ratioFromPtr(e, trackEl) {
   return 1 - Math.max(0, Math.min(1, ((e.clientY ?? e.touches?.[0]?.clientY ?? 0) - rect.top) / rect.height));
 }
 
-// Generic vertical energy slider — fixed max in MeV
-function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev) {
-  const track = document.getElementById(trackId);
-  const thumb = document.getElementById(thumbId);
-  const input = document.getElementById(inputId);
+// Generic vertical energy slider — max in MeV (dynamic, updated per event via .update())
+function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev, maxLblId) {
+  const track  = document.getElementById(trackId);
+  const thumb  = document.getElementById(thumbId);
+  const input  = document.getElementById(inputId);
+  const maxLbl = maxLblId ? document.getElementById(maxLblId) : null;
   let drag = false;
 
   function updateUI(mev) {
@@ -1888,17 +1897,23 @@ function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev) {
     updateUI(getThr());
   });
 
-  return { updateUI };
+  function update(newMaxMev) {
+    maxMev = newMaxMev;
+    if (maxLbl) maxLbl.textContent = fmtMev(newMaxMev);
+    updateUI(getThr());
+  }
+
+  return { updateUI, update };
 }
 
 const tileSlider = makeDetSlider('tile-strak', 'tile-sthumb', 'tile-thr-input',
-  () => thrTileMev, v => { thrTileMev = v; }, TILE_SCALE);
+  () => thrTileMev, v => { thrTileMev = v; }, TILE_SCALE, 'tile-sval-max');
 const larSlider  = makeDetSlider('lar-strak',  'lar-sthumb',  'lar-thr-input',
-  () => thrLArMev,  v => { thrLArMev = v; },  LAR_SCALE);
+  () => thrLArMev,  v => { thrLArMev = v; },  LAR_SCALE,  'lar-sval-max');
 const fcalSlider = makeDetSlider('fcal-strak', 'fcal-sthumb', 'fcal-thr-input',
-  () => thrFcalMev, v => { thrFcalMev = v; applyFcalThreshold(); }, FCAL_SCALE);
+  () => thrFcalMev, v => { thrFcalMev = v; applyFcalThreshold(); }, FCAL_SCALE, 'fcal-sval-max');
 const hecSlider  = makeDetSlider('hec-strak',  'hec-sthumb',  'hec-thr-input',
-  () => thrHecMev,  v => { thrHecMev = v; },  HEC_SCALE);
+  () => thrHecMev,  v => { thrHecMev = v; },  HEC_SCALE,  'hec-sval-max');
 
 // ── Track pT slider (dynamic range — updates each event) ─────────────────────
 function makeTrackPtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
