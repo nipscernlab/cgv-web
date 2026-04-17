@@ -3301,6 +3301,169 @@ document.getElementById('btn-about').addEventListener('click', () => {
   });
 })();
 
+// ── Slicer gizmo ──────────────────────────────────────────────────────────────
+// A draggable 3D marker with RGB axes representing the cylindrical basis
+// (Z / PHI / THETA) at its current position. While active, all cells, tracks
+// and clusters are hidden (ghost stays visible) so screenshots can focus on
+// a single region of the detector.
+let slicerGroup   = null;
+let slicerActive  = false;
+let slicerPos     = new THREE.Vector3(0, 0, 2000);  // initial cylinder point (z=2m)
+// Saved visibility we need to restore when the slicer is turned off.
+let slicerSavedVis = null;
+
+function _buildSlicerGizmo() {
+  const g = new THREE.Group();
+  g.renderOrder = 20;
+  const L = 800;          // arrow length (mm)
+  const head = 120;       // cone head length
+  const rad  = 40;        // cone head radius
+  const sphR = 60;        // centre sphere
+
+  // Axes in cylindrical basis (depend on position):
+  //   ẑ = (0, 0, 1)                — red
+  //   φ̂ = (-sin φ, cos φ, 0)       — green
+  //   θ̂ = polar (radial in XY)      — blue
+  // We pre-build arrows in a local frame (Z, Y, X) and rotate the group so its
+  // axes align with the cylindrical basis at the current position.
+
+  const mkArrow = (dir, color) => {
+    const a = new THREE.ArrowHelper(dir, new THREE.Vector3(0,0,0), L, color, head, rad);
+    a.line.material.linewidth = 3;
+    a.line.material.depthTest = false;
+    a.cone.material.depthTest = false;
+    a.renderOrder = 21;
+    return a;
+  };
+  g.userData.arrowZ = mkArrow(new THREE.Vector3(0,0,1), 0xff2a2a); g.add(g.userData.arrowZ);
+  g.userData.arrowP = mkArrow(new THREE.Vector3(0,1,0), 0x33dd55); g.add(g.userData.arrowP);
+  g.userData.arrowT = mkArrow(new THREE.Vector3(1,0,0), 0x3b8cff); g.add(g.userData.arrowT);
+
+  // Central draggable sphere
+  const sphGeo = new THREE.SphereGeometry(sphR, 16, 12);
+  const sphMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false });
+  const sph = new THREE.Mesh(sphGeo, sphMat);
+  sph.userData.slicerHandle = true;
+  sph.renderOrder = 22;
+  g.add(sph);
+  g.userData.handle = sph;
+  return g;
+}
+
+function _updateSlicerBasis() {
+  if (!slicerGroup) return;
+  slicerGroup.position.copy(slicerPos);
+  const phi = Math.atan2(slicerPos.y, slicerPos.x);
+  const rxy = Math.hypot(slicerPos.x, slicerPos.y);
+  // φ̂ tangent to circle; r̂ radial outward; we put θ̂ = r̂ (polar in XY plane for simplicity)
+  slicerGroup.userData.arrowZ.setDirection(new THREE.Vector3(0, 0, 1));
+  slicerGroup.userData.arrowP.setDirection(new THREE.Vector3(-Math.sin(phi),  Math.cos(phi), 0));
+  const radial = rxy > 1e-6
+    ? new THREE.Vector3(slicerPos.x / rxy, slicerPos.y / rxy, 0)
+    : new THREE.Vector3(1, 0, 0);
+  slicerGroup.userData.arrowT.setDirection(radial);
+  slicerGroup.updateMatrix();
+  dirty = true;
+}
+
+function _setSceneGeomVisible(visible) {
+  if (visible) {
+    // Re-apply current filters so visibility matches the user's toggles/thresholds.
+    applyThreshold();
+    applyFcalThreshold();
+    if (fcalGroup)    fcalGroup.visible    = true;
+    if (trackGroup)   trackGroup.visible   = true;
+    if (clusterGroup) clusterGroup.visible = true;
+    slicerSavedVis = null;
+  } else {
+    for (const [mesh] of active) mesh.visible = false;
+    if (fcalGroup)    fcalGroup.visible    = false;
+    if (trackGroup)   trackGroup.visible   = false;
+    if (clusterGroup) clusterGroup.visible = false;
+  }
+  dirty = true;
+}
+
+function enableSlicer() {
+  if (slicerActive) return;
+  slicerActive = true;
+  if (!slicerGroup) {
+    slicerGroup = _buildSlicerGizmo();
+    scene.add(slicerGroup);
+  }
+  slicerGroup.visible = true;
+  _updateSlicerBasis();
+  _setSceneGeomVisible(false);
+  document.getElementById('btn-slicer').classList.add('on');
+}
+function disableSlicer() {
+  if (!slicerActive) return;
+  slicerActive = false;
+  if (slicerGroup) slicerGroup.visible = false;
+  _setSceneGeomVisible(true);
+  document.getElementById('btn-slicer').classList.remove('on');
+}
+function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
+
+// Drag interaction — click and drag the central sphere to reposition the gizmo.
+// We project mouse motion onto a plane through slicerPos perpendicular to the
+// camera view direction, then snap the result as the new cylindrical point.
+(function () {
+  const btn = document.getElementById('btn-slicer');
+  if (btn) btn.addEventListener('click', toggleSlicer);
+
+  const dragRay   = new THREE.Raycaster();
+  dragRay.params.Line = { threshold: 25 };
+  const dragPlane = new THREE.Plane();
+  const dragHit   = new THREE.Vector3();
+  const _planeN   = new THREE.Vector3();
+  let   dragging  = false;
+  let   dragOffset = new THREE.Vector3();
+
+  function _pointerXY(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width)  *  2 - 1,
+      y: -((e.clientY - rect.top)  / rect.height) *  2 + 1,
+    };
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    if (!slicerActive || !slicerGroup) return;
+    const pt = _pointerXY(e);
+    dragRay.setFromCamera(pt, camera);
+    const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
+    if (!hits.length) return;
+    dragging = true;
+    controls.enabled = false;
+    canvas.setPointerCapture(e.pointerId);
+    // Plane perpendicular to camera forward, through slicerPos
+    camera.getWorldDirection(_planeN);
+    dragPlane.setFromNormalAndCoplanarPoint(_planeN, slicerPos);
+    dragRay.ray.intersectPlane(dragPlane, dragHit);
+    dragOffset.copy(slicerPos).sub(dragHit);
+    e.preventDefault();
+    e.stopPropagation();
+  }, /* capture: */ true);
+  canvas.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const pt = _pointerXY(e);
+    dragRay.setFromCamera(pt, camera);
+    if (dragRay.ray.intersectPlane(dragPlane, dragHit)) {
+      slicerPos.copy(dragHit).add(dragOffset);
+      _updateSlicerBasis();
+    }
+  });
+  const endDrag = e => {
+    if (!dragging) return;
+    dragging = false;
+    controls.enabled = true;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  canvas.addEventListener('pointerup',     endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+})();
+
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 // Viewer:   G ghost · B beam · R reset · I info · C cinema · P screenshot
 // Panels:   M menu sidebar · E energy · S settings
@@ -3309,8 +3472,22 @@ document.getElementById('btn-about').addEventListener('click', () => {
 document.addEventListener('keydown', e => {
   // Ignore when focus is inside a text input
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  // Ignore modifier combos (browser shortcuts)
+  // Ignore modifier combos (browser shortcuts) — except Shift, which we use
+  // for slicer/background-colour shortcuts.
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  // Shift-modified shortcuts: handle first, then bail.
+  if (e.shiftKey) {
+    switch (e.key.toUpperCase()) {
+      case 'B':
+        document.getElementById('bgcolor-input')?.click();
+        return;
+      case 'S':
+        toggleSlicer();
+        return;
+    }
+    return;
+  }
 
   switch (e.key.toUpperCase()) {
     case 'G':
@@ -3361,6 +3538,7 @@ document.addEventListener('keydown', e => {
       document.getElementById('btn-cluster').click();
       break;
     case 'ESCAPE':
+      if (slicerActive)        { disableSlicer(); return; }
       if (cinemaMode)          { exitCinema(); return; }
       if (settingsPanelOpen)   { closeSettingsPanel(); return; }
       if (layersPanelOpen)     { closeLayersPanel(); return; }

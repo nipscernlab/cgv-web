@@ -26,6 +26,9 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
     html {
+      /* Bumped from the browser default (16px) so every rem-based size used
+         throughout the UI grows proportionally without per-rule edits. */
+      font-size: 19px;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       text-rendering: optimizeLegibility;
@@ -407,10 +410,10 @@
         max-height: calc(100vh - 20px);
       }
       .about-title { font-size: .88rem; margin-bottom: 2px; }
-      .about-sub { font-size: .50rem; margin-bottom: 10px; letter-spacing: .14em; }
+      .about-sub { font-size: .60rem; margin-bottom: 10px; letter-spacing: .14em; }
       .about-body { font-size: .62rem; line-height: 1.55; }
       .about-meta { margin-top: 10px; padding: 7px 10px; font-size: .58rem; }
-      .about-meta strong { font-size: .48rem; margin-bottom: 2px; }
+      .about-meta strong { font-size: .58rem; margin-bottom: 2px; }
       .about-lab { margin-top: 10px; padding-top: 9px; font-size: .56rem; line-height: 1.55; }
       .about-close { margin-top: 12px; padding: 6px 16px; font-size: .56rem; }
       #about-watermark { margin-top: 12px; padding-top: 10px; }
@@ -450,7 +453,7 @@
     }
     .det-tab {
       flex: none; padding: 5px 8px;
-      font: 600 .54rem var(--mono); letter-spacing: .04em;
+      font: 600 .62rem var(--mono); letter-spacing: .04em;
       color: var(--muted); border: none; text-align: center;
       border-left: 2px solid transparent;
       cursor: pointer; transition: color .14s, border-color .14s, background .14s;
@@ -473,13 +476,13 @@
     }
     .pane-det-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
     .pane-det-name {
-      font: 500 .50rem var(--font); color: var(--text); letter-spacing: .03em;
+      font: 500 .62rem var(--font); color: var(--text); letter-spacing: .03em;
     }
     .slbl {
-      font: 400 .48rem var(--font); letter-spacing: .13em;
+      font: 400 .60rem var(--font); letter-spacing: .13em;
       color: var(--muted); text-transform: uppercase; text-align: center;
     }
-    .sval { font: 400 .54rem var(--mono); color: var(--muted); text-align: center; }
+    .sval { font: 400 .62rem var(--mono); color: var(--muted); text-align: center; }
     .strak {
       position: relative; width: 12px; height: 160px;
       border-radius: 6px; cursor: ns-resize; user-select: none; touch-action: none;
@@ -495,7 +498,7 @@
     .thr-input {
       width: 68px; padding: 3px 4px;
       background: rgba(2,11,28,.90); border: 1px solid var(--border);
-      border-radius: 4px; color: var(--text); font: 400 .54rem var(--mono);
+      border-radius: 4px; color: var(--text); font: 400 .62rem var(--mono);
       text-align: center; transition: border-color .15s;
     }
     .thr-input:focus { border-color: var(--accent2); color: var(--bright); }
@@ -506,7 +509,7 @@
       border: 1px solid rgba(255,255,255,.10);
       border-radius: 6px;
       color: var(--muted);
-      font: 600 .47rem var(--mono);
+      font: 600 .58rem var(--mono);
       letter-spacing: .08em;
       text-transform: uppercase;
       cursor: pointer;
@@ -769,10 +772,10 @@
       /* Right-panel pane contents — keep vertical sliders compact */
       .strak { height: 110px; }
       .pane-det-name { font-size: .58rem; }
-      .slbl { font-size: .50rem; }
+      .slbl { font-size: .58rem; }
       .sval { font-size: .57rem; }
       .thr-input { width: 72px; font-size: .58rem; }
-      .cluster-filter-btn { width: 86px; font-size: .48rem; }
+      .cluster-filter-btn { width: 86px; font-size: .58rem; }
 
       /* ─── Misc ──────────────────────────────────────── */
       #log-sec { max-height: 80px; }
@@ -1101,13 +1104,13 @@
       border-top: 1px solid var(--border);
     }
     .dl-stages { display: flex; align-items: center; gap: 3px; margin-bottom: 4px; flex-wrap: nowrap; overflow: hidden; }
-    .dl-stage  { display: flex; align-items: center; gap: 3px; font: 500 .53rem var(--mono); color: var(--muted); transition: color .25s; white-space: nowrap; }
+    .dl-stage  { display: flex; align-items: center; gap: 3px; font: 500 .60rem var(--mono); color: var(--muted); transition: color .25s; white-space: nowrap; }
     .dl-stage.active { color: var(--accent2); }
     .dl-stage.done   { color: var(--ok); }
     .dl-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .25s; }
     .dl-stage.active .dl-dot { background: var(--accent2); animation: pulse 0.8s ease-in-out infinite; }
     .dl-stage.done   .dl-dot { background: var(--ok); animation: none; }
-    .dl-arrow { color: var(--border2); font-size: .48rem; }
+    .dl-arrow { color: var(--border2); font-size: .58rem; }
     #dl-bar-track { height: 2px; background: rgba(36,103,224,.10); border-radius: 1px; overflow: hidden; }
     #dl-bar-fill  { height: 100%; background: linear-gradient(90deg,var(--accent),var(--accent2)); border-radius: 1px; width: 0%; transition: width .35s ease; }
 
