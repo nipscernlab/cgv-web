@@ -1,14 +1,31 @@
-# CGV — Calorimeter Geometry Viewer
+<p align="center">
+  <a href="https://github.com/nipscernlab/cgv-web" target="_blank" style="text-decoration:none;">
+    <img src="https://github.com/nipscernlab/nipscernweb/blob/main/assets/icons/icon_cgv.svg"
+         alt="CGV-WEB"
+         width="120"
+         style="vertical-align:middle;margin:0 12px;border:none;">
+  </a>
+</p>
 
-A browser-based 3D viewer for the **ATLAS Tile Calorimeter (TileCal)** geometry at the LHC.
-Loads CERN `.root` geometry files, compiles them to a compact mesh format, and renders
-them with Three.js + WebGL. Optional live event overlay via JiveXML from ATLANTIS.
+<h1 align="center">CGV Web — Calorimeter Geometry Viewer</h1>
+
+<p align="center">
+  A browser-based 3D viewer for the <b>ATLAS Tile Calorimeter (TileCal)</b> at the LHC.
+</p>
+
+---
+
+CGV Web loads CERN `.root` geometry files, compiles them to a compact mesh
+format, and renders them with **Three.js + WebGL**. It overlays live event
+data (cells, clusters, particle tracks) parsed from **JiveXML** samples
+produced by ATLANTIS.
 
 This project is the web continuation of the PhD thesis of
 **Prof. Dr. Luciano Manhães de Andrade Filho**, developed at
 **NIPSCERN** (Núcleo de Instrumentação e Processamento de Sinais for CERN) —
-**UFJF** (Universidade Federal de Juiz de Fora, Brazil), in partnership with CERN,
-for the ATLAS Experiment at the LHC. Undergraduate developer: **Chrysthofer Arthur Amaro Afonso**.
+**UFJF** (Universidade Federal de Juiz de Fora, Brazil), in partnership with
+the CERN ATLAS Experiment. Undergraduate developer:
+**Chrysthofer Arthur Amaro Afonso**.
 
 ---
 
@@ -39,7 +56,7 @@ The build pipeline is only needed if you want to:
 
 | Tool         | Version    | Purpose                                  |
 |--------------|------------|------------------------------------------|
-| Node.js      | ≥ 18       | Runs the `.root` → `.glb` pipeline |
+| Node.js      | ≥ 18       | Runs the `.root` → `.glb` pipeline       |
 | npm          | bundled    | Installs JS dependencies                 |
 | Rust         | stable     | Compiles the ATLAS ID parser             |
 | `wasm-pack`  | ≥ 0.12     | Builds the parser to WebAssembly         |
@@ -127,7 +144,7 @@ cgv-web/
 ├── index.html                  entry point (HTML only)
 ├── css/style.css               all styles
 ├── js/main.js                  viewer logic (Three.js, UI, networking)
-├── assets/                     icons, fonts, images
+├── assets/                     icons, fonts, images (incl. cgvweb_icon.svg)
 ├── const/                      CaloBuild.C, CaloGeoConst.h (ATLAS geometry constants)
 ├── default_xml/                bundled JiveXML samples + index.json
 ├── parser/                     Rust ATLAS-ID parser
@@ -142,6 +159,9 @@ cgv-web/
 │   ├── root2scene.mjs          .root → .glb compiler
 │   ├── optimize_glb.mjs        GLB stripper / quantizer
 │   └── lib/                    patched jsroot modules
+├── nipscern/                   lightweight standalone preview (pre-baked scene_data.bin)
+├── twiki/                      ATLAS-style user documentation (Markdown)
+├── atlantis/                   ATLANTIS bundled archive
 ├── live_atlas/                 live ATLANTIS bridge (optional)
 ├── debug/                      debug scripts + dumps
 └── docs/                       design notes & PDFs
@@ -153,14 +173,28 @@ cgv-web/
 
 | Key        | Action                                  |
 |------------|-----------------------------------------|
+| `G`        | Toggle ghost frame                      |
+| `B`        | Toggle beam axis                        |
+| `I`        | Toggle cell info (tooltip)              |
+| `R`        | Reset camera                            |
+| `C`        | Cinema mode                             |
 | `M`        | Toggle left menu (sidebar)              |
+| `E`        | Energy threshold panel                  |
+| `P`        | Screenshot                              |
+| `S`        | Settings                                |
 | `T`        | Toggle TILE calorimeter                 |
 | `L` / `A`  | Toggle LAr calorimeter                  |
 | `H`        | Toggle HEC calorimeter                  |
-| `Space`    | Play / pause                            |
-| `R`        | Reset camera                            |
-| `F`        | Fullscreen                              |
-| `?`        | Show shortcut help                      |
+| `J`        | Toggle particle tracks                  |
+| `K`        | Toggle clusters (η/φ lines)             |
+| `Esc`      | Close overlays / exit modes             |
+
+---
+
+## Documentation
+
+User-facing documentation lives in [`twiki/`](twiki/) — start at
+[`twiki/WebHome.md`](twiki/WebHome.md).
 
 ---
 
