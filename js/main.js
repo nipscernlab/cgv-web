@@ -349,7 +349,6 @@ let trackGroup    = null;
 let clusterGroup  = null;
 let fcalGroup     = null;
 let fcalCellsData  = [];   // cached for threshold rebuilds
-let fcalMaxMev     = 1;    // actual data max, used for palette normalisation
 let fcalVisibleMap = [];   // [instanceId] → cell object for the current visible set
 let lastClusterData       = null;  // { collections: [{key, clusters: [{eta,phi,etGev,cells:{TILE,LAR_EM,HEC,OTHER}}]}] }
 let activeClusterCellIds  = null;  // null = no cluster filter; Set<string> = only these cell IDs are visible
@@ -472,16 +471,16 @@ function palMatLAr(eMev) {
   return PAL_LAR[Math.round(tv * (PAL_N - 1))];
 }
 
-// ── Palette FCAL: light copper (#e8a06a) → dark copper (#3d1000), linear ──────
+// ── Palette FCAL: dark copper (#3d1000) → light copper (#e8a06a), linear ──────
 // Returns [r, g, b] in [0,1] for use with vertex colours on LineSegments.
-// Normalisation is against fcalMaxMev (actual per-event maximum).
-const FCAL_SCALE = 10000; // MeV slider range (10 GeV)
+// Normalisation is against a fixed 7 GeV ceiling.
+const FCAL_SCALE = 7000; // MeV slider range (7 GeV)
 function palColorFcalRgb(t) {
   t = Math.max(0, Math.min(1, t));
   return [
-    0.910 + t * (0.239 - 0.910),  // R: #e8 → #3d
-    0.627 + t * (0.063 - 0.627),  // G: #a0 → #10
-    0.416 + t * (0.000 - 0.416),  // B: #6a → #00
+    0.239 + t * (0.910 - 0.239),  // R: #3d → #e8
+    0.063 + t * (0.627 - 0.063),  // G: #10 → #a0
+    0.000 + t * (0.416 - 0.000),  // B: #00 → #6a
   ];
 }
 
@@ -1333,9 +1332,6 @@ function drawFcal(cells) {
   clearFcal();
   fcalCellsData = cells;
   if (!cells.length) return;
-  let mx = 0;
-  for (const { energy } of cells) { const v = Math.abs(energy) * 1000; if (v > mx) mx = v; }
-  fcalMaxMev = mx || 1;
   _applyFcalDraw();
 }
 
@@ -1419,7 +1415,7 @@ function _applyFcalDraw() {
     _fcalDummy.updateMatrix();
     iMesh.setMatrixAt(i, _fcalDummy.matrix);
     // Per-instance colour from copper palette
-    const [r, g, b] = palColorFcalRgb(Math.abs(energy) * 1000 / fcalMaxMev);
+    const [r, g, b] = palColorFcalRgb(Math.abs(energy) * 1000 / FCAL_SCALE);
     _fcalCol.setRGB(r, g, b);
     iMesh.setColorAt(i, _fcalCol);
   }
