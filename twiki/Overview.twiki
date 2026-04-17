@@ -1,0 +1,60 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ Overview
+
+%TOC%
+
+CGV Web is a zero-install, browser-native event display for the ATLAS
+calorimeter system. It loads the real detector geometry exported from the
+ATLAS GeoModel database, and draws on top of it the quantities that shifters
+and analysers care about during a run: energy deposits per cell,
+topological clusters, reconstructed tracks and the associated kinematic
+summary.
+
+The viewer runs entirely in WebGL2 via [[https://threejs.org/][Three.js]].
+Cell identifiers are decoded by a Rust-compiled-to-WebAssembly module, so
+mapping a 32-bit =caloId= to =(subDet, side, sampling, η-bin, φ-bin)= costs
+a few microseconds and never blocks the main thread.
+
+---++ What it renders
+
+   * Tile Calorimeter — long barrel (LB) and the two extended barrels (EB±).
+   * LAr EM — barrel (EMB) and end-caps (EMEC±).
+   * HEC — four-wheel hadronic end-cap.
+   * FCAL — three forward modules (FCAL1, FCAL2, FCAL3).
+   * ATLAS Ghost — nine inactive-material envelopes for spatial context.
+   * Reconstructed tracks and topological clusters from the current event.
+
+---++ Colour convention
+
+The colour palette is consistent across the scene, the panel headers and
+the threshold sliders. Keep it in mind when reading a capture:
+
+| *Sub-detector / object* | *Accent* | *Hex*    |
+| TileCal                 | orange   | =#c87c18= |
+| LAr EM                  | green    | =#27b568= |
+| HEC                     | cyan     | =#66e0f6= |
+| FCAL                    | copper   | =#b87333= |
+| Tracks                  | yellow   | =#ffea00= |
+| Clusters                | red      | =#ff4400= |
+
+Active cells use a per-sub-detector gradient between cold (low E) and hot
+(high E). Track lines are thin and solid; cluster outlines are dashed.
+
+---++ Typical shifter workflow
+
+   1. Open CGV Web in the Control Room browser.
+   1. [[DataModes][Live mode]] auto-connects to the ATLAS Live feed via ATLANTIS; events arrive every few seconds.
+   1. Drag, scroll and right-drag the canvas to orbit, zoom and pan around the detector.
+   1. Use the right-hand [[EnergyThresholds][threshold panel]] to cut on TILE, LAr, HEC, FCAL, track p_T or cluster E_T.
+   1. Click a cell to read its compact ATLAS-ID, η, φ and energy in the cell tooltip.
+   1. Press =P= to save a screenshot at up to 10K resolution for logbook entries.
+
+---++ Offline analysis
+
+The same page accepts local JiveXML files (folder picker or drag-and-drop)
+and bundled sample events. Multi-event XML is supported with a carousel
+that auto-advances between files — useful during a shift debrief or for
+building a quick training deck from a list of flagged events.
+
+%BR% %BR%
+<em>Next: [[GettingStarted][Getting Started →]]</em>

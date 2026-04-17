@@ -3,28 +3,69 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CGV Web — TWiki</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4/themes/vue.css">
-  <style>
-    :root { --theme-color:#1a52c0; }
-    .markdown-section { max-width: 900px; }
-    .sidebar-nav a { font-size: 0.93rem; }
-  </style>
+  <title>CGV Web — ATLAS TWiki</title>
+  <link rel="icon" type="image/svg+xml" href="assets/cgvweb_icon.svg">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="app">Loading…</div>
-  <script>
-    window.$docsify = {
-      name: 'CGV Web TWiki',
-      repo: 'https://github.com/nipscernlab/cgv-web',
-      homepage: 'WebHome.md',
-      loadSidebar: '_sidebar.md',
-      subMaxLevel: 2,
-      auto2top: true,
-      search: { placeholder: 'Search…', noData: 'No results.' }
-    };
-  </script>
-  <script src="https://cdn.jsdelivr.net/npm/docsify@4"></script>
-  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+
+  <header class="ribbon">
+    <div class="brand">
+      <img src="assets/cgvweb_icon.svg" alt="CGV Web">
+      <div>
+        <b>CGV Web</b><br>
+        <span>ATLAS Calorimeter Geometry Viewer</span>
+      </div>
+    </div>
+    <nav>
+      <a href="https://nipscern.com/projects/cgv" target="_blank" rel="noopener">Docs</a>
+      <a href="https://nipscern.com/projects/cgvweb" target="_blank" rel="noopener">Project</a>
+      <a href="https://nipscern.com" target="_blank" rel="noopener">Lab</a>
+      <a class="gh" href="https://github.com/nipscern/cgv-web" target="_blank" rel="noopener" title="Source on GitHub">
+        <object type="image/svg+xml" data="assets/github-octocat.svg" width="26" height="26" aria-label="GitHub"></object>
+      </a>
+    </nav>
+  </header>
+
+  <div class="trail" id="trail">
+    <a href="#/WebHome">ATLAS</a> &rsaquo; <a href="#/WebHome">CGV Web</a> &rsaquo; <span>Home</span>
+  </div>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <input class="search" id="search" type="search" placeholder="Filter topics…">
+      <h3>CGV Web TWiki</h3>
+      <ul id="sidebar-nav"></ul>
+      <h3>External</h3>
+      <ul>
+        <li><a href="https://nipscern.com/projects/cgv" target="_blank" rel="noopener">Extended docs</a></li>
+        <li><a href="https://nipscern.com/projects/cgvweb" target="_blank" rel="noopener">Project page</a></li>
+        <li><a href="https://atlas.cern/" target="_blank" rel="noopener">ATLAS experiment</a></li>
+        <li><a href="https://twiki.cern.ch/twiki/bin/view/Atlas/WebHome" target="_blank" rel="noopener">ATLAS TWiki</a></li>
+      </ul>
+    </aside>
+
+    <main class="content">
+      <div id="topic-body">Loading…</div>
+    </main>
+
+    <aside class="toc" id="toc-host">
+      <!-- TOC is injected by the parser via the %TOC% marker in each topic. -->
+    </aside>
+  </div>
+
+  <footer class="foot">
+    <a class="lab" href="https://nipscern.com" target="_blank" rel="noopener" title="NIPS laboratory">
+      <img src="assets/icon_home_nipscern.svg" alt="NIPS">
+      <span>NIPSCERN &mdash; Núcleo de Instrumentação e Processamento de Sinais</span>
+    </a>
+    <div class="links">
+      <a href="https://nipscern.com/projects/cgv" target="_blank" rel="noopener">Extended docs</a>
+      <a href="https://nipscern.com/projects/cgvweb" target="_blank" rel="noopener">Project</a>
+      <a href="https://twiki.cern.ch/twiki/bin/view/Atlas/" target="_blank" rel="noopener">ATLAS TWiki</a>
+    </div>
+  </footer>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>

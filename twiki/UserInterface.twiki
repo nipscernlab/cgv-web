@@ -1,0 +1,102 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ User Interface
+
+%TOC%
+
+The layout is three-region: a retractable left panel for data ingestion, a
+retractable right panel for threshold sliders, and the bottom toolbar for
+scene controls. The 3D canvas fills everything in between.
+
+<img src="images/ui-overview.png" alt="CGV Web — annotated interface" width="820" />
+
+---++ Left panel (data source)
+
+The left panel has three exclusive modes at the top: Live, Local, Samples.
+Selecting a mode reveals the corresponding list or picker.
+
+<img src="images/left-panel.png" alt="Left panel: mode bar, event list, status bar" width="380" />
+
+   * =Live= — green pulsing dot when the ATLAS Live long-poll is active. Pause/resume with the inline =⏸= / =▶= buttons. Event list populates as events arrive.
+   * =Local= — =Select Folder= ingests a whole directory of JiveXML. =Upload XML= opens a single file. A carousel bar controls auto-advance.
+   * =Samples= — bundled events from =default_xml/index.json=.
+   * Status bar (bottom) — current pipeline stage and a session request counter.
+   * The panel is pinnable (pin icon at top-right). When unpinned it auto-opens on cursor hover near the left edge, when the =Auto-open sidebar on hover= preference is enabled.
+
+---++ Right panel (energy thresholds)
+
+Stacked per-sub-detector tabs with a vertical slider each. The Cluster
+tab sits on top as an always-visible fixed pane; TILE, LAr, FCAL, HEC and
+Track are sibling tabs below. Full details in [[EnergyThresholds][Energy Thresholds]].
+
+<img src="images/threshold-panel.png" alt="Right-side energy threshold panel" width="240" />
+
+Each slider exposes:
+
+   * A vertical gradient track representing the palette from 0 to the current max.
+   * A =max= read-out (top), driven by the 97th-percentile of the current event unless overridden.
+   * A numeric text input for precise typed values (e.g. =200 MeV=, =1.5 GeV=).
+   * The Cluster tab adds a =Cluster Threshold= on/off switch.
+
+---++ Bottom toolbar
+
+| *Button*    | *Action*                                                    | *Shortcut* |
+| Sidebar     | Open/close the left panel                                   | =M=        |
+| Cinema      | Hide the UI, auto-rotate the camera                         | =C=        |
+| Ghost       | Toggle the ATLAS Ghost panel                                | =G=        |
+| Cell info   | Toggle hover tooltip and cell outline                       | =I=        |
+| Beam axis   | Show the z-axis beam cones                                  | =B=        |
+| Layers      | Toggle sub-detector visibility                              | — (panel)  |
+| Tracks      | Show/hide reconstructed tracks                              | =J=        |
+| Clusters    | Show/hide cluster outlines                                  | =K=        |
+| Energy      | Open/close the threshold panel                              | =E=        |
+| Reset view  | Recentre the camera                                         | =R=        |
+| Screenshot  | Open the resolution picker                                  | =P=        |
+| Settings    | Preferences, shortcuts, sponsors, about                     | =S=        |
+| Language    | English / French / Norwegian / Portuguese                   | —          |
+
+---++ Detector Layers panel
+
+Independent on/off switches for the four active sub-detector groups. Quick
+=All= / =None= buttons at the top. Each row carries the sub-detector
+colour dot and a short description.
+
+<img src="images/layers-panel.png" alt="Detector layers panel" width="280" />
+
+---++ ATLAS Ghost panel
+
+Per-envelope switches for the nine ghost meshes listed in [[Geometry][Geometry]].
+Use it to reveal a single envelope without the visual noise of the others.
+
+<img src="images/ghost-panel.png" alt="ATLAS Ghost panel" width="280" />
+
+---++ Cell tooltip
+
+Shown on hover whenever Cell-info is enabled. Holds the compact ATLAS-ID
+(sub-detector, side, sampling, η-bin, φ-bin), the η/φ coordinates and the
+deposited energy. Units auto-scale between MeV and GeV.
+
+<img src="images/cell-tooltip.png" alt="Cell hover tooltip" width="260" />
+
+---++ Screenshot dialog
+
+=P= or the camera toolbar button opens the picker. The scene re-renders at
+the chosen resolution with the UI hidden; if a tooltip was pinned it is
+composited back in after capture.
+
+<img src="images/screenshot-dialog.png" alt="Screenshot resolution picker" width="460" />
+
+Available resolutions: HD (1280×720), 1080p, 2K, 4K, 8K, 10K (10240×5760).
+
+---++ Settings panel
+
+Opened with =S= or the gear icon. Four sections:
+
+   * Preferences — toggle button hints and sidebar auto-open.
+   * Keyboard Shortcuts — full reference, mirrors [[KeyboardShortcuts][this page]].
+   * Supported by — project sponsors (ATLAS, CERN, CNPq, CAPES, FAPEMIG, UFJF).
+   * About — build info and NIPSCERN credits.
+
+<img src="images/settings-panel.png" alt="Settings panel" width="420" />
+
+%BR% %BR%
+<em>Next: [[DataModes][Data Modes →]]</em>

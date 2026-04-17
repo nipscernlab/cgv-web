@@ -1,0 +1,82 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ Event Data
+
+%TOC%
+
+---++ JiveXML at a glance
+
+JiveXML is the ATLAS XML event-display interchange format. It is produced
+by ATHENA's =JiveXML= algorithm at reconstruction time and consumed by
+both the legacy Java ATLANTIS client and, now, CGV Web. A typical event
+carries the calorimeter cells, reconstructed tracks and clusters, run and
+event numbers and a short summary block:
+
+<verbatim class="xml">
+<Event runNumber="431885" eventNumber="12345" time="2026-04-17T14:32:10">
+  <TILE count="184">
+    <id>...</id>
+    <energy>...</energy>
+    <eta>...</eta>
+    <phi>...</phi>
+  </TILE>
+  <LAr count="4021">...</LAr>
+  <HEC count="87">...</HEC>
+  <FCAL count="24">...</FCAL>
+  <Track count="12">...</Track>
+  <Cluster count="7">...</Cluster>
+</Event>
+</verbatim>
+
+Each sub-detector tag contains parallel arrays — the i-th =id= matches the
+i-th =energy=, =eta= and =phi=. Optional arrays (=time=, =quality=, =gain=)
+are ignored by CGV Web today but kept in the payload.
+
+---++ Compact ATLAS-ID
+
+Calorimeter cells are referenced by a 32-bit compact identifier that
+packs the detector coordinates into a single integer:
+
+| *Field*     | *Bits* | *Meaning*                                      |
+| subDet      | 4      | 0 = Tile, 1 = LAr EM, 2 = HEC, 3 = FCAL         |
+| side        | 1      | 0 = −z, 1 = +z                                  |
+| sampling    | 3      | Depth layer inside the sub-detector             |
+| η-bin       | 12     | Signed η index                                  |
+| φ-bin       | 12     | φ module / cell index                           |
+
+CGV Web decodes it on-the-fly with a Rust parser compiled to WebAssembly
+(=parser/pkg/atlas_id_parser_bg.wasm=). Typical cost is a couple of
+microseconds per cell, well under the GPU upload budget, and it runs off
+the main thread.
+
+The decoded tuple is the one you see in the cell tooltip and in the
+pinnable details card.
+
+<img src="images/cell-tooltip.png" alt="Cell tooltip showing decoded ID" width="260" />
+
+---++ Coordinate frame
+
+CGV Web uses the ATLAS right-handed coordinate frame translated into
+Three.js convention:
+
+   * =z= — beam axis; =+z= points towards side A.
+   * =φ= — azimuth around =z=, 0 along =+x=.
+   * =η= — pseudorapidity, =η = −ln tan(θ/2)= with =θ= the polar angle from =+z=.
+   * =r= — transverse distance from the beam axis.
+
+The camera starts with =+z= pointing into the screen. The =1 / 2 / 3=
+hotkeys snap the view to top, side and isometric presets; =R= recentres
+on the full detector.
+
+<img src="images/coordinate-frame.png" alt="ATLAS coordinate frame in CGV Web" width="520" />
+
+---++ Tracks and clusters
+
+Tracks come from the ATLAS inner-detector reconstruction chain and are
+drawn as thin solid lines coloured by the Track accent =#ffea00=.
+
+Topological clusters come from the =CaloTopoCluster= algorithm and are
+drawn as dashed red outlines (=#ff4400=) around the cells that form the
+cluster. The Cluster right-panel tab exposes a min-E_T filter.
+
+%BR% %BR%
+<em>Next: [[KeyboardShortcuts][Keyboard Shortcuts →]]</em>

@@ -1,0 +1,75 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ Energy Thresholds
+
+%TOC%
+
+The right-side panel carries one slider tab per object class. A hit, cluster
+or track is drawn only when its energy (or p_T) lies inside the tab's
+=[min, max]= window. The sliders do not modify the underlying event — they
+are display-time filters.
+
+<img src="images/threshold-panel.png" alt="Threshold panel layout" width="260" />
+
+---++ Tabs
+
+| *Tab*     | *Object*              | *Units* | *Default floor* | *Default ceiling*    |
+| TILE      | TileCal cell          | GeV     | 0               | auto (P97 of event)  |
+| LAr       | LAr EM cell           | GeV     | 0               | auto (P97)           |
+| FCAL      | LAr FCAL cell         | GeV     | 0               | auto (P97)           |
+| HEC       | LAr HEC cell          | GeV     | 0               | auto (P97)           |
+| Track     | Reconstructed track   | GeV     | 0.5             | –                    |
+| Cluster   | Topological cluster   | GeV     | 0.5             | –                    |
+
+The Cluster tab has its own =Cluster Threshold= on/off switch: when off, all
+clusters render regardless of E_T.
+
+---++ P97 auto-scaling
+
+By default the ceiling of every calorimeter tab is set to the 97th
+percentile of that sub-detector's cell energies for the current event. The
+palette therefore spans the bulk of the deposits rather than being
+dominated by a single high-energy cell.
+
+The read-out above each slider shows the current ceiling (e.g. =2.00 GeV=).
+Double-click the slider to re-sample P97 if the event has just changed;
+pick a numeric value in the text input to lock an absolute ceiling.
+
+---++ Typed input
+
+Every tab exposes a text field below the slider. Accepted formats:
+
+<verbatim>
+200            -> 200 MeV (default unit)
+200 MeV        -> 200 MeV
+1.5 GeV        -> 1 500 MeV
+2e3            -> 2 000 MeV
+</verbatim>
+
+Invalid input is silently ignored and the slider stays put.
+
+---++ Palette behaviour
+
+Each sub-detector has a per-tab cold-to-hot gradient (see
+[[Overview][Overview]] for the accent colours). Within =[min, max]=:
+
+   * A hit at =min= renders with the coldest colour.
+   * A hit at =max= renders with the hottest colour.
+   * Hits below =min= are culled.
+   * Hits above =max= saturate at the hottest colour.
+
+---++ Recipes
+
+| *Goal*                                   | *Action*                                        |
+| Hide sub-MIP noise                       | Raise TILE / LAr floor to a few hundred MeV     |
+| Show only the shower core                | Raise floors on TILE and LAr simultaneously     |
+| Keep the scale fixed across events       | Lock each ceiling with a typed value            |
+| Isolate a single high-p_T track          | Raise Track floor to the desired p_T            |
+| Compare two events in the same capture   | Same typed ceilings on both captures            |
+
+---++ Interaction with geometry
+
+Thresholds never hide cells themselves, only their energy bars. To hide a
+whole sub-detector, use the [[UserInterface][Detector Layers panel]].
+
+%BR% %BR%
+<em>Next: [[Geometry][Geometry →]]</em>

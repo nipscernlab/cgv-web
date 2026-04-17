@@ -1,0 +1,67 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ Getting Started
+
+%TOC%
+
+---++ Opening the viewer
+
+The standard entry point is the deployed instance. From any Control Room
+terminal, ATLAS laptop or personal machine, open:
+
+   * [[https://nipscern.com/projects/cgvweb][nipscern.com/projects/cgvweb]]
+
+The loading card shows the geometry download and parser initialisation
+stages. On a typical connection the viewer is interactive in 4–8 seconds.
+
+<img src="images/loading-card.png" alt="CGV Web loading card" width="420" />
+
+---++ First paint
+
+Once the overlay clears you see the full ATLAS calorimeter envelope with
+the current event overlaid (or an empty scene if no event has arrived yet).
+
+<img src="images/ui-overview.png" alt="CGV Web — main interface" width="820" />
+
+   * Left side — mode panel (Live / Local / Samples) and event list.
+   * Right side — per-sub-detector threshold sliders.
+   * Bottom — main toolbar (layers, ghost, cinema, reset, screenshot, settings).
+   * Top-left — CGV logo, sidebar pin, external links (ATLAS Live, atlas.cern, home.cern, nipscern.com).
+
+---++ Your first event
+
+   1. If the viewer starts in [[DataModes][Live]] mode (default), wait for the first event to arrive. A green pulsing dot in the left panel means the feed is connected.
+   1. To try a known-good event, click =Samples= and choose one of the bundled JiveXML files.
+   1. Drag the canvas to orbit the camera, scroll to zoom, right-drag to pan.
+   1. Hover any cell to see its compact ATLAS-ID, η, φ and energy tooltip.
+   1. Tune the [[EnergyThresholds][thresholds]] on the right panel if the event is washed out by low-energy noise hits or saturated by a single high-energy cell.
+   1. Press =P= for a screenshot; =R= to recentre the camera; =C= for cinema mode.
+
+---++ Loading your own file
+
+   1. Click =Local= in the left-hand mode bar.
+   1. Either =Select Folder= to pick a whole directory of JiveXML files, or =Upload XML= for a single event.
+   1. For multi-event folders a carousel appears — press ▶ to auto-advance with a 2, 5, 10 or 30 s delay between events.
+
+Drag-and-drop of =.xml= files directly onto the canvas is also accepted.
+
+%BR%
+
+---++ Running from source (developers only)
+
+The shift workflow is always the hosted viewer above. This section is for
+developers who want to hack on the code, run offline or host a private
+instance.
+
+<verbatim>
+git clone https://github.com/nipscern/cgv-web.git
+cd cgv-web
+python -m http.server 8080
+</verbatim>
+
+Then open =http://localhost:8080/=. A =build.bat= / =deploy.bat= are
+included for Windows environments. See
+[[https://nipscern.com/projects/cgv][nipscern.com/projects/cgv]] for the
+developer guide and the geometry-exporter pipeline.
+
+%BR% %BR%
+<em>Next: [[UserInterface][User Interface →]]</em>

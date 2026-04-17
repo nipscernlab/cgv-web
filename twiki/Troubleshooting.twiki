@@ -1,0 +1,58 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ Troubleshooting
+
+%TOC%
+
+---++ The scene stays black or the loading card never clears
+
+   * Check the browser console for a CORS or 404 on =geometry_data/CaloGeometry.glb.gz=.
+   * WebGL2 must be available. Visit =chrome://gpu= (Chromium) or =about:support= (Firefox) and look for =WebGL 2 Enabled=.
+   * Some corporate proxies strip the =Content-Encoding: gzip= header; request an exemption for the deployment URL.
+
+---++ Live mode shows "waiting for events"
+
+   * Verify outbound HTTPS to =atlas-live.cern.ch= (proxy / VPN).
+   * Open dev-tools → Network and look for 401, 403 or a CORS preflight failure.
+   * Use the =⏸= / =▶= controls to reset the long-poll without reloading the page.
+   * Fall back to the [[DataModes][Samples]] mode to confirm the rendering pipeline is healthy.
+
+---++ Cells look duplicated or flicker
+
+Usually two overlapping geometries. Open the [[Geometry][ATLAS Ghost]]
+panel and turn off any envelope you do not need; the Tile barrel envelope
+and the Tile active cells share a boundary and can z-fight at very wide
+zoom levels.
+
+---++ Energy bars are all saturated red
+
+The palette ceiling is too low, or a stray high-energy cell compressed the
+dynamic range. Two fixes:
+
+   * Raise the sub-detector's =max= slider (or type a numeric value in the slider's text input).
+   * Double-click the slider to re-sample the 97th percentile.
+
+---++ A run's first event arrives and then nothing
+
+The ATLAS Live feed back-pressure is handled by ATLANTIS: if the feed is
+saturated, live mode buffers and then replays. Pause with =⏸= for a
+minute; resume with =▶=.
+
+---++ Local mode rejects a file
+
+   * The file must be JiveXML — not an xAOD, D3PD or ROOT file. See [[DataModes][Data Modes]] for the accepted formats.
+   * A =.gz= file is auto-decoded; other compressions are not.
+   * For multi-event XMLs, the =Event= tags must each have =runNumber= and =eventNumber= attributes.
+
+---++ Opening an issue
+
+If none of the above applies, open an issue at
+[[https://github.com/nipscern/cgv-web/issues][github.com/nipscern/cgv-web/issues]]
+with:
+
+   * Browser name and version.
+   * The failing event (if small enough) or its run / event number.
+   * The full console log (right-click → =Save as…=).
+   * A screenshot of the error state — =P= while the overlay is up works.
+
+%BR% %BR%
+<em>Next: [[Glossary][Glossary →]]</em>

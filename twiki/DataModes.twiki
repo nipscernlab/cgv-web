@@ -1,0 +1,71 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ Data Modes
+
+%TOC%
+
+Events enter CGV Web through three independent pathways, selected in the
+mode bar at the top of the left panel. Only one mode is active at a time;
+switching modes stops the previous ingestion without discarding the scene.
+
+<img src="images/mode-bar.png" alt="Left-panel mode bar: Live, Local, Samples" width="380" />
+
+---++ Live
+
+Live mode long-polls the ATLAS Live service hosted by the ATLANTIS
+project. It is the default mode in the Control Room deployment.
+
+<img src="images/live-mode.png" alt="Live mode — streaming events" width="380" />
+
+   * Status indicator — a green pulsing dot in the left bar (=Connected=), amber if the last event is older than 60 s, red if the endpoint is unreachable.
+   * Event list — populates with events as they arrive. Each row shows run / event numbers and a timestamp.
+   * Play / pause controls — =⏸= stops polling, =▶= resumes.
+   * Requires outbound HTTPS access to =atlas-live.cern.ch=. From the ATLAS Control Room this is whitelisted by default.
+
+See [[https://atlas-live.cern.ch/][atlas-live.cern.ch]] for the underlying
+ATLANTIS service and its event coverage.
+
+---++ Local
+
+Local mode parses JiveXML entirely in the browser. Files never leave the
+machine — no upload, no server round-trip.
+
+<img src="images/local-mode.png" alt="Local mode — folder picker and carousel" width="380" />
+
+Two pickers:
+
+   * =Select Folder= — a directory is walked recursively; every =.xml= entry is added to the event list.
+   * =Upload XML= — a single file is opened straight into the viewer.
+
+Multi-event XMLs are expanded into their constituent events in the list.
+When a folder contains more than one event a carousel bar appears at the
+bottom of the panel:
+
+   * Play / Stop controls to auto-advance.
+   * Step buttons =2s / 5s / 10s / 30s= set the delay between advances.
+
+Drag-and-drop of =.xml= files directly onto the 3D canvas is equivalent
+to =Upload XML=.
+
+---++ Samples
+
+A curated set of events shipped in =default_xml/= is listed at start-up.
+Useful for demos, shifter training and regression-testing a new build.
+
+<img src="images/samples-mode.png" alt="Samples mode — bundled event list" width="380" />
+
+Each row shows a short description; selecting one loads the event the
+same way =Local= does.
+
+---++ Accepted file formats
+
+| *Format*            | *Source*                                  | *Status*             |
+| JiveXML =.xml=       | ATHENA =JiveXML= algorithm / ATLANTIS    | supported            |
+| JiveXML =.xml.gz=    | gzipped JiveXML                          | supported (auto)     |
+| =.root=              | xAOD / D3PD                              | not supported — convert via ATHENA first |
+| =.json=              | custom formats                           | not supported        |
+
+See [[EventData][Event Data]] for the JiveXML element layout and the
+compact ATLAS-ID decoding used by CGV Web.
+
+%BR% %BR%
+<em>Next: [[EnergyThresholds][Energy Thresholds →]]</em>
