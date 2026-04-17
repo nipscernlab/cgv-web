@@ -1378,7 +1378,7 @@ function _getFcalEdgeBase() {
 function _applyFcalDraw() {
   const visible = fcalCellsData.filter(c => {
     if (!showFcal) return false;
-    if (Math.abs(c.energy) * 1000 < thrFcalMev) return false;
+    if (c.energy * 1000 < thrFcalMev) return false;
     if (activeClusterCellIds === null) return true;
     if (!c.id) return true;
     return activeClusterCellIds.has(c.id);
