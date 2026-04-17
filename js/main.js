@@ -2414,18 +2414,21 @@ function syncLayerToggles() {
   const tTile = document.getElementById('ltog-tile');
   const tLAr  = document.getElementById('ltog-lar');
   const tHec  = document.getElementById('ltog-hec');
+  const tFcal = document.getElementById('ltog-fcal');
   tTile.classList.toggle('on', showTile); tTile.setAttribute('aria-checked', showTile);
   tLAr .classList.toggle('on', showLAr);  tLAr .setAttribute('aria-checked', showLAr);
   tHec .classList.toggle('on', showHec);  tHec .setAttribute('aria-checked', showHec);
+  tFcal.classList.toggle('on', showFcal); tFcal.setAttribute('aria-checked', showFcal);
   // Layers button: dim when all off, lit otherwise
-  document.getElementById('btn-layers').classList.toggle('on', showTile || showLAr || showHec);
+  document.getElementById('btn-layers').classList.toggle('on', showTile || showLAr || showHec || showFcal);
 }
 
 document.getElementById('ltog-tile').addEventListener('click', () => { showTile = !showTile; syncLayerToggles(); applyThreshold(); });
 document.getElementById('ltog-lar') .addEventListener('click', () => { showLAr  = !showLAr;  syncLayerToggles(); applyThreshold(); });
 document.getElementById('ltog-hec') .addEventListener('click', () => { showHec  = !showHec;  syncLayerToggles(); applyThreshold(); });
-document.getElementById('lbtn-all') .addEventListener('click', () => { showTile = showLAr = showHec = true;  syncLayerToggles(); applyThreshold(); });
-document.getElementById('lbtn-none').addEventListener('click', () => { showTile = showLAr = showHec = false; syncLayerToggles(); applyThreshold(); });
+document.getElementById('ltog-fcal').addEventListener('click', () => { showFcal = !showFcal; syncLayerToggles(); applyFcalThreshold(); });
+document.getElementById('lbtn-all') .addEventListener('click', () => { showTile = showLAr = showHec = showFcal = true;  syncLayerToggles(); applyThreshold(); applyFcalThreshold(); });
+document.getElementById('lbtn-none').addEventListener('click', () => { showTile = showLAr = showHec = showFcal = false; syncLayerToggles(); applyThreshold(); applyFcalThreshold(); });
 document.getElementById('cluster-filter-toggle').addEventListener('click', () => {
   clusterFilterEnabled = !clusterFilterEnabled;
   syncClusterFilterToggle();
@@ -2456,7 +2459,7 @@ function closeLayersPanel() {
   layersPanelOpen = false;
   layersPanel.classList.remove('open');
   // Restore btn-layers state (lit if any layer on)
-  document.getElementById('btn-layers').classList.toggle('on', showTile || showLAr || showHec);
+  document.getElementById('btn-layers').classList.toggle('on', showTile || showLAr || showHec || showFcal);
 }
 document.getElementById('btn-layers').addEventListener('click', e => {
   e.stopPropagation();
@@ -3312,6 +3315,9 @@ document.addEventListener('keydown', e => {
       break;
     case 'H':
       document.getElementById('ltog-hec').click();
+      break;
+    case 'F':
+      document.getElementById('ltog-fcal').click();
       break;
     case 'J':
       document.getElementById('btn-tracks').click();
