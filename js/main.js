@@ -1067,8 +1067,8 @@ function _applyFcalDraw() {
   // use (x,y,z,dz) in cm — convert to scene mm (×10).
   const slicerOn   = (typeof slicerActive !== 'undefined') && slicerActive;
   const slR2       = slicerOn ? SLICER_RADIUS * SLICER_RADIUS : 0;
-  const slZMax     = slicerOn ?  slicerHalfHeight : 0;
-  const slZMin     = slicerOn ? -slicerHalfHeight : 0;
+  const slZMax     = slicerOn ? slicerZOffset + slicerHalfHeight : 0;
+  const slZMin     = slicerOn ? slicerZOffset - slicerHalfHeight : 0;
   const slThetaLen = slicerOn ? slicerThetaLength : 0;
   const slFullTh   = slThetaLen >= 2 * Math.PI - 1e-6;
 
@@ -3365,6 +3365,10 @@ let   slicerHalfHeight    = SLICER_HEIGHT_INIT * 0.5;  // current half-height, m
 let   slicerThetaLength   = 2 * Math.PI;      // wedge sweep, 0..2π
 const SLICER_THETA_DRAG_PX   = 300;           // px for a full 2π Y-drag
 const SLICER_HEIGHT_MM_PER_PX = 20;           // mm per px of X-drag (total height)
+// Right-click + X-drag translates the whole cut volume (handle + cylinder)
+// along the scene's Z axis. Independent of the left-drag behaviours above.
+let   slicerZOffset = 0;                      // world-Z translation of the cut volume, mm
+const SLICER_Z_MM_PER_PX = 20;                // mm per px of right-click X-drag
 // Cache of cell center world positions so we don't re-compute every frame.
 const _cellCenterCache = new Map();
 // Squared-distance helper (avoids sqrt in the hot loop)
@@ -3420,8 +3424,9 @@ function _buildSlicerGizmo() {
 
 function _updateSlicerBasis() {
   if (!slicerGroup) return;
-  // Handle is pinned to the origin; arrows show fixed ATLAS axes.
-  slicerGroup.position.set(0, 0, 0);
+  // Handle sits at the slicer's current Z offset (0 unless translated by right-drag);
+  // arrows show fixed ATLAS axes.
+  slicerGroup.position.set(0, 0, slicerZOffset);
   slicerGroup.userData.arrowZ.setDirection(new THREE.Vector3(0, 0, 1));
   slicerGroup.userData.arrowP.setDirection(new THREE.Vector3(0, 1, 0));
   slicerGroup.userData.arrowT.setDirection(new THREE.Vector3(1, 0, 0));
@@ -3434,10 +3439,10 @@ function _updateSlicerBasis() {
 function _applySlicerMask() {
   if (!slicerActive) return;
   rayTargets = [];
-  // Cylindrical wedge anchored at the ATLAS origin, fixed radius and height.
+  // Cylindrical wedge, optionally translated along Z by right-click drag.
   const r2       = SLICER_RADIUS * SLICER_RADIUS;
-  const zMax     =  slicerHalfHeight;
-  const zMin     = -slicerHalfHeight;
+  const zMax     = slicerZOffset + slicerHalfHeight;
+  const zMin     = slicerZOffset - slicerHalfHeight;
   const thetaLen = slicerThetaLength;
   const fullTh   = thetaLen >= 2 * Math.PI - 1e-6;
   const emptyTh  = thetaLen <= 1e-6;
@@ -3527,6 +3532,7 @@ function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
   }
 
   canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;                 // left-button only; other buttons → new IIFE
     if (!slicerActive || !slicerGroup) return;
     const pt = _pointerXY(e);
     dragRay.setFromCamera(pt, camera);
@@ -3563,6 +3569,66 @@ function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
   };
   canvas.addEventListener('pointerup',     endDrag);
   canvas.addEventListener('pointercancel', endDrag);
+})();
+
+// Right-click + X-drag on the handle translates the whole cut volume (handle
+// gizmo + cylindrical wedge) along the scene's Z axis. The left-button drag
+// behaviours above are untouched.
+(function () {
+  const dragRay = new THREE.Raycaster();
+  dragRay.params.Line = { threshold: 25 };
+  let zDragging   = false;
+  let zDragStartX = 0;
+  let zDragStartZ = 0;
+
+  function _pointerXY(e) {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x:  ((e.clientX - rect.left) / rect.width)  *  2 - 1,
+      y: -((e.clientY - rect.top)  / rect.height) *  2 + 1,
+    };
+  }
+
+  canvas.addEventListener('pointerdown', e => {
+    if (e.button !== 2) return;                 // right-button only
+    if (!slicerActive || !slicerGroup) return;
+    const pt = _pointerXY(e);
+    dragRay.setFromCamera(pt, camera);
+    const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
+    if (!hits.length) return;
+    zDragging        = true;
+    zDragStartX      = e.clientX;
+    zDragStartZ      = slicerZOffset;
+    controls.enabled = false;
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    e.stopPropagation();
+  }, /* capture: */ true);
+  canvas.addEventListener('pointermove', e => {
+    if (!zDragging) return;
+    // +dx → +Z translation; −dx → −Z.
+    const dx      = e.clientX - zDragStartX;
+    slicerZOffset = zDragStartZ + dx * SLICER_Z_MM_PER_PX;
+    _updateSlicerBasis();
+  });
+  const endZDrag = e => {
+    if (!zDragging) return;
+    zDragging = false;
+    controls.enabled = true;
+    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+  canvas.addEventListener('pointerup',     endZDrag);
+  canvas.addEventListener('pointercancel', endZDrag);
+
+  // Suppress the browser context menu when right-clicking on the handle so the
+  // drag isn't interrupted. Other right-clicks over the canvas are unaffected.
+  canvas.addEventListener('contextmenu', e => {
+    if (!slicerActive || !slicerGroup) return;
+    const pt = _pointerXY(e);
+    dragRay.setFromCamera(pt, camera);
+    const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
+    if (hits.length) e.preventDefault();
+  });
 })();
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
