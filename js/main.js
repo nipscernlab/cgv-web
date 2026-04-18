@@ -484,23 +484,10 @@ function dismissLoadingScreen() {
   setTimeout(() => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 750);
 }
 
-// ── Session log ───────────────────────────────────────────────────────────────
-const logListEl = document.getElementById('log-list');
-const reqBadge  = document.getElementById('req-badge');
-function addLog(msg, type = '') {
-  if (!logListEl) return;
-  const ts = new Date().toLocaleTimeString(document.documentElement.lang || 'en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const el = document.createElement('div');
-  el.className = 'logrow' + (type ? ' ' + type : '');
-  el.textContent = `[${ts}] ${msg}`;
-  el.title = el.textContent;
-  logListEl.prepend(el);
-  while (logListEl.children.length > 60) logListEl.lastElementChild.remove();
-}
-function bumpReq(label = '') {
+const reqBadge = document.getElementById('req-badge');
+function bumpReq() {
   reqCount++;
   if (reqBadge) reqBadge.textContent = `${reqCount} req`;
-  if (label) addLog(label);
 }
 
 // ── Palette TILE: #ffff00 (min) → #800000 (max), linear ──────────────────────
@@ -618,7 +605,6 @@ for (const n of GHOST_MESH_NAMES) ghostVisible.set(n, GHOST_DEFAULT_ON.has(n));
 
 // Fixed ghost colours / opacity — RGB(92,95,102) = #5C5F66; 94% transparent = 6% opacity
 let ghostSolidColor = 0x5C5F66;
-let ghostPhiColor   = 0xFFFFFF;
 let ghostSolidOpacity = 0.01;  // 94% transparent
 
 const ghostSolidMat = new THREE.MeshBasicMaterial({
@@ -814,7 +800,6 @@ window.addEventListener('resize', () => {
 });
 
 // ── Status bar ────────────────────────────────────────────────────────────────
-const statusEl = document.getElementById('statusbar');
 const statusTxtEl = document.getElementById('status-txt');
 function setStatus(h) { statusTxtEl.innerHTML = h; }
 function checkReady() {
@@ -864,7 +849,6 @@ setLoadProgress(0, 'Downloading geometry…');
     ).arrayBuffer();
   } catch (e) {
     setStatus('<span class="warn">CaloGeometry.glb.gz not found.</span>');
-    addLog(t('log-glb-notfound'), 'warn');
     setLoadProgress(100, 'Geometry skipped');
     sceneOk = true; checkReady();
     return;
@@ -886,12 +870,10 @@ setLoadProgress(0, 'Downloading geometry…');
       });
       sceneOk = true; dirty = true;
       setLoadProgress(100, 'Geometry loaded');
-      addLog(t('log-glb-loaded'), 'ok');
       checkReady();
     },
     e => {
       setStatus(`<span class="warn">GLB parse error: ${esc(e.message)}</span>`);
-      addLog('GLB parse error: ' + e.message, 'err');
     }
   );
 })();
@@ -900,12 +882,10 @@ setLoadProgress(0, 'Downloading geometry…');
 wasmInit()
   .then(() => {
     wasmOk = true;
-    addLog(t('log-wasm-ready'), 'ok');
     checkReady();
   })
   .catch(e  => {
     setStatus(`<span class="err">WASM: ${esc(e.message)}</span>`);
-    addLog(t('log-wasm-error') + e.message, 'err');
   });
 
 // ── TileCal cell display label ────────────────────────────────────────────────
@@ -1642,7 +1622,7 @@ function processXml(xmlText) {
   // Parse XML once — all detectors share the same Document
   let doc, tileCells, larCells, hecCells, mbtsCells, fcalCells;
   try { doc = parseXmlDoc(xmlText); }
-  catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); addLog(e.message, 'err'); return; }
+  catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); return; }
   currentEventInfo = parseEventInfo(doc);
   try { tileCells = parseTile(doc); } catch { tileCells = []; }
   try { larCells  = parseLAr(doc);  } catch { larCells  = []; }
@@ -1651,7 +1631,7 @@ function processXml(xmlText) {
   try { fcalCells = parseFcal(doc); } catch { fcalCells = []; }
 
   const total = tileCells.length + larCells.length + hecCells.length + mbtsCells.length;
-  if (!total && !fcalCells.length) { setStatus('<span class="warn">No TILE, LAr, HEC, MBTS or FCAL cells found</span>'); addLog('No cells in XML', 'warn'); return; }
+  if (!total && !fcalCells.length) { setStatus('<span class="warn">No TILE, LAr, HEC, MBTS or FCAL cells found</span>'); return; }
 
   setStatus(`Decoding ${total} cells…`);
   resetScene();
@@ -1822,13 +1802,7 @@ function processXml(xmlText) {
 
   const nHit    = nTile + nMbts + nLAr + nHec;
   const allMiss = nMiss + nHecMiss + nMbtsMiss;
-  // Statusbar now shows event metadata instead of cell counts.
-  // Cell counts still go to the log for diagnostics.
   showEventInfo(currentEventInfo);
-  if (nHecMiss)  addLog(`HEC: ${nHec} mapped · ${nHecMiss} unmapped`, 'warn');
-  if (nMbtsMiss) addLog(`MBTS: ${nMbts} mapped · ${nMbtsMiss} unmapped`, 'warn');
-  if (fcalCells.length) addLog(`FCAL: ${fcalCells.length} lines`, 'ok');
-  addLog(`${nHit} cells${allMiss ? ` · ${allMiss} unmapped` : ''} (${dt}s)`, 'ok');
 }
 
 // ── Right panel (rpanel) toggle — mirrors left panel behavior ────────────────
@@ -1990,6 +1964,8 @@ const fcalSlider = makeDetSlider('fcal-strak', 'fcal-sthumb', 'fcal-thr-input',
 const hecSlider  = makeDetSlider('hec-strak',  'hec-sthumb',  'hec-thr-input',
   () => thrHecMev,  v => { thrHecMev = v; },  HEC_SCALE,  'hec-sval-max');
 
+function fmtGev(v) { return v.toFixed(2) + ' GeV'; }
+
 // ── Track pT slider (dynamic range — updates each event) ─────────────────────
 function makeTrackPtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
   const trackEl  = document.getElementById(trackId);
@@ -1998,8 +1974,6 @@ function makeTrackPtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
   const maxLblEl = document.getElementById(maxLblId);
   const minLblEl = document.getElementById(minLblId);
   let drag = false;
-
-  function fmtGev(v) { return v.toFixed(2) + ' GeV'; }
 
   function updateUI() {
     const span = trackPtMaxGev - trackPtMinGev;
@@ -2064,7 +2038,6 @@ function makeClusterEtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
   const minLblEl = document.getElementById(minLblId);
   let drag = false;
 
-  function fmtGev(v) { return v.toFixed(2) + ' GeV'; }
 
   function updateUI() {
     const span = clusterEtMaxGev - clusterEtMinGev;
@@ -2299,8 +2272,12 @@ const raycast  = new THREE.Raycaster();
 raycast.firstHitOnly = true;  // stop after first intersection (much faster)
 raycast.params.Line = { threshold: 25 };  // 25 mm hit zone for track lines
 const mxy      = new THREE.Vector2();
-const tooltip  = document.getElementById('tip');
-let   lastRay  = 0;
+const tooltip    = document.getElementById('tip');
+const tipCellEl  = document.getElementById('tip-cell');
+const tipCoordEl = document.getElementById('tip-coords');
+const tipEEl     = document.getElementById('tip-e');
+const tipEKeyEl  = document.querySelector('#tip .tkey');
+let   lastRay    = 0;
 let   mousePos = { x: 0, y: 0 };
 document.addEventListener('mousemove', e => { mousePos.x = e.clientX; mousePos.y = e.clientY; });
 function doRaycast(clientX, clientY) {
@@ -2318,7 +2295,6 @@ function doRaycast(clientX, clientY) {
   mxy.set(((clientX-rect.left)/rect.width)*2-1, -((clientY-rect.top)/rect.height)*2+1);
   camera.updateMatrixWorld();
   raycast.setFromCamera(mxy, camera);
-  const tipEKeyEl = document.querySelector('#tip .tkey');
   // ── Cell + FCAL hit (same priority — pick closest) ────────────────────────
   {
     let cellHit = null, cellDist = Infinity;
@@ -2341,9 +2317,9 @@ function doRaycast(clientX, clientY) {
     if (cellHit && cellDist <= fcalDist) {
       const data = active.get(cellHit.object);
       showOutline(cellHit.object);
-      document.getElementById('tip-cell').textContent   = data.cellName;
-      document.getElementById('tip-coords').textContent = data.coords ?? '';
-      document.getElementById('tip-e').textContent      = `${data.energyGev.toFixed(4)} GeV`;
+      tipCellEl.textContent  = data.cellName;
+      tipCoordEl.textContent = data.coords ?? '';
+      tipEEl.textContent     = `${data.energyGev.toFixed(4)} GeV`;
       if (tipEKeyEl) tipEKeyEl.textContent = t('tip-energy-key');
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
@@ -2354,9 +2330,9 @@ function doRaycast(clientX, clientY) {
       const cell = fcalVisibleMap[iid];
       showFcalOutline(iid);
       const side = cell.eta >= 0 ? 'A' : 'C';
-      document.getElementById('tip-cell').textContent   = `FCAL${cell.module} (${side}-side)`;
-      document.getElementById('tip-coords').textContent = `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`;
-      document.getElementById('tip-e').textContent      = `${cell.energy.toFixed(4)} GeV`;
+      tipCellEl.textContent  = `FCAL${cell.module} (${side}-side)`;
+      tipCoordEl.textContent = `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`;
+      tipEEl.textContent     = `${cell.energy.toFixed(4)} GeV`;
       if (tipEKeyEl) tipEKeyEl.textContent = t('tip-energy-key');
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
@@ -2372,9 +2348,9 @@ function doRaycast(clientX, clientY) {
       const ptGev        = line.userData.ptGev        ?? 0;
       const storeGateKey = line.userData.storeGateKey ?? '';
       clearOutline();
-      document.getElementById('tip-cell').textContent   = 'Track';
-      document.getElementById('tip-coords').textContent = storeGateKey;
-      document.getElementById('tip-e').textContent      = `${ptGev.toFixed(3)} GeV`;
+      tipCellEl.textContent  = 'Track';
+      tipCoordEl.textContent = storeGateKey;
+      tipEEl.textContent     = `${ptGev.toFixed(3)} GeV`;
       if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
@@ -2387,13 +2363,12 @@ function doRaycast(clientX, clientY) {
     const clusterHits = raycast.intersectObjects(visibleClusters, false);
     if (clusterHits.length) {
       const line         = clusterHits[0].object;
-      console.log('[cluster hit] userData:', JSON.stringify(line.userData));
       const etGev        = line.userData.etGev        ?? 0;
       const storeGateKey = line.userData.storeGateKey ?? '';
       clearOutline();
-      document.getElementById('tip-cell').textContent   = 'Cluster';
-      document.getElementById('tip-coords').textContent = storeGateKey;
-      document.getElementById('tip-e').textContent      = `${etGev.toFixed(3)} GeV`;
+      tipCellEl.textContent  = 'Cluster';
+      tipCoordEl.textContent = storeGateKey;
+      tipEEl.textContent     = `${etGev.toFixed(3)} GeV`;
       if (tipEKeyEl) tipEKeyEl.innerHTML = 'E<sub>T</sub>';
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
@@ -2917,18 +2892,13 @@ if (LivePoller) poller = new LivePoller();
 function setLiveDot(state) {
   const dot   = document.getElementById('ldot');
   const txt   = document.getElementById('live-txt');
-  const brand = document.getElementById('log-brand');
   dot.className = 'ldot';
-  const isLiveActive = state === 'polling' || state === 'downloading' || state === 'same';
-  if (brand) brand.classList.toggle('live', isLiveActive);
   switch (state) {
     case 'polling':     dot.classList.add('ok','pulse'); txt.textContent = t('live-polling'); break;
     case 'same':        dot.classList.add('ok');         txt.textContent = t('live-same'); break;
-    case 'downloading': dot.classList.add('dl','pulse'); txt.textContent = t('live-fetching'); bumpReq(t('log-live-download'));
-      if (brand) { startProgress(); advanceProgress('download'); } break;
-    case 'error':       dot.classList.add('err');        txt.textContent = t('live-error'); addLog(t('log-poll-error'),'err'); break;
+    case 'downloading': dot.classList.add('dl','pulse'); txt.textContent = t('live-fetching'); bumpReq(); startProgress(); advanceProgress('download'); break;
+    case 'error':       dot.classList.add('err');        txt.textContent = t('live-error'); break;
     default:            txt.textContent = t('live-stopped');
-      if (brand) brand.classList.remove('live');
   }
 }
 function renderEvtList() {
@@ -2952,9 +2922,9 @@ function renderEvtList() {
       </div>
       <button class="edl"><svg class="ic" style="width:11px;height:11px"><use href="#i-dl"/></svg></button>`;
     row.querySelector('.einfo').addEventListener('click', () => {
-      curEvtId = entry.id; processXml(entry.text); renderEvtList(); addLog(t('log-event') + entry.name, 'info');
+      curEvtId = entry.id; processXml(entry.text); renderEvtList();
     });
-    row.querySelector('.edl').addEventListener('click', ev => { ev.stopPropagation(); poller.download(idx); addLog(t('log-downloading') + entry.name); });
+    row.querySelector('.edl').addEventListener('click', ev => { ev.stopPropagation(); poller.download(idx); });
     el.appendChild(row);
   });
 }
@@ -2964,62 +2934,36 @@ setInterval(() => {
 if (poller) {
   poller.addEventListener('newxml', ({ detail: { entry } }) => {
     startProgress(); advanceProgress('load');
-    curEvtId = entry.id; processXml(entry.text); renderEvtList(); bumpReq(t('log-new-event') + entry.name);
+    curEvtId = entry.id; processXml(entry.text); renderEvtList(); bumpReq();
     endProgress();
   });
   poller.addEventListener('listupdate', renderEvtList);
   poller.addEventListener('status', ({ detail: { state } }) => setLiveDot(state));
-  poller.addEventListener('error', ({ detail }) => { console.warn('[LivePoller]', detail.message); addLog('Poller: '+detail.message,'warn'); });
-  poller.init().then(() => { renderEvtList(); addLog(t('log-poller-init'),'ok'); }).catch(()=>{});
+  poller.addEventListener('error', ({ detail }) => { console.warn('[LivePoller]', detail.message); });
+  poller.init().then(() => { renderEvtList(); }).catch(()=>{});
 } else {
   document.getElementById('btn-local').click();
-  addLog(t('log-poller-unavail'),'warn');
 }
 document.getElementById('ibtn-play').addEventListener('click', () => {
   if (!poller) return; poller.start();
   document.getElementById('ibtn-play').hidden = true; document.getElementById('ibtn-stop').hidden = false;
-  addLog(t('log-poll-resumed'));
 });
 document.getElementById('ibtn-stop').addEventListener('click', () => {
   if (!poller) return; poller.stop();
   document.getElementById('ibtn-stop').hidden = true; document.getElementById('ibtn-play').hidden = false;
-  setLiveDot('stopped'); addLog(t('log-poll-paused'));
+  setLiveDot('stopped');
 });
 
 
-// ── Log collapse ──────────────────────────────────────────────────────────────
-document.getElementById('btn-log-min')?.addEventListener('click', () => {
-  const sec  = document.getElementById('log-sec');
-  const icon = document.getElementById('log-min-icon');
-  if (!sec) return;
-  const willCollapse = !sec.classList.contains('log-collapsed');
-  if (willCollapse) {
-    // Preserve any user-resized height so we can restore it on expand,
-    // then clear the inline styles so the .log-collapsed CSS rule can win.
-    sec.dataset.savedMaxH = sec.style.maxHeight || '';
-    sec.dataset.savedMinH = sec.style.minHeight || '';
-    sec.style.maxHeight = '';
-    sec.style.minHeight = '';
-    sec.classList.add('log-collapsed');
-  } else {
-    sec.classList.remove('log-collapsed');
-    if (sec.dataset.savedMaxH) sec.style.maxHeight = sec.dataset.savedMaxH;
-    if (sec.dataset.savedMinH) sec.style.minHeight = sec.dataset.savedMinH;
-  }
-  if (icon) icon.className = willCollapse ? 'ti ti-chevron-up' : 'ti ti-chevron-down';
-  const btn = document.getElementById('btn-log-min');
-  if (btn) btn.dataset.tip = willCollapse ? 'Expand session log' : 'Minimize session log';
-});
 
 // ── Local mode ────────────────────────────────────────────────────────────────
 let localFiles = [];
 document.getElementById('file-folder-in').addEventListener('change', async e => {
   const files = [...(e.target.files??[])].filter(f => f.name.toLowerCase().endsWith('.xml'));
   e.target.value = '';
-  if (!files.length) { addLog(t('log-no-xml'),'warn'); return; }
+  if (!files.length) return;
   localFiles = files.sort((a,b) => a.name.localeCompare(b.name));
   renderLocalList();
-  addLog(t('log-folder-loaded').replace('{n}', localFiles.length), 'ok');
 });
 
 // ── Carousel ──────────────────────────────────────────────────────────────────
@@ -3041,7 +2985,6 @@ document.getElementById('btn-carousel-play').addEventListener('click', () => {
   carouselActive = true;
   document.getElementById('btn-carousel-play').hidden = true;
   document.getElementById('btn-carousel-stop').hidden = false;
-  addLog('Carousel started — ' + localFiles.length + ' files', 'info');
   runCarouselStep();
 });
 document.getElementById('btn-carousel-stop').addEventListener('click', stopCarousel);
@@ -3051,7 +2994,6 @@ function stopCarousel() {
   clearTimeout(carouselTimer);
   document.getElementById('btn-carousel-stop').hidden = true;
   document.getElementById('btn-carousel-play').hidden = false;
-  addLog('Carousel stopped');
 }
 async function runCarouselStep() {
   if (!carouselActive || !localFiles.length) return;
@@ -3061,8 +3003,7 @@ async function runCarouselStep() {
   document.getElementById('carousel-status').textContent =
     `${carouselIdx + 1} / ${localFiles.length}`;
   const file = localFiles[carouselIdx];
-  addLog('Carousel: ' + file.name);
-  try { processXml(await file.text()); } catch(e) { addLog('Carousel error: ' + e.message, 'err'); }
+  try { processXml(await file.text()); } catch(e) { console.warn('Carousel error:', e.message); }
   carouselIdx++;
   carouselTimer = setTimeout(runCarouselStep, carouselDelaySec * 1000);
 }
@@ -3077,7 +3018,7 @@ function renderLocalList() {
     row.innerHTML = `<span class="lrow-name">${esc(file.name)}</span><span class="lrow-size">${fmtSize(file.size)}</span>`;
     row.addEventListener('click', async () => {
       document.querySelectorAll('#local-list .lrow.cur').forEach(r => r.classList.remove('cur'));
-      row.classList.add('cur'); addLog(t('log-loading') + file.name); setStatus('Reading file…');
+      row.classList.add('cur'); setStatus('Reading file…');
       startProgress('local'); advanceProgress('acquire');
       try {
         const text = await file.text();
@@ -3087,7 +3028,6 @@ function renderLocalList() {
       } catch (err) {
         endProgress();
         setStatus(`<span class="err">Read error: ${esc(err.message)}</span>`);
-        addLog(t('log-read-error') + err.message,'err');
       }
     });
     listEl.appendChild(row);
@@ -3096,7 +3036,7 @@ function renderLocalList() {
 document.getElementById('file-in').addEventListener('change', async e => {
   const f = e.target.files?.[0];
   if (f) {
-    addLog(t('log-loading') + f.name); setStatus('Parsing…');
+    setStatus('Parsing…');
     startProgress('local'); advanceProgress('acquire');
     try { processXml(await f.text()); advanceProgress('load'); endProgress(); }
     catch (err) { endProgress(); setStatus(`<span class="err">${esc(err.message)}</span>`); }
@@ -3121,17 +3061,16 @@ document.getElementById('file-in').addEventListener('change', async e => {
     sec.classList.remove('dragover');
     const items = e.dataTransfer?.files ? [...e.dataTransfer.files] : [];
     const xmls = items.filter(f => f.name.toLowerCase().endsWith('.xml'));
-    if (!xmls.length) { addLog('No .xml files in drop','warn'); return; }
+    if (!xmls.length) return;
     if (xmls.length === 1) {
       const f = xmls[0];
-      addLog(t('log-loading') + f.name); setStatus('Reading file…');
+      setStatus('Reading file…');
       startProgress('local'); advanceProgress('acquire');
       try { processXml(await f.text()); advanceProgress('load'); endProgress(); }
       catch (err) { endProgress(); setStatus(`<span class="err">${esc(err.message)}</span>`); }
     } else {
       localFiles = xmls.sort((a,b) => a.name.localeCompare(b.name));
       renderLocalList();
-      addLog(`Dropped ${localFiles.length} XML files`, 'ok');
     }
     // Switch to local tab
     document.getElementById('btn-local')?.click();
@@ -3160,7 +3099,7 @@ async function loadSampleIndex() {
       btn.addEventListener('click', async () => {
         document.querySelectorAll('.sample-item.cur').forEach(b => b.classList.remove('cur'));
         btn.classList.add('cur');
-        addLog(t('log-loading') + name); setStatus('Loading sample…');
+        setStatus('Loading sample…');
         startProgress(); advanceProgress('request');
         try {
           const xmlRes = await fetch(`./default_xml/${encodeURIComponent(name)}`);
@@ -3173,7 +3112,6 @@ async function loadSampleIndex() {
         } catch (err) {
           endProgress();
           setStatus(`<span class="err">Error: ${esc(err.message)}</span>`);
-          addLog(t('log-read-error') + err.message, 'err');
           btn.classList.remove('cur');
         }
       });
@@ -3183,7 +3121,6 @@ async function loadSampleIndex() {
   } catch (err) {
     msgEl.textContent = t('sample-error');
     msgEl.hidden = false;
-    addLog('Sample index error: ' + err.message, 'err');
   }
 }
 
@@ -3400,10 +3337,10 @@ const DEFAULT_BG_HEX = '#020d1c';
 
   presets.forEach(p => {
     p.style.background = p.dataset.c;
-    p.addEventListener('click', () => applyColor(p.dataset.c, { save: true, syncSliders: true }));
+    p.addEventListener('click', () => applyColor(p.dataset.c, { save: true, syncCursors: true }));
   });
 
-  resetBtn.addEventListener('click', () => applyColor(DEFAULT_BG_HEX, { save: true, syncSliders: true }));
+  resetBtn.addEventListener('click', () => applyColor(DEFAULT_BG_HEX, { save: true, syncCursors: true }));
 
   // ── Popover open/close/position ────────────────────────────────────
   function position() {
@@ -3444,7 +3381,7 @@ const DEFAULT_BG_HEX = '#020d1c';
   // ── Initial color ──────────────────────────────────────────────────
   const saved = localStorage.getItem('cgv-bg-color');
   const initial = (saved && /^#[0-9a-f]{6}$/i.test(saved)) ? saved : DEFAULT_BG_HEX;
-  applyColor(initial, { save: false, syncSliders: true });
+  applyColor(initial, { save: false, syncCursors: true });
 })();
 
 async function renderAndDownload(targetW, targetH) {
@@ -3459,8 +3396,8 @@ async function renderAndDownload(targetW, targetH) {
   let tipData = null;
   if (tipVisible) {
     tipData = {
-      cellName: document.getElementById('tip-cell').textContent,
-      energy:   document.getElementById('tip-e').textContent,
+      cellName: tipCellEl.textContent,
+      energy:   tipEEl.textContent,
       // Tooltip position as fraction of the current viewport
       xFrac: (parseFloat(tooltip.style.left) - canvas.getBoundingClientRect().left) / origW * origPR,
       yFrac: (parseFloat(tooltip.style.top)  - canvas.getBoundingClientRect().top)  / origH * origPR,
@@ -3606,31 +3543,6 @@ function relTime(ts) {
   return `${Math.floor(s/3600)}${t('h-ago')}`;
 }
 
-// ── Log section vertical resize ───────────────────────────────────────────────
-(function () {
-  const logSec    = document.getElementById('log-sec');
-  const logResize = document.getElementById('log-resize');
-  if (!logSec || !logResize) return;
-  let lrDrag = false, lrStartY = 0, lrStartH = 0;
-  logResize.addEventListener('pointerdown', e => {
-    lrDrag = true; lrStartY = e.clientY;
-    lrStartH = logSec.getBoundingClientRect().height;
-    logResize.setPointerCapture(e.pointerId);
-    logResize.classList.add('dragging');
-    e.preventDefault();
-  });
-  document.addEventListener('pointermove', e => {
-    if (!lrDrag) return;
-    const delta = lrStartY - e.clientY; // drag up → taller
-    const newH  = Math.max(50, Math.min(320, lrStartH + delta));
-    logSec.style.maxHeight = newH + 'px';
-    logSec.style.minHeight = newH + 'px';
-  });
-  document.addEventListener('pointerup', () => {
-    if (!lrDrag) return; lrDrag = false;
-    logResize.classList.remove('dragging');
-  });
-})();
 
 // ── Download progress bar ─────────────────────────────────────────────────────
 const DL_STAGES = ['request', 'recogn', 'download', 'acquire', 'load'];
