@@ -1095,8 +1095,9 @@ function _applyFcalDraw() {
 
   const visible = fcalCellsData.filter(c => {
     if (!showFcal) return false;
-    // Hide cells with negative energy — they aren't physically meaningful for display.
-    if (c.energy < 0) return false;
+    // Hide cells with negative energy — they aren't physically meaningful for
+    // display, unless show-all is on (user explicitly asked for every cell).
+    if (!showAllCells && c.energy < 0) return false;
     if (!showAllCells && c.energy * 1000 < thrFcalMev) return false;
     if (!showAllCells && activeClusterCellIds !== null && c.id && !activeClusterCellIds.has(c.id)) return false;
     if (slicerOn && slThetaLen > 1e-6) {
@@ -1335,12 +1336,12 @@ function applyThreshold() {
     } else {
       inCluster = true;                                           // no ID and not MBTS → always pass
     }
-    // Hide cells with negative energy regardless of threshold. In show-all mode
-    // we ignore the threshold/cluster filter so every active cell with
-    // non-negative energy on an enabled detector stays visible.
+    // Show-all bypasses every filter (threshold, cluster, negative energy) —
+    // the user wants literally every cell on an enabled detector visible.
     const passThr = showAllCells || (!isFinite(thr) || energyMev >= thr);
     const passCl  = showAllCells || inCluster;
-    const vis     = detOn && energyMev >= 0 && passThr && passCl;
+    const passNeg = showAllCells || energyMev >= 0;
+    const vis     = detOn && passNeg && passThr && passCl;
     mesh.visible = vis; if (vis) rayTargets.push(mesh);
   }
   _syncNonActiveShowAll();
@@ -3541,7 +3542,8 @@ function _applySlicerMask() {
     }
     const passThr    = showAllCells || (!isFinite(thr) || energyMev >= thr);
     const passCl     = showAllCells || inCluster;
-    const passFilter = detOn && energyMev >= 0 && passThr && passCl;
+    const passNeg    = showAllCells || energyMev >= 0;
+    const passFilter = detOn && passNeg && passThr && passCl;
     let vis = passFilter;
     if (vis && !emptyTh) {
       const c = _cellCenter(mesh);
