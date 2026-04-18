@@ -33,6 +33,7 @@ geometry exporter, parser internals) see
 | [[Geometry]]                    | Active sub-detectors, nine ATLAS-Ghost envelopes, GeoModel provenance   |
 | [[EventData]]                   | JiveXML layout, compact ATLAS-ID, WASM decoder, coordinate frame        |
 | [[KeyboardShortcuts]]           | Full hotkey reference                                                   |
+| [[Developers]]                  | Clone, install, =build.bat=, geometry rebuild, parser WASM              |
 | [[Troubleshooting]]             | Quick fixes for the issues shifters hit most often                      |
 | [[Glossary]]                    | ATLAS and calorimeter terminology                                       |
 | [[References]]                  | External links and source documents                                     |

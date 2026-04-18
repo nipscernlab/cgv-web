@@ -20,6 +20,7 @@ Selecting a mode reveals the corresponding list or picker.
    * =Local= — =Select Folder= ingests a whole directory of JiveXML. =Upload XML= opens a single file. A carousel bar controls auto-advance.
    * =Samples= — bundled events from =default_xml/index.json=.
    * Status bar (bottom) — current pipeline stage and a session request counter.
+   * Collision footer — once an event is loaded, the bottom of the left panel condenses the run, event, luminosity block, timestamp and object counts into a compact row. Hover to get a full per-field tooltip.
    * The panel is pinnable (pin icon at top-right). When unpinned it auto-opens on cursor hover near the left edge, when the =Auto-open sidebar on hover= preference is enabled.
 
 ---++ Right panel (energy thresholds)
@@ -39,20 +40,22 @@ Each slider exposes:
 
 ---++ Bottom toolbar
 
-| *Button*    | *Action*                                                    | *Shortcut* |
-| Sidebar     | Open/close the left panel                                   | =M=        |
-| Cinema      | Hide the UI, auto-rotate the camera                         | =C=        |
-| Ghost       | Toggle the ATLAS Ghost panel                                | =G=        |
-| Cell info   | Toggle hover tooltip and cell outline                       | =I=        |
-| Beam axis   | Show the z-axis beam cones                                  | =B=        |
-| Layers      | Toggle sub-detector visibility                              | — (panel)  |
-| Tracks      | Show/hide reconstructed tracks                              | =J=        |
-| Clusters    | Show/hide cluster outlines                                  | =K=        |
-| Energy      | Open/close the threshold panel                              | =E=        |
-| Reset view  | Recentre the camera                                         | =R=        |
-| Screenshot  | Open the resolution picker                                  | =P=        |
-| Settings    | Preferences, shortcuts, sponsors, about                     | =S=        |
-| Language    | English / French / Norwegian / Portuguese                   | —          |
+| *Button*     | *Action*                                                    | *Shortcut*  |
+| Sidebar      | Open/close the left panel                                   | =M=         |
+| Cinema       | Hide the UI, auto-rotate (or guided tour if enabled)        | =C=         |
+| Ghost        | Toggle the ATLAS Ghost panel                                | =G=         |
+| Cell info    | Toggle hover tooltip and cell outline                       | =I=         |
+| Beam axis    | Show the z-axis beam cones                                  | =B=         |
+| Layers       | Toggle sub-detector visibility                              | — (panel)   |
+| Tracks       | Show/hide reconstructed tracks                              | =J=         |
+| Clusters     | Show/hide cluster outlines                                  | =K=         |
+| Slicer       | Carve a spherical volume out of the scene                   | =Shift+S=   |
+| Background   | Open the scene-background colour picker                     | =Shift+B=   |
+| Energy       | Open/close the threshold panel                              | =E=         |
+| Reset view   | Recentre the camera                                         | =R=         |
+| Screenshot   | Open the resolution picker                                  | =P=         |
+| Settings     | Preferences, shortcuts, sponsors, about                     | =S=         |
+| Language     | English / French / Norwegian / Portuguese                   | —           |
 
 ---++ Detector Layers panel
 
@@ -77,26 +80,82 @@ deposited energy. Units auto-scale between MeV and GeV.
 
 <img src="images/cell-tooltip.png" alt="Cell hover tooltip" width="260" />
 
+---++ Slicer
+
+The slicer is a draggable spherical "bubble" that culls every cell inside
+it (TileCal, LAr, HEC and FCAL alike). Use it to peek at the core of a
+shower or to reveal an embedded cluster that the outer layers occlude.
+
+   * Toggle with the slicer toolbar button or =Shift+S=.
+   * Drag the translucent sphere in the scene to move it.
+   * Scroll the mouse wheel over the handle to resize the bubble radius.
+   * The bubble is hidden automatically during a screenshot capture so it never leaks into publication images.
+
+---++ Scene background
+
+The background colour can be customised from a dedicated popover.
+
+<img src="images/settings-panel.png" alt="Background colour popover anchored to the toolbar" width="380" />
+
+   * Opens from the background toolbar button or =Shift+B=.
+   * A 2D saturation/value rectangle with a vertical hue strip sets any RGB.
+   * A hex field accepts typed =#rrggbb= values.
+   * A set of ATLAS-palette presets and a =Reset= button restore the default.
+
 ---++ Screenshot dialog
 
 =P= or the camera toolbar button opens the picker. The scene re-renders at
-the chosen resolution with the UI hidden; if a tooltip was pinned it is
-composited back in after capture.
+the chosen resolution with the UI hidden (including the slicer bubble);
+if a tooltip was pinned it is composited back in after capture.
 
 <img src="images/screenshot-dialog.png" alt="Screenshot resolution picker" width="460" />
 
 Available resolutions: HD (1280×720), 1080p, 2K, 4K, 8K, 10K (10240×5760).
+A =Transparent background= toggle saves the PNG with an alpha channel —
+useful for slide decks and paper figures where the scene must sit on an
+arbitrary background.
 
 ---++ Settings panel
 
-Opened with =S= or the gear icon. Four sections:
+Opened with =S= or the gear icon. Three sections:
 
-   * Preferences — toggle button hints and sidebar auto-open.
+   * Preferences:
+      * =Button hints= — show tooltips on every toolbar button.
+      * =Auto-open sidebar on hover= — auto-unfold the left / right panels when the cursor reaches the screen edge. Off by default; the pin icon overrides it once pinned.
+      * =Guided tour in cinema= — when enabled, cinema mode becomes a continuous on-rails fly-through of the detector instead of a simple auto-rotate. Exiting the tour keeps a short inertia so the camera drifts to a smooth stop.
    * Keyboard Shortcuts — full reference, mirrors [[KeyboardShortcuts][this page]].
    * Supported by — project sponsors (ATLAS, CERN, CNPq, CAPES, FAPEMIG, UFJF).
-   * About — build info and NIPSCERN credits.
 
 <img src="images/settings-panel.png" alt="Settings panel" width="420" />
+
+---++ Cinema and guided tour
+
+=C= (or the cinema toolbar button) hides the UI and rotates the camera
+slowly around the detector. With =Guided tour in cinema= on, the rotation
+is replaced by a scripted path:
+
+   * Wide establishing shot outside.
+   * Face-on approach to the =+z= FCAL along the beam axis.
+   * Glide through the central bore with the camera panning over every inner wall and returning to look at the calorimeter centre.
+   * Face-on exit through the =-z= FCAL.
+   * Outer arc with a close flyby past the =-x= wall, back to start — all as a single continuous motion.
+
+The tour can be entered from any camera position; it blends into the
+scripted path smoothly. Leaving cinema mode preserves a short drift
+(≈1.4 s) before the camera comes to rest.
+
+---++ Language selector
+
+The flag in the top-right ribbon switches the UI language live, without
+reloading the scene:
+
+   * English (EN)
+   * Français (FR)
+   * Português (PT)
+   * Norsk (NO)
+
+Every label, tooltip, placeholder and settings description is translated;
+the choice is persisted in =localStorage=.
 
 %BR% %BR%
 <em>Next: [[DataModes][Data Modes →]]</em>

@@ -47,7 +47,9 @@ Active cells use a per-sub-detector gradient between cold (low E) and hot
    1. Drag, scroll and right-drag the canvas to orbit, zoom and pan around the detector.
    1. Use the right-hand [[EnergyThresholds][threshold panel]] to cut on TILE, LAr, HEC, FCAL, track p_T or cluster E_T.
    1. Click a cell to read its compact ATLAS-ID, η, φ and energy in the cell tooltip.
-   1. Press =P= to save a screenshot at up to 10K resolution for logbook entries.
+   1. Press =Shift+S= to drop a spherical slicer if a shower is buried under outer cells; drag the bubble to isolate the region of interest.
+   1. Press =C= for a hands-free camera sweep — with the =Guided tour= preference on, cinema mode becomes a scripted fly-through of the detector.
+   1. Press =P= to save a screenshot at up to 10K resolution for logbook entries; enable the transparent-background toggle for slide decks.
 
 ---++ Offline analysis
 

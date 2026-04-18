@@ -14,11 +14,17 @@ switching modes stops the previous ingestion without discarding the scene.
 Live mode long-polls the ATLAS Live service hosted by the ATLANTIS
 project. It is the default mode in the Control Room deployment.
 
+<img src="images/atlas-live-landing.png" alt="ATLAS Live landing page served by ATLANTIS" width="640" />
+
+The CGV Web left panel mirrors exactly the event list served by
+=atlas-live.cern.ch=: the same run / event numbers, the same ordering and
+the same back-pressure behaviour during a busy run.
+
 <img src="images/live-mode.png" alt="Live mode — streaming events" width="380" />
 
    * Status indicator — a green pulsing dot in the left bar (=Connected=), amber if the last event is older than 60 s, red if the endpoint is unreachable.
    * Event list — populates with events as they arrive. Each row shows run / event numbers and a timestamp.
-   * Play / pause controls — =⏸= stops polling, =▶= resumes.
+   * Play / pause controls — =⏸= stops polling, =▶= resumes. =Space= toggles the same state from the keyboard.
    * Requires outbound HTTPS access to =atlas-live.cern.ch=. From the ATLAS Control Room this is whitelisted by default.
 
 See [[https://atlas-live.cern.ch/][atlas-live.cern.ch]] for the underlying

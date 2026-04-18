@@ -33,9 +33,12 @@ All shortcuts are single-press, no modifier. Typing into a text field
 | =H=        | Toggle HEC                                      |
 | =J=        | Toggle reconstructed tracks                     |
 | =K=        | Toggle topological clusters                     |
+| =Shift+K=  | Toggle the cluster-E_T threshold switch         |
 | =I=        | Toggle cell-hover tooltip and outline           |
 | =B=        | Toggle beam-axis indicator                      |
-| =C=        | Cinema mode — hide UI, auto-rotate              |
+| =Shift+B=  | Open the scene-background colour picker         |
+| =Shift+S=  | Toggle the spherical slicer bubble              |
+| =C=        | Cinema mode — hide UI, auto-rotate or tour      |
 
 ---++ Data source
 

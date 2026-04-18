@@ -414,7 +414,7 @@ pub fn decode_id(id: u64) -> ParsedId {
             field!("pmt", pmt, "photomultiplier tube index");
 
             // adc: continuous [0..3], 2 bits (real cells use 0=high-gain, 1=low-gain)
-            let idx = extract(id, offset, 2); offset -= 2;
+            let idx = extract(id, offset, 2);
             let adc = continuous(idx, 0);
             let adc_label = match adc {
                 0 => "high gain",
@@ -544,7 +544,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                     field!("eta", global_eta, "eta index (global)");
 
                     // phi: continuous [0..255], 8 bits
-                    let idx = extract(id, offset, 8); offset -= 8;
+                    let idx = extract(id, offset, 8);
                     let phi_idx = continuous(idx, 0);
                     field!("phi", phi_idx, "phi index");
 
@@ -629,7 +629,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                     field!("eta", eta_idx, "eta index");
 
                     // phi: continuous [0..63], 6 bits
-                    let idx = extract(id, offset, 6); offset -= 6;
+                    let idx = extract(id, offset, 6);
                     let phi_idx = continuous(idx, 0);
                     field!("phi", phi_idx, "phi index");
 
@@ -704,7 +704,7 @@ pub fn decode_id(id: u64) -> ParsedId {
                     field!("eta-fcal", eta_fcal, "FCAL eta index");
 
                     // phi-fcal: continuous [0..15], 4 bits
-                    let idx = extract(id, offset, 4); offset -= 4;
+                    let idx = extract(id, offset, 4);
                     let phi_fcal = continuous(idx, 0);
                     field!("phi-fcal", phi_fcal, "FCAL phi index (0-15)");
 
