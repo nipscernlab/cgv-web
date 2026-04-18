@@ -3365,10 +3365,9 @@ let   slicerHalfHeight    = SLICER_HEIGHT_INIT * 0.5;  // current half-height, m
 let   slicerThetaLength   = 2 * Math.PI;      // wedge sweep, 0..2π
 const SLICER_THETA_DRAG_PX   = 300;           // px for a full 2π Y-drag
 const SLICER_HEIGHT_MM_PER_PX = 20;           // mm per px of X-drag (total height)
-// Right-click + X-drag translates the whole cut volume (handle + cylinder)
+// Right-click + drag translates the whole cut volume (handle + cylinder)
 // along the scene's Z axis. Independent of the left-drag behaviours above.
 let   slicerZOffset = 0;                      // world-Z translation of the cut volume, mm
-const SLICER_Z_MM_PER_PX = 20;                // mm per px of right-click X-drag
 // Cache of cell center world positions so we don't re-compute every frame.
 const _cellCenterCache = new Map();
 // Squared-distance helper (avoids sqrt in the hot loop)
@@ -3571,15 +3570,19 @@ function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
   canvas.addEventListener('pointercancel', endDrag);
 })();
 
-// Right-click + X-drag on the handle translates the whole cut volume (handle
-// gizmo + cylindrical wedge) along the scene's Z axis. The left-button drag
-// behaviours above are untouched.
+// Right-click + drag on the handle translates the whole cut volume (handle
+// gizmo + cylindrical wedge) along the scene's Z axis. The handle follows the
+// mouse cursor: we project each frame's pointer delta (in NDC) onto the
+// screen-space direction of +Z, so the motion matches visually regardless of
+// which side the camera is on. The left-button drag behaviours are untouched.
 (function () {
   const dragRay = new THREE.Raycaster();
   dragRay.params.Line = { threshold: 25 };
-  let zDragging   = false;
-  let zDragStartX = 0;
-  let zDragStartZ = 0;
+  const _p0 = new THREE.Vector3();
+  const _p1 = new THREE.Vector3();
+  let zDragging = false;
+  let zPrevNdcX = 0;
+  let zPrevNdcY = 0;
 
   function _pointerXY(e) {
     const rect = canvas.getBoundingClientRect();
@@ -3597,8 +3600,8 @@ function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
     const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
     if (!hits.length) return;
     zDragging        = true;
-    zDragStartX      = e.clientX;
-    zDragStartZ      = slicerZOffset;
+    zPrevNdcX        = pt.x;
+    zPrevNdcY        = pt.y;
     controls.enabled = false;
     canvas.setPointerCapture(e.pointerId);
     e.preventDefault();
@@ -3606,10 +3609,23 @@ function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
   }, /* capture: */ true);
   canvas.addEventListener('pointermove', e => {
     if (!zDragging) return;
-    // +dx → +Z translation; −dx → −Z.
-    const dx      = e.clientX - zDragStartX;
-    slicerZOffset = zDragStartZ + dx * SLICER_Z_MM_PER_PX;
-    _updateSlicerBasis();
+    const pt    = _pointerXY(e);
+    const dNdcX = pt.x - zPrevNdcX;
+    const dNdcY = pt.y - zPrevNdcY;
+    // Screen-space direction of +Z axis (1 mm step) at the handle's current Z.
+    _p0.set(0, 0, slicerZOffset).project(camera);
+    _p1.set(0, 0, slicerZOffset + 1).project(camera);
+    const zdx   = _p1.x - _p0.x;
+    const zdy   = _p1.y - _p0.y;
+    const len2  = zdx * zdx + zdy * zdy;
+    if (len2 > 1e-10) {
+      // Scalar projection of the mouse NDC delta onto (zdx, zdy) gives the
+      // millimetres of +Z that keep the handle under the cursor.
+      slicerZOffset += (dNdcX * zdx + dNdcY * zdy) / len2;
+      _updateSlicerBasis();
+    }
+    zPrevNdcX = pt.x;
+    zPrevNdcY = pt.y;
   });
   const endZDrag = e => {
     if (!zDragging) return;
