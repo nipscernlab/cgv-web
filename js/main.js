@@ -1063,12 +1063,14 @@ function _getFcalEdgeBase() {
 
 function _applyFcalDraw() {
   // While the slicer is active, also carve FCAL tubes whose centre sits inside
-  // the bubble. FCAL cells use (x,y,z,dz) in cm — convert to scene mm (×10).
-  const slicerOn = (typeof slicerActive !== 'undefined') && slicerActive;
-  const slR2     = slicerOn ? slicerRadius * slicerRadius : 0;
-  const slPx     = slicerOn ? slicerPos.x : 0;
-  const slPy     = slicerOn ? slicerPos.y : 0;
-  const slPz     = slicerOn ? slicerPos.z : 0;
+  // the Z-aligned cylindrical wedge anchored at the ATLAS origin. FCAL cells
+  // use (x,y,z,dz) in cm — convert to scene mm (×10).
+  const slicerOn   = (typeof slicerActive !== 'undefined') && slicerActive;
+  const slR2       = slicerOn ? SLICER_RADIUS * SLICER_RADIUS : 0;
+  const slZMax     = slicerOn ?  slicerHalfHeight : 0;
+  const slZMin     = slicerOn ? -slicerHalfHeight : 0;
+  const slThetaLen = slicerOn ? slicerThetaLength : 0;
+  const slFullTh   = slThetaLen >= 2 * Math.PI - 1e-6;
 
   const visible = fcalCellsData.filter(c => {
     if (!showFcal) return false;
@@ -1076,10 +1078,14 @@ function _applyFcalDraw() {
     if (c.energy < 0) return false;
     if (c.energy * 1000 < thrFcalMev) return false;
     if (activeClusterCellIds !== null && c.id && !activeClusterCellIds.has(c.id)) return false;
-    if (slicerOn) {
+    if (slicerOn && slThetaLen > 1e-6) {
       const cx = -c.x * 10, cy = -c.y * 10, cz = c.z * 10;
-      const dx = cx - slPx, dy = cy - slPy, dz = cz - slPz;
-      if (dx*dx + dy*dy + dz*dz < slR2) return false;
+      if (cx*cx + cy*cy < slR2 && cz > slZMin && cz < slZMax) {
+        if (slFullTh) return false;
+        let ang = Math.atan2(cy, cx);
+        if (ang < 0) ang += 2 * Math.PI;
+        if (ang < slThetaLen) return false;
+      }
     }
     return true;
   });
@@ -3347,10 +3353,18 @@ document.getElementById('btn-about').addEventListener('click', () => {
 // cluster filters).
 let slicerGroup   = null;
 let slicerActive  = false;
-let slicerPos     = new THREE.Vector3(0, 0, 2000);  // initial cylinder point (z=2m)
-let slicerRadius  = 1500;   // bubble radius in mm (scroll-adjustable)
-const SLICER_R_MIN = 200;
-const SLICER_R_MAX = 8000;
+// Cut-volume is an invisible Z-aligned cylindrical wedge anchored at the origin.
+// The user controls two parameters by click-dragging the handle:
+//   · screen-Y drag → angular sweep (thetaLength, 0..2π)
+//   · screen-X drag → total height (mm, symmetric around origin)
+const SLICER_RADIUS       = 5000;            // cylinder radius, mm (fixed)
+const SLICER_HEIGHT_MIN   = 0;                // minimum total height, mm
+const SLICER_HEIGHT_MAX   = 20000;            // maximum total height, mm
+const SLICER_HEIGHT_INIT  = 3000;             // initial total height, mm (3 m)
+let   slicerHalfHeight    = SLICER_HEIGHT_INIT * 0.5;  // current half-height, mm
+let   slicerThetaLength   = 2 * Math.PI;      // wedge sweep, 0..2π
+const SLICER_THETA_DRAG_PX   = 300;           // px for a full 2π Y-drag
+const SLICER_HEIGHT_MM_PER_PX = 20;           // mm per px of X-drag (total height)
 // Cache of cell center world positions so we don't re-compute every frame.
 const _cellCenterCache = new Map();
 // Squared-distance helper (avoids sqrt in the hot loop)
@@ -3401,42 +3415,16 @@ function _buildSlicerGizmo() {
   g.add(sph);
   g.userData.handle = sph;
 
-  // Translucent bubble visualising the cut-volume radius.
-  const bubbleGeo = new THREE.SphereGeometry(1, 32, 24);
-  const bubbleMat = new THREE.MeshBasicMaterial({
-    color: 0x33bbff, transparent: true, opacity: 0.10,
-    depthWrite: false, side: THREE.DoubleSide,
-  });
-  const bubble = new THREE.Mesh(bubbleGeo, bubbleMat);
-  bubble.renderOrder = 19;
-  g.add(bubble);
-  g.userData.bubble = bubble;
-  // Wireframe edge for the bubble (subtle)
-  const bubbleEdgeGeo = new THREE.WireframeGeometry(bubbleGeo);
-  const bubbleEdgeMat = new THREE.LineBasicMaterial({
-    color: 0x33bbff, transparent: true, opacity: 0.35, depthTest: false,
-  });
-  const bubbleEdge = new THREE.LineSegments(bubbleEdgeGeo, bubbleEdgeMat);
-  bubbleEdge.renderOrder = 20;
-  g.add(bubbleEdge);
-  g.userData.bubbleEdge = bubbleEdge;
-
   return g;
 }
 
 function _updateSlicerBasis() {
   if (!slicerGroup) return;
-  slicerGroup.position.copy(slicerPos);
-  const phi = Math.atan2(slicerPos.y, slicerPos.x);
-  const rxy = Math.hypot(slicerPos.x, slicerPos.y);
+  // Handle is pinned to the origin; arrows show fixed ATLAS axes.
+  slicerGroup.position.set(0, 0, 0);
   slicerGroup.userData.arrowZ.setDirection(new THREE.Vector3(0, 0, 1));
-  slicerGroup.userData.arrowP.setDirection(new THREE.Vector3(-Math.sin(phi),  Math.cos(phi), 0));
-  const radial = rxy > 1e-6
-    ? new THREE.Vector3(slicerPos.x / rxy, slicerPos.y / rxy, 0)
-    : new THREE.Vector3(1, 0, 0);
-  slicerGroup.userData.arrowT.setDirection(radial);
-  if (slicerGroup.userData.bubble)     slicerGroup.userData.bubble.scale.setScalar(slicerRadius);
-  if (slicerGroup.userData.bubbleEdge) slicerGroup.userData.bubbleEdge.scale.setScalar(slicerRadius);
+  slicerGroup.userData.arrowP.setDirection(new THREE.Vector3(0, 1, 0));
+  slicerGroup.userData.arrowT.setDirection(new THREE.Vector3(1, 0, 0));
   slicerGroup.updateMatrix();
   _applySlicerMask();
 }
@@ -3446,8 +3434,13 @@ function _updateSlicerBasis() {
 function _applySlicerMask() {
   if (!slicerActive) return;
   rayTargets = [];
-  const r2 = slicerRadius * slicerRadius;
-  const px = slicerPos.x, py = slicerPos.y, pz = slicerPos.z;
+  // Cylindrical wedge anchored at the ATLAS origin, fixed radius and height.
+  const r2       = SLICER_RADIUS * SLICER_RADIUS;
+  const zMax     =  slicerHalfHeight;
+  const zMin     = -slicerHalfHeight;
+  const thetaLen = slicerThetaLength;
+  const fullTh   = thetaLen >= 2 * Math.PI - 1e-6;
+  const emptyTh  = thetaLen <= 1e-6;
   for (const [mesh, { energyMev, det, cellId, mbtsLabel }] of active) {
     const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
     const detOn  = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
@@ -3463,10 +3456,19 @@ function _applySlicerMask() {
     }
     const passFilter = detOn && energyMev >= 0 && (!isFinite(thr) || energyMev >= thr) && inCluster;
     let vis = passFilter;
-    if (vis) {
+    if (vis && !emptyTh) {
       const c = _cellCenter(mesh);
-      const dx = c.x - px, dy = c.y - py, dz = c.z - pz;
-      if (dx*dx + dy*dy + dz*dz < r2) vis = false;   // inside bubble → hide
+      // Inside Z-aligned cylindrical wedge at origin: r² in XY, z within
+      // [zMin, zMax], and polar angle within [0, thetaLen).
+      if (c.x*c.x + c.y*c.y < r2 && c.z > zMin && c.z < zMax) {
+        if (fullTh) {
+          vis = false;
+        } else {
+          let ang = Math.atan2(c.y, c.x);
+          if (ang < 0) ang += 2 * Math.PI;
+          if (ang < thetaLen) vis = false;
+        }
+      }
     }
     mesh.visible = vis;
     if (vis) rayTargets.push(mesh);
@@ -3493,32 +3495,33 @@ function disableSlicer() {
   if (!slicerActive) return;
   slicerActive = false;
   if (slicerGroup) slicerGroup.visible = false;
-  // Re-apply user filters now that the bubble cut is gone.
+  // Re-apply user filters now that the cut is gone.
   applyThreshold();
   applyFcalThreshold();
   document.getElementById('btn-slicer').classList.remove('on');
 }
 function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
 
-// Drag interaction — click and drag the central sphere to reposition the gizmo.
-// We project mouse motion onto a plane through slicerPos perpendicular to the
-// camera view direction, then snap the result as the new cylindrical point.
+// Drag interaction — click and drag the handle to reshape the cut volume.
+// The handle itself is pinned at the origin and never moves.
+//   · screen-Y  → angular sweep (thetaLength, 0..2π)
+//   · screen-X  → total cylinder height (mm, symmetric around origin)
 (function () {
   const btn = document.getElementById('btn-slicer');
   if (btn) btn.addEventListener('click', toggleSlicer);
 
-  const dragRay   = new THREE.Raycaster();
+  const dragRay = new THREE.Raycaster();
   dragRay.params.Line = { threshold: 25 };
-  const dragPlane = new THREE.Plane();
-  const dragHit   = new THREE.Vector3();
-  const _planeN   = new THREE.Vector3();
-  let   dragging  = false;
-  let   dragOffset = new THREE.Vector3();
+  let dragging        = false;
+  let dragStartX      = 0;
+  let dragStartY      = 0;
+  let dragStartTheta  = 0;
+  let dragStartHeight = 0;
 
   function _pointerXY(e) {
     const rect = canvas.getBoundingClientRect();
     return {
-      x: ((e.clientX - rect.left) / rect.width)  *  2 - 1,
+      x:  ((e.clientX - rect.left) / rect.width)  *  2 - 1,
       y: -((e.clientY - rect.top)  / rect.height) *  2 + 1,
     };
   }
@@ -3529,25 +3532,28 @@ function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
     dragRay.setFromCamera(pt, camera);
     const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
     if (!hits.length) return;
-    dragging = true;
+    dragging         = true;
+    dragStartX       = e.clientX;
+    dragStartY       = e.clientY;
+    dragStartTheta   = slicerThetaLength;
+    dragStartHeight  = slicerHalfHeight * 2;
     controls.enabled = false;
     canvas.setPointerCapture(e.pointerId);
-    // Plane perpendicular to camera forward, through slicerPos
-    camera.getWorldDirection(_planeN);
-    dragPlane.setFromNormalAndCoplanarPoint(_planeN, slicerPos);
-    dragRay.ray.intersectPlane(dragPlane, dragHit);
-    dragOffset.copy(slicerPos).sub(dragHit);
     e.preventDefault();
     e.stopPropagation();
   }, /* capture: */ true);
   canvas.addEventListener('pointermove', e => {
     if (!dragging) return;
-    const pt = _pointerXY(e);
-    dragRay.setFromCamera(pt, camera);
-    if (dragRay.ray.intersectPlane(dragPlane, dragHit)) {
-      slicerPos.copy(dragHit).add(dragOffset);
-      _updateSlicerBasis();
-    }
+    // Drag upward (clientY decreases) → grows the sweep toward 2π.
+    const dy          = dragStartY - e.clientY;
+    const dTheta      = (dy / SLICER_THETA_DRAG_PX) * 2 * Math.PI;
+    slicerThetaLength = Math.max(0, Math.min(2 * Math.PI, dragStartTheta + dTheta));
+    // Drag rightward (clientX increases) → grows the total height.
+    const dx          = e.clientX - dragStartX;
+    const newHeight   = dragStartHeight + dx * SLICER_HEIGHT_MM_PER_PX;
+    const clampedH    = Math.max(SLICER_HEIGHT_MIN, Math.min(SLICER_HEIGHT_MAX, newHeight));
+    slicerHalfHeight  = clampedH * 0.5;
+    _updateSlicerBasis();
   });
   const endDrag = e => {
     if (!dragging) return;
@@ -3557,20 +3563,6 @@ function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
   };
   canvas.addEventListener('pointerup',     endDrag);
   canvas.addEventListener('pointercancel', endDrag);
-
-  // Wheel / +/- keys adjust the bubble radius while the slicer is active
-  // and the cursor is over the handle (or any key-press with slicer on).
-  canvas.addEventListener('wheel', e => {
-    if (!slicerActive || !slicerGroup) return;
-    const pt = _pointerXY(e);
-    dragRay.setFromCamera(pt, camera);
-    const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
-    if (!hits.length) return;
-    e.preventDefault();
-    const step = slicerRadius * 0.1;
-    slicerRadius = Math.max(SLICER_R_MIN, Math.min(SLICER_R_MAX, slicerRadius + (e.deltaY < 0 ? step : -step)));
-    _updateSlicerBasis();
-  }, { passive: false });
 })();
 
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
