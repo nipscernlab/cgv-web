@@ -19,7 +19,6 @@ setupLanguagePicker();
 
 // State
 const meshByKey  = new Map();   // int -> Mesh (hot-path: event loop lookup)
-const origMat    = new Map();
 let   active     = new Map();   // Mesh -> tooltip data (keyed by object reference)
 let   rayTargets = [];
 
@@ -325,7 +324,6 @@ function applyGhostMeshOne(name, visible) {
     mesh.renderOrder = 5;
     mesh.visible     = true;
   } else {
-    mesh.material    = origMat.get(name) ?? mesh.material;
     mesh.renderOrder = 0;
     mesh.visible     = false;
   }
@@ -520,7 +518,6 @@ setLoadProgress(0, 'Downloading geometry…');
         if (ghostVisible.has(o.name)) ghostMeshByName.set(o.name, o);
         const mkey = meshNameToKey(o.name);
         if (mkey !== null) meshByKey.set(mkey, o);
-        origMat.set(o.name, o.material);
       });
       sceneOk = true; dirty = true;
       setLoadProgress(100, 'Geometry loaded');
@@ -1225,7 +1222,6 @@ function drawClusters(clusters) {
 function resetScene() {
   for (const mesh of meshByKey.values()) {
     mesh.visible = false;
-    mesh.material = origMat.get(mesh.name) ?? mesh.material;
     mesh.renderOrder = 0;
   }
   // Re-apply ghost state: resetScene hides all meshes (including ghost envelopes),
