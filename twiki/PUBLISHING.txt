@@ -85,6 +85,7 @@ preview shell.
   Geometry.twiki         Sub-detectors + 9 ghost envelopes
   EventData.twiki        JiveXML + compact ATLAS-ID
   KeyboardShortcuts.twiki All hotkeys
+  Developers.twiki       Install, build.bat, project layout, contributing
   Troubleshooting.twiki  Common issues
   Glossary.twiki         ATLAS / calo terms
   References.twiki       External links & publications

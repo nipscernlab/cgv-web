@@ -99,8 +99,10 @@ footer.foot {
   display: flex; align-items: center; gap: 14px;
   border-top: 3px solid var(--atlas-gold);
 }
-footer.foot .lab { display: flex; align-items: center; gap: 10px; color: #fff; }
-footer.foot .lab img { width: 32px; height: 32px; }
+footer.foot .partners { display: flex; align-items: center; gap: 18px; }
+footer.foot .lab { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; }
+footer.foot .lab img { width: 32px; height: 32px; object-fit: contain; }
+footer.foot .lab:hover img { filter: brightness(1.15); }
 footer.foot .links { margin-left: auto; display: flex; gap: 16px; }
 footer.foot a { color: var(--atlas-gold-2); }
 footer.foot a:hover { color: #fff; }

@@ -63,7 +63,7 @@ export function twikiToHtml(src, opts = {}) {
   }
 
   src = stripMeta(src);
-  const srcLines = src.split("\n");
+  const srcLines = src.replace(/\r\n?/g, "\n").split("\n");
   const toc = [];
 
   while (i < srcLines.length) {

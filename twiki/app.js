@@ -10,6 +10,7 @@ const TOPICS = [
   ["Geometry",         "Geometry"],
   ["EventData",        "Event Data"],
   ["KeyboardShortcuts","Keyboard Shortcuts"],
+  ["Developers",       "Developers"],
   ["Troubleshooting",  "Troubleshooting"],
   ["Glossary",         "Glossary"],
   ["References",       "References"],
