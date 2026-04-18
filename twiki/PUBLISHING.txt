@@ -7,6 +7,10 @@ accepted by the CERN ATLAS TWiki (Foswiki / Pattern skin). You can:
   1. Preview it locally, exactly as CERN will render it.
   2. Copy each .twiki file as-is into the corresponding ATLAS TWiki topic.
 
+Last content review: 2026-04-18 — covers the cylindrical slicer, the
+"All cells" toggle (V), the top-left collision HUD and the updated
+screenshot dialog with the "Collision info overlay" composition toggle.
+
 
 -----------------------------------------------------------------------
 1. Preview locally
@@ -65,11 +69,16 @@ Attachments (images):
       exact file name. The <img src="images/foo.png"/> links in the
       topic body will resolve automatically to the attached file.
 
+  (f) Before uploading, check images/README.txt for size warnings.
+      Any file above ~500 kB should be re-exported through tinypng
+      or `oxipng -strip all` — the CERN TWiki has strict attachment
+      budgets.
+
 Icons used in the local skin (assets/cgvweb_icon.svg,
-assets/icon_home_nipscern.svg, assets/github-octocat.svg) are NOT
-needed on CERN — the TWiki server applies its own Pattern skin
-(ATLAS ribbon, sidebar, footer). They are only used by the local
-preview shell.
+assets/icon_home_nipscern.svg, assets/github-octocat.svg,
+assets/atlas-logo.png, assets/cern.svg) are NOT needed on CERN — the
+TWiki server applies its own Pattern skin (ATLAS ribbon, sidebar,
+footer). They are only used by the local preview shell.
 
 
 -----------------------------------------------------------------------
@@ -77,17 +86,20 @@ preview shell.
 -----------------------------------------------------------------------
 
   WebHome.twiki          Landing page + topic table + project links
-  Overview.twiki         What CGV Web is
-  GettingStarted.twiki   First launch / first event
-  UserInterface.twiki    Every toolbar/panel button documented
+  Overview.twiki         What CGV Web is; sub-detectors & colour convention
+  GettingStarted.twiki   First launch / first event / collision HUD
+  UserInterface.twiki    Every toolbar button, panel, slicer, all-cells,
+                         collision HUD, screenshot dialog, cinema mode
   DataModes.twiki        Live / Local / Samples ingestion
-  EnergyThresholds.twiki Min/max sliders per sub-detector
-  Geometry.twiki         Sub-detectors + 9 ghost envelopes
-  EventData.twiki        JiveXML + compact ATLAS-ID
-  KeyboardShortcuts.twiki All hotkeys
+  EnergyThresholds.twiki Min/max sliders per sub-detector + All-cells
+                         interaction + P97 auto-scaling
+  Geometry.twiki         Sub-detectors + 9 ghost envelopes + beam axis +
+                         slicer pointer
+  EventData.twiki        JiveXML + compact ATLAS-ID + provenance
+  KeyboardShortcuts.twiki All hotkeys + slicer gestures
   Developers.twiki       Install, build.bat, project layout, contributing
-  Troubleshooting.twiki  Common issues
-  Glossary.twiki         ATLAS / calo terms
+  Troubleshooting.twiki  Common issues incl. slicer / HUD / screenshot
+  Glossary.twiki         ATLAS / calo terms + CGV Web features
   References.twiki       External links & publications
 
 Local preview only (do NOT paste into CERN):
@@ -112,11 +124,28 @@ Bold-mono          ==word==
 Bullet             3 spaces + "* "
 Numbered           3 spaces + "1 "
 Link (wiki)        [[TopicName]]           [[TopicName][label]]
+Link (anchor)      [[TopicName#Anchor][label]]
 Link (url)         [[https://...][label]]
 Verbatim           <verbatim>...</verbatim>
 Tables             | *header* | *header* |    (asterisks = header row)
                    | cell    | cell    |
+HTML entities      &plusmn; &rarr; &larr; &mdash; &minus; &asymp; etc.
 Macros we use      %TOC%   %BR%   %DATE%   %META:TOPICPARENT{...}%
 
 Anything more exotic than this list will NOT render in the local
 preview; test your change in the local viewer first.
+
+
+-----------------------------------------------------------------------
+5. Quick checklist for a new release
+-----------------------------------------------------------------------
+
+  [ ] Every new feature in js/main.js documented in UserInterface.twiki.
+  [ ] Every new hotkey added to KeyboardShortcuts.twiki AND the on-app
+      Settings > Keyboard Shortcuts grid (index.html).
+  [ ] Glossary.twiki has an entry for any new concept.
+  [ ] images/README.txt lists every new image and flags any file > 500 KB.
+  [ ] Ran local preview (python -m http.server 8080) and walked through
+      every topic + every image link with zero console errors.
+  [ ] All four languages (EN / FR / PT / NO) translate any new UI string
+      (see js/i18n/translations.js).
