@@ -603,18 +603,6 @@ const GHOST_MESH_NAMES = [
   'Calorimeter→EBHECp_0',
   'Calorimeter→EBHECn_0',
 ];
-// Per-ghost UI metadata: short id used for DOM ids, label / sub-label in panel.
-const GHOST_META = {
-  'Calorimeter→LBTile_0':     { id:'LBTile',     label:'LB Tile',        sub:'Long barrel · Tile',      color:'#c87c18' },
-  'Calorimeter→LBTileLArg_0': { id:'LBTileLArg', label:'LB Tile·LAr',    sub:'Long barrel · Tile/LAr',  color:'#9b8a30' },
-  'Calorimeter→LBLArg_0':     { id:'LBLArg',     label:'LB LAr',         sub:'Long barrel · LAr',       color:'#27b568' },
-  'Calorimeter→EBTilep_0':    { id:'EBTilep',    label:'EB Tile +',      sub:'Extended barrel + · Tile',color:'#c87c18' },
-  'Calorimeter→EBTilen_0':    { id:'EBTilen',    label:'EB Tile −',      sub:'Extended barrel − · Tile',color:'#c87c18' },
-  'Calorimeter→EBTileHECp_0': { id:'EBTileHECp', label:'EB Tile·HEC +',  sub:'Ext. barrel + · Tile/HEC',color:'#a47042' },
-  'Calorimeter→EBTileHECn_0': { id:'EBTileHECn', label:'EB Tile·HEC −',  sub:'Ext. barrel − · Tile/HEC',color:'#a47042' },
-  'Calorimeter→EBHECp_0':     { id:'EBHECp',     label:'EB HEC +',       sub:'Extended barrel + · HEC', color:'#66e0f6' },
-  'Calorimeter→EBHECn_0':     { id:'EBHECn',     label:'EB HEC −',       sub:'Extended barrel − · HEC', color:'#66e0f6' },
-};
 // Ghosts enabled by default on startup (the TileCal envelopes).
 const GHOST_DEFAULT_ON = new Set([
   'Calorimeter→LBTile_0',
@@ -628,8 +616,7 @@ const GHOST_DEFAULT_ON = new Set([
 const ghostVisible = new Map();
 for (const n of GHOST_MESH_NAMES) ghostVisible.set(n, GHOST_DEFAULT_ON.has(n));
 
-// Mutable ghost colours / opacity (updated by UI controls)
-// RGB(92,95,102) = #5C5F66; 90% transparency = 10% opacity
+// Fixed ghost colours / opacity — RGB(92,95,102) = #5C5F66; 94% transparent = 6% opacity
 let ghostSolidColor = 0x5C5F66;
 let ghostPhiColor   = 0xFFFFFF;
 let ghostSolidOpacity = 0.01;  // 94% transparent
@@ -713,13 +700,6 @@ function applyAllGhostMeshes() {
 }
 
 function syncGhostToggles() {
-  for (const name of GHOST_MESH_NAMES) {
-    const el = document.getElementById('gtog-' + GHOST_META[name].id);
-    if (!el) continue;
-    const v = ghostVisible.get(name);
-    el.classList.toggle('on', v);
-    el.setAttribute('aria-checked', String(v));
-  }
   document.getElementById('btn-ghost').classList.toggle('on', anyGhostOn());
 }
 
@@ -768,34 +748,6 @@ function updateGhostColors() {
   dirty = true;
 }
 
-// ── Ghost UI controls ─────────────────────────────────────────────────────────
-document.getElementById('ghost-alpha-slider').addEventListener('input', e => {
-  const pct = parseInt(e.target.value);
-  document.getElementById('ghost-alpha-val').textContent = pct + '%';
-  ghostSolidOpacity = (100 - pct) / 100;  // pct = transparency%; 90% → 0.10 opacity
-  updateGhostColors();
-});
-
-function hexToInt(hex) { return parseInt(hex.replace('#',''), 16); }
-
-document.getElementById('ghost-solid-color').addEventListener('input', e => {
-  ghostSolidColor = hexToInt(e.target.value);
-  document.getElementById('ghost-solid-swatch').style.background = e.target.value;
-  updateGhostColors();
-});
-document.getElementById('ghost-solid-color').addEventListener('click', e => e.stopPropagation());
-document.getElementById('ghost-solid-swatch').closest('label').addEventListener('click', () => {
-  document.getElementById('ghost-solid-color').click();
-});
-
-document.getElementById('ghost-phi-color').addEventListener('input', e => {
-  ghostPhiColor = hexToInt(e.target.value);
-  document.getElementById('ghost-phi-swatch').style.background = e.target.value;
-  updateGhostColors();
-});
-document.getElementById('ghost-phi-swatch').closest('label').addEventListener('click', () => {
-  document.getElementById('ghost-phi-color').click();
-});
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 const canvas   = document.getElementById('c');
@@ -1928,9 +1880,6 @@ function switchTab(det) {
     if (pane) pane.style.display = d === det ? 'flex' : 'none';
     if (tab)  tab.classList.toggle('on', d === det);
   });
-  // Keep ghost pane always hidden
-  const gp = document.getElementById('pane-ghost');
-  if (gp) gp.style.display = 'none';
 }
 TAB_IDS.forEach(d => document.getElementById('tab-' + d).addEventListener('click', () => switchTab(d)));
 document.getElementById('tab-cluster').addEventListener('click', () => switchTab('cluster'));
@@ -2693,42 +2642,10 @@ document.getElementById('btn-info').addEventListener('click', () => {
   document.querySelector('#btn-info use').setAttribute('href', showInfo ? '#i-eye' : '#i-eye-off');
   if (!showInfo) { clearOutline(); tooltip.hidden = true; }
 });
-// Ghost panel: floating popover mirroring the Detector Layers panel.
-const ghostPanel = document.getElementById('ghost-panel');
-let ghostPanelOpen = false;
-function openGhostPanel() {
-  ghostPanelOpen = true;
-  ghostPanel.classList.add('open');
-  document.getElementById('btn-ghost').classList.add('on');
-  const br = document.getElementById('btn-ghost').getBoundingClientRect();
-  requestAnimationFrame(() => {
-    const pw = ghostPanel.offsetWidth  || 210;
-    const ph = ghostPanel.offsetHeight || 170;
-    let left = br.left + br.width / 2 - pw / 2;
-    let top  = br.top - ph - 10;
-    left = Math.max(6, Math.min(left, window.innerWidth  - pw - 6));
-    top  = Math.max(6, top);
-    ghostPanel.style.left = left + 'px';
-    ghostPanel.style.top  = top  + 'px';
-  });
-}
-function closeGhostPanel() {
-  ghostPanelOpen = false;
-  ghostPanel.classList.remove('open');
-  syncGhostToggles(); // keep btn-ghost lit state accurate
-}
 document.getElementById('btn-ghost').addEventListener('click', e => {
   e.stopPropagation();
   toggleAllGhosts();
 });
-for (const name of GHOST_MESH_NAMES) {
-  const el = document.getElementById('gtog-' + GHOST_META[name].id);
-  if (el) el.addEventListener('click', () => toggleGhostByName(name));
-}
-const _gbtnAll  = document.getElementById('gbtn-all');
-const _gbtnNone = document.getElementById('gbtn-none');
-if (_gbtnAll)  _gbtnAll .addEventListener('click', () => setAllGhosts(true));
-if (_gbtnNone) _gbtnNone.addEventListener('click', () => setAllGhosts(false));
 document.getElementById('btn-beam').addEventListener('click', toggleBeam);
 document.getElementById('btn-reset').addEventListener('click', resetCamera);
 

@@ -127,13 +127,6 @@
     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
     <circle cx="12" cy="13" r="4"/>
   </symbol>
-  <symbol id="i-palette" viewBox="0 0 24 24" fill="none">
-    <path d="M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8z"/>
-    <circle cx="6.5" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>
-    <circle cx="9.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/>
-    <circle cx="14.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/>
-    <circle cx="17.5" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>
-  </symbol>
   <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
     <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
   </symbol>
@@ -474,15 +467,6 @@
       placeholder="e.g. 1.5 GeV">
   </div>
 
-  <!-- Hidden legacy ghost controls (still referenced by JS for colour/alpha). -->
-  <div id="pane-ghost" style="display:none" aria-hidden="true">
-    <input type="range" id="ghost-alpha-slider" min="0" max="100" value="94">
-    <label><input type="color" id="ghost-solid-color" value="#5C5F66">
-    <span id="ghost-solid-swatch" style="background:#5C5F66"></span></label>
-    <label><input type="color" id="ghost-phi-color" value="#FFFFFF">
-    <span id="ghost-phi-swatch" style="background:#FFFFFF"></span></label>
-    <span id="ghost-alpha-val">94%</span>
-  </div>
 </aside>
 
 
@@ -641,97 +625,6 @@
   </div>
 </div>
 
-<!-- ── Ghost panel — per-envelope toggles (legacy, now hidden; ghost is a simple on/off toggle) ── -->
-<div id="ghost-panel" hidden aria-hidden="true">
-  <div class="layers-head">
-    <span class="layers-title">ATLAS Ghost</span>
-    <div class="layers-quick">
-      <button class="layers-qbtn" id="gbtn-all">All</button>
-      <button class="layers-qbtn" id="gbtn-none">None</button>
-    </div>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#c87c18"></span>
-    <div class="layer-info">
-      <div class="layer-name">LB Tile</div>
-      <div class="layer-sub">Long barrel · Tile</div>
-    </div>
-    <button class="gswitch" id="gtog-LBTile" role="switch" aria-checked="false"
-      style="--gswitch-col:#c87c18"></button>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#9b8a30"></span>
-    <div class="layer-info">
-      <div class="layer-name">LB Tile·LAr</div>
-      <div class="layer-sub">Long barrel · Tile/LAr</div>
-    </div>
-    <button class="gswitch" id="gtog-LBTileLArg" role="switch" aria-checked="false"
-      style="--gswitch-col:#9b8a30"></button>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#27b568"></span>
-    <div class="layer-info">
-      <div class="layer-name">LB LAr</div>
-      <div class="layer-sub">Long barrel · LAr</div>
-    </div>
-    <button class="gswitch" id="gtog-LBLArg" role="switch" aria-checked="false"
-      style="--gswitch-col:#27b568"></button>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#c87c18"></span>
-    <div class="layer-info">
-      <div class="layer-name">EB Tile +</div>
-      <div class="layer-sub">Extended barrel + · Tile</div>
-    </div>
-    <button class="gswitch" id="gtog-EBTilep" role="switch" aria-checked="false"
-      style="--gswitch-col:#c87c18"></button>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#c87c18"></span>
-    <div class="layer-info">
-      <div class="layer-name">EB Tile −</div>
-      <div class="layer-sub">Extended barrel − · Tile</div>
-    </div>
-    <button class="gswitch" id="gtog-EBTilen" role="switch" aria-checked="false"
-      style="--gswitch-col:#c87c18"></button>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#a47042"></span>
-    <div class="layer-info">
-      <div class="layer-name">EB Tile·HEC +</div>
-      <div class="layer-sub">Ext. barrel + · Tile/HEC</div>
-    </div>
-    <button class="gswitch" id="gtog-EBTileHECp" role="switch" aria-checked="false"
-      style="--gswitch-col:#a47042"></button>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#a47042"></span>
-    <div class="layer-info">
-      <div class="layer-name">EB Tile·HEC −</div>
-      <div class="layer-sub">Ext. barrel − · Tile/HEC</div>
-    </div>
-    <button class="gswitch" id="gtog-EBTileHECn" role="switch" aria-checked="false"
-      style="--gswitch-col:#a47042"></button>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#66e0f6"></span>
-    <div class="layer-info">
-      <div class="layer-name">EB HEC +</div>
-      <div class="layer-sub">Extended barrel + · HEC</div>
-    </div>
-    <button class="gswitch" id="gtog-EBHECp" role="switch" aria-checked="false"
-      style="--gswitch-col:#66e0f6"></button>
-  </div>
-  <div class="layer-row">
-    <span class="layer-dot" style="background:#66e0f6"></span>
-    <div class="layer-info">
-      <div class="layer-name">EB HEC −</div>
-      <div class="layer-sub">Extended barrel − · HEC</div>
-    </div>
-    <button class="gswitch" id="gtog-EBHECn" role="switch" aria-checked="false"
-      style="--gswitch-col:#66e0f6"></button>
-  </div>
-</div>
 
 <!-- ── Settings panel ─────────────────────────────────────── -->
 <div id="settings-panel">
