@@ -19,6 +19,10 @@ setupLanguagePicker();
 
 // State
 const meshByKey  = new Map();   // int -> Mesh (hot-path: event loop lookup)
+// Every non-envelope cell mesh from the GLB, grouped by detector. Populated
+// once at load time so "show all cells" can reach meshes whose names don't
+// match the strict meshNameToKey regex (e.g. gap scintillators, ITC cells).
+const cellMeshesByDet = { TILE: [], LAR: [], HEC: [] };
 let   active     = new Map();   // Mesh -> tooltip data (keyed by object reference)
 let   rayTargets = [];
 
@@ -59,6 +63,21 @@ function meshNameToKey(name) {
     const m2 = /^HEC_\w+_\d+_[pn]_(\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell_(\d+)$/.exec(l3);                   if (!m3) return null;
     return _hecKey(g, +m[2], m[3]==='p' ? 1 : 0, +m2[1], +m3[1]);
+  }
+  return null;
+}
+
+// Broader detector classifier for show-all-cells mode — matches every cell
+// mesh (leaves, not envelopes) regardless of whether meshNameToKey accepted it.
+// Envelopes are skipped via the ghost-envelope list.
+function classifyCellDet(name) {
+  if (ghostVisible.has(name)) return null;
+  const parts = name.split('\u2192');
+  if (parts.length < 3) return null;               // envelopes have 2 segments
+  for (const p of parts) {
+    if (p.startsWith('EMBarrel') || p.startsWith('EMEndCap')) return 'LAR';
+    if (p.startsWith('HEC_')) return 'HEC';
+    if (/^Tile/.test(p))      return 'TILE';
   }
   return null;
 }
@@ -518,6 +537,8 @@ setLoadProgress(0, 'Downloading geometry…');
         if (ghostVisible.has(o.name)) ghostMeshByName.set(o.name, o);
         const mkey = meshNameToKey(o.name);
         if (mkey !== null) meshByKey.set(mkey, o);
+        const det = classifyCellDet(o.name);
+        if (det) cellMeshesByDet[det].push(o);
       });
       sceneOk = true; dirty = true;
       setLoadProgress(100, 'Geometry loaded');
@@ -1076,8 +1097,8 @@ function _applyFcalDraw() {
     if (!showFcal) return false;
     // Hide cells with negative energy — they aren't physically meaningful for display.
     if (c.energy < 0) return false;
-    if (c.energy * 1000 < thrFcalMev) return false;
-    if (activeClusterCellIds !== null && c.id && !activeClusterCellIds.has(c.id)) return false;
+    if (!showAllCells && c.energy * 1000 < thrFcalMev) return false;
+    if (!showAllCells && activeClusterCellIds !== null && c.id && !activeClusterCellIds.has(c.id)) return false;
     if (slicerOn && slThetaLen > 1e-6) {
       const cx = -c.x * 10, cy = -c.y * 10, cz = c.z * 10;
       if (cx*cx + cy*cy < slR2 && cz > slZMin && cz < slZMax) {
@@ -1230,6 +1251,13 @@ function resetScene() {
     mesh.visible = false;
     mesh.renderOrder = 0;
   }
+  // meshByKey misses cells whose names bypassed the strict parser (ITC, gap
+  // scintillators, etc.) but they show up in show-all mode; reset them too.
+  for (const det of ['TILE', 'LAR', 'HEC'])
+    for (const mesh of cellMeshesByDet[det]) {
+      mesh.visible = false;
+      mesh.renderOrder = 0;
+    }
   // Re-apply ghost state: resetScene hides all meshes (including ghost envelopes),
   // which would desync the ghostVisible map and make the next ghost toggle
   // render only the phi lines without the solid envelopes.
@@ -1244,6 +1272,50 @@ function resetScene() {
   activeMbtsLabels     = null;
   tooltip.hidden = true; dirty = true;
 }
+// Sweep every mesh from the GLB that isn't part of the XML's `active` set and
+// decide its visibility for the "show all cells" mode. When showAllCells is off,
+// non-active meshes stay hidden (the normal flow). When on, each non-active
+// mesh is painted with the minimum-palette colour of its detector, and hidden
+// if the slicer wedge currently covers it.
+function _syncNonActiveShowAll() {
+  if (!showAllCells) return;         // non-active cells stay hidden by the normal flow
+  const slicerOn = slicerActive;
+  const r2       = slicerOn ? SLICER_RADIUS * SLICER_RADIUS : 0;
+  const zMax     = slicerOn ? slicerZOffset + slicerHalfHeight : 0;
+  const zMin     = slicerOn ? slicerZOffset - slicerHalfHeight : 0;
+  const thetaLen = slicerOn ? slicerThetaLength : 0;
+  const fullTh   = slicerOn && thetaLen >= 2 * Math.PI - 1e-6;
+  const emptyTh  = slicerOn && thetaLen <= 1e-6;
+  const sweep = (list, detOn, mat) => {
+    for (let i = 0; i < list.length; i++) {
+      const mesh = list[i];
+      if (active.has(mesh)) continue;   // active cells: normal flow handles them
+      if (!detOn) { mesh.visible = false; continue; }
+      let vis = true;
+      if (slicerOn && !emptyTh) {
+        const c = _cellCenter(mesh);
+        if (c.x*c.x + c.y*c.y < r2 && c.z > zMin && c.z < zMax) {
+          if (fullTh) vis = false;
+          else {
+            let ang = Math.atan2(c.y, c.x);
+            if (ang < 0) ang += 2 * Math.PI;
+            if (ang < thetaLen) vis = false;
+          }
+        }
+      }
+      if (vis) {
+        mesh.material    = mat;
+        mesh.renderOrder = 2;
+        rayTargets.push(mesh);          // include in outline build
+      }
+      mesh.visible = vis;
+    }
+  };
+  sweep(cellMeshesByDet.TILE, showTile, PAL_TILE[0]);
+  sweep(cellMeshesByDet.LAR,  showLAr,  PAL_LAR[0]);
+  sweep(cellMeshesByDet.HEC,  showHec,  PAL_HEC[0]);
+}
+
 function applyThreshold() {
   // When the slicer is active it owns cell visibility (its mask already
   // incorporates the thresholds / cluster filter). Delegate to it so we don't
@@ -1263,10 +1335,15 @@ function applyThreshold() {
     } else {
       inCluster = true;                                           // no ID and not MBTS → always pass
     }
-    // Hide cells with negative energy regardless of threshold.
-    const vis = detOn && energyMev >= 0 && (!isFinite(thr) || energyMev >= thr) && inCluster;
+    // Hide cells with negative energy regardless of threshold. In show-all mode
+    // we ignore the threshold/cluster filter so every active cell with
+    // non-negative energy on an enabled detector stays visible.
+    const passThr = showAllCells || (!isFinite(thr) || energyMev >= thr);
+    const passCl  = showAllCells || inCluster;
+    const vis     = detOn && energyMev >= 0 && passThr && passCl;
     mesh.visible = vis; if (vis) rayTargets.push(mesh);
   }
+  _syncNonActiveShowAll();
   rebuildAllOutlines();
   dirty = true;
 }
@@ -3368,6 +3445,10 @@ const SLICER_HEIGHT_MM_PER_PX = 20;           // mm per px of X-drag (total heig
 // Right-click + drag translates the whole cut volume (handle + cylinder)
 // along the scene's Z axis. Independent of the left-drag behaviours above.
 let   slicerZOffset = 0;                      // world-Z translation of the cut volume, mm
+// Show-all-cells toggle: when true, every mesh from the GLB whose detector is
+// enabled is made visible. Cells absent from the current XML (not in `active`)
+// are painted with the minimum-palette colour for their detector.
+let   showAllCells  = false;
 // Cache of cell center world positions so we don't re-compute every frame.
 const _cellCenterCache = new Map();
 // Squared-distance helper (avoids sqrt in the hot loop)
@@ -3458,7 +3539,9 @@ function _applySlicerMask() {
     } else {
       inCluster = true;
     }
-    const passFilter = detOn && energyMev >= 0 && (!isFinite(thr) || energyMev >= thr) && inCluster;
+    const passThr    = showAllCells || (!isFinite(thr) || energyMev >= thr);
+    const passCl     = showAllCells || inCluster;
+    const passFilter = detOn && energyMev >= 0 && passThr && passCl;
     let vis = passFilter;
     if (vis && !emptyTh) {
       const c = _cellCenter(mesh);
@@ -3477,6 +3560,7 @@ function _applySlicerMask() {
     mesh.visible = vis;
     if (vis) rayTargets.push(mesh);
   }
+  _syncNonActiveShowAll();
   rebuildAllOutlines();
   // FCAL tubes are drawn separately (instanced) — rebuild with current bubble.
   applyFcalThreshold();
@@ -3505,6 +3589,25 @@ function disableSlicer() {
   document.getElementById('btn-slicer').classList.remove('on');
 }
 function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
+
+// Show-all-cells toggle — makes every GLB mesh visible for enabled detectors,
+// painting cells absent from the XML with the minimum palette colour of their
+// detector. Delegates to applyThreshold/_applySlicerMask for the actual sweep.
+function toggleShowAllCells() {
+  const wasOn = showAllCells;
+  showAllCells = !showAllCells;
+  document.getElementById('btn-showall').classList.toggle('on', showAllCells);
+  // When turning off, hide the non-active meshes we had shown so the normal
+  // flow (which skips non-active cells) leaves the scene clean.
+  if (wasOn) {
+    for (const det of ['TILE', 'LAR', 'HEC'])
+      for (const mesh of cellMeshesByDet[det])
+        if (!active.has(mesh)) mesh.visible = false;
+  }
+  applyThreshold();
+  applyFcalThreshold();
+}
+document.getElementById('btn-showall').addEventListener('click', toggleShowAllCells);
 
 // Drag interaction — click and drag the handle to reshape the cut volume.
 // The handle itself is pinned at the origin and never moves.
@@ -3724,6 +3827,9 @@ document.addEventListener('keydown', e => {
       break;
     case 'K':
       document.getElementById('btn-cluster').click();
+      break;
+    case 'V':
+      toggleShowAllCells();
       break;
     case 'ESCAPE':
       if (slicerActive)        { disableSlicer(); return; }
