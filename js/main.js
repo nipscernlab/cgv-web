@@ -16,20 +16,16 @@ try { ({ LivePoller } = await import('../live_atlas/live_cern/live_poller.js'));
 initLanguage();
 setupLanguagePicker();
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const PAL_N   = 256;
-const DEF_THR = 200;
 
-// ── State ─────────────────────────────────────────────────────────────────────
-const meshByName = new Map();   // string → Mesh  (non-hot-path: origMat restore, debug)
-const meshByKey  = new Map();   // int    → Mesh  (hot-path: event loop lookup)
+// State
+const meshByKey  = new Map();   // int -> Mesh (hot-path: event loop lookup)
 const origMat    = new Map();
-let   active     = new Map();   // Mesh → tooltip data  (keyed by object reference)
+let   active     = new Map();   // Mesh -> tooltip data (keyed by object reference)
 let   rayTargets = [];
 
-// ── Integer key encoding — avoids string construction in the per-cell hot path ─
+// Integer key encoding: avoids string construction in the per-cell hot path.
 // Bits [1:0] = detector type tag: TILE=0b00, LAr EM=0b01, HEC=0b10 (no cross-type collision).
-// TILE:   x(5b<<2) | side(1b<<7) | k(4b<<8) | module(6b<<12)       — 18 bits total
+// TILE:   x(5b<<2) | side(1b<<7) | k(4b<<8) | module(6b<<12) - 18 bits total
 // LAr EM: (abs_be-1)(2b<<2) | samp(2b<<4) | R(3b<<6) | z_pos(1b<<9) | eta(9b<<10) | phi(8b<<19) | cell2(1b<<27)
 // HEC:    group(2b<<2) | region(1b<<4) | z_pos(1b<<5) | cum_eta(5b<<6) | phi(6b<<11)
 const _tileKey  = (x, s, k, mod) => (x<<2)|(s<<7)|(k<<8)|(mod<<12);
@@ -44,21 +40,21 @@ function meshNameToKey(name) {
   const c = name.indexOf(S, b+1); if (c < 0) return null;
   const l1 = name.slice(a+1, b), l2 = name.slice(b+1, c), l3 = name.slice(c+1);
   let m;
-  // TILE / MBTS — Tile{x}{y}_0 → Tile{x}{y}{k}_{k} → cell_{mod}
+  // TILE / MBTS: Tile{x}{y}_0 -> Tile{x}{y}{k}_{k} -> cell_{mod}
   if ((m = /^Tile(\d+)([pn])_0$/.exec(l1))) {
     const x = +m[1], s = m[2]==='p' ? 1 : 0;
     const m2 = /^Tile\d+[pn](\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell_(\d+)$/.exec(l3);            if (!m3) return null;
     return _tileKey(x, s, +m2[1], +m3[1]);
   }
-  // LAr EM — EM{X}_{samp}_{R}_{Z}_{W} → EM{X}_{samp}_{R}_{Z}_{eta}_{eta} → cell[2]_{phi}
+  // LAr EM: EM{X}_{samp}_{R}_{Z}_{W} -> EM{X}_{samp}_{R}_{Z}_{eta}_{eta} -> cell[2]_{phi}
   if ((m = /^EM(Barrel|EndCap)_(\d+)_(\d+)_([pn])_\d+$/.exec(l1))) {
     const ab = m[1]==='Barrel' ? 1 : +m[3], sa = +m[2], R = +m[3], z = m[4]==='p' ? 1 : 0;
     const m2 = /^EM(?:Barrel|EndCap)_\d+_\d+_[pn]_(\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell(2?)_(\d+)$/.exec(l3);                               if (!m3) return null;
     return _larEmKey(ab, sa, R, z, +m2[1], +m3[2], m3[1]==='2' ? 1 : 0);
   }
-  // HEC — HEC_{name}_{region}_{Z}_0 → HEC_{name}_{region}_{Z}_{cum}_{cum} → cell_{phi}
+  // HEC: HEC_{name}_{region}_{Z}_0 -> HEC_{name}_{region}_{Z}_{cum}_{cum} -> cell_{phi}
   if ((m = /^HEC_(\w+)_(\d+)_([pn])_0$/.exec(l1))) {
     const g = HEC_NAMES.indexOf(m[1]); if (g < 0) return null;
     const m2 = /^HEC_\w+_\d+_[pn]_(\d+)_\d+$/.exec(l2); if (!m2) return null;
@@ -103,13 +99,13 @@ let activeMbtsLabels      = null;  // null = no cluster filter; Set<string> = MB
 let clusterFilterEnabled  = true;
 let _readyFired  = false;
 
-// ── Loading screen helpers ─────────────────────────────────────────────────────
+// Loading screen helpers
 const _loadBar = document.getElementById('loading-bar');
 const _loadMsg = document.getElementById('loading-msg');
 
 // RAF loop: eases _barCurrent toward _barTarget, plus an asymptotic creep so
 // the bar is never truly frozen during the GLB parse phase.
-// Creep ceiling: 79% — success callback jumps to 100%.
+// Creep ceiling: 79% - success callback jumps to 100%.
 let _barTarget  = 0;
 let _barCurrent = 0;
 let _barRafId   = null;
@@ -145,12 +141,15 @@ function bumpReq() {
   if (reqBadge) reqBadge.textContent = `${reqCount} req`;
 }
 
-// ── Palette TILE: #ffff00 (min) → #800000 (max), linear ──────────────────────
+// Palette helpers
+const PAL_N = 256;
+
+// Palette TILE: #ffff00 (min) -> #800000 (max), linear
 function palColorTile(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
-    1.000 + t * (0.502 - 1.000),       // R: 1.0 → 0.502
-    1.000 + t * (0.000 - 1.000),       // G: 1.0 → 0.0
+    1.000 + t * (0.502 - 1.000),       // R: 1.0 -> 0.502
+    1.000 + t * (0.000 - 1.000),       // G: 1.0 -> 0.0
     0.0                                 // B: always 0
   );
 }
@@ -165,13 +164,13 @@ function palMatTile(eMev) {
   return PAL_TILE[Math.round(tv * (PAL_N - 1))];
 }
 
-// ── Palette HEC: #66e0f6 (min) → #0c0368 (max), linear ─────────────────────
+// Palette HEC: #66e0f6 (min) -> #0c0368 (max), linear
 function palColorHec(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
-    0.4000 + t * (0.0471 - 0.4000),   // R: 0.40 → 0.05
-    0.8784 + t * (0.0118 - 0.8784),   // G: 0.88 → 0.01
-    0.9647 + t * (0.4078 - 0.9647)    // B: 0.96 → 0.41
+    0.4000 + t * (0.0471 - 0.4000),   // R: 0.40 -> 0.05
+    0.8784 + t * (0.0118 - 0.8784),   // G: 0.88 -> 0.01
+    0.9647 + t * (0.4078 - 0.9647)    // B: 0.96 -> 0.41
   );
 }
 const PAL_HEC = Array.from({ length: PAL_N }, (_, i) => {
@@ -185,12 +184,12 @@ function palMatHec(eMev) {
   return PAL_HEC[Math.round(tv * (PAL_N - 1))];
 }
 
-// ── Palette LAr: #17cf42 (min) → #270042 (max), linear ──────────────────────
+// Palette LAr: #17cf42 (min) -> #270042 (max), linear
 function palColorLAr(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
-    0.0902 + t * (0.1529 - 0.0902),   // R: 0.09 → 0.15
-    0.8118 + t * (0.0000 - 0.8118),   // G: 0.81 → 0
+    0.0902 + t * (0.1529 - 0.0902),   // R: 0.09 -> 0.15
+    0.8118 + t * (0.0000 - 0.8118),   // G: 0.81 -> 0
     0.2588                              // B: constant
   );
 }
@@ -199,15 +198,15 @@ const PAL_LAR = Array.from({ length: PAL_N }, (_, i) => {
   c.offsetHSL(0, 0.35, 0);
   return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
 });
-const LAR_SCALE = 1000; // MeV — fixed 0–1 GeV
+const LAR_SCALE = 1000; // MeV - fixed 0-1 GeV
 function palMatLAr(eMev) {
   const tv = Math.max(0, Math.min(1, eMev / LAR_SCALE));
   return PAL_LAR[Math.round(tv * (PAL_N - 1))];
 }
 
-// ── Palette FCAL: copper ramp (deep patina → molten copper → hot gold) ────────
+// Palette FCAL: copper ramp (deep patina -> molten copper -> hot gold)
 // Non-linear curve (gamma 0.55) keeps low energies dark and lets high values
-// pop visibly; stops: #1a0600 → #6b2310 → #c8642a → #ffb26a → #ffeabe
+// pop visibly; stops: #1a0600 -> #6b2310 -> #c8642a -> #ffb26a -> #ffeabe
 const FCAL_SCALE = 7000; // MeV slider range (7 GeV)
 const _FCAL_STOPS = [
   [0.102, 0.024, 0.000], // 0.00  deep patina
@@ -230,7 +229,7 @@ function palColorFcalRgb(t) {
   return _FCAL_STOPS[_FCAL_STOPS.length-1];
 }
 
-// ── Ghost — Calorimeter envelope meshes ──────────────────────────────────────
+// Ghost: calorimeter envelope meshes
 // All envelope meshes from the .glb share a single ghost material (same color,
 // same opacity) so they render as a visually unified outline regardless of any
 // material that might have been assigned by the exporter.
@@ -254,11 +253,12 @@ const GHOST_DEFAULT_ON = new Set([
   'Calorimeter→EBTileHECp_0',
   'Calorimeter→EBTileHECn_0',
 ]);
-// Per-ghost visibility state (name → bool); seeded from defaults at boot.
+// Per-ghost visibility state (name -> bool); seeded from defaults at boot.
 const ghostVisible = new Map();
 for (const n of GHOST_MESH_NAMES) ghostVisible.set(n, GHOST_DEFAULT_ON.has(n));
+const ghostMeshByName = new Map();
 
-// Fixed ghost colours / opacity — RGB(92,95,102) = #5C5F66; 94% transparent = 6% opacity
+// Fixed ghost colors / opacity - RGB(92,95,102) = #5C5F66; 94% transparent = 6% opacity
 let ghostSolidColor = 0x5C5F66;
 let ghostSolidOpacity = 0.01;  // 94% transparent
 
@@ -277,7 +277,6 @@ const ghostPhiMat = new THREE.LineBasicMaterial({
 // ── Phi-segmentation lines (TileCal) ─────────────────────────────────────────
 // 64 radial planes in φ, each as a rectangle: 4 edges at r_inner → r_outer,
 // spanning z_min → z_max of each TileCal barrel+ext-barrel envelope.
-// Geometry constants (mm) from the ATLAS TileCal geometry:
 //   LB  : r_in=2288  r_out=3835  z = ±2820
 //   EB p: r_in=2288  r_out=3835  z = [3600, 6050]
 //   EB n: r_in=2288  r_out=3835  z = [-6050, -3600]
@@ -319,7 +318,7 @@ function anyGhostOn() {
 
 // Apply a single ghost mesh's visibility + force the unified ghost material.
 function applyGhostMeshOne(name, visible) {
-  const mesh = meshByName.get(name);
+  const mesh = ghostMeshByName.get(name);
   if (!mesh) return;
   if (visible) {
     mesh.material    = ghostSolidMat;
@@ -518,7 +517,7 @@ setLoadProgress(0, 'Downloading geometry…');
         o.matrixAutoUpdate = false;
         o.frustumCulled = false;  // all cells inside camera bounds always
         o.visible = false;
-        meshByName.set(o.name, o);
+        if (ghostVisible.has(o.name)) ghostMeshByName.set(o.name, o);
         const mkey = meshNameToKey(o.name);
         if (mkey !== null) meshByKey.set(mkey, o);
         origMat.set(o.name, o.material);
@@ -1224,8 +1223,10 @@ function drawClusters(clusters) {
 
 // ── Scene reset ───────────────────────────────────────────────────────────────
 function resetScene() {
-  for (const [name, mesh] of meshByName) {
-    mesh.visible = false; mesh.material = origMat.get(name) ?? mesh.material; mesh.renderOrder = 0;
+  for (const mesh of meshByKey.values()) {
+    mesh.visible = false;
+    mesh.material = origMat.get(mesh.name) ?? mesh.material;
+    mesh.renderOrder = 0;
   }
   // Re-apply ghost state: resetScene hides all meshes (including ghost envelopes),
   // which would desync the ghostVisible map and make the next ghost toggle
@@ -3667,3 +3668,4 @@ document.addEventListener('keydown', e => {
       break;
   }
 });
+
