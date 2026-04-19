@@ -28,12 +28,12 @@ let   rayTargets = [];
 
 // Integer key encoding: avoids string construction in the per-cell hot path.
 // Bits [1:0] = detector type tag: TILE=0b00, LAr EM=0b01, HEC=0b10 (no cross-type collision).
-// TILE:   x(5b<<2) | side(1b<<7) | k(4b<<8) | module(6b<<12) - 18 bits total
-// LAr EM: (abs_be-1)(2b<<2) | samp(2b<<4) | R(3b<<6) | z_pos(1b<<9) | eta(9b<<10) | phi(8b<<19) | cell2(1b<<27)
-// HEC:    group(2b<<2) | region(1b<<4) | z_pos(1b<<5) | cum_eta(5b<<6) | phi(6b<<11)
-const _tileKey  = (x, s, k, mod) => (x<<2)|(s<<7)|(k<<8)|(mod<<12);
-const _larEmKey = (ab, sa, R, z, eta, phi, c2) => 1|((ab-1)<<2)|(sa<<4)|(R<<6)|(z<<9)|(eta<<10)|(phi<<19)|(c2<<27);
-const _hecKey   = (g, r, z, cum, phi) => 2|(g<<2)|(r<<4)|(z<<5)|(cum<<6)|(phi<<11);
+// TILE:   layer(5b<<2) | pn(1b<<7) | ieta(4b<<8) | module(6b<<12) - 18 bits total
+// LAr EM: (eb-1)(2b<<2) | sampling(2b<<4) | region(3b<<6) | pn(1b<<9) | eta(9b<<10) | phi(8b<<19) | c_boolean(1b<<27)
+// HEC:    group(2b<<2) | region(1b<<4) | pn(1b<<5) | eta(5b<<6) | phi(6b<<11)
+const _tileKey  = (layer, pn, ieta, mod) => (layer<<2)|(pn<<7)|(ieta<<8)|(mod<<12);
+const _larEmKey = (eb, sampling, region, pn, eta, phi, c_boolean) => 1|((eb-1)<<2)|(sampling<<4)|(region<<6)|(pn<<9)|(eta<<10)|(phi<<19)|(c_boolean<<27);
+const _hecKey   = (group, region, pn, eta, phi) => 2|(group<<2)|(region<<4)|(pn<<5)|(eta<<6)|(phi<<11);
 
 // Parse a GLB mesh name string into its integer key (called once per mesh at load time).
 function meshNameToKey(name) {
@@ -47,48 +47,48 @@ function meshNameToKey(name) {
   let m;
   // TILE / MBTS (legacy): Tile{x}{y}_0 -> Tile{x}{y}{k}_{k} -> cell_{mod}
   if ((m = /^Tile(\d+)([pn])_0$/.exec(l1))) {
-    const x = +m[1], s = m[2]==='p' ? 1 : 0;
+    const layer = +m[1], pn = m[2]==='p' ? 1 : 0;
     const m2 = /^Tile\d+[pn](\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell_(\d+)$/.exec(l3);            if (!m3) return null;
-    return _tileKey(x, s, +m2[1], +m3[1]);
+    return _tileKey(layer, pn, +m2[1], +m3[1]);
   }
   // TILE / MBTS (current): T{x}{y}{k}_{k} -> c_{mod}
   if ((m = /^T(\d+)([pn])(\d+)_\d+$/.exec(l1))) {
-    const x = +m[1], s = m[2] === 'p' ? 1 : 0, k = +m[3];
+    const layer = +m[1], pn = m[2] === 'p' ? 1 : 0, ieta = +m[3];
     const m2 = /^c_(\d+)$/.exec(l2); if (!m2) return null;
-    return _tileKey(x, s, k, +m2[1]);
+    return _tileKey(layer, pn, ieta, +m2[1]);
   }
   // LAr EM (legacy): EM{X}_{samp}_{R}_{Z}_{W} -> EM{X}_{samp}_{R}_{Z}_{eta}_{eta} -> cell[2]_{phi}
   if ((m = /^EM(Barrel|EndCap)_(\d+)_(\d+)_([pn])_\d+$/.exec(l1))) {
-    const ab = m[1]==='Barrel' ? 1 : +m[3], sa = +m[2], R = +m[3], z = m[4]==='p' ? 1 : 0;
+    const eb = m[1]==='Barrel' ? 1 : +m[3], sampling = +m[2], region = +m[3], pn = m[4]==='p' ? 1 : 0;
     const m2 = /^EM(?:Barrel|EndCap)_\d+_\d+_[pn]_(\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell(2?)_(\d+)$/.exec(l3);                               if (!m3) return null;
-    return _larEmKey(ab, sa, R, z, +m2[1], +m3[2], m3[1]==='2' ? 1 : 0);
+    return _larEmKey(eb, sampling, region, pn, +m2[1], +m3[2], m3[1]==='2' ? 1 : 0);
   }
   // LAr EM (current barrel): EB_{samp}_{region}_{Z}_{eta}_{eta} -> c[2]_{phi}
   if ((m = /^EB_(\d+)_(\d+)_([pn])_(\d+)_\d+$/.exec(l1))) {
-    const sa = +m[1], R = +m[2], z = m[3] === 'p' ? 1 : 0, eta = +m[4];
+    const sampling = +m[1], region = +m[2], pn = m[3] === 'p' ? 1 : 0, eta = +m[4];
     const m2 = /^c(2?)_(\d+)$/.exec(l2); if (!m2) return null;
-    return _larEmKey(1, sa, R, z, eta, +m2[2], m2[1] === '2' ? 1 : 0);
+    return _larEmKey(1, sampling, region, pn, eta, +m2[2], m2[1] === '2' ? 1 : 0);
   }
   // LAr EM (current endcap): EE_{samp}_{abs_be}_{Z}_{eta}_{eta} -> c[2]_{phi}
   if ((m = /^EE_(\d+)_(\d+)_([pn])_(\d+)_\d+$/.exec(l1))) {
-    const sa = +m[1], ab = +m[2], z = m[3] === 'p' ? 1 : 0, eta = +m[4];
+    const sampling = +m[1], eb = +m[2], pn = m[3] === 'p' ? 1 : 0, eta = +m[4];
     const m2 = /^c(2?)_(\d+)$/.exec(l2); if (!m2) return null;
-    return _larEmKey(ab, sa, ab, z, eta, +m2[2], m2[1] === '2' ? 1 : 0);
+    return _larEmKey(eb, sampling, eb, pn, eta, +m2[2], m2[1] === '2' ? 1 : 0);
   }
   // HEC (legacy): HEC_{name}_{region}_{Z}_0 -> HEC_{name}_{region}_{Z}_{cum}_{cum} -> cell_{phi}
   if ((m = /^HEC_(\w+)_(\d+)_([pn])_0$/.exec(l1))) {
-    const g = HEC_NAMES.indexOf(m[1]); if (g < 0) return null;
+    const group = HEC_NAMES.indexOf(m[1]); if (group < 0) return null;
     const m2 = /^HEC_\w+_\d+_[pn]_(\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell_(\d+)$/.exec(l3);                   if (!m3) return null;
-    return _hecKey(g, +m[2], m[3]==='p' ? 1 : 0, +m2[1], +m3[1]);
+    return _hecKey(group, +m[2], m[3]==='p' ? 1 : 0, +m2[1], +m3[1]);
   }
   // HEC (current): H_{group}_{region}_{Z}_{cum}_{cum} -> c_{phi}
   if ((m = /^H_(\d+)_(\d+)_([pn])_(\d+)_\d+$/.exec(l1))) {
-    const g = HEC_NAMES.indexOf(m[1]); if (g < 0) return null;
+    const group = HEC_NAMES.indexOf(m[1]); if (group < 0) return null;
     const m2 = /^c_(\d+)$/.exec(l2); if (!m2) return null;
-    return _hecKey(g, +m[2], m[3] === 'p' ? 1 : 0, +m[4], +m2[1]);
+    return _hecKey(group, +m[2], m[3] === 'p' ? 1 : 0, +m[4], +m2[1]);
   }
   return null;
 }
