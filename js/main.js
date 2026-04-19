@@ -1,4 +1,4 @@
-import * as THREE         from 'three';
+import * as THREE        from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import wasmInit, { parse_atlas_ids_bulk } from '../parser/pkg/atlas_id_parser.js';
@@ -15,7 +15,6 @@ try { ({ LivePoller } = await import('../live_atlas/live_cern/live_poller.js'));
 // i18n
 initLanguage();
 setupLanguagePicker();
-
 
 // State
 const meshByKey  = new Map();   // int -> Mesh (hot-path: event loop lookup)
@@ -101,21 +100,26 @@ function classifyCellDet(name) {
   const parts = name.split('\u2192');
   if (parts.length < 3) return null;               // envelopes have 2 segments in both naming schemes
   for (const p of parts) {
-    if (p.startsWith('EMBarrel') || p.startsWith('EMEndCap') || p.startsWith('EB_') || p.startsWith('EE_')) return 'LAR';
-    if (p.startsWith('HEC_') || p.startsWith('H_')) return 'HEC';
-    if (/^Tile/.test(p) || /^T\d/.test(p))         return 'TILE';
+    if (p.startsWith('EB_') || p.startsWith('EE_')) return 'LAR';
+    if (p.startsWith('H_'))                         return 'HEC';
+    if (/^T\d/.test(p))                             return 'TILE';
   }
   return null;
 }
+
 let tileMaxMev = 1, tileMinMev = 0;
 let larMaxMev  = 1, larMinMev  = 0;
 let hecMaxMev  = 1, hecMinMev  = 0;
-let thrTileMev = 50;    // 0.05 GeV default
-let thrLArMev  = 0;    // 0 GeV default
-let thrHecMev  = 600;  // 0.6 GeV default
-let thrFcalMev = 0;    // 0 GeV default
+let thrTileMev = 50;   // 0.05 GeV default
+let thrLArMev  = 0;    // 0    GeV default
+let thrHecMev  = 600;  // 0.6  GeV default
+let thrFcalMev = 0;    // 0    GeV default
+
+let showTile   = true;
+let showLAr    = true;
 let showHec    = true;
 let showFcal   = true;
+
 let wasmOk     = false;
 let sceneOk    = false;
 let dirty      = true;
@@ -123,8 +127,7 @@ let curEvtId   = null;
 let isLive     = true;
 let showInfo   = true;
 let cinemaMode = false;
-let showTile   = true;
-let showLAr    = true;
+
 // Ghost visibility is tracked per-mesh in `ghostVisible` (see GHOST_MESH_NAMES).
 let beamGroup  = null;
 let beamOn     = false;
