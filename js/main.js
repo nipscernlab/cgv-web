@@ -29,10 +29,10 @@ let   rayTargets = [];
 // Integer key encoding: avoids string construction in the per-cell hot path.
 // Bits [1:0] = detector type tag: TILE=0b00, LAr EM=0b01, HEC=0b10 (no cross-type collision).
 // TILE:   layer(5b<<2) | pn(1b<<7) | ieta(4b<<8) | module(6b<<12) - 18 bits total
-// LAr EM: (eb-1)(2b<<2) | sampling(2b<<4) | region(3b<<6) | pn(1b<<9) | eta(9b<<10) | phi(8b<<19) | c_boolean(1b<<27)
+// LAr EM: (eb-1)(2b<<2) | sampling(2b<<4) | region(3b<<6) | pn(1b<<9) | eta(9b<<10) | phi(8b<<19)
 // HEC:    group(2b<<2) | region(1b<<4) | pn(1b<<5) | eta(5b<<6) | phi(6b<<11)
 const _tileKey  = (layer, pn, ieta, mod) => (layer<<2)|(pn<<7)|(ieta<<8)|(mod<<12);
-const _larEmKey = (eb, sampling, region, pn, eta, phi, c_boolean) => 1|((eb-1)<<2)|(sampling<<4)|(region<<6)|(pn<<9)|(eta<<10)|(phi<<19)|(c_boolean<<27);
+const _larEmKey = (eb, sampling, region, pn, eta, phi) => 1|((eb-1)<<2)|(sampling<<4)|(region<<6)|(pn<<9)|(eta<<10)|(phi<<19);
 const _hecKey   = (group, region, pn, eta, phi) => 2|(group<<2)|(region<<4)|(pn<<5)|(eta<<6)|(phi<<11);
 
 // Parse a GLB mesh name string into its integer key (called once per mesh at load time).
@@ -63,19 +63,19 @@ function meshNameToKey(name) {
     const eb = m[1]==='Barrel' ? 1 : +m[3], sampling = +m[2], region = +m[3], pn = m[4]==='p' ? 1 : 0;
     const m2 = /^EM(?:Barrel|EndCap)_\d+_\d+_[pn]_(\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell(2?)_(\d+)$/.exec(l3);                               if (!m3) return null;
-    return _larEmKey(eb, sampling, region, pn, +m2[1], +m3[2], m3[1]==='2' ? 1 : 0);
+    return _larEmKey(eb, sampling, region, pn, +m2[1], +m3[2]);
   }
   // LAr EM (current barrel): EB_{samp}_{region}_{Z}_{eta}_{eta} -> c[2]_{phi}
   if ((m = /^EB_(\d+)_(\d+)_([pn])_(\d+)_\d+$/.exec(l1))) {
     const sampling = +m[1], region = +m[2], pn = m[3] === 'p' ? 1 : 0, eta = +m[4];
     const m2 = /^c(2?)_(\d+)$/.exec(l2); if (!m2) return null;
-    return _larEmKey(1, sampling, region, pn, eta, +m2[2], m2[1] === '2' ? 1 : 0);
+    return _larEmKey(1, sampling, region, pn, eta, +m2[2]);
   }
   // LAr EM (current endcap): EE_{samp}_{abs_be}_{Z}_{eta}_{eta} -> c[2]_{phi}
   if ((m = /^EE_(\d+)_(\d+)_([pn])_(\d+)_\d+$/.exec(l1))) {
     const sampling = +m[1], eb = +m[2], pn = m[3] === 'p' ? 1 : 0, eta = +m[4];
     const m2 = /^c(2?)_(\d+)$/.exec(l2); if (!m2) return null;
-    return _larEmKey(eb, sampling, eb, pn, eta, +m2[2], m2[1] === '2' ? 1 : 0);
+    return _larEmKey(eb, sampling, eb, pn, eta, +m2[2]);
   }
   // HEC (legacy): HEC_{name}_{region}_{Z}_0 -> HEC_{name}_{region}_{Z}_{cum}_{cum} -> cell_{phi}
   if ((m = /^HEC_(\w+)_(\d+)_([pn])_0$/.exec(l1))) {
@@ -1636,8 +1636,7 @@ function processXml(xmlText) {
     const phi     = larPacked[base + 7];
     const { id, energy } = larCells[i];
     const eMev = energy * 1000;
-    let mesh = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi, 0));
-    if (!mesh) mesh = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi, 1));
+    const mesh = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi));
     if (!mesh) {
       _logMiss('LAR', `id=${id} | abs_be=${abs_be} samp=${sampling} R=${R} z=${z_pos} η=${eta} φ=${phi}`);
       nMiss++; continue;
