@@ -1452,13 +1452,20 @@ function processXml(xmlText) {
 
   let nTile = 0, nLAr = 0, nHec = 0, nMbts = 0, nMiss = 0, nSkip = 0;
   let nHecMiss = 0, nMbtsMiss = 0;
+  // Sample misses instead of one console.warn per cell — full-resolution logging
+  // craters FPS when DevTools is open (each warn forces a synchronous flush).
+  // We keep the first 3 of each kind for diagnosis and aggregate the rest.
+  const _MISS_SAMPLE = 3;
+  const _missLog = { TILE: [], LAR: [], HEC: [], MBTS: [] };
+  const _logMiss = (kind, msg) => { if (_missLog[kind].length < _MISS_SAMPLE) _missLog[kind].push(msg); };
 
   // ── Bulk decode: one WASM call per detector replaces N individual FFI calls ──
-  // Build ID strings without intermediate array allocation
+  // Array.join avoids the O(n²) growth of repeated `s += ' ' + id` (V8 builds
+  // ropes but each branch still costs a heap allocation we can skip).
   function idsToStr(cells) {
-    let s = cells[0].id;
-    for (let i = 1; i < cells.length; i++) s += ' ' + cells[i].id;
-    return s;
+    const arr = new Array(cells.length);
+    for (let i = 0; i < cells.length; i++) arr[i] = cells[i].id;
+    return arr.join(' ');
   }
   const tilePacked = tileCells.length ? parse_atlas_ids_bulk(idsToStr(tileCells)) : null;
   const larPacked  = larCells.length  ? parse_atlas_ids_bulk(idsToStr(larCells))  : null;
@@ -1479,7 +1486,7 @@ function processXml(xmlText) {
     const eMev = energy * 1000;
     const s_bit = side < 0 ? 0 : 1;
     const mesh  = meshByKey.get(_tileKey(x, s_bit, k, module));
-    if (!mesh) { console.warn(`[TILE] id=${id} | Tile${x}${s_bit?'p':'n'} k=${k} mod=${module}`); nMiss++; continue; }
+    if (!mesh) { _logMiss('TILE', `id=${id} | Tile${x}${s_bit?'p':'n'} k=${k} mod=${module}`); nMiss++; continue; }
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     const tEta = physTileEta(section, side, tower, sampling);
     const tPhi = physTilePhi(module);
@@ -1504,7 +1511,7 @@ function processXml(xmlText) {
     let mesh = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi, 0));
     if (!mesh) mesh = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi, 1));
     if (!mesh) {
-      console.warn(`[LAr EM] id=${id} | abs_be=${abs_be} samp=${sampling} R=${R} z=${z_pos} η=${eta} φ=${phi}`);
+      _logMiss('LAR', `id=${id} | abs_be=${abs_be} samp=${sampling} R=${R} z=${z_pos} η=${eta} φ=${phi}`);
       nMiss++; continue;
     }
     mesh.material = palMatLAr(eMev); mesh.visible = true; mesh.renderOrder = 2;
@@ -1529,7 +1536,7 @@ function processXml(xmlText) {
     const eMev = energy * 1000;
     const mesh = meshByKey.get(_hecKey(group, region, z_pos, cum_eta, phi));
     if (!mesh) {
-      console.warn(`[HEC] id=${id} | group=${group} region=${region} z=${z_pos} cumη=${cum_eta} φ=${phi}`);
+      _logMiss('HEC', `id=${id} | group=${group} region=${region} z=${z_pos} cumη=${cum_eta} φ=${phi}`);
       nHecMiss++; continue;
     }
     mesh.material = palMatHec(eMev); mesh.visible = true; mesh.renderOrder = 2;
@@ -1547,10 +1554,10 @@ function processXml(xmlText) {
     const { label, energy } = mbtsCells[i];
     const eMev = energy * 1000;
     const _m = /^type_(-?1)_ch_([01])_mod_([0-7])$/.exec(label);
-    if (!_m) { console.warn(`[MBTS] label=${label} | bad format`); nMbtsMiss++; continue; }
+    if (!_m) { _logMiss('MBTS', `label=${label} | bad format`); nMbtsMiss++; continue; }
     const tileNum = _m[2]==='0' ? 14 : 15, s_bit = _m[1]==='1' ? 1 : 0, mod = +_m[3];
     const mesh = meshByKey.get(_tileKey(tileNum, s_bit, 0, mod));
-    if (!mesh) { console.warn(`[MBTS] label=${label} | no mesh`); nMbtsMiss++; continue; }
+    if (!mesh) { _logMiss('MBTS', `label=${label} | no mesh`); nMbtsMiss++; continue; }
     mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
     const mbtsCoords = `η = ${((s_bit?1:-1)*(_m[2]==='0'?2.76:3.84)).toFixed(3)}   φ = ${_wrapPhi(2*Math.PI/16+mod*2*Math.PI/8).toFixed(3)} rad`;
     active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: 'MBTS', coords: mbtsCoords, det: 'TILE', mbtsLabel: label });
@@ -1563,6 +1570,13 @@ function processXml(xmlText) {
 
   const nHit    = nTile + nMbts + nLAr + nHec;
   const allMiss = nMiss + nHecMiss + nMbtsMiss;
+  // Aggregated miss summary — one console line per detector kind, with samples.
+  if (allMiss) {
+    for (const kind of ['TILE', 'LAR', 'HEC', 'MBTS']) {
+      const samples = _missLog[kind];
+      if (samples.length) console.warn(`[${kind}] ${samples.length} sample miss(es):\n  ` + samples.join('\n  '));
+    }
+  }
   showEventInfo(currentEventInfo);
 }
 
