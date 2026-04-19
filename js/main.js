@@ -492,38 +492,115 @@ function checkReady() {
   }
 }
 
-// ── GLB loader ────────────────────────────────────────────────────────────────
-// Fetches CaloGeometry.glb.gz, stream-decompresses via DecompressionStream (native
-// browser API, no extra library), then parses with GLTFLoader.parse().
-// Progress tracks the compressed download bytes → 0–40% of the loading bar.
-setLoadProgress(0, 'Downloading geometry…');
-(async () => {
-  let buffer;
+// ── GLB loader (with OPFS cache) ──────────────────────────────────────────────
+// Fetches CaloGeometry.glb.gz and stream-decompresses via DecompressionStream.
+// OPFS persists the gzipped bytes between sessions, keyed by the server's ETag
+// or Last-Modified — so repeat visits skip the network round trip entirely.
+// Cache is invalidated automatically when the file changes server-side.
+const _GLB_URL = './geometry_data/CaloGeometry.glb.gz';
+const _OPFS_DATA_NAME = 'CaloGeometry.glb.gz.bin';
+const _OPFS_META_NAME = 'CaloGeometry.glb.meta';
+
+async function _opfsRoot() {
+  if (!navigator.storage?.getDirectory) return null;
+  try { return await navigator.storage.getDirectory(); } catch { return null; }
+}
+async function _opfsLoadGz(version) {
+  const root = await _opfsRoot();
+  if (!root || !version) return null;
   try {
-    const res = await fetch('./geometry_data/CaloGeometry.glb.gz');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const total  = parseInt(res.headers.get('Content-Length') || '0', 10);
-    let   loaded = 0;
-    // TransformStream counts compressed bytes for the progress bar,
-    // then DecompressionStream inflates the gzip payload on the fly.
-    const counter = new TransformStream({ transform(chunk, ctrl) {
-      loaded += chunk.byteLength;
-      if (total) {
-        const pct = loaded / total;
+    const metaH = await root.getFileHandle(_OPFS_META_NAME, { create: false });
+    const meta  = JSON.parse(await (await metaH.getFile()).text());
+    if (meta.v !== version) return null;
+    const dataH = await root.getFileHandle(_OPFS_DATA_NAME, { create: false });
+    const file  = await dataH.getFile();
+    if (file.size !== meta.size) return null;
+    return await file.arrayBuffer();
+  } catch { return null; }
+}
+async function _opfsSaveGz(buffer, version) {
+  const root = await _opfsRoot();
+  if (!root || !version) return;
+  try {
+    const dataH = await root.getFileHandle(_OPFS_DATA_NAME, { create: true });
+    const wd    = await dataH.createWritable();
+    await wd.write(buffer);
+    await wd.close();
+    const metaH = await root.getFileHandle(_OPFS_META_NAME, { create: true });
+    const wm    = await metaH.createWritable();
+    await wm.write(JSON.stringify({ v: version, size: buffer.byteLength, t: Date.now() }));
+    await wm.close();
+  } catch { /* OPFS quota or transient error — cache is best-effort */ }
+}
+async function _glbVersion() {
+  // HEAD with no-cache forces a server round trip so we get the *current* validator.
+  // Without this, a stale browser-cache entry could mask a server update.
+  try {
+    const head = await fetch(_GLB_URL, { method: 'HEAD', cache: 'no-cache' });
+    if (!head.ok) return '';
+    return head.headers.get('etag') || head.headers.get('last-modified') || '';
+  } catch { return ''; }
+}
+// Stream-decompress a gzip stream into the raw GLB ArrayBuffer.
+async function _decompressGz(stream, totalBytes, onProgress) {
+  let loaded = 0;
+  const counter = new TransformStream({ transform(chunk, ctrl) {
+    loaded += chunk.byteLength;
+    if (totalBytes && onProgress) onProgress(loaded / totalBytes);
+    ctrl.enqueue(chunk);
+  }});
+  return await new Response(
+    stream.pipeThrough(counter).pipeThrough(new DecompressionStream('gzip'))
+  ).arrayBuffer();
+}
+
+setLoadProgress(0, 'Loading geometry…');
+(async () => {
+  let buffer = null;
+
+  // ── 1. OPFS hit path: validate cache against server, decompress locally ────
+  const version = await _glbVersion();
+  if (version) {
+    const cachedGz = await _opfsLoadGz(version);
+    if (cachedGz) {
+      try {
+        buffer = await _decompressGz(
+          new Blob([cachedGz]).stream(),
+          cachedGz.byteLength,
+          pct => setLoadProgress(pct * 40, `Loading cached geometry… ${Math.round(pct * 100)}%`)
+        );
+      } catch { buffer = null; /* poisoned cache — fall through to network */ }
+    }
+  }
+
+  // ── 2. Network path (also runs when version was empty / OPFS unavailable) ──
+  if (!buffer) {
+    try {
+      const res = await fetch(_GLB_URL);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const total = parseInt(res.headers.get('Content-Length') || '0', 10);
+      // tee() lets us decompress AND collect raw bytes for OPFS save in parallel.
+      const [streamForDecode, streamForCache] = res.body.tee();
+      const decodePromise = _decompressGz(streamForDecode, total, pct => {
         setLoadProgress(pct * 40, `Downloading geometry… ${Math.round(pct * 100)}%`);
         setStatus(`Downloading geometry: ${Math.round(pct * 100)}%`);
+      });
+      if (version) {
+        new Response(streamForCache).arrayBuffer()
+          .then(gz => _opfsSaveGz(gz, version))
+          .catch(() => {});
+      } else {
+        streamForCache.cancel().catch(() => {});
       }
-      ctrl.enqueue(chunk);
-    }});
-    buffer = await new Response(
-      res.body.pipeThrough(counter).pipeThrough(new DecompressionStream('gzip'))
-    ).arrayBuffer();
-  } catch (e) {
-    setStatus('<span class="warn">CaloGeometry.glb.gz not found.</span>');
-    setLoadProgress(100, 'Geometry skipped');
-    sceneOk = true; checkReady();
-    return;
+      buffer = await decodePromise;
+    } catch (e) {
+      setStatus('<span class="warn">CaloGeometry.glb.gz not found.</span>');
+      setLoadProgress(100, 'Geometry skipped');
+      sceneOk = true; checkReady();
+      return;
+    }
   }
+
   new GLTFLoader().parse(
     buffer, './',
     ({ scene: g }) => {
