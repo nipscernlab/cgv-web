@@ -413,6 +413,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.sortObjects = false;
+// renderer.info is only read by the FPS HUD (which uses its own frame counter),
+// so let Three.js skip the per-frame reset.
+renderer.info.autoReset = false;
 
 // ── Scene / Camera / Controls ─────────────────────────────────────────────────
 const scene = new THREE.Scene();
@@ -448,21 +451,37 @@ document.body.appendChild(fpsEl);
 let _fpsFrames = 0, _fpsLast = performance.now();
 
 // ── Render loop ───────────────────────────────────────────────────────────────
-(function loop() {
-  requestAnimationFrame(loop);
-  _fpsFrames++;
-  const now = performance.now();
-  if (now - _fpsLast >= 500) {
-    fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
-    _fpsFrames = 0; _fpsLast = now;
-  }
-  if (cinemaMode || _tourExiting) _tourTick();
-  controls.update();
-  if (controls.autoRotate) dirty = true;
-  if (!dirty) return;
-  renderer.render(scene, camera);
-  dirty = false;
-})();
+// Paused while the tab is hidden: browsers already throttle RAF on hidden tabs,
+// but stopping the loop entirely frees the main thread for other tabs. Resumed
+// on visibilitychange.
+let _loopRunning = false;
+function _startLoop() {
+  if (_loopRunning) return;
+  _loopRunning = true;
+  _fpsLast = performance.now(); _fpsFrames = 0;
+  dirty = true;
+  (function loop() {
+    if (!_loopRunning) return;
+    requestAnimationFrame(loop);
+    _fpsFrames++;
+    const now = performance.now();
+    if (now - _fpsLast >= 500) {
+      fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
+      _fpsFrames = 0; _fpsLast = now;
+    }
+    if (cinemaMode || _tourExiting) _tourTick();
+    controls.update();
+    if (controls.autoRotate) dirty = true;
+    if (!dirty) return;
+    renderer.render(scene, camera);
+    dirty = false;
+  })();
+}
+function _stopLoop() { _loopRunning = false; }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) _stopLoop(); else _startLoop();
+});
+_startLoop();
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -2131,7 +2150,6 @@ const tipEEl     = document.getElementById('tip-e');
 const tipEKeyEl  = document.querySelector('#tip .tkey');
 let   lastRay    = 0;
 let   mousePos = { x: 0, y: 0 };
-document.addEventListener('mousemove', e => { mousePos.x = e.clientX; mousePos.y = e.clientY; });
 function doRaycast(clientX, clientY) {
   const hasTrackLines   = trackGroup   && trackGroup.visible   && trackGroup.children.length   > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
@@ -2230,6 +2248,7 @@ function doRaycast(clientX, clientY) {
   clearOutline(); tooltip.hidden = true;
 }
 document.addEventListener('mousemove', e => {
+  mousePos.x = e.clientX; mousePos.y = e.clientY;
   const now = Date.now(); if (now-lastRay < 50) return; lastRay = now;
   doRaycast(e.clientX, e.clientY);
 });
