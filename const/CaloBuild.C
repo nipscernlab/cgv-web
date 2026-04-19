@@ -35,7 +35,7 @@ double eta2rad(Double_t eta)
 void InitGeometry()
 {
 	// this initializes gGeoManager ROOT global variable
-	new TGeoManager("Calorimeter", "ATLAS Calorimeter");
+	new TGeoManager("C", "ATLAS Calorimeter");
 
 	// material
 	CaloMaterial = new TGeoMaterial("Calo",0,0,0);
@@ -62,13 +62,13 @@ void BuildOutline()
 	OutlineMat->SetTransparency(85);
 
 	// Barrel Tile + LArg
-	TGeoVolume *LBTileLArg = gGeoManager->MakePcon("LBTileLArg", OutlineMed, 0.0, 360.0, 2);
+	/*TGeoVolume *LBTileLArg = gGeoManager->MakePcon("LBTileLArg", OutlineMed, 0.0, 360.0, 2);
 	TGeoPcon   *pcon1 = (TGeoPcon*)(LBTileLArg->GetShape());
 
 	pcon1->DefineSection(0,-3250.000,1481.750,3860.000);
 	pcon1->DefineSection(1,+3250.000,1481.750,3860.000);
 
-	Calo->AddNode(LBTileLArg, 0);
+	Calo->AddNode(LBTileLArg, 0);*/
 
 	// Barrel Tile only
 	TGeoVolume *LBTile = gGeoManager->MakePcon("LBTile", OutlineMed, 0.0, 360.0, 2);
@@ -80,31 +80,31 @@ void BuildOutline()
 	Calo->AddNode(LBTile, 0);
 
 	// Barrel LArg only
-	TGeoVolume *LBLArg = gGeoManager->MakePcon("LBLArg", OutlineMed, 0.0, 360.0, 2);
+	/*TGeoVolume *LBLArg = gGeoManager->MakePcon("LBLArg", OutlineMed, 0.0, 360.0, 2);
 	TGeoPcon   *pcon3 = (TGeoPcon*)(LBLArg->GetShape());
 
 	pcon3->DefineSection(0,-3250.000,1481.750,2290.000);
 	pcon3->DefineSection(1,+3250.000,1481.750,2290.000);
 
-	Calo->AddNode(LBLArg, 0);
+	Calo->AddNode(LBLArg, 0);*/
 
 	// Extended Barrel Tile + HEC - eta positive
-	TGeoVolume *EBTileHECp = gGeoManager->MakePcon("EBTileHECp", OutlineMed, 0.0, 360.0, 2);
+	/*TGeoVolume *EBTileHECp = gGeoManager->MakePcon("EBTileHECp", OutlineMed, 0.0, 360.0, 2);
 	TGeoPcon   *pcon4 = (TGeoPcon*)(EBTileHECp->GetShape());
 
 	pcon4->DefineSection(0,3559.500, 303.499,3860.000);
 	pcon4->DefineSection(1,6150.000, 485.000,3860.000);
 
-	Calo->AddNode(EBTileHECp, 0);
+	Calo->AddNode(EBTileHECp, 0);*/
 
 	// Extended Barrel Tile + HEC - eta negative
-	TGeoVolume *EBTileHECn = gGeoManager->MakePcon("EBTileHECn", OutlineMed, 0.0, 360.0, 2);
+	/*TGeoVolume *EBTileHECn = gGeoManager->MakePcon("EBTileHECn", OutlineMed, 0.0, 360.0, 2);
 	TGeoPcon   *pcon5 = (TGeoPcon*)(EBTileHECn->GetShape());
 
 	pcon5->DefineSection(0,-3559.500, 303.499,3860.000);
 	pcon5->DefineSection(1,-6150.000, 485.000,3860.000);
 
-	Calo->AddNode(EBTileHECn, 0);
+	Calo->AddNode(EBTileHECn, 0);*/
 
 	// Extended Barrel Tile only - eta positive
 	TGeoVolume *EBTilep = gGeoManager->MakePcon("EBTilep", OutlineMed, 0.0, 360.0, 2);
@@ -125,27 +125,27 @@ void BuildOutline()
 	Calo->AddNode(EBTilen, 0);
 
 	// Extended Barrel HEC only - eta positive
-	TGeoVolume *EBHECp = gGeoManager->MakePcon("EBHECp", OutlineMed, 0.0, 360.0, 2);
+	/*TGeoVolume *EBHECp = gGeoManager->MakePcon("EBHECp", OutlineMed, 0.0, 360.0, 2);
 	TGeoPcon   *pcon8 = (TGeoPcon*)(EBHECp->GetShape());
 
 	pcon8->DefineSection(0,4350.000, 372.000, 2290.000);
 	pcon8->DefineSection(1,6050.000, 485.000, 2290.000);
 
-	Calo->AddNode(EBHECp, 0);
+	Calo->AddNode(EBHECp, 0);*/
 
 	// Extended Barrel HEC only - eta negative
-	TGeoVolume *EBHECn = gGeoManager->MakePcon("EBHECn", OutlineMed, 0.0, 360.0, 2);
+	/*TGeoVolume *EBHECn = gGeoManager->MakePcon("EBHECn", OutlineMed, 0.0, 360.0, 2);
 	TGeoPcon   *pcon9 = (TGeoPcon*)(EBHECn->GetShape());
 
 	pcon9->DefineSection(0,-4350.000, 372.000, 2290.000);
 	pcon9->DefineSection(1,-6050.000, 485.000, 2290.000);
 
-	Calo->AddNode(EBHECn, 0);
+	Calo->AddNode(EBHECn, 0);*/
 
 	// Ground ------------------------------------------------------------------
 
 	// materials
-	TGeoMaterial *GroundMat = new TGeoMaterial("GroundMat",0,0,0);
+	/*TGeoMaterial *GroundMat = new TGeoMaterial("GroundMat",0,0,0);
 	TGeoMedium   *GroundMed = new TGeoMedium  ("GroundMed",1,GroundMat);
 	GroundMat->SetTransparency(80);
 
@@ -179,7 +179,7 @@ void BuildOutline()
 
 	Calo->AddNode(I, 1, gcP1);
 	Calo->AddNode(I, 2, gcP2);
-	Calo->AddNode(I, 3, gcM );
+	Calo->AddNode(I, 3, gcM );*/
 
 	gGeoManager->SetNsegments(64);
 }
@@ -204,8 +204,8 @@ void BuildEMBarrel(Int_t layer, Int_t phi_seg, bool eta_pos, int region)
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("EMBarrel_%d_%d_%s", layer, region, eta_sig.Data()));
-	TGeoBBox           *box       = new TGeoBBox("box", 3250.000, 3250.000, 3250.000);
+
+	TGeoBBox *box = new TGeoBBox("box", 3250.000, 3250.000, 3250.000);
 
 	// prepare phi rotations ---------------------------------------------------
 
@@ -253,12 +253,12 @@ void BuildEMBarrel(Int_t layer, Int_t phi_seg, bool eta_pos, int region)
 		v[14] = -dx;     v[15] = +dy2;
 
 		TGeoArb8           *arb8     = new TGeoArb8("arb8", (h2-h1)/2.0, v);
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("EMBarrel_%d_%d_%s_%d", layer, region, eta_sig.Data(), i));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("EB_%d_%d_%s_%d", layer, region, eta_sig.Data(), i));
 
 		phi = dphi/2.0 + pi/2.0;
 		for (int j = 0; j < phi_seg; j++)
 		{
-			TGeoVolume *cell = gGeoManager->MakeArb8("cell", CaloMedium, (h2-h1)/2.0, v);
+			TGeoVolume *cell = gGeoManager->MakeArb8("c", CaloMedium, (h2-h1)/2.0, v);
 			cell->SetLineColor(kGreen);
 
 			TGeoCombiTrans *comb = new TGeoCombiTrans((-h1-(h2-h1)/2.0)*sin(phi), -(-h1-(h2-h1)/2.0)*cos(phi), h1/tan(pi/2.0 - eta2rad(eta)),(TGeoRotation*) rot->At(j));
@@ -271,7 +271,7 @@ void BuildEMBarrel(Int_t layer, Int_t phi_seg, bool eta_pos, int region)
 
 				TGeoIntersection   *boolnode = new TGeoIntersection(arb8, box , comb, NULL);
 				TGeoCompositeShape *cs       = new TGeoCompositeShape("cs", boolnode);
-				TGeoVolume         *cell2    = new TGeoVolume("cell2",cs);
+				TGeoVolume         *cell2    = new TGeoVolume("c2",cs);
 				cell2->SetLineColor(kGreen);
 				cell2->SetMedium(CaloMedium);
 
@@ -281,11 +281,9 @@ void BuildEMBarrel(Int_t layer, Int_t phi_seg, bool eta_pos, int region)
 			phi += dphi;
 		}
 
-		geo_layer->AddNode(etaslice, i);
+		Calo->AddNode(etaslice, i);
 		eta += deta;
 	}
-
-	Calo->AddNode(geo_layer, 0);
 }
 
 void BuildEMEndCap(Int_t layer, Int_t phi_seg, bool eta_pos, bool inner)
@@ -306,8 +304,9 @@ void BuildEMEndCap(Int_t layer, Int_t phi_seg, bool eta_pos, bool inner)
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
 	int bec = (inner == 1) ? 3 : 2;
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("EMEndCap_%d_%d_%s", layer, bec, eta_sig.Data()));
-	TGeoTube           *box       = new TGeoTube("box", 10.0, 2034.000, 10000.0);
+	
+	TGeoTube *box = new TGeoTube("box", 10.0, 2034.000, 10000.0);
+
 	gGeoManager->SetNsegments(phi_seg);
 
 	// prepare phi rotations ---------------------------------------------------
@@ -373,12 +372,12 @@ void BuildEMEndCap(Int_t layer, Int_t phi_seg, bool eta_pos, bool inner)
 		}
 
 		TGeoArb8 *arb8               = new TGeoArb8("arb8", (h2-h1)/2.0, v);
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("EMEndCap_%d_%d_%s_%d", layer, bec, eta_sig.Data(), i));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("EE_%d_%d_%s_%d", layer, bec, eta_sig.Data(), i));
 
 		phi = dphi/2 + pi/2;
 		for (int j = 0; j < phi_seg; j++)
 		{
-			TGeoVolume *cell = gGeoManager->MakeArb8("cell", CaloMedium, (h2-h1)/2.0, v);
+			TGeoVolume *cell = gGeoManager->MakeArb8("c", CaloMedium, (h2-h1)/2.0, v);
 			cell->SetLineColor(kGreen);
 
 			if (eta_pos) z = h1+(h2-h1)/2.0; else z = -(h1+(h2-h1)/2.0);
@@ -390,7 +389,7 @@ void BuildEMEndCap(Int_t layer, Int_t phi_seg, bool eta_pos, bool inner)
 
 				TGeoIntersection   *boolnode = new TGeoIntersection(arb8, box, comb, NULL);
 				TGeoCompositeShape *cs       = new TGeoCompositeShape("cs", boolnode);	
-				TGeoVolume         *cell2    = new TGeoVolume("cell2",cs);
+				TGeoVolume         *cell2    = new TGeoVolume("c2",cs);
 				cell2->SetLineColor(kGreen);
 				cell2->SetMedium(CaloMedium);
 
@@ -404,10 +403,8 @@ void BuildEMEndCap(Int_t layer, Int_t phi_seg, bool eta_pos, bool inner)
 			phi += dphi;
 		}
 
-		geo_layer->AddNode(etaslice, i);
+		Calo->AddNode(etaslice, i);
 	}
-
-	Calo->AddNode(geo_layer, 1);
 }
 
 void BuildTile(Int_t layer, Double_t h1, Double_t h2, int phi_seg, bool eta_pos)
@@ -425,7 +422,6 @@ void BuildTile(Int_t layer, Double_t h1, Double_t h2, int phi_seg, bool eta_pos)
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("Tile%d%s", layer, eta_sig.Data()));
 
 	// prepare phi rotations ---------------------------------------------------
 
@@ -444,12 +440,12 @@ void BuildTile(Int_t layer, Double_t h1, Double_t h2, int phi_seg, bool eta_pos)
 
 	for (i = 0; i < Tile_size[layer-1]; i++)
 	{
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("Tile%d%s%d", layer, eta_sig.Data(), i));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("T%d%s%d", layer, eta_sig.Data(), i));
 
 		phi = dphi/2.0 + pi/2.0;
 		for (int j = 0; j < phi_seg; j++)
 		{
-			TGeoVolume *cell = gGeoManager->MakeTrd1("cell", CaloMedium, w1, w2, Tiledz[layer-1][i]/2.0, (h2-h1)/2.0);
+			TGeoVolume *cell = gGeoManager->MakeTrd1("c", CaloMedium, w1, w2, Tiledz[layer-1][i]/2.0, (h2-h1)/2.0);
 			cell->SetLineColor(kYellow);
 
 			if (eta_pos) z = Tilez[layer-1][i]; else z = -Tilez[layer-1][i]; 
@@ -459,9 +455,8 @@ void BuildTile(Int_t layer, Double_t h1, Double_t h2, int phi_seg, bool eta_pos)
 			phi += dphi;
 		}
 
-		geo_layer->AddNode(etaslice, i);
+		Calo->AddNode(etaslice, i);
 	}
-	Calo->AddNode(geo_layer, 0);
 }
 
 void MergeTile(Int_t layer1, Int_t layer2, Double_t h1, Double_t h2, Double_t h3, bool eta_pos)
@@ -479,7 +474,6 @@ void MergeTile(Int_t layer1, Int_t layer2, Double_t h1, Double_t h2, Double_t h3
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("Tile%d%d%s", layer1, layer2, eta_sig.Data()));
 
 	// prepare phi rotations ---------------------------------------------------
 
@@ -500,13 +494,13 @@ void MergeTile(Int_t layer1, Int_t layer2, Double_t h1, Double_t h2, Double_t h3
 
 	for (i = 0; i < Tile_size[layer2-1]; i++)
 	{
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("Tile%d%d%s%d", layer1, layer2, eta_sig.Data(), i));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("T%d%d%s%d", layer1, layer2, eta_sig.Data(), i));
 
 		phi = dphi/2.0 + pi/2.0;
 		for (int j = 0; j < 64; j++)
 		{
-			TGeoTrd1 *cell1 = new TGeoTrd1("cell1", w1, w2, Tiledz[layer1-1][i]/2.0, (h2-h1)/2.0 -0.001);
-			TGeoTrd1 *cell2 = new TGeoTrd1("cell2", w2, w3, Tiledz[layer2-1][i]/2.0 -0.001, (h3-h2)/2.0);
+			TGeoTrd1 *cell1 = new TGeoTrd1("c1", w1, w2, Tiledz[layer1-1][i]/2.0, (h2-h1)/2.0 -0.001);
+			TGeoTrd1 *cell2 = new TGeoTrd1("c2", w2, w3, Tiledz[layer2-1][i]/2.0 -0.001, (h3-h2)/2.0);
 
 			if (eta_pos) z = Tilez[layer1-1][i]; else z = -Tilez[layer1-1][i]; 
 			TGeoCombiTrans *comb1 = new TGeoCombiTrans("comb1", -(h1+h2)/2.0*sin(phi), (h1+h2)/2.0*cos(phi), z, (TGeoRotation*)rot->At(j));
@@ -515,7 +509,7 @@ void MergeTile(Int_t layer1, Int_t layer2, Double_t h1, Double_t h2, Double_t h3
 
 			TGeoUnion    *boolnode = new TGeoUnion(cell1, cell2, comb1, comb2);
 			TGeoCompositeShape *cs = new TGeoCompositeShape("cs", boolnode);
-			TGeoVolume       *cell = new TGeoVolume("cell", cs);
+			TGeoVolume       *cell = new TGeoVolume("c", cs);
 			cell->SetLineColor(kYellow);
 			cell->SetMedium(CaloMedium);
 
@@ -524,19 +518,19 @@ void MergeTile(Int_t layer1, Int_t layer2, Double_t h1, Double_t h2, Double_t h3
 			phi += dphi;
 		}
 
-		geo_layer->AddNode(etaslice, i);
+		Calo->AddNode(etaslice, i);
 	}
 
 	// last cell ---------------------------------------------------------------
 
 	Int_t index = Tile_size[layer1-1]-1;
 
-	TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("Tile%d%d%s%d", layer1, layer2, eta_sig.Data(), index));
+	TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("T%d%d%s%d", layer1, layer2, eta_sig.Data(), index));
 
 	phi = dphi/2.0 + pi/2.0;
 	for (int j = 0; j < 64; j++)
 	{
-		TGeoVolume *cell = gGeoManager->MakeTrd1("cell", CaloMedium, w1, w2, Tiledz[layer1-1][i]/2.0, (h2-h1)/2.0);
+		TGeoVolume *cell = gGeoManager->MakeTrd1("c", CaloMedium, w1, w2, Tiledz[layer1-1][i]/2.0, (h2-h1)/2.0);
 		cell->SetLineColor(kYellow);
 
 		if (eta_pos) z = Tilez[layer1-1][index]; else z = -Tilez[layer1-1][index]; 
@@ -546,9 +540,7 @@ void MergeTile(Int_t layer1, Int_t layer2, Double_t h1, Double_t h2, Double_t h3
 		phi += dphi;
 	}
 
-	geo_layer->AddNode(etaslice, index);
-
-	Calo->AddNode(geo_layer, 0);
+	Calo->AddNode(etaslice, index);
 }
 
 void BuildHEC(Int_t layer, Int_t phi_seg, Double_t h1, Double_t h2, bool eta_pos, int region)
@@ -566,7 +558,6 @@ void BuildHEC(Int_t layer, Int_t phi_seg, Double_t h1, Double_t h2, bool eta_pos
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("HEC_%d_%d_%s", layer, region, eta_sig.Data()));
 
 	// prepare phi rotations ---------------------------------------------------
 
@@ -591,12 +582,12 @@ void BuildHEC(Int_t layer, Int_t phi_seg, Double_t h1, Double_t h2, bool eta_pos
 		w2 = tan(dphi/2.0)*(HECz[layer-1][i] + HECdz[layer-1][i]/2.0);
 		w1 = tan(dphi/2.0)*(HECz[layer-1][i] - HECdz[layer-1][i]/2.0);
 
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d_%d_%s_%d", layer, region, eta_sig.Data(), i));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("H_%d_%d_%s_%d", layer, region, eta_sig.Data(), i));
 
 		phi = dphi/2.0 + pi/2.0;
 		for (j = 0; j < phi_seg; j++)
 		{
-			TGeoVolume *cell = gGeoManager->MakeTrd1("cell", CaloMedium, w1, w2, (h2-h1)/2.0, HECdz[layer-1][i]/2.0);
+			TGeoVolume *cell = gGeoManager->MakeTrd1("c", CaloMedium, w1, w2, (h2-h1)/2.0, HECdz[layer-1][i]/2.0);
 			cell->SetLineColor(kYellow);
 
 			if (eta_pos) z = (h1+h2)/2.0; else z = -(h1+h2)/2.0; 
@@ -606,10 +597,8 @@ void BuildHEC(Int_t layer, Int_t phi_seg, Double_t h1, Double_t h2, bool eta_pos
 			phi += dphi;
 		}
 
-		geo_layer->AddNode(etaslice, i);
+		Calo->AddNode(etaslice, i);
 	}
-
-	Calo->AddNode(geo_layer, 0);
 }
 
 void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h2, Double_t h3, bool eta_pos, int region)
@@ -627,7 +616,6 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 
 	TString eta_sig;
 	if (eta_pos) eta_sig = "p"; else eta_sig = "n";
-	TGeoVolumeAssembly *geo_layer = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s", layer1, layer2, region, eta_sig.Data()));
 
 	// prepare phi rotations ---------------------------------------------------
 
@@ -650,7 +638,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 	// first cell
 	if (region == 0) {
 
-	TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), i0));
+	TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("H_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), i0));
 
 	r1 = HECz[layer1-1][0];
 	w2 = tan(dphi/2.0)*(HECz[layer1-1][0] + HECdz[layer1-1][0]/2.0);
@@ -659,7 +647,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 	phi = dphi/2.0 + pi/2.0;
 	for (int j = 0; j < phi_seg; j++)
 	{
-		TGeoVolume *cell = gGeoManager->MakeTrd1("cell", CaloMedium, w1, w2, (h2-h1)/2.0, HECdz[layer1-1][0]/2.0);
+		TGeoVolume *cell = gGeoManager->MakeTrd1("c", CaloMedium, w1, w2, (h2-h1)/2.0, HECdz[layer1-1][0]/2.0);
 		cell->SetLineColor(kYellow);
 
 		if (eta_pos) z = (h1+h2)/2.0; else z = -(h1+h2)/2.0; 
@@ -669,7 +657,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 		phi += dphi;
 	}
 
-	geo_layer->AddNode(etaslice, i0);} // end of first cell
+	Calo->AddNode(etaslice, i0);} // end of first cell
 
 	// other cells
 
@@ -698,7 +686,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 
 	for (i = imin; i < imax; i++)
 	{
-		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("HEC_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), i+1+i0));
+		TGeoVolumeAssembly *etaslice = new TGeoVolumeAssembly(Form("H_%d%d_%d_%s_%d", layer1, layer2, region, eta_sig.Data(), i+1+i0));
 
 		r1 = HECz[layer1-1][i+1];
 		r2 = HECz[layer2-1][i];
@@ -710,8 +698,8 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 		phi = dphi/2.0 + pi/2.0;
 		for (j = 0; j < phi_seg; j++)
 		{
-			TGeoTrd1 *cell1 = new TGeoTrd1("cell1", w1, w2, (h2-h1)/2.0 - 0.001, HECdz[layer1-1][i+1]/2.0);
-			TGeoTrd1 *cell2 = new TGeoTrd1("cell2", w3, w4, (h3-h2)/2.0 - 0.001, HECdz[layer2-1][i  ]/2.0);
+			TGeoTrd1 *cell1 = new TGeoTrd1("c1", w1, w2, (h2-h1)/2.0 - 0.001, HECdz[layer1-1][i+1]/2.0);
+			TGeoTrd1 *cell2 = new TGeoTrd1("c2", w3, w4, (h3-h2)/2.0 - 0.001, HECdz[layer2-1][i  ]/2.0);
 
 			if (eta_pos) z = (h1+h2)/2.0; else z = -(h1+h2)/2.0; 
 			TGeoCombiTrans *comb1 = new TGeoCombiTrans("comb1", -r1*sin(phi), r1*cos(phi), z, (TGeoRotation*)rot->At(j));
@@ -720,7 +708,7 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 
 			TGeoUnion    *boolnode = new TGeoUnion(cell1, cell2, comb1, comb2);
 			TGeoCompositeShape *cs = new TGeoCompositeShape("cs", boolnode);
-			TGeoVolume       *cell = new TGeoVolume("cell", cs);
+			TGeoVolume       *cell = new TGeoVolume("c", cs);
 			cell->SetLineColor(kYellow);
 			cell->SetMedium(CaloMedium);
 
@@ -729,10 +717,8 @@ void MergeHEC(Int_t layer1, Int_t layer2, Int_t phi_seg, Double_t h1, Double_t h
 			phi += dphi;
 		}
 
-		geo_layer->AddNode(etaslice, i+1+i0);
+		Calo->AddNode(etaslice, i+1+i0);
 	}
-
-	Calo->AddNode(geo_layer, 0);
 }
 
 void CaloBuild()

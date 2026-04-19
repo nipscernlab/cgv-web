@@ -40,29 +40,55 @@ function meshNameToKey(name) {
   const S = '\u2192';
   const a = name.indexOf(S); if (a < 0) return null;
   const b = name.indexOf(S, a+1); if (b < 0) return null;
-  const c = name.indexOf(S, b+1); if (c < 0) return null;
-  const l1 = name.slice(a+1, b), l2 = name.slice(b+1, c), l3 = name.slice(c+1);
+  const c = name.indexOf(S, b+1);
+  const l1 = name.slice(a+1, b);
+  const l2 = c < 0 ? name.slice(b+1) : name.slice(b+1, c);
+  const l3 = c < 0 ? '' : name.slice(c+1);
   let m;
-  // TILE / MBTS: Tile{x}{y}_0 -> Tile{x}{y}{k}_{k} -> cell_{mod}
+  // TILE / MBTS (legacy): Tile{x}{y}_0 -> Tile{x}{y}{k}_{k} -> cell_{mod}
   if ((m = /^Tile(\d+)([pn])_0$/.exec(l1))) {
     const x = +m[1], s = m[2]==='p' ? 1 : 0;
     const m2 = /^Tile\d+[pn](\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell_(\d+)$/.exec(l3);            if (!m3) return null;
     return _tileKey(x, s, +m2[1], +m3[1]);
   }
-  // LAr EM: EM{X}_{samp}_{R}_{Z}_{W} -> EM{X}_{samp}_{R}_{Z}_{eta}_{eta} -> cell[2]_{phi}
+  // TILE / MBTS (current): T{x}{y}{k}_{k} -> c_{mod}
+  if ((m = /^T(\d+)([pn])(\d+)_\d+$/.exec(l1))) {
+    const x = +m[1], s = m[2] === 'p' ? 1 : 0, k = +m[3];
+    const m2 = /^c_(\d+)$/.exec(l2); if (!m2) return null;
+    return _tileKey(x, s, k, +m2[1]);
+  }
+  // LAr EM (legacy): EM{X}_{samp}_{R}_{Z}_{W} -> EM{X}_{samp}_{R}_{Z}_{eta}_{eta} -> cell[2]_{phi}
   if ((m = /^EM(Barrel|EndCap)_(\d+)_(\d+)_([pn])_\d+$/.exec(l1))) {
     const ab = m[1]==='Barrel' ? 1 : +m[3], sa = +m[2], R = +m[3], z = m[4]==='p' ? 1 : 0;
     const m2 = /^EM(?:Barrel|EndCap)_\d+_\d+_[pn]_(\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell(2?)_(\d+)$/.exec(l3);                               if (!m3) return null;
     return _larEmKey(ab, sa, R, z, +m2[1], +m3[2], m3[1]==='2' ? 1 : 0);
   }
-  // HEC: HEC_{name}_{region}_{Z}_0 -> HEC_{name}_{region}_{Z}_{cum}_{cum} -> cell_{phi}
+  // LAr EM (current barrel): EB_{samp}_{region}_{Z}_{eta}_{eta} -> c[2]_{phi}
+  if ((m = /^EB_(\d+)_(\d+)_([pn])_(\d+)_\d+$/.exec(l1))) {
+    const sa = +m[1], R = +m[2], z = m[3] === 'p' ? 1 : 0, eta = +m[4];
+    const m2 = /^c(2?)_(\d+)$/.exec(l2); if (!m2) return null;
+    return _larEmKey(1, sa, R, z, eta, +m2[2], m2[1] === '2' ? 1 : 0);
+  }
+  // LAr EM (current endcap): EE_{samp}_{abs_be}_{Z}_{eta}_{eta} -> c[2]_{phi}
+  if ((m = /^EE_(\d+)_(\d+)_([pn])_(\d+)_\d+$/.exec(l1))) {
+    const sa = +m[1], ab = +m[2], z = m[3] === 'p' ? 1 : 0, eta = +m[4];
+    const m2 = /^c(2?)_(\d+)$/.exec(l2); if (!m2) return null;
+    return _larEmKey(ab, sa, ab, z, eta, +m2[2], m2[1] === '2' ? 1 : 0);
+  }
+  // HEC (legacy): HEC_{name}_{region}_{Z}_0 -> HEC_{name}_{region}_{Z}_{cum}_{cum} -> cell_{phi}
   if ((m = /^HEC_(\w+)_(\d+)_([pn])_0$/.exec(l1))) {
     const g = HEC_NAMES.indexOf(m[1]); if (g < 0) return null;
     const m2 = /^HEC_\w+_\d+_[pn]_(\d+)_\d+$/.exec(l2); if (!m2) return null;
     const m3 = /^cell_(\d+)$/.exec(l3);                   if (!m3) return null;
     return _hecKey(g, +m[2], m[3]==='p' ? 1 : 0, +m2[1], +m3[1]);
+  }
+  // HEC (current): H_{group}_{region}_{Z}_{cum}_{cum} -> c_{phi}
+  if ((m = /^H_(\d+)_(\d+)_([pn])_(\d+)_\d+$/.exec(l1))) {
+    const g = HEC_NAMES.indexOf(m[1]); if (g < 0) return null;
+    const m2 = /^c_(\d+)$/.exec(l2); if (!m2) return null;
+    return _hecKey(g, +m[2], m[3] === 'p' ? 1 : 0, +m[4], +m2[1]);
   }
   return null;
 }
@@ -73,11 +99,11 @@ function meshNameToKey(name) {
 function classifyCellDet(name) {
   if (ghostVisible.has(name)) return null;
   const parts = name.split('\u2192');
-  if (parts.length < 3) return null;               // envelopes have 2 segments
+  if (parts.length < 3) return null;               // envelopes have 2 segments in both naming schemes
   for (const p of parts) {
-    if (p.startsWith('EMBarrel') || p.startsWith('EMEndCap')) return 'LAR';
-    if (p.startsWith('HEC_')) return 'HEC';
-    if (/^Tile/.test(p))      return 'TILE';
+    if (p.startsWith('EMBarrel') || p.startsWith('EMEndCap') || p.startsWith('EB_') || p.startsWith('EE_')) return 'LAR';
+    if (p.startsWith('HEC_') || p.startsWith('H_')) return 'HEC';
+    if (/^Tile/.test(p) || /^T\d/.test(p))         return 'TILE';
   }
   return null;
 }
@@ -252,6 +278,9 @@ function palColorFcalRgb(t) {
 // same opacity) so they render as a visually unified outline regardless of any
 // material that might have been assigned by the exporter.
 const GHOST_MESH_NAMES = [
+  'C→LBTile_0',
+  'C→EBTilep_0',
+  'C→EBTilen_0',
   'Calorimeter→LBTile_0',
   'Calorimeter→LBTileLArg_0',
   'Calorimeter→LBLArg_0',
@@ -264,6 +293,9 @@ const GHOST_MESH_NAMES = [
 ];
 // Ghosts enabled by default on startup (the TileCal envelopes).
 const GHOST_DEFAULT_ON = new Set([
+  'C→LBTile_0',
+  'C→EBTilep_0',
+  'C→EBTilen_0',
   'Calorimeter→LBTile_0',
   'Calorimeter→LBTileLArg_0',
   'Calorimeter→EBTilep_0',

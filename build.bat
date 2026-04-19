@@ -125,7 +125,7 @@ echo   Build complete!
 echo ============================================
 echo.
 echo Output files:
-echo   - geometry_data\CaloGeometry.glb (optimized + quantized)
+echo   - geometry_data\CaloGeometry.glb (optimized)
 echo   - geometry_data\CaloGeometry.glb.gz (gzip-compressed)
 echo   - parser\pkg\atlas_id_parser.js
 echo   - parser\pkg\atlas_id_parser_bg.wasm
