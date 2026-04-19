@@ -1,8 +1,94 @@
 import * as THREE        from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
-import wasmInit, { parse_atlas_ids_bulk } from '../parser/pkg/atlas_id_parser.js';
 import { initLanguage, setupLanguagePicker, t } from './i18n/index.js';
+
+// ── WASM parser: off-main-thread worker with synchronous fallback ────────────
+// The WASM ATLAS-ID parser runs in a dedicated Web Worker so that the per-event
+// bulk decode (tens of thousands of IDs) never blocks the render thread. The
+// main thread posts three whitespace-joined ID strings (TILE/LAR/HEC); the
+// worker returns three Int32Array packs via `postMessage`'s transferList for
+// zero-copy hand-off. If the Worker API is unavailable or the worker crashes at
+// init we fall back to importing the WASM module directly on the main thread.
+class _WasmParserPool {
+  constructor() {
+    this._worker = null;
+    this._ready = false;
+    this._rid = 0;
+    this._pending = new Map();
+    this._fallbackFn = null;
+    this._initPromise = null;
+  }
+  init() {
+    if (this._initPromise) return this._initPromise;
+    this._initPromise = (async () => {
+      if (typeof Worker !== 'undefined') {
+        try {
+          const w = new Worker(new URL('./wasm_worker.js', import.meta.url), { type: 'module' });
+          w.onmessage = (ev) => this._onMessage(ev);
+          w.onerror   = (e) => { console.warn('[wasm worker] runtime error', e && e.message); };
+          await new Promise((resolve, reject) => {
+            const to = setTimeout(() => reject(new Error('wasm worker init timeout')), 20000);
+            const onMsg = (ev) => {
+              if (ev.data && ev.data.type === 'ready') {
+                clearTimeout(to);
+                w.removeEventListener('message', onMsg);
+                resolve();
+              }
+            };
+            w.addEventListener('message', onMsg);
+            w.postMessage({ type: 'init' });
+          });
+          this._worker = w;
+          this._ready  = true;
+          return;
+        } catch (e) {
+          console.warn('[wasm worker] unavailable, falling back to main-thread WASM:', e && e.message);
+        }
+      }
+      await this._initFallback();
+    })();
+    return this._initPromise;
+  }
+  async _initFallback() {
+    const mod = await import('../parser/pkg/atlas_id_parser.js');
+    await mod.default();
+    this._fallbackFn = mod.parse_atlas_ids_bulk;
+    this._ready = true;
+  }
+  _onMessage(ev) {
+    const m = ev.data;
+    if (!m) return;
+    if (m.type === 'ready') return;
+    const pend = this._pending.get(m.rid);
+    if (!pend) return;
+    this._pending.delete(m.rid);
+    if (m.type === 'error') pend.reject(new Error(m.message || 'wasm worker error'));
+    else pend.resolve(m);
+  }
+  /** Parse three whitespace-joined ID strings; any may be empty/null.
+   *  Returns { tile, lar, hec } of Int32Array | null. */
+  parse(tileStr, larStr, hecStr) {
+    if (this._worker) {
+      const rid = ++this._rid;
+      return new Promise((resolve, reject) => {
+        this._pending.set(rid, { resolve, reject });
+        this._worker.postMessage({
+          type: 'parse', rid,
+          tile: tileStr || '', lar: larStr || '', hec: hecStr || '',
+        });
+      }).then(({ tile, lar, hec }) => ({ tile, lar, hec }));
+    }
+    // Fallback: main-thread sync WASM (already awaited in init())
+    const f = this._fallbackFn;
+    return Promise.resolve({
+      tile: tileStr && f ? f(tileStr) : null,
+      lar:  larStr  && f ? f(larStr)  : null,
+      hec:  hecStr  && f ? f(hecStr)  : null,
+    });
+  }
+}
+const _wasmPool = new _WasmParserPool();
 
 // Subsystem codes returned by parse_atlas_ids_bulk (slot [0] of each 6-i32 record)
 const SUBSYS_TILE     = 1;
@@ -442,15 +528,46 @@ function updateGhostColors() {
 
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
-const canvas   = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
+// Default: Three.js WebGLRenderer — rock-solid and used for every feature.
+// Opt-in WebGPU path enabled via `?renderer=webgpu` (requires a WebGPU-capable
+// browser). WebGPU removes CPU overhead for draw-call dispatch and unlocks
+// compute shaders for future GPU-side geometry work. We fall back silently to
+// WebGL if the dynamic import or `init()` fails, so the URL flag is safe to
+// leave on even in browsers without WebGPU support.
+const canvas    = document.getElementById('c');
+const _rendererQuery = new URLSearchParams(location.search).get('renderer');
+const _wantWebGPU = _rendererQuery === 'webgpu' && typeof navigator !== 'undefined' && 'gpu' in navigator;
+
+let renderer = null;
+if (_wantWebGPU) {
+  try {
+    // Three.js ships WebGPURenderer under examples/jsm/renderers/webgpu/; the
+    // importmap resolves `three/addons/` to that directory.
+    const mod = await import('three/addons/renderers/webgpu/WebGPURenderer.js');
+    const WebGPURenderer = mod.default || mod.WebGPURenderer;
+    if (WebGPURenderer) {
+      renderer = new WebGPURenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+      await renderer.init();
+      console.info('[renderer] WebGPU active');
+    }
+  } catch (e) {
+    renderer = null;
+    console.warn('[renderer] WebGPU unavailable, falling back to WebGL:', e && e.message ? e.message : e);
+  }
+}
+if (!renderer) {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
+}
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.sortObjects = false;
-// renderer.info is only read by the FPS HUD (which uses its own frame counter),
-// so let Three.js skip the per-frame reset.
-renderer.info.autoReset = false;
+// WebGL-only knobs — WebGPURenderer does not expose these fields.
+if (renderer.isWebGLRenderer) {
+  renderer.sortObjects = false;
+  // renderer.info is only read by the FPS HUD (which uses its own frame counter),
+  // so let Three.js skip the per-frame reset.
+  renderer.info.autoReset = false;
+}
 
 // ── Scene / Camera / Controls ─────────────────────────────────────────────────
 const scene = new THREE.Scene();
@@ -682,13 +799,16 @@ setLoadProgress(0, 'Loading geometry…');
 })();
 
 // ── WASM ──────────────────────────────────────────────────────────────────────
-wasmInit()
+// Start the worker (or fallback) in parallel with the GLB download — both are
+// awaited by the `checkReady()` gate so the loading screen dismisses when the
+// slower of the two finishes.
+_wasmPool.init()
   .then(() => {
     wasmOk = true;
     checkReady();
   })
-  .catch(e  => {
-    setStatus(`<span class="err">WASM: ${esc(e.message)}</span>`);
+  .catch(e => {
+    setStatus(`<span class="err">WASM: ${esc(e && e.message || String(e))}</span>`);
   });
 
 // ── TileCal cell display label ────────────────────────────────────────────────
@@ -1506,9 +1626,17 @@ function applyThreshold() {
 }
 
 // ── Process XML ───────────────────────────────────────────────────────────────
+// The WASM bulk decode runs in a Web Worker, so `processXml` is asynchronous.
+// Multiple overlapping calls (e.g. user clicks event A then event B quickly)
+// are kept correct by a monotonic rid: only the most recent call's worker reply
+// is applied to the scene — stale replies are discarded. Callers that don't
+// await the returned promise still get correct behavior because the final
+// scene mutation is gated on `rid === _procXmlRid`.
 let currentEventInfo = null;
-function processXml(xmlText) {
+let _procXmlRid = 0;
+async function processXml(xmlText) {
   if (!wasmOk) return;
+  const rid = ++_procXmlRid;
   const t0 = performance.now();
 
   // Parse XML once — all detectors share the same Document
@@ -1598,9 +1726,17 @@ function processXml(xmlText) {
     for (let i = 0; i < cells.length; i++) arr[i] = cells[i].id;
     return arr.join(' ');
   }
-  const tilePacked = tileCells.length ? parse_atlas_ids_bulk(idsToStr(tileCells)) : null;
-  const larPacked  = larCells.length  ? parse_atlas_ids_bulk(idsToStr(larCells))  : null;
-  const hecPacked  = hecCells.length  ? parse_atlas_ids_bulk(idsToStr(hecCells))  : null;
+  const _packs = await _wasmPool.parse(
+    tileCells.length ? idsToStr(tileCells) : null,
+    larCells.length  ? idsToStr(larCells)  : null,
+    hecCells.length  ? idsToStr(hecCells)  : null,
+  );
+  // Another event may have started while the worker was busy — if so, drop
+  // this reply on the floor so we don't overwrite the fresher scene state.
+  if (rid !== _procXmlRid) return;
+  const tilePacked = _packs.tile;
+  const larPacked  = _packs.lar;
+  const hecPacked  = _packs.hec;
 
   // ── TileCal cells ─────────────────────────────────────────────────────────
   for (let i = 0; i < tileCells.length; i++) {

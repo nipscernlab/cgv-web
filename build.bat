@@ -6,7 +6,7 @@ echo ============================================
 echo.
 
 REM ---- Step 0: Check required tools ----
-echo [0/6] Checking required tools...
+echo [0/8] Checking required tools...
 
 where node >nul 2>nul
 if %errorlevel% neq 0 (
@@ -36,11 +36,22 @@ if %errorlevel% neq 0 (
     )
 )
 
+REM Verify the wasm32-unknown-unknown target is installed (required by wasm-pack).
+rustup target list --installed 2>nul | findstr /B /C:"wasm32-unknown-unknown" >nul
+if %errorlevel% neq 0 (
+    echo wasm32-unknown-unknown target missing. Installing via rustup...
+    rustup target add wasm32-unknown-unknown
+    if %errorlevel% neq 0 (
+        echo ERROR: Failed to install wasm32-unknown-unknown target.
+        exit /b 1
+    )
+)
+
 echo All tools found.
 echo.
 
 REM ---- Step 1: Install Node dependencies ----
-echo [1/6] Installing Node dependencies...
+echo [1/8] Installing Node dependencies...
 cd /d "%~dp0"
 call npm install --ignore-scripts
 if %errorlevel% neq 0 (
@@ -51,7 +62,7 @@ echo Done.
 echo.
 
 REM ---- Step 2: Patch jsroot modules ----
-echo [2/6] Patching jsroot modules (setup.mjs)...
+echo [2/8] Patching jsroot modules (setup.mjs)...
 cd /d "%~dp0setup"
 call node setup.mjs
 if %errorlevel% neq 0 (
@@ -62,15 +73,26 @@ cd /d "%~dp0"
 echo Done.
 echo.
 
-REM ---- Step 3: Delete old .glb / .glb.gz files ----
-echo [3/7] Deleting old CaloGeometry.glb and .glb.gz...
+REM ---- Step 3: Clean old Rust/WASM artifacts ----
+REM Cargo's incremental cache can hang on to stale target-feature flags from a
+REM previous build and produce a subtly-different .wasm. Nuking parser\target
+REM and parser\pkg guarantees every release ships the SIMD/bulk-memory-enabled
+REM binary that matches the current .cargo\config.toml.
+echo [3/8] Cleaning Rust build artifacts (parser\target, parser\pkg)...
+if exist "parser\target" rd /s /q "parser\target"
+if exist "parser\pkg"    rd /s /q "parser\pkg"
+echo Done.
+echo.
+
+REM ---- Step 4: Delete old .glb / .glb.gz files ----
+echo [4/8] Deleting old CaloGeometry.glb and .glb.gz...
 if exist "geometry_data\CaloGeometry.glb"    del "geometry_data\CaloGeometry.glb"
 if exist "geometry_data\CaloGeometry.glb.gz" del "geometry_data\CaloGeometry.glb.gz"
 echo Done.
 echo.
 
-REM ---- Step 4: Check that .root file exists ----
-echo [4/7] Checking for source .root file...
+REM ---- Step 5: Check that .root file exists ----
+echo [5/8] Checking for source .root file...
 if not exist "geometry_data\CaloGeometry.root" (
     echo ERROR: geometry_data\CaloGeometry.root not found!
     echo Place the .root file in geometry_data\ before running this script.
@@ -79,8 +101,8 @@ if not exist "geometry_data\CaloGeometry.root" (
 echo Found geometry_data\CaloGeometry.root
 echo.
 
-REM ---- Step 5: Compile .root -> optimized .glb (single step) ----
-echo [5/7] Compiling .root to optimized .glb...
+REM ---- Step 6: Compile .root -> optimized .glb (single step) ----
+echo [6/8] Compiling .root to optimized .glb...
 call node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
 if %errorlevel% neq 0 (
     echo ERROR: root2scene.mjs failed.
@@ -89,16 +111,15 @@ if %errorlevel% neq 0 (
 echo Done.
 echo.
 
-REM ---- Step 6: GZip the .glb file ----
-echo [6/7] Compressing CaloGeometry.glb to CaloGeometry.glb.gz...
-powershell -NoProfile -Command ^
-  "$src = 'geometry_data\CaloGeometry.glb';" ^
-  "$dst = 'geometry_data\CaloGeometry.glb.gz';" ^
-  "$in  = [System.IO.File]::OpenRead($src);" ^
-  "$out = [System.IO.File]::Create($dst);" ^
-  "$gz  = New-Object System.IO.Compression.GZipStream($out, [System.IO.Compression.CompressionMode]::Compress);" ^
-  "$in.CopyTo($gz); $gz.Close(); $out.Close(); $in.Close();" ^
-  "Write-Host ('Compressed to ' + [math]::Round((Get-Item $dst).Length/1MB,2) + ' MB')"
+REM ---- Step 7: GZip the .glb file ----
+REM CaloGeometry.glb.gz is what the browser actually fetches; gzip encoding is
+REM done server-side via Cloudflare on top of this, but shipping a pre-gzipped
+REM file saves Cloudflare from having to compress on every cold edge hit.
+REM Using Node's zlib instead of PowerShell GZipStream so the script behaves
+REM identically in cmd.exe, bash, and CI runners (PowerShell availability
+REM varies; Node is already a required dep per step 1).
+echo [7/8] Compressing CaloGeometry.glb to CaloGeometry.glb.gz...
+call node -e "const fs=require('fs'),zlib=require('zlib');const s='geometry_data/CaloGeometry.glb',d='geometry_data/CaloGeometry.glb.gz';fs.createReadStream(s).pipe(zlib.createGzip({level:9})).pipe(fs.createWriteStream(d)).on('finish',()=>{const sz=fs.statSync(d).size;console.log('Compressed to '+(sz/1048576).toFixed(2)+' MB');});"
 if %errorlevel% neq 0 (
     echo ERROR: GZip compression failed.
     exit /b 1
@@ -106,8 +127,13 @@ if %errorlevel% neq 0 (
 echo Done.
 echo.
 
-REM ---- Step 7: Build Rust ATLAS-ID parser (WASM) ----
-echo [7/7] Building Rust ATLAS-ID parser (WASM)...
+REM ---- Step 8: Build Rust ATLAS-ID parser (WASM) ----
+REM `wasm-pack build --target web --release` reads the .cargo\config.toml
+REM rustflags (target-feature=+simd128,+bulk-memory,...) and the
+REM [package.metadata.wasm-pack.profile.release] section in Cargo.toml so
+REM wasm-opt is invoked with matching --enable-* flags. The worker loads the
+REM resulting atlas_id_parser.js + atlas_id_parser_bg.wasm off-main-thread.
+echo [8/8] Building Rust ATLAS-ID parser (WASM)...
 cd /d "%~dp0parser"
 call wasm-pack build --target web --release
 if %errorlevel% neq 0 (
@@ -127,8 +153,12 @@ echo.
 echo Output files:
 echo   - geometry_data\CaloGeometry.glb (optimized)
 echo   - geometry_data\CaloGeometry.glb.gz (gzip-compressed)
-echo   - parser\pkg\atlas_id_parser.js
-echo   - parser\pkg\atlas_id_parser_bg.wasm
+echo   - parser\pkg\atlas_id_parser.js      (ES module shim)
+echo   - parser\pkg\atlas_id_parser_bg.wasm (SIMD + bulk-memory)
+echo.
+echo Runtime entrypoints:
+echo   - js\main.js         (spawns the WASM Web Worker)
+echo   - js\wasm_worker.js  (hosts the parser off the main thread)
 echo.
 
 endlocal

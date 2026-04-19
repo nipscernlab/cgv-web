@@ -944,6 +944,92 @@ pub fn parse_atlas_ids_bulk(ids: &str) -> Vec<i32> {
     out
 }
 
+// ─── Zero-copy bulk decode (direct WASM linear memory access) ─────────────────
+//
+// The `parse_atlas_ids_bulk` path above returns a `Vec<i32>` that wasm-bindgen
+// materialises as a fresh `Int32Array` on the JS side — which requires copying
+// every element across the WASM/JS boundary. For hot-path event processing we
+// expose a zero-copy variant that writes into a module-level buffer exposed via
+// a raw pointer; the JS side builds an `Int32Array` view directly on top of
+// `wasm.memory.buffer` without allocating anything.
+//
+// Usage pattern from JS:
+//   const ids_ptr = bulk_alloc_ids(n);   // n = number of u64 IDs
+//   const ids_view = new BigUint64Array(wasm.memory.buffer, ids_ptr, n);
+//   // ... fill ids_view with BigInt IDs ...
+//   const n_out = bulk_decode_ids(n);   // writes n*8 i32 into result buffer
+//   const out_ptr = bulk_result_ptr();
+//   const out     = new Int32Array(wasm.memory.buffer, out_ptr, n_out);
+//   // consume `out` immediately (or slice() if async work follows).
+//
+// Safety: WASM is single-threaded (unless built with `wasm32-unknown-unknown +
+// atomics`, which we do NOT enable). Treating the static buffers as a single
+// scratch area is therefore sound. All lifetimes are scoped to a single decode
+// cycle — callers must copy out before the next `bulk_decode_*` call.
+
+use std::sync::Mutex;
+
+// One shared scratch buffer for decoded output (reused across calls).
+static BULK_OUT: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+// One shared scratch buffer for u64 IDs (reused across calls).
+static BULK_IDS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+
+/// Allocate (or grow) the shared input buffer for `n` u64 IDs and return the
+/// pointer to the first element. The pointer is valid until the next call to
+/// `bulk_alloc_ids`. The JS side wraps it as a BigUint64Array view.
+#[wasm_bindgen]
+pub fn bulk_alloc_ids(n: usize) -> *mut u64 {
+    let mut ids = BULK_IDS.lock().unwrap();
+    ids.clear();
+    ids.resize(n, 0u64);
+    ids.as_mut_ptr()
+}
+
+/// Pointer to the decoded result buffer. Valid after `bulk_decode_ids`.
+#[wasm_bindgen]
+pub fn bulk_result_ptr() -> *const i32 {
+    let out = BULK_OUT.lock().unwrap();
+    out.as_ptr()
+}
+
+/// Decode the first `n` IDs in the shared input buffer. Returns the total
+/// number of i32 slots written (= `n * 8`). 8 slots per ID, layout identical to
+/// `decode_id_compact`.
+#[wasm_bindgen]
+pub fn bulk_decode_ids(n: usize) -> usize {
+    let ids = BULK_IDS.lock().unwrap();
+    let mut out = BULK_OUT.lock().unwrap();
+    let slots = n.saturating_mul(8);
+    out.clear();
+    out.reserve(slots);
+    // Safe because `ids` lives for the whole call.
+    for &id in ids.iter().take(n) {
+        let rec = decode_id_compact(id);
+        out.extend_from_slice(&rec);
+    }
+    out.len()
+}
+
+/// Parse a whitespace-separated decimal-ID string and write the decoded result
+/// into the shared buffer; returns the number of i32 slots. Companion to
+/// `bulk_result_ptr` — this path keeps the existing `&str` input API but avoids
+/// the `Vec<i32>` → `Int32Array` copy on the JS side.
+#[wasm_bindgen]
+pub fn parse_atlas_ids_bulk_zc(ids: &str) -> usize {
+    let mut out = BULK_OUT.lock().unwrap();
+    let estimate = (ids.len() / 20 + 1) * 8;
+    out.clear();
+    out.reserve(estimate);
+    for tok in ids.split_ascii_whitespace() {
+        let record = match tok.parse::<u64>() {
+            Ok(id) => decode_id_compact(id),
+            Err(_) => [SUBSYS_INVALID, 0, 0, 0, 0, 0, 0, 0],
+        };
+        out.extend_from_slice(&record);
+    }
+    out.len()
+}
+
 // ─── WASM public API ──────────────────────────────────────────────────────────
 
 /// Parse an ATLAS compact 64-bit detector ID.
