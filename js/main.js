@@ -103,13 +103,35 @@ initLanguage();
 setupLanguagePicker();
 
 // State
-const meshByKey  = new Map();   // int -> Mesh (hot-path: event loop lookup)
-// Every non-envelope cell mesh from the GLB, grouped by detector. Populated
-// once at load time so "show all cells" can reach meshes whose names don't
-// match the strict meshNameToKey regex (e.g. gap scintillators, ITC cells).
+// Cell "handles" replace one-Mesh-per-cell. A handle is an opaque stable
+// object identifying one instance inside an InstancedMesh, with enough info
+// to toggle visibility (zero-scale the matrix), paint it (setColorAt), or
+// build its hover/outline geometry (origMatrix + shared cell geometry).
+//   handle = { iMesh, instId, det, name, origMatrix: Matrix4, visible: bool, _center?: Vector3 }
+const meshByKey  = new Map();   // int -> handle (hot-path: event loop lookup)
+// Every non-envelope cell handle, grouped by detector. Populated once at load
+// so "show all cells" can reach cells whose names bypass meshNameToKey
+// (gap scintillators, ITC cells).
 const cellMeshesByDet = { TILE: [], LAR: [], HEC: [] };
-let   active     = new Map();   // Mesh -> tooltip data (keyed by object reference)
-let   rayTargets = [];
+let   active     = new Map();   // handle -> tooltip data (keyed by object reference)
+let   rayTargets = [];          // InstancedMesh[] with ≥1 visible active instance
+
+// Shared constants for InstancedMesh bookkeeping.
+// Zero-determinant matrix: hides an instance (collapses its geometry to a
+// point; degenerate triangles are rejected by the rasterizer AND the raycaster).
+const _ZERO_MAT4 = new THREE.Matrix4().set(0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0);
+const _dirtyIM = new Set();
+function _markIMDirty(iMesh) { _dirtyIM.add(iMesh); }
+function _flushIMDirty() {
+  for (const im of _dirtyIM) {
+    im.instanceMatrix.needsUpdate = true;
+    if (im.instanceColor) im.instanceColor.needsUpdate = true;
+  }
+  _dirtyIM.clear();
+}
+// All cell InstancedMeshes (one per unique detector+geometry pair), for bulk
+// raycasting and reset sweeps.
+const _allCellIMeshes = [];
 
 // Integer key encoding: avoids string construction in the per-cell hot path.
 // Bits [1:0] = detector type tag: TILE=0b00, LAr EM=0b01, HEC=0b10 (no cross-type collision).
@@ -277,8 +299,10 @@ function bumpReq() {
 // Palette helpers
 const PAL_N = 256;
 
-// Palette TILE: #ffff00 (min) -> #800000 (max), linear
-function palColorTile(t) {
+// Palette ramps (256 entries each). With InstancedMesh we no longer need one
+// Material per palette bin — one shared material per detector plus per-instance
+// colors via setColorAt gives identical visuals at a fraction of the GPU state.
+function _rampTile(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
     1.000 + t * (0.502 - 1.000),       // R: 1.0 -> 0.502
@@ -286,19 +310,7 @@ function palColorTile(t) {
     0.0                                 // B: always 0
   );
 }
-const PAL_TILE = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorTile(i / (PAL_N - 1));
-  c.offsetHSL(0, 0.35, 0);  // boost saturation, keep hue & lightness
-  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
-});
-const TILE_SCALE = 2000;
-function palMatTile(eMev) {
-  const tv = Math.max(0, Math.min(1, eMev / TILE_SCALE));
-  return PAL_TILE[Math.round(tv * (PAL_N - 1))];
-}
-
-// Palette HEC: #66e0f6 (min) -> #0c0368 (max), linear
-function palColorHec(t) {
+function _rampHec(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
     0.4000 + t * (0.0471 - 0.4000),   // R: 0.40 -> 0.05
@@ -306,19 +318,7 @@ function palColorHec(t) {
     0.9647 + t * (0.4078 - 0.9647)    // B: 0.96 -> 0.41
   );
 }
-const PAL_HEC = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorHec(i / (PAL_N - 1));
-  c.offsetHSL(0, 0.35, 0);
-  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
-});
-const HEC_SCALE = 5000;
-function palMatHec(eMev) {
-  const tv = Math.max(0, Math.min(1, eMev / HEC_SCALE));
-  return PAL_HEC[Math.round(tv * (PAL_N - 1))];
-}
-
-// Palette LAr: #17cf42 (min) -> #270042 (max), linear
-function palColorLAr(t) {
+function _rampLAr(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
     0.0902 + t * (0.1529 - 0.0902),   // R: 0.09 -> 0.15
@@ -326,16 +326,29 @@ function palColorLAr(t) {
     0.2588                              // B: constant
   );
 }
-const PAL_LAR = Array.from({ length: PAL_N }, (_, i) => {
-  const c = palColorLAr(i / (PAL_N - 1));
-  c.offsetHSL(0, 0.35, 0);
-  return new THREE.MeshBasicMaterial({ color: c, side: THREE.FrontSide });
+const _mkPal = ramp => Array.from({ length: PAL_N }, (_, i) => {
+  const c = ramp(i / (PAL_N - 1));
+  c.offsetHSL(0, 0.35, 0);  // boost saturation, keep hue & lightness
+  return c;
 });
-const LAR_SCALE = 1000; // MeV - fixed 0-1 GeV
-function palMatLAr(eMev) {
-  const tv = Math.max(0, Math.min(1, eMev / LAR_SCALE));
-  return PAL_LAR[Math.round(tv * (PAL_N - 1))];
-}
+const PAL_TILE_COLOR = _mkPal(_rampTile);
+const PAL_HEC_COLOR  = _mkPal(_rampHec);
+const PAL_LAR_COLOR  = _mkPal(_rampLAr);
+
+// Shared cell materials — one per detector. Instance-color is applied by
+// InstancedMesh.setColorAt on top of the material's base white; the per-bin
+// ramp colors live in PAL_*_COLOR instead of per-Material instances.
+const matTile = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.FrontSide });
+const matHec  = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.FrontSide });
+const matLAr  = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.FrontSide });
+
+const TILE_SCALE = 2000;
+const HEC_SCALE  = 5000;
+const LAR_SCALE  = 1000; // MeV - fixed 0-1 GeV
+const _palIdx = (v, s) => Math.round(Math.max(0, Math.min(1, v / s)) * (PAL_N - 1));
+function palColorTile(eMev) { return PAL_TILE_COLOR[_palIdx(eMev, TILE_SCALE)]; }
+function palColorHec (eMev) { return PAL_HEC_COLOR [_palIdx(eMev, HEC_SCALE)];  }
+function palColorLAr (eMev) { return PAL_LAR_COLOR [_palIdx(eMev, LAR_SCALE)];  }
 
 // Palette FCAL: copper ramp (deep patina -> molten copper -> hot gold)
 // Non-linear curve (gamma 0.55) keeps low energies dark and lets high values
@@ -775,19 +788,81 @@ setLoadProgress(0, 'Loading geometry…');
   new GLTFLoader().parse(
     buffer, './',
     ({ scene: g }) => {
-      // Add the GLB root as a single scene child instead of N individual scene.add(mesh) calls.
-      scene.add(g);
+      // Ghost envelopes (a few dozen non-cell meshes) stay as individual Meshes,
+      // since their toggling/render-order behavior differs from cells and the
+      // count is tiny. Every actual cell mesh is re-parented into a single
+      // InstancedMesh per (detector, geometry.uuid) — the GLB reuses geometry
+      // heavily via shapeSignature, so this collapses tens of thousands of
+      // cells into a handful of draw calls.
+      const ghosts    = [];
+      const groups    = new Map();  // key "DET::uuid" → { det, geo, items: [{matrix,name,key}] }
+      const loose     = [];         // non-cell, non-ghost meshes (rare/none) — kept as-is
+
+      g.updateMatrixWorld(true);
       g.traverse(o => {
         if (!o.isMesh) return;
-        o.matrixAutoUpdate = false;
-        o.frustumCulled = false;  // all cells inside camera bounds always
-        o.visible = false;
-        if (ghostVisible.has(o.name)) ghostMeshByName.set(o.name, o);
-        const mkey = meshNameToKey(o.name);
-        if (mkey !== null) meshByKey.set(mkey, o);
+        if (ghostVisible.has(o.name)) { ghosts.push(o); return; }
         const det = classifyCellDet(o.name);
-        if (det) cellMeshesByDet[det].push(o);
+        if (!det) { loose.push(o); return; }
+        const gk = `${det}::${o.geometry.uuid}`;
+        let bucket = groups.get(gk);
+        if (!bucket) { bucket = { det, geo: o.geometry, items: [] }; groups.set(gk, bucket); }
+        bucket.items.push({ matrix: o.matrixWorld.clone(), name: o.name, key: meshNameToKey(o.name) });
       });
+
+      const cellsGroup = new THREE.Group();
+      cellsGroup.name = 'cells';
+      cellsGroup.matrixAutoUpdate = false;
+
+      for (const { det, geo, items } of groups.values()) {
+        const mat = det === 'TILE' ? matTile : det === 'LAR' ? matLAr : matHec;
+        const iMesh = new THREE.InstancedMesh(geo, mat, items.length);
+        iMesh.name = `cells_${det}_${geo.uuid.slice(0, 8)}`;
+        iMesh.matrixAutoUpdate = false;
+        iMesh.frustumCulled   = false;
+        iMesh.renderOrder     = 2;
+        iMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        // Allocate instanceColor up-front so setColorAt stays hot-path.
+        iMesh.setColorAt(0, new THREE.Color(1, 1, 1));
+        const handles = new Array(items.length);
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          iMesh.setMatrixAt(i, _ZERO_MAT4);             // start hidden
+          iMesh.setColorAt(i, PAL_TILE_COLOR[0]);       // neutral fill; overwritten on event
+          const h = {
+            iMesh, instId: i, det,
+            name: it.name,
+            origMatrix: it.matrix,
+            visible: false,
+          };
+          handles[i] = h;
+          if (it.key !== null) meshByKey.set(it.key, h);
+          cellMeshesByDet[det].push(h);
+        }
+        iMesh.userData.handles = handles;
+        iMesh.instanceMatrix.needsUpdate = true;
+        iMesh.instanceColor.needsUpdate  = true;
+        cellsGroup.add(iMesh);
+        _allCellIMeshes.push(iMesh);
+      }
+      scene.add(cellsGroup);
+
+      // Ghosts keep their individual-mesh behavior (per-mesh material swap on toggle).
+      for (const gh of ghosts) {
+        gh.matrixAutoUpdate = false;
+        gh.frustumCulled = false;
+        gh.visible = false;
+        ghostMeshByName.set(gh.name, gh);
+        scene.add(gh);
+      }
+      // Any stragglers (shouldn't happen, but preserve existing behavior).
+      for (const o of loose) {
+        o.matrixAutoUpdate = false;
+        o.frustumCulled = false;
+        o.visible = false;
+        scene.add(o);
+      }
+
       sceneOk = true; dirty = true;
       setLoadProgress(100, 'Geometry loaded');
       checkReady();
@@ -1523,23 +1598,39 @@ function drawClusters(clusters) {
 }
 
 // ── Scene reset ───────────────────────────────────────────────────────────────
+// The visHandles list is the authoritative set of "cells that passed every
+// filter" — used by the outline builder and, via _rayIMeshes, the raycaster.
+let visHandles = [];
+const _rayIMeshes = new Set();
+function _setHandleVisible(h, vis) {
+  if (h.visible === vis) return;
+  h.visible = vis;
+  h.iMesh.setMatrixAt(h.instId, vis ? h.origMatrix : _ZERO_MAT4);
+  _markIMDirty(h.iMesh);
+}
+function _rebuildRayIMeshes() {
+  _rayIMeshes.clear();
+  for (const h of visHandles) _rayIMeshes.add(h.iMesh);
+  rayTargets = Array.from(_rayIMeshes);
+}
+
 function resetScene() {
-  for (const mesh of meshByKey.values()) {
-    mesh.visible = false;
-    mesh.renderOrder = 0;
-  }
-  // meshByKey misses cells whose names bypassed the strict parser (ITC, gap
-  // scintillators, etc.) but they show up in show-all mode; reset them too.
-  for (const det of ['TILE', 'LAR', 'HEC'])
-    for (const mesh of cellMeshesByDet[det]) {
-      mesh.visible = false;
-      mesh.renderOrder = 0;
+  // Zero-scale every handle's matrix (hides every cell instance).
+  for (const det of ['TILE', 'LAR', 'HEC']) {
+    for (const h of cellMeshesByDet[det]) {
+      if (h.visible) {
+        h.visible = false;
+        h.iMesh.setMatrixAt(h.instId, _ZERO_MAT4);
+        _markIMDirty(h.iMesh);
+      }
     }
+  }
+  _flushIMDirty();
   // Re-apply ghost state: resetScene hides all meshes (including ghost envelopes),
   // which would desync the ghostVisible map and make the next ghost toggle
   // render only the phi lines without the solid envelopes.
   applyAllGhostMeshes();
-  active.clear(); rayTargets = [];
+  active.clear(); visHandles = []; rayTargets = []; _rayIMeshes.clear();
   clearOutline(); clearAllOutlines();
   clearTracks();
   clearClusters();
@@ -1549,13 +1640,15 @@ function resetScene() {
   activeMbtsLabels     = null;
   tooltip.hidden = true; dirty = true;
 }
-// Sweep every mesh from the GLB that isn't part of the XML's `active` set and
-// decide its visibility for the "show all cells" mode. When showAllCells is off,
-// non-active meshes stay hidden (the normal flow). When on, each non-active
-// mesh is painted with the minimum-palette colour of its detector, and hidden
-// if the slicer wedge currently covers it.
+
+// Sweep every cell that isn't part of the XML's `active` set and decide its
+// visibility for "show all cells" mode. When showAllCells is off, non-active
+// cells stay hidden (the normal flow). When on, each non-active cell is
+// painted with the minimum-palette colour of its detector, and hidden if the
+// slicer wedge currently covers it. Non-active cells that become visible are
+// appended to visHandles so outlines+raycast include them.
 function _syncNonActiveShowAll() {
-  if (!showAllCells) return;         // non-active cells stay hidden by the normal flow
+  if (!showAllCells) return;
   const slicerOn = slicerActive;
   const r2       = slicerOn ? SLICER_RADIUS * SLICER_RADIUS : 0;
   const zMax     = slicerOn ? slicerZOffset + slicerHalfHeight : 0;
@@ -1563,14 +1656,14 @@ function _syncNonActiveShowAll() {
   const thetaLen = slicerOn ? slicerThetaLength : 0;
   const fullTh   = slicerOn && thetaLen >= 2 * Math.PI - 1e-6;
   const emptyTh  = slicerOn && thetaLen <= 1e-6;
-  const sweep = (list, detOn, mat) => {
+  const sweep = (list, detOn, minColor) => {
     for (let i = 0; i < list.length; i++) {
-      const mesh = list[i];
-      if (active.has(mesh)) continue;   // active cells: normal flow handles them
-      if (!detOn) { mesh.visible = false; continue; }
+      const h = list[i];
+      if (active.has(h)) continue;      // active cells: normal flow handles them
+      if (!detOn) { _setHandleVisible(h, false); continue; }
       let vis = true;
       if (slicerOn && !emptyTh) {
-        const c = _cellCenter(mesh);
+        const c = _cellCenter(h);
         if (c.x*c.x + c.y*c.y < r2 && c.z > zMin && c.z < zMax) {
           if (fullTh) vis = false;
           else {
@@ -1581,16 +1674,16 @@ function _syncNonActiveShowAll() {
         }
       }
       if (vis) {
-        mesh.material    = mat;
-        mesh.renderOrder = 2;
-        rayTargets.push(mesh);          // include in outline build
+        h.iMesh.setColorAt(h.instId, minColor);
+        _markIMDirty(h.iMesh);
+        visHandles.push(h);
       }
-      mesh.visible = vis;
+      _setHandleVisible(h, vis);
     }
   };
-  sweep(cellMeshesByDet.TILE, showTile, PAL_TILE[0]);
-  sweep(cellMeshesByDet.LAR,  showLAr,  PAL_LAR[0]);
-  sweep(cellMeshesByDet.HEC,  showHec,  PAL_HEC[0]);
+  sweep(cellMeshesByDet.TILE, showTile, PAL_TILE_COLOR[0]);
+  sweep(cellMeshesByDet.LAR,  showLAr,  PAL_LAR_COLOR[0]);
+  sweep(cellMeshesByDet.HEC,  showHec,  PAL_HEC_COLOR[0]);
 }
 
 function applyThreshold() {
@@ -1598,8 +1691,8 @@ function applyThreshold() {
   // incorporates the thresholds / cluster filter). Delegate to it so we don't
   // un-hide cells that should be inside the bubble.
   if (slicerActive) { _applySlicerMask(); return; }
-  rayTargets = [];
-  for (const [mesh, { energyMev, det, cellId, mbtsLabel }] of active) {
+  visHandles = [];
+  for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
     const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
     const detOn  = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
     let inCluster;
@@ -1618,9 +1711,12 @@ function applyThreshold() {
     const passCl  = showAllCells || inCluster;
     const passNeg = showAllCells || energyMev >= 0;
     const vis     = detOn && passNeg && passThr && passCl;
-    mesh.visible = vis; if (vis) rayTargets.push(mesh);
+    _setHandleVisible(h, vis);
+    if (vis) visHandles.push(h);
   }
   _syncNonActiveShowAll();
+  _flushIMDirty();
+  _rebuildRayIMeshes();
   rebuildAllOutlines();
   dirty = true;
 }
@@ -1739,6 +1835,9 @@ async function processXml(xmlText) {
   const hecPacked  = _packs.hec;
 
   // ── TileCal cells ─────────────────────────────────────────────────────────
+  // The event loop paints colors via setColorAt; visibility is decided by
+  // applyThreshold() further down (which zero-scales the instance matrix for
+  // filtered-out cells). renderOrder lives on the InstancedMesh itself.
   for (let i = 0; i < tileCells.length; i++) {
     const base = i * 8;
     if (tilePacked[base] !== SUBSYS_TILE) { nSkip++; continue; }
@@ -1752,13 +1851,14 @@ async function processXml(xmlText) {
     const { id, energy } = tileCells[i];
     const eMev = energy * 1000;
     const s_bit = side < 0 ? 0 : 1;
-    const mesh  = meshByKey.get(_tileKey(x, s_bit, k, module));
-    if (!mesh) { _logMiss('TILE', `id=${id} | Tile${x}${s_bit?'p':'n'} k=${k} mod=${module}`); nMiss++; continue; }
-    mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
+    const h  = meshByKey.get(_tileKey(x, s_bit, k, module));
+    if (!h) { _logMiss('TILE', `id=${id} | Tile${x}${s_bit?'p':'n'} k=${k} mod=${module}`); nMiss++; continue; }
+    h.iMesh.setColorAt(h.instId, palColorTile(eMev));
+    _markIMDirty(h.iMesh);
     const tEta = physTileEta(section, side, tower, sampling);
     const tPhi = physTilePhi(module);
     const tilePrefix = `${section === 1 ? 'LB' : 'EB'}${side >= 0 ? 'A' : 'C'}${module + 1}`;
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: `${tilePrefix} ${cellLabel(x, k)}`, coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, det: 'TILE', cellId: id });
+    active.set(h, { energyGev: energy, energyMev: eMev, cellName: `${tilePrefix} ${cellLabel(x, k)}`, coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, det: 'TILE', cellId: id });
     nTile++;
   }
 
@@ -1775,17 +1875,18 @@ async function processXml(xmlText) {
     const phi     = larPacked[base + 7];
     const { id, energy } = larCells[i];
     const eMev = energy * 1000;
-    const mesh = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi));
-    if (!mesh) {
+    const h = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi));
+    if (!h) {
       _logMiss('LAR', `id=${id} | abs_be=${abs_be} samp=${sampling} R=${R} z=${z_pos} η=${eta} φ=${phi}`);
       nMiss++; continue;
     }
-    mesh.material = palMatLAr(eMev); mesh.visible = true; mesh.renderOrder = 2;
+    h.iMesh.setColorAt(h.instId, palColorLAr(eMev));
+    _markIMDirty(h.iMesh);
     const rName = abs_be === 1 ? `EMB${sampling}` : abs_be === 2 ? `EMEC${sampling}` : `EMEC${sampling} (inner)`;
     const bec   = abs_be * (z_pos ? 1 : -1);
     const lEta  = physLarEmEta(bec, sampling, region, eta);
     const lPhi  = physLarEmPhi(bec, sampling, region, phi);
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: rName, coords: `η = ${lEta.toFixed(3)}   φ = ${lPhi.toFixed(3)} rad`, det: 'LAR', cellId: id });
+    active.set(h, { energyGev: energy, energyMev: eMev, cellName: rName, coords: `η = ${lEta.toFixed(3)}   φ = ${lPhi.toFixed(3)} rad`, det: 'LAR', cellId: id });
     nLAr++;
   }
 
@@ -1800,18 +1901,19 @@ async function processXml(xmlText) {
     const phi      = hecPacked[base + 5];
     const { id, energy } = hecCells[i];
     const eMev = energy * 1000;
-    const mesh = meshByKey.get(_hecKey(group, region, z_pos, cum_eta, phi));
-    if (!mesh) {
+    const h = meshByKey.get(_hecKey(group, region, z_pos, cum_eta, phi));
+    if (!h) {
       _logMiss('HEC', `id=${id} | group=${group} region=${region} z=${z_pos} cumη=${cum_eta} φ=${phi}`);
       nHecMiss++; continue;
     }
-    mesh.material = palMatHec(eMev); mesh.visible = true; mesh.renderOrder = 2;
+    h.iMesh.setColorAt(h.instId, palColorHec(eMev));
+    _markIMDirty(h.iMesh);
     const be      = z_pos ? 2 : -2;
     const eta_idx = region === 0 ? cum_eta : cum_eta - HEC_INNER[group];
     const hLabel  = `HEC${group + 1}`;
     const hEta    = physLarHecEta(be, group, region, eta_idx);
     const hPhi    = physLarHecPhi(region, phi);
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: hLabel, coords: `η = ${hEta.toFixed(3)}   φ = ${hPhi.toFixed(3)} rad`, det: 'HEC', cellId: id });
+    active.set(h, { energyGev: energy, energyMev: eMev, cellName: hLabel, coords: `η = ${hEta.toFixed(3)}   φ = ${hPhi.toFixed(3)} rad`, det: 'HEC', cellId: id });
     nHec++;
   }
 
@@ -1822,11 +1924,12 @@ async function processXml(xmlText) {
     const _m = /^type_(-?1)_ch_([01])_mod_([0-7])$/.exec(label);
     if (!_m) { _logMiss('MBTS', `label=${label} | bad format`); nMbtsMiss++; continue; }
     const tileNum = _m[2]==='0' ? 14 : 15, s_bit = _m[1]==='1' ? 1 : 0, mod = +_m[3];
-    const mesh = meshByKey.get(_tileKey(tileNum, s_bit, 0, mod));
-    if (!mesh) { _logMiss('MBTS', `label=${label} | no mesh`); nMbtsMiss++; continue; }
-    mesh.material = palMatTile(eMev); mesh.visible = true; mesh.renderOrder = 2;
+    const h = meshByKey.get(_tileKey(tileNum, s_bit, 0, mod));
+    if (!h) { _logMiss('MBTS', `label=${label} | no mesh`); nMbtsMiss++; continue; }
+    h.iMesh.setColorAt(h.instId, palColorTile(eMev));
+    _markIMDirty(h.iMesh);
     const mbtsCoords = `η = ${((s_bit?1:-1)*(_m[2]==='0'?2.76:3.84)).toFixed(3)}   φ = ${_wrapPhi(2*Math.PI/16+mod*2*Math.PI/8).toFixed(3)} rad`;
-    active.set(mesh, { energyGev: energy, energyMev: eMev, cellName: 'MBTS', coords: mbtsCoords, det: 'TILE', mbtsLabel: label });
+    active.set(h, { energyGev: energy, energyMev: eMev, cellName: 'MBTS', coords: mbtsCoords, det: 'TILE', mbtsLabel: label });
     nMbts++;
   }
 
@@ -2201,17 +2304,17 @@ let   outlineMesh = null;
 function clearOutline() {
   if (!outlineMesh) return; scene.remove(outlineMesh); outlineMesh = null; dirty = true;
 }
-function showOutline(mesh) {
-  if (outlineMesh?.userData.src === mesh.name) return;
+function showOutline(h) {
+  if (outlineMesh?.userData.src === h.name) return;
   clearOutline();
-  mesh.updateWorldMatrix(true, false);
-  const uid = mesh.geometry.uuid;
-  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
+  const geo = h.iMesh.geometry;
+  const uid = geo.uuid;
+  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(geo, 30));
   outlineMesh = new THREE.LineSegments(eGeoCache.get(uid), outlineMat);
   outlineMesh.matrixAutoUpdate = false;
-  outlineMesh.matrix.copy(mesh.matrixWorld);
-  outlineMesh.matrixWorld.copy(mesh.matrixWorld);
-  outlineMesh.renderOrder = 999; outlineMesh.userData.src = mesh.name;
+  outlineMesh.matrix.copy(h.origMatrix);
+  outlineMesh.matrixWorld.copy(h.origMatrix);
+  outlineMesh.renderOrder = 999; outlineMesh.userData.src = h.name;
   scene.add(outlineMesh); dirty = true;
 }
 
@@ -2244,17 +2347,17 @@ function showFcalOutline(instanceId) {
 
 // ── All-cells outline (optimised: cached world-space edges per mesh) ─────────
 const outlineAllMat = new THREE.LineBasicMaterial({ color: 0x000000 });
-const _edgeWorldCache = new Map();  // mesh.name → Float32Array (world-space positions)
+const _edgeWorldCache = new Map();  // handle.name → Float32Array (world-space positions)
 let _outlineTimer = 0;
 
-function _getWorldEdges(mesh) {
-  const cached = _edgeWorldCache.get(mesh.name);
+function _getWorldEdges(h) {
+  const cached = _edgeWorldCache.get(h.name);
   if (cached) return cached;
-  mesh.updateWorldMatrix(true, false);
-  const uid = mesh.geometry.uuid;
-  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
+  const geo = h.iMesh.geometry;
+  const uid = geo.uuid;
+  if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(geo, 30));
   const src = eGeoCache.get(uid).getAttribute('position').array;
-  const m = mesh.matrixWorld.elements;
+  const m = h.origMatrix.elements;
   const out = new Float32Array(src.length);
   for (let i = 0; i < src.length; i += 3) {
     const x = src[i], y = src[i + 1], z = src[i + 2];
@@ -2262,7 +2365,7 @@ function _getWorldEdges(mesh) {
     out[i + 1] = m[1] * x + m[5] * y + m[9]  * z + m[13];
     out[i + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
   }
-  _edgeWorldCache.set(mesh.name, out);
+  _edgeWorldCache.set(h.name, out);
   return out;
 }
 
@@ -2277,17 +2380,17 @@ function clearAllOutlines() {
 
 function rebuildAllOutlines() {
   clearAllOutlines();
-  if (!rayTargets.length) return;
+  if (!visHandles.length) return;
   _buildOutlinesNow();
 }
 
 function _buildOutlinesNow() {
-  if (!rayTargets.length) return;
+  if (!visHandles.length) return;
   // Count total floats needed
   let total = 0;
-  const edgeArrays = new Array(rayTargets.length);
-  for (let i = 0; i < rayTargets.length; i++) {
-    const arr = _getWorldEdges(rayTargets[i]);
+  const edgeArrays = new Array(visHandles.length);
+  for (let i = 0; i < visHandles.length; i++) {
+    const arr = _getWorldEdges(visHandles[i]);
     edgeArrays[i] = arr;
     total += arr.length;
   }
@@ -2337,11 +2440,22 @@ function doRaycast(clientX, clientY) {
   raycast.setFromCamera(mxy, camera);
   // ── Cell + FCAL hit (same priority — pick closest) ────────────────────────
   {
-    let cellHit = null, cellDist = Infinity;
-    if (active.size) {
+    // rayTargets is an array of cell InstancedMeshes with ≥1 active instance.
+    // intersectObjects returns hits sorted by distance; each hit has an
+    // instanceId, which we map via iMesh.userData.handles to a handle, then
+    // check membership in `active` to skip non-active (including zero-scaled)
+    // instances that might slip through when the cell isn't in the current XML.
+    let cellHit = null, cellHandle = null, cellDist = Infinity;
+    if (active.size && rayTargets.length) {
       const hits = raycast.intersectObjects(rayTargets, false);
-      if (hits.length && active.get(hits[0].object)) {
-        cellHit = hits[0]; cellDist = hits[0].distance;
+      for (let i = 0; i < hits.length; i++) {
+        const hit = hits[i];
+        const iid = hit.instanceId;
+        if (iid == null) continue;
+        const h = hit.object.userData.handles?.[iid];
+        if (!h || !active.has(h)) continue;
+        cellHit = hit; cellHandle = h; cellDist = hit.distance;
+        break; // hits are sorted; first active match is closest
       }
     }
     let fcalHit = null, fcalDist = Infinity;
@@ -2355,8 +2469,8 @@ function doRaycast(clientX, clientY) {
       }
     }
     if (cellHit && cellDist <= fcalDist) {
-      const data = active.get(cellHit.object);
-      showOutline(cellHit.object);
+      const data = active.get(cellHandle);
+      showOutline(cellHandle);
       tipCellEl.textContent  = data.cellName;
       tipCoordEl.textContent = data.coords ?? '';
       tipEEl.textContent     = `${data.energyGev.toFixed(4)} GeV`;
@@ -3813,24 +3927,22 @@ let   slicerZOffset = 0;                      // world-Z translation of the cut 
 // enabled is made visible. Cells absent from the current XML (not in `active`)
 // are painted with the minimum-palette colour for their detector.
 let   showAllCells  = false;
-// Cache of cell center world positions so we don't re-compute every frame.
-const _cellCenterCache = new Map();
-// Squared-distance helper (avoids sqrt in the hot loop)
-function _cellCenter(mesh) {
-  const cached = _cellCenterCache.get(mesh);
-  if (cached) return cached;
-  mesh.updateWorldMatrix(true, false);
-  const m = mesh.matrixWorld.elements;
+// Cell center world positions are cached on the handle itself (stable identity,
+// no extra Map lookup). The center is computed from origMatrix + geometry
+// bounding sphere, identical to the pre-refactor semantics.
+function _cellCenter(h) {
+  if (h._center) return h._center;
+  const m = h.origMatrix.elements;
   const c = new THREE.Vector3(m[12], m[13], m[14]);
-  // For a few un-transformed meshes the translation is 0. Fall back to the
-  // geometry's bounding-sphere centre in that case so our "bubble" check isn't
-  // wrong for those cells.
-  if (c.lengthSq() < 1e-6 && mesh.geometry) {
-    if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
-    const bs = mesh.geometry.boundingSphere;
-    if (bs) c.copy(bs.center).applyMatrix4(mesh.matrixWorld);
+  // For a few un-transformed cells the translation is 0. Fall back to the
+  // geometry's bounding-sphere centre so our "bubble" check isn't wrong.
+  if (c.lengthSq() < 1e-6) {
+    const geo = h.iMesh.geometry;
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    const bs = geo.boundingSphere;
+    if (bs) c.copy(bs.center).applyMatrix4(h.origMatrix);
   }
-  _cellCenterCache.set(mesh, c);
+  h._center = c;
   return c;
 }
 
@@ -3882,7 +3994,7 @@ function _updateSlicerBasis() {
 // then rebuild outlines so the outlined set matches what's visible.
 function _applySlicerMask() {
   if (!slicerActive) return;
-  rayTargets = [];
+  visHandles = [];
   // Cylindrical wedge, optionally translated along Z by right-click drag.
   const r2       = SLICER_RADIUS * SLICER_RADIUS;
   const zMax     = slicerZOffset + slicerHalfHeight;
@@ -3890,7 +4002,7 @@ function _applySlicerMask() {
   const thetaLen = slicerThetaLength;
   const fullTh   = thetaLen >= 2 * Math.PI - 1e-6;
   const emptyTh  = thetaLen <= 1e-6;
-  for (const [mesh, { energyMev, det, cellId, mbtsLabel }] of active) {
+  for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
     const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
     const detOn  = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
     let inCluster;
@@ -3909,7 +4021,7 @@ function _applySlicerMask() {
     const passFilter = detOn && passNeg && passThr && passCl;
     let vis = passFilter;
     if (vis && !emptyTh) {
-      const c = _cellCenter(mesh);
+      const c = _cellCenter(h);
       // Inside Z-aligned cylindrical wedge at origin: r² in XY, z within
       // [zMin, zMax], and polar angle within [0, thetaLen).
       if (c.x*c.x + c.y*c.y < r2 && c.z > zMin && c.z < zMax) {
@@ -3922,10 +4034,12 @@ function _applySlicerMask() {
         }
       }
     }
-    mesh.visible = vis;
-    if (vis) rayTargets.push(mesh);
+    _setHandleVisible(h, vis);
+    if (vis) visHandles.push(h);
   }
   _syncNonActiveShowAll();
+  _flushIMDirty();
+  _rebuildRayIMeshes();
   rebuildAllOutlines();
   // FCAL tubes are drawn separately (instanced) — rebuild with current bubble.
   applyFcalThreshold();
@@ -3962,12 +4076,13 @@ function toggleShowAllCells() {
   const wasOn = showAllCells;
   showAllCells = !showAllCells;
   document.getElementById('btn-showall').classList.toggle('on', showAllCells);
-  // When turning off, hide the non-active meshes we had shown so the normal
+  // When turning off, hide the non-active handles we had shown so the normal
   // flow (which skips non-active cells) leaves the scene clean.
   if (wasOn) {
     for (const det of ['TILE', 'LAR', 'HEC'])
-      for (const mesh of cellMeshesByDet[det])
-        if (!active.has(mesh)) mesh.visible = false;
+      for (const h of cellMeshesByDet[det])
+        if (!active.has(h)) _setHandleVisible(h, false);
+    _flushIMDirty();
   }
   applyThreshold();
   applyFcalThreshold();
