@@ -604,11 +604,11 @@ controls.addEventListener('change', () => {
 });
 
 // Lights are needed — all cell materials are MeshStandardMaterial (PBR lit)
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
 scene.add(ambientLight);
 
 // Directional light that follows the camera, always pointing at the origin.
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
 dirLight.position.copy(camera.position);
 scene.add(dirLight);
 controls.addEventListener('change', () => {
