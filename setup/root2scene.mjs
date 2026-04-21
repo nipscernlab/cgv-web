@@ -27,12 +27,16 @@
 import './lib/polyfill.mjs';
 
 // ─── Node built-ins ───────────────────────────────────────────────────────────
-import { mkdirSync }             from 'node:fs';
+import { mkdirSync, unlinkSync }  from 'node:fs';
 import { writeFile }             from 'node:fs/promises';
 import { resolve, basename,
          extname, dirname, join } from 'node:path';
 import { performance }            from 'node:perf_hooks';
 import { parseArgs }              from 'node:util';
+import { spawnSync }              from 'node:child_process';
+import { fileURLToPath }          from 'node:url';
+import { createGzip }             from 'node:zlib';
+import { createReadStream, createWriteStream } from 'node:fs';
 
 // ─── JSROOT ───────────────────────────────────────────────────────────────────
 import { openFile }              from 'jsroot/io';
@@ -41,7 +45,8 @@ import { THREE }                 from 'jsroot/base3d';
 // ─── GLB optimisation pipeline ────────────────────────────────────────────────
 import { NodeIO }                from '@gltf-transform/core';
 import { weld, dedup, prune,
-         quantize as quantizeFn } from '@gltf-transform/functions';
+         quantize as quantizeFn,
+         mergeDocuments }         from '@gltf-transform/functions';
 
 // ─── geobase (não é parte dos exports públicos do JSROOT) ────────────────────
 import {
@@ -78,11 +83,14 @@ function parseCliArgs() {
       'max-faces':    { type: 'string'  },
       depth:          { type: 'string'  },
       subtree:        { type: 'string'  },   // prefixo dos filhos diretos do root a manter
-      'visible-only': { type: 'boolean', default: false },
-      verbose:        { type: 'boolean', default: false },
-      'tilecal-only': { type: 'boolean', default: false },
-      quantize:       { type: 'boolean', default: false },
-      help:           { type: 'boolean', default: false },
+      atlas:               { type: 'string'  },   // arquivo .root adicional (mesclado via subprocesso)
+      'atlas-depth':       { type: 'string'  },   // --depth aplicado ao atlas.root (padrão: 5)
+      'atlas-visible-only':{ type: 'boolean', default: true },  // visible-only para atlas (padrão: true)
+      'visible-only':      { type: 'boolean', default: false },
+      verbose:             { type: 'boolean', default: false },
+      'tilecal-only':      { type: 'boolean', default: false },
+      quantize:            { type: 'boolean', default: false },
+      help:                { type: 'boolean', default: false },
     },
   });
 
@@ -90,14 +98,17 @@ function parseCliArgs() {
     console.log(`
 Uso: node root2scene.mjs <arquivo.root> [opções]
 
-  --out <dir>        diretório de saída (padrão: mesmo dir do .root)
-  --max-faces <n>    limite de faces por shape (0 = ilimitado)
-  --depth <n>        profundidade máxima da árvore de geometria (0 = toda)
-  --visible-only     pular volumes invisíveis (bit kVisThis)
-  --tilecal-only     gerar apenas volumes TileCal (Tile1-15)
-  --quantize         quantizar posições (14-bit) — arquivo menor, visualmente idêntico
-  --verbose          log detalhado
-  --help             esta mensagem
+  --out <dir>              diretório de saída (padrão: mesmo dir do .root)
+  --max-faces <n>          limite de faces por shape (0 = ilimitado)
+  --depth <n>              profundidade máxima da árvore de geometria (0 = toda)
+  --visible-only           pular volumes invisíveis (bit kVisThis)
+  --tilecal-only           gerar apenas volumes TileCal (Tile1-15)
+  --atlas <path>           arquivo .root adicional mesclado via subprocesso
+  --atlas-depth <n>        --depth para o atlas.root (padrão: 5)
+  --atlas-visible-only     (padrão true) aplicar visible-only ao atlas.root
+  --quantize               quantizar posições (14-bit) — arquivo menor, visualmente idêntico
+  --verbose                log detalhado
+  --help                   esta mensagem
 `);
     process.exit(0);
   }
@@ -105,13 +116,16 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
   const rootPath = resolve(positionals[0]);
   return {
     rootPath,
-    outDir:      values.out ? resolve(values.out) : dirname(rootPath),
-    maxFaces:    parseInt(values['max-faces'] ?? '0', 10),
-    maxDepth:    parseInt(values['depth']     ?? '0', 10),
-    subtree:     values['subtree'] ?? null,
-    visibleOnly: values['visible-only'],
-    tilecalOnly: values['tilecal-only'],
-    quantize:    values['quantize'],
+    outDir:           values.out ? resolve(values.out) : dirname(rootPath),
+    maxFaces:         parseInt(values['max-faces']   ?? '0', 10),
+    maxDepth:         parseInt(values['depth']        ?? '0', 10),
+    subtree:          values['subtree'] ?? null,
+    atlasPath:        values['atlas'] ? resolve(values['atlas']) : null,
+    atlasDepth:       parseInt(values['atlas-depth'] ?? '5', 10),
+    atlasVisibleOnly: values['atlas-visible-only'] !== false,
+    visibleOnly:      values['visible-only'],
+    tilecalOnly:      values['tilecal-only'],
+    quantize:         values['quantize'],
   };
 }
 
@@ -329,108 +343,98 @@ function shapeAttrs(shape) {
 //
 // Separador: → (U+2192, implicação material da lógica proposicional)
 // ═════════════════════════════════════════════════════════════════════════════
-async function buildGltf(geoResult, rootPath, opts) {
-  const geoCache   = new Map();   // shapeSignature → BufferGeometry (compartilhada)
+// ─── Walk a TGeo tree and add meshes to scene ─────────────────────────────────
+// forceVisible=true ignores kVisThis bit (used for atlas.root)
+function addGeoToScene(geoResult, scene, geoCache, dummyMat, opts, forceVisible = false) {
+  const { obj, key } = geoResult;
+  const topNode = (obj._typename === 'TGeoManager')
+    ? {
+        _typename : 'TGeoManager',
+        fName     : key.fName,
+        fTitle    : key.fTitle ?? '',
+        fVolume   : obj.fMasterVolume,
+        fGeoAtt   : 0xFF,
+        fMatrix   : null,
+      }
+    : obj;
 
-  // Single shared material — viewer replaces all materials at runtime anyway.
-  // Using MeshBasicMaterial avoids storing PBR parameters in the GLB.
-  const dummyMat = new THREE.MeshBasicMaterial({ color: 0x888888, side: THREE.DoubleSide });
+  const identity = new THREE.Matrix4();
+  const stack    = [{ node: topNode, worldMat: identity, ancestorPath: '', depth: 0 }];
+  let   nMesh = 0, nUniq = 0;
 
-  const scene = new THREE.Scene();
-  scene.name  = basename(rootPath, extname(rootPath));
+  while (stack.length > 0) {
+    const { node, worldMat, ancestorPath, depth } = stack.pop();
 
-  if (geoResult) {
-    const { obj, key } = geoResult;
-    const topNode = (obj._typename === 'TGeoManager')
-      ? {
-          _typename : 'TGeoManager',
-          fName     : key.fName,
-          fTitle    : key.fTitle ?? '',
-          fVolume   : obj.fMasterVolume,
-          fGeoAtt   : 0xFF,
-          fMatrix   : null,
-        }
-      : obj;
+    const volume  = node.fVolume ?? node;
+    const shape   = volume?.fShape ?? null;
+    const geoAtt  = node.fGeoAtt ?? volume?.fGeoAtt ?? 0xFF;
+    const visible = Boolean(geoAtt & 0x08);
+    if (!forceVisible && opts.visibleOnly && !visible) continue;
 
-    info('Construindo meshes nomeados por célula...');
+    const name    = node.fName ?? volume?.fName ?? '?';
+    const path    = ancestorPath ? `${ancestorPath}→${name}` : name;
 
-    const identity = new THREE.Matrix4();
-    const stack    = [{ node: topNode, worldMat: identity, ancestorPath: '', depth: 0 }];
-    let   nMesh = 0, nUniq = 0;
+    const local   = nodeToMatrix4(node);
+    const nodeMat = local ? worldMat.clone().multiply(local) : worldMat;
 
-    while (stack.length > 0) {
-      const { node, worldMat, ancestorPath, depth } = stack.pop();
+    if (shape) {
+      const sig = shapeSignature(shape);
 
-      const volume  = node.fVolume ?? node;
-      const shape   = volume?.fShape ?? null;
-      const geoAtt  = node.fGeoAtt ?? volume?.fGeoAtt ?? 0xFF;
-      const visible = Boolean(geoAtt & 0x08);
-      if (opts.visibleOnly && !visible) continue;
-
-      const name    = node.fName ?? volume?.fName ?? '?';
-      // Sem tabs: sanitizeNodeName do GLTFLoader substitui \s por '_'
-      const path    = ancestorPath ? `${ancestorPath}→${name}` : name;
-
-      // Compõe transform acumulado (sem mutar worldMat)
-      const local   = nodeToMatrix4(node);
-      const nodeMat = local ? worldMat.clone().multiply(local) : worldMat;
-
-      if (shape) {
-        const sig = shapeSignature(shape);
-
-        // Reutiliza geometria se já criada para este shape
-        let bufGeo = sig ? geoCache.get(sig) : null;
-        if (!bufGeo) {
-          try {
-            bufGeo = createGeometry(shape, opts.maxFaces);
-            if (bufGeo) {
-              // Strip normals and UVs — not stored in GLB.
-              // Normals are unused by the viewer (materials overridden at runtime).
-              // Three.js GLTFLoader recomputes them from geometry if ever needed.
-              bufGeo.deleteAttribute('normal');
-              bufGeo.deleteAttribute('uv');
-            }
-          } catch (e) {
-            dbg(`createGeometry falhou "${name}" (${shape._typename}): ${e.message}`);
+      let bufGeo = sig ? geoCache.get(sig) : null;
+      if (!bufGeo) {
+        try {
+          bufGeo = createGeometry(shape, opts.maxFaces);
+          if (bufGeo) {
+            bufGeo.deleteAttribute('normal');
+            bufGeo.deleteAttribute('uv');
           }
-          if (bufGeo && sig) { geoCache.set(sig, bufGeo); nUniq++; }
+        } catch (e) {
+          dbg(`createGeometry falhou "${name}" (${shape._typename}): ${e.message}`);
         }
-
-        if (bufGeo) {
-          const mesh = new THREE.Mesh(bufGeo, dummyMat);
-
-          mesh.name = path;
-
-          // Transform mundo → TRS do mesh (filho direto da scene = espaço mundo)
-          const pos  = new THREE.Vector3();
-          const quat = new THREE.Quaternion();
-          const scl  = new THREE.Vector3(1, 1, 1);
-          nodeMat.decompose(pos, quat, scl);
-          mesh.position.copy(pos);
-          mesh.quaternion.copy(quat);
-          mesh.scale.copy(scl);
-
-          scene.add(mesh);
-          nMesh++;
-        }
+        if (bufGeo && sig) { geoCache.set(sig, bufGeo); nUniq++; }
       }
 
-      const children = volume?.fNodes?.arr ?? node.fElements?.arr ?? [];
-      if (children.length > 0 && (opts.maxDepth === 0 || depth < opts.maxDepth)) {
-        for (let i = children.length - 1; i >= 0; i--) {
-          const child     = children[i];
-          const childName = child.fName ?? child.fVolume?.fName ?? '';
-          // --subtree filtra filhos DIRETOS do root (depth=0)
-          if (opts.subtree && depth === 0 && !childName.startsWith(opts.subtree)) continue;
-          // --tilecal-only keeps only Tile1-Tile15 volumes
-          if (opts.tilecalOnly && depth === 0 && !/^Tile\d/.test(childName)) continue;
-          stack.push({ node: child, worldMat: nodeMat, ancestorPath: path, depth: depth + 1 });
-        }
+      if (bufGeo) {
+        const mesh = new THREE.Mesh(bufGeo, dummyMat);
+        mesh.name  = path;
+
+        const pos  = new THREE.Vector3();
+        const quat = new THREE.Quaternion();
+        const scl  = new THREE.Vector3(1, 1, 1);
+        nodeMat.decompose(pos, quat, scl);
+        mesh.position.copy(pos);
+        mesh.quaternion.copy(quat);
+        mesh.scale.copy(scl);
+
+        scene.add(mesh);
+        nMesh++;
       }
     }
 
-    ok(`GLB: ${nMesh} meshes · ${nUniq} geometrias únicas`);
+    const children = volume?.fNodes?.arr ?? node.fElements?.arr ?? [];
+    if (children.length > 0 && (opts.maxDepth === 0 || depth < opts.maxDepth)) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const child     = children[i];
+        const childName = child.fName ?? child.fVolume?.fName ?? '';
+        if (!forceVisible && opts.subtree && depth === 0 && !childName.startsWith(opts.subtree)) continue;
+        if (!forceVisible && opts.tilecalOnly && depth === 0 && !/^Tile\d/.test(childName)) continue;
+        stack.push({ node: child, worldMat: nodeMat, ancestorPath: path, depth: depth + 1 });
+      }
+    }
   }
+
+  return { nMesh, nUniq };
+}
+
+// Serializa um único geoResult para um GLB Buffer (sem manter o Three.js scene na memória após retornar)
+async function serializeGeoResult(geoResult, sceneName, opts, forceVisible) {
+  const geoCache = new Map();
+  const dummyMat = new THREE.MeshBasicMaterial({ color: 0x888888, side: THREE.DoubleSide });
+  const scene    = new THREE.Scene();
+  scene.name     = sceneName;
+
+  const { nMesh, nUniq } = addGeoToScene(geoResult, scene, geoCache, dummyMat, opts, forceVisible);
+  ok(`${sceneName}: ${nMesh} meshes · ${nUniq} geometrias únicas`);
 
   const exporter      = new GLTFExporter();
   const glbArrayBuffer = await exporter.parseAsync(scene, {
@@ -439,7 +443,46 @@ async function buildGltf(geoResult, rootPath, opts) {
     onlyVisible : false,
   });
 
+  // Libera os objetos Three.js explicitamente antes de retornar
+  for (const child of scene.children) {
+    if (child.geometry) child.geometry.dispose();
+  }
+  dummyMat.dispose();
+
   return Buffer.from(glbArrayBuffer);
+}
+
+async function buildGltf(geoResult, atlasResult, rootPath, opts) {
+  const stem = basename(rootPath, extname(rootPath));
+
+  // Processa o arquivo principal
+  let primaryBuf = null;
+  if (geoResult) {
+    info('Construindo meshes do arquivo principal...');
+    primaryBuf = await serializeGeoResult(geoResult, stem, opts, false);
+    info(`Principal serializado: ${(primaryBuf.length / 1e6).toFixed(1)} MB`);
+  }
+
+  // Processa atlas.root em passo separado (Three.js scene anterior já liberada)
+  let atlasBuf = null;
+  if (atlasResult) {
+    info('Construindo meshes do atlas.root (todas forçadas visíveis)...');
+    atlasBuf = await serializeGeoResult(atlasResult, 'atlas', opts, true);
+    info(`Atlas serializado: ${(atlasBuf.length / 1e6).toFixed(1)} MB`);
+  }
+
+  // Sem atlas: retorna direto
+  if (!atlasBuf) return primaryBuf ?? Buffer.alloc(0);
+
+  // Mescla os dois documentos gltf-transform
+  info('Mesclando documentos GLB...');
+  const io          = new NodeIO();
+  const primaryDoc  = await io.readBinary(new Uint8Array(primaryBuf));
+  const atlasDoc    = await io.readBinary(new Uint8Array(atlasBuf));
+
+  mergeDocuments(primaryDoc, atlasDoc);
+
+  return Buffer.from(await io.writeBinary(primaryDoc));
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -473,6 +516,19 @@ async function optimizeGlb(glbBuf, opts) {
   return Buffer.from(await io.writeBinary(doc));
 }
 
+// ─── gzip helper ──────────────────────────────────────────────────────────────
+function gzipFile(src, dest) {
+  return new Promise((resolve, reject) => {
+    const gz = createGzip({ level: 9 });
+    const rd  = createReadStream(src);
+    const wr  = createWriteStream(dest);
+    rd.pipe(gz).pipe(wr);
+    wr.on('finish', resolve);
+    wr.on('error', reject);
+    rd.on('error', reject);
+  });
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ═════════════════════════════════════════════════════════════════════════════
@@ -483,35 +539,123 @@ async function main() {
   log('root2scene');
   log(`  arquivo : ${opts.rootPath}`);
   log(`  saída   : ${opts.outDir}`);
+  if (opts.atlasPath) log(`  atlas   : ${opts.atlasPath}  (depth=${opts.atlasDepth})`);
   if (opts.maxFaces > 0) log(`  max-faces : ${opts.maxFaces}`);
   if (opts.maxDepth > 0) log(`  depth     : ${opts.maxDepth}`);
 
   mkdirSync(opts.outDir, { recursive: true });
   const stem    = basename(opts.rootPath, extname(opts.rootPath));
   const glbPath = join(opts.outDir, `${stem}.glb`);
+  const gzPath  = `${glbPath}.gz`;
 
+  const scriptPath = fileURLToPath(import.meta.url);
 
-  // 1. Abre o .root
+  // ── PASSO 1: subprocesso para atlas.root (memória isolada) ────────────────
+  let atlasTmpGlb = null;
+  if (opts.atlasPath) {
+    atlasTmpGlb = join(opts.outDir, `_atlas_tmp_${Date.now()}.glb`);
+    const atlasArgs = [
+      '--max-old-space-size=4096', scriptPath,
+      opts.atlasPath,
+      '--out', opts.outDir,
+      '--depth', String(opts.atlasDepth),
+    ];
+    if (opts.atlasVisibleOnly) atlasArgs.push('--visible-only');
+    if (opts.verbose)          atlasArgs.push('--verbose');
+
+    info(`Gerando atlas GLB via subprocesso (depth=${opts.atlasDepth})...`);
+    // Redireciona stdout do filho para o stdout do pai com prefixo [atlas]
+    const child = spawnSync(process.execPath, atlasArgs, {
+      stdio: ['ignore', 'inherit', 'inherit'],
+      env:   process.env,
+    });
+    if (child.status !== 0) die(`Subprocesso atlas falhou (exit ${child.status})`);
+
+    // O subprocesso escreve <stem>.glb no outDir
+    const atlasStem = basename(opts.atlasPath, extname(opts.atlasPath));
+    const atlasOut  = join(opts.outDir, `${atlasStem}.glb`);
+    // Renomeia para nome temporário para não conflitar com saída final
+    try {
+      const { renameSync } = await import('node:fs');
+      renameSync(atlasOut, atlasTmpGlb);
+    } catch {
+      atlasTmpGlb = atlasOut; // se já tiver o nome certo (atlas.root → atlas.glb ≠ CaloGeometry.glb)
+    }
+    ok(`Atlas GLB pronto: ${atlasTmpGlb}`);
+  }
+
+  // ── PASSO 2: arquivo principal ─────────────────────────────────────────────
   const { file, keys } = await openRootFile(opts.rootPath);
   if (VERBOSE)
     for (const k of keys)
       dbg(`  ${k.fName.padEnd(32)} ${k.fClassName.padEnd(28)} cycle=${k.fCycle}`);
 
-  // 2. Localiza TGeoManager / TGeoVolume
   const geoResult = await findGeoManager(file, keys);
   if (!geoResult)
-    warn('Nenhum TGeoManager/TGeoVolume — saída terá conteúdo mínimo.');
+    warn('Nenhum TGeoManager/TGeoVolume no arquivo principal — saída terá conteúdo mínimo.');
   else
-    ok(`Geo: "${geoResult.key.fName}" (${geoResult.key.fClassName})`);
+    ok(`Geo principal: "${geoResult.key.fName}" (${geoResult.key.fClassName})`);
 
-  info('Gerando .glb...');
+  info('Construindo GLB do arquivo principal...');
   const t0  = performance.now();
-  let glb   = await buildGltf(geoResult, opts.rootPath, opts);
+  let glb   = await buildGltf(geoResult, null, opts.rootPath, opts);
+
+  // ── PASSO 3: mescla atlas.glb se gerado ────────────────────────────────────
+  if (atlasTmpGlb) {
+    info('Mesclando atlas GLB...');
+    const { readFileSync } = await import('node:fs');
+    const io         = new NodeIO();
+    const primaryDoc = await io.readBinary(new Uint8Array(glb));
+    const atlasDoc   = await io.readBinary(new Uint8Array(readFileSync(atlasTmpGlb)));
+    mergeDocuments(primaryDoc, atlasDoc);
+
+    // mergeDocuments cria uma Scene separada para cada documento.
+    // Three.js só carrega a Scene 0 (defaultScene), então precisamos mover
+    // todos os nós raiz das scenes extras para a Scene 0.
+    const root    = primaryDoc.getRoot();
+    const scenes  = root.listScenes();
+    if (scenes.length > 1) {
+      const primaryScene = scenes[0];
+      for (let i = 1; i < scenes.length; i++) {
+        for (const node of scenes[i].listChildren()) {
+          primaryScene.addChild(node);
+        }
+        scenes[i].dispose();
+      }
+      dbg(`Cenas mescladas: ${scenes.length} → 1`);
+    }
+
+    // GLB binary exige exatamente 1 buffer — consolida todos os accessors no primeiro
+    const buffers = root.listBuffers();
+    if (buffers.length > 1) {
+      const mainBuf = buffers[0];
+      for (const acc of root.listAccessors()) acc.setBuffer(mainBuf);
+      await primaryDoc.transform(prune());
+    }
+
+    glb = Buffer.from(await io.writeBinary(primaryDoc));
+    info(`GLB mesclado: ${(glb.length / 1e6).toFixed(1)} MB`);
+
+    // Remove temporário se for diferente de atlas.glb permanente
+    const atlasStem = basename(opts.atlasPath, extname(opts.atlasPath));
+    const atlasPermPath = join(opts.outDir, `${atlasStem}.glb`);
+    if (atlasTmpGlb !== atlasPermPath) {
+      try { unlinkSync(atlasTmpGlb); } catch { /* ignora */ }
+    }
+  }
+
+  // ── PASSO 4: optimiza e escreve ────────────────────────────────────────────
   const rawMb = (glb.length / 1e6).toFixed(1);
   info(`GLB bruto: ${rawMb} MB - otimizando...`);
   glb = await optimizeGlb(glb, opts);
   await writeFile(glbPath, glb);
   ok(`GLB  -> ${glbPath}  (${(glb.length / 1e6).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms)`);
+
+  // ── PASSO 5: gzip ──────────────────────────────────────────────────────────
+  info('Gerando .glb.gz...');
+  await gzipFile(glbPath, gzPath);
+  const { statSync } = await import('node:fs');
+  ok(`GZ   -> ${gzPath}  (${(statSync(gzPath).size / 1e6).toFixed(1)} MB)`);
 
   log(`Concluído em ${((performance.now() - T0) / 1000).toFixed(2)}s`);
 }
