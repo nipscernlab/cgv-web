@@ -435,14 +435,23 @@ const atlasMat = new THREE.MeshBasicMaterial({
   color: 0x4A90D9, transparent: true, opacity: 0.07,
   depthWrite: false, side: THREE.DoubleSide,
 });
+const atlasTrackHitMat = new THREE.MeshBasicMaterial({
+  color: 0x4A90D9, transparent: true, opacity: 0.035,
+  depthWrite: false, side: THREE.DoubleSide,
+});
+const trackAtlasOutlineMat = new THREE.LineBasicMaterial({
+  color: 0x4A90D9, transparent: true, opacity: 0.15, depthWrite: false,
+});
 let atlasRoot = null; // tree root node (built after GLB loads)
 const TRACK_ATLAS_TARGET_NODE_NAMES = ['MUCH_1', 'MUC1_2'];
 let _trackAtlasNodes = null;
 let _trackAtlasMeshes = null;
+let _trackAtlasOutlineMeshes = null;
 const _trackAtlasRay = new THREE.Raycaster();
 const _trackAtlasSegA = new THREE.Vector3();
 const _trackAtlasSegB = new THREE.Vector3();
 const _trackAtlasDir  = new THREE.Vector3();
+const _trackAtlasEdgeGeoCache = new Map();
 
 function _findAtlasNodesByName(root, name, out = []) {
   if (!root) return out;
@@ -469,10 +478,26 @@ function _collectAtlasNodesAtDepth(node, depth, out = []) {
   return out;
 }
 
+function _ensureTrackAtlasOutline(mesh) {
+  mesh.material = atlasTrackHitMat;
+  if (mesh.userData.trackAtlasOutline) return mesh.userData.trackAtlasOutline;
+  const uid = mesh.geometry.uuid;
+  if (!_trackAtlasEdgeGeoCache.has(uid))
+    _trackAtlasEdgeGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
+  const outline = new THREE.LineSegments(_trackAtlasEdgeGeoCache.get(uid), trackAtlasOutlineMat);
+  outline.name = `${mesh.name}__track_outline`;
+  outline.matrixAutoUpdate = false;
+  outline.renderOrder = 8;
+  outline.visible = false;
+  mesh.add(outline);
+  mesh.userData.trackAtlasOutline = outline;
+  return outline;
+}
+
 function _resolveTrackAtlasTargets() {
-  if (!atlasRoot) return { nodes: [], meshes: [] };
-  if (_trackAtlasNodes && _trackAtlasMeshes)
-    return { nodes: _trackAtlasNodes, meshes: _trackAtlasMeshes };
+  if (!atlasRoot) return { nodes: [], meshes: [], outlineMeshes: [] };
+  if (_trackAtlasNodes && _trackAtlasMeshes && _trackAtlasOutlineMeshes)
+    return { nodes: _trackAtlasNodes, meshes: _trackAtlasMeshes, outlineMeshes: _trackAtlasOutlineMeshes };
   const sourceNodes = [];
   const seen        = new Set();
   for (const name of TRACK_ATLAS_TARGET_NODE_NAMES) {
@@ -484,6 +509,8 @@ function _resolveTrackAtlasTargets() {
   }
   const nodes = [];
   const nodeSeen = new Set();
+  const outlineNodes = [];
+  const outlineNodeSeen = new Set();
   for (const node of sourceNodes) {
     const maxDepth = _maxAtlasSubtreeDepth(node);
     for (const depth of [maxDepth - 1, maxDepth]) {
@@ -494,6 +521,14 @@ function _resolveTrackAtlasTargets() {
         nodes.push(match);
       }
     }
+    const outlineDepth = maxDepth - 1;
+    if (outlineDepth >= 0) {
+      for (const match of _collectAtlasNodesAtDepth(node, outlineDepth)) {
+        if (outlineNodeSeen.has(match)) continue;
+        outlineNodeSeen.add(match);
+        outlineNodes.push(match);
+      }
+    }
   }
   const meshes = [];
   const meshSeen = new Set();
@@ -501,12 +536,23 @@ function _resolveTrackAtlasTargets() {
     for (const mesh of node.meshes) {
       if (meshSeen.has(mesh)) continue;
       meshSeen.add(mesh);
+      _ensureTrackAtlasOutline(mesh);
       meshes.push(mesh);
+    }
+  }
+  const outlineMeshes = [];
+  const outlineMeshSeen = new Set();
+  for (const node of outlineNodes) {
+    for (const mesh of node.meshes) {
+      if (outlineMeshSeen.has(mesh)) continue;
+      outlineMeshSeen.add(mesh);
+      outlineMeshes.push(mesh);
     }
   }
   _trackAtlasNodes  = nodes;
   _trackAtlasMeshes = meshes;
-  return { nodes, meshes };
+  _trackAtlasOutlineMeshes = outlineMeshes;
+  return { nodes, meshes, outlineMeshes };
 }
 
 function _refreshNodeCb(node) {
@@ -518,17 +564,19 @@ function _refreshNodeCb(node) {
 
 function updateTrackAtlasIntersections() {
   if (!atlasRoot) return;
-  const { nodes, meshes } = _resolveTrackAtlasTargets();
+  const { nodes, meshes, outlineMeshes } = _resolveTrackAtlasTargets();
   if (!meshes.length) return;
 
   const visibleTracks = (trackGroup && trackGroup.visible)
     ? trackGroup.children.filter(c => c.visible)
     : [];
   const hitMeshes = new Set();
+  const hitTracks = new Set();
 
   if (visibleTracks.length) {
     scene.updateMatrixWorld(true);
     for (const line of visibleTracks) {
+      let lineHit = false;
       const pos = line.geometry?.getAttribute('position');
       if (!pos || pos.count < 2) continue;
       for (let i = 0; i < pos.count - 1; i++) {
@@ -540,9 +588,12 @@ function updateTrackAtlasIntersections() {
         _trackAtlasDir.multiplyScalar(1 / len);
         _trackAtlasRay.set(_trackAtlasSegA, _trackAtlasDir);
         _trackAtlasRay.far = len;
-        for (const hit of _trackAtlasRay.intersectObjects(meshes, false))
+        for (const hit of _trackAtlasRay.intersectObjects(meshes, false)) {
           hitMeshes.add(hit.object);
+          lineHit = true;
+        }
       }
+      if (lineHit) hitTracks.add(line);
     }
   }
 
@@ -553,6 +604,14 @@ function updateTrackAtlasIntersections() {
       mesh.visible = next;
       changed = true;
     }
+  }
+  for (const mesh of meshes) {
+    if (mesh.userData.trackAtlasOutline)
+      mesh.userData.trackAtlasOutline.visible = hitMeshes.has(mesh) && outlineMeshes.includes(mesh);
+  }
+  if (trackGroup) {
+    for (const line of trackGroup.children)
+      line.material = hitTracks.has(line) ? TRACK_HIT_MAT : TRACK_MAT;
   }
   if (!changed) return;
 
@@ -963,9 +1022,8 @@ function checkReady() {
   if (!_readyFired) {
     _readyFired = true;
     setLoadProgress(100, 'Ready');
-    // Enable the default TileCal ghost envelopes + beam axis on startup.
+    // Enable the default TileCal ghost envelopes on startup.
     enableDefaultGhosts();
-    toggleBeam();
     // Dismiss loading screen after a brief moment so 100% is visible
     setTimeout(dismissLoadingScreen, 280);
   }
@@ -1187,6 +1245,7 @@ setLoadProgress(0, 'Loading geometry…');
         atlasRoot = _buildAtlasTree(atlasMeshes);
         _trackAtlasNodes = null;
         _trackAtlasMeshes = null;
+        _trackAtlasOutlineMeshes = null;
         const body = document.getElementById('atlas-panel-body');
         body.innerHTML = '';
         for (const child of atlasRoot.children.values())
@@ -1637,6 +1696,7 @@ let clusterEtMinGev   = 0;
 let clusterEtMaxGev   = 1;
 
 const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, linewidth: 2 });
+const TRACK_HIT_MAT = new THREE.LineBasicMaterial({ color: 0x4A90D9, linewidth: 2 });
 
 function clearTracks() {
   if (!trackGroup) return;
