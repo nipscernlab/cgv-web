@@ -725,10 +725,10 @@ void CaloBuild()
 {
 	InitGeometry();
 
-	BuildTile(1,    2300.000, 2600.000, 64,        true);
-	BuildTile(1,    2300.000, 2600.000, 64,       false);
-	MergeTile(2, 3, 2600.000, 2990.000, 3440.000,  true);
-	MergeTile(2, 3, 2600.000, 2990.000, 3440.000, false);
+	BuildTile(1,    2300.000, 2600.000, 64,        true); // LBA Cell A
+	BuildTile(1,    2300.000, 2600.000, 64,       false); // LBC Cell A
+	MergeTile(2, 3, 2600.000, 2990.000, 3440.000,  true); // LBA Cell BC
+	MergeTile(2, 3, 2600.000, 2990.000, 3440.000, false); // LBC Cell BC
 	BuildTile(4,    3440.000, 3820.000, 64,        true);
 	BuildTile(4,    3440.000, 3820.000, 64,       false);
 	BuildTile(5,    2300.000, 2600.000, 64,        true);
@@ -737,18 +737,18 @@ void CaloBuild()
 	BuildTile(6,    2600.000, 3140.000, 64,       false);
 	BuildTile(7,    3140.000, 3820.000, 64,        true);
 	BuildTile(7,    3140.000, 3820.000, 64,       false);
-	BuildTile(8,    3440.000, 3820.000, 64,        true);
-	BuildTile(8,    3440.000, 3820.000, 64,       false);
-	BuildTile(9,    2990.000, 3440.000, 64,        true);
-	BuildTile(9,    2990.000, 3440.000, 64,       false);
-	BuildTile(10,   2632.000, 2959.000, 64,        true);
-	BuildTile(10,   2632.000, 2959.000, 64,       false);
-	BuildTile(11,   2305.000, 2632.000, 64,        true);
-	BuildTile(11,   2305.000, 2632.000, 64,       false);
-	BuildTile(12,   1885.000, 2305.000, 64,        true);
-	BuildTile(12,   1885.000, 2305.000, 64,       false);
-	BuildTile(13,   1465.000, 1885.000, 64,        true);
-	BuildTile(13,   1465.000, 1885.000, 64,       false);
+	BuildTile(8,    3440.000, 3820.000, 64,        true); // LBA Cell D4
+	BuildTile(8,    3440.000, 3820.000, 64,       false); // LBC Cell D4
+	BuildTile(9,    2990.000, 3440.000, 64,        true); // LBA Cell C10
+	BuildTile(9,    2990.000, 3440.000, 64,       false); // LBC Cell C10
+	BuildTile(10,   2632.000, 2959.000, 64,        true); // LBA Cell E1
+	BuildTile(10,   2632.000, 2959.000, 64,       false); // LBC CEll E1
+	BuildTile(11,   2305.000, 2632.000, 64,        true); // LBA CEll E2
+	BuildTile(11,   2305.000, 2632.000, 64,       false); // LBC Cell E2
+	BuildTile(12,   1448.490, 2342.560, 64,        true); // LBA Cell E3    1.2 < eta < 1.6
+	BuildTile(12,   1448.490, 2342.560, 64,       false); // LBC Cell E3
+	BuildTile(13,   1297.710, 1448.490, 64,        true); // LBA Cell E4    1.6 < eta < 1.72
+	BuildTile(13,   1297.710, 1448.490, 64,       false); // LBC Cell E4
 	BuildTile(14,    426.000,  876.000,  8,        true);
 	BuildTile(14,    426.000,  876.000,  8,       false);
 	BuildTile(15,    153.000,  426.000,  8,        true);
