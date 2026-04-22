@@ -83,7 +83,9 @@ function parseCliArgs() {
       'max-faces':    { type: 'string'  },
       depth:          { type: 'string'  },
       subtree:        { type: 'string'  },   // prefixo dos filhos diretos do root a manter
+      'subtree-node': { type: 'string'  },   // nomes de nós a manter em qualquer profundidade (csv)
       atlas:               { type: 'string'  },   // arquivo .root adicional (mesclado via subprocesso)
+      'atlas-subtree-node':{ type: 'string'  },   // nomes de nós do atlas a manter em qualquer profundidade (csv)
       'atlas-depth':       { type: 'string'  },   // --depth aplicado ao atlas.root (padrão: 5)
       'atlas-visible-only':{ type: 'boolean', default: true },  // visible-only para atlas (padrão: true)
       'visible-only':      { type: 'boolean', default: false },
@@ -103,7 +105,9 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
   --depth <n>              profundidade máxima da árvore de geometria (0 = toda)
   --visible-only           pular volumes invisíveis (bit kVisThis)
   --tilecal-only           gerar apenas volumes TileCal (Tile1-15)
+  --subtree-node <a,b>     manter nós por nome em qualquer profundidade (csv)
   --atlas <path>           arquivo .root adicional mesclado via subprocesso
+  --atlas-subtree-node <a,b> filtrar nós do atlas por nome em qualquer profundidade (csv)
   --atlas-depth <n>        --depth para o atlas.root (padrão: 5)
   --atlas-visible-only     (padrão true) aplicar visible-only ao atlas.root
   --quantize               quantizar posições (14-bit) — arquivo menor, visualmente idêntico
@@ -114,13 +118,16 @@ Uso: node root2scene.mjs <arquivo.root> [opções]
   }
 
   const rootPath = resolve(positionals[0]);
+  const parseCsv = (s) => (s ? String(s).split(',').map(v => v.trim()).filter(Boolean) : []);
   return {
     rootPath,
     outDir:           values.out ? resolve(values.out) : dirname(rootPath),
     maxFaces:         parseInt(values['max-faces']   ?? '0', 10),
     maxDepth:         parseInt(values['depth']        ?? '0', 10),
     subtree:          values['subtree'] ?? null,
+    subtreeNodeNames: parseCsv(values['subtree-node']),
     atlasPath:        values['atlas'] ? resolve(values['atlas']) : null,
+    atlasSubtreeNodeNames: parseCsv(values['atlas-subtree-node']),
     atlasDepth:       parseInt(values['atlas-depth'] ?? '5', 10),
     atlasVisibleOnly: values['atlas-visible-only'] !== false,
     visibleOnly:      values['visible-only'],
@@ -359,11 +366,13 @@ function addGeoToScene(geoResult, scene, geoCache, dummyMat, opts, forceVisible 
     : obj;
 
   const identity = new THREE.Matrix4();
-  const stack    = [{ node: topNode, worldMat: identity, ancestorPath: '', depth: 0 }];
+  const nodeNameFilter = new Set(opts.subtreeNodeNames ?? []);
+  const useNodeNameFilter = nodeNameFilter.size > 0;
+  const stack    = [{ node: topNode, worldMat: identity, ancestorPath: '', depth: 0, insideNamedSubtree: false }];
   let   nMesh = 0, nUniq = 0;
 
   while (stack.length > 0) {
-    const { node, worldMat, ancestorPath, depth } = stack.pop();
+    const { node, worldMat, ancestorPath, depth, insideNamedSubtree } = stack.pop();
 
     const volume  = node.fVolume ?? node;
     const shape   = volume?.fShape ?? null;
@@ -374,10 +383,11 @@ function addGeoToScene(geoResult, scene, geoCache, dummyMat, opts, forceVisible 
     const name    = node.fName ?? volume?.fName ?? '?';
     const path    = ancestorPath ? `${ancestorPath}→${name}` : name;
 
+    const inNamedSubtree = insideNamedSubtree || nodeNameFilter.has(name);
     const local   = nodeToMatrix4(node);
     const nodeMat = local ? worldMat.clone().multiply(local) : worldMat;
 
-    if (shape) {
+    if (shape && (!useNodeNameFilter || inNamedSubtree)) {
       const sig = shapeSignature(shape);
 
       let bufGeo = sig ? geoCache.get(sig) : null;
@@ -418,7 +428,7 @@ function addGeoToScene(geoResult, scene, geoCache, dummyMat, opts, forceVisible 
         const childName = child.fName ?? child.fVolume?.fName ?? '';
         if (!forceVisible && opts.subtree && depth === 0 && !childName.startsWith(opts.subtree)) continue;
         if (!forceVisible && opts.tilecalOnly && depth === 0 && !/^Tile\d/.test(childName)) continue;
-        stack.push({ node: child, worldMat: nodeMat, ancestorPath: path, depth: depth + 1 });
+        stack.push({ node: child, worldMat: nodeMat, ancestorPath: path, depth: depth + 1, insideNamedSubtree: inNamedSubtree });
       }
     }
   }
@@ -540,6 +550,7 @@ async function main() {
   log(`  arquivo : ${opts.rootPath}`);
   log(`  saída   : ${opts.outDir}`);
   if (opts.atlasPath) log(`  atlas   : ${opts.atlasPath}  (depth=${opts.atlasDepth})`);
+  if (opts.subtreeNodeNames?.length) log(`  subtree-node : ${opts.subtreeNodeNames.join(', ')}`);
   if (opts.maxFaces > 0) log(`  max-faces : ${opts.maxFaces}`);
   if (opts.maxDepth > 0) log(`  depth     : ${opts.maxDepth}`);
 
@@ -560,6 +571,7 @@ async function main() {
       '--out', opts.outDir,
       '--depth', String(opts.atlasDepth),
     ];
+    if (opts.atlasSubtreeNodeNames?.length) atlasArgs.push('--subtree-node', opts.atlasSubtreeNodeNames.join(','));
     if (opts.atlasVisibleOnly) atlasArgs.push('--visible-only');
     if (opts.verbose)          atlasArgs.push('--verbose');
 
