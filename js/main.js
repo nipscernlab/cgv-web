@@ -265,6 +265,7 @@ let reqCount     = 0;
 let allOutlinesMesh = null;
 let trackGroup    = null;
 let clusterGroup  = null;
+let photonGroup   = null;
 let fcalGroup     = null;
 let fcalCellsData  = [];   // cached for threshold rebuilds
 let fcalVisibleMap = [];   // [instanceId] → cell object for the current visible set
@@ -1742,6 +1743,12 @@ const CLUSTER_MAT = new THREE.LineDashedMaterial({
   color: 0xff4400, transparent: true, opacity: 0.20,
   dashSize: 40, gapSize: 60, depthWrite: false,
 });
+const PHOTON_MAT = new THREE.LineBasicMaterial({
+  color: 0xFFCC00, transparent: true, opacity: 0.85, depthWrite: false,
+});
+const PHOTON_SPRING_R      = 40;   // helix radius in mm
+const PHOTON_SPRING_TURNS  = 14;   // number of full coils
+const PHOTON_SPRING_PTS    = 22;   // points sampled per coil (smoothness)
 // Inner cylinder (start): r = 1.4 m, h = 6.4 m
 const CLUSTER_CYL_IN_R      = 1400;
 const CLUSTER_CYL_IN_HALF_H = 3200;
@@ -1765,6 +1772,80 @@ function clearClusters() {
   clusterGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   scene.remove(clusterGroup);
   clusterGroup = null;
+}
+
+// ── Photon spring rendering ────────────────────────────────────────────────────
+// Photons are shown as a helix (spring) in the η/φ direction from the origin,
+// matching the conventional Feynman-diagram wavy-line symbol.
+
+function _makeSpringPoints(dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
+  const fwd = new THREE.Vector3(dx, dy, dz).normalize();
+  const ref = Math.abs(fwd.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+  const right = new THREE.Vector3().crossVectors(fwd, ref).normalize();
+  const up    = new THREE.Vector3().crossVectors(fwd, right).normalize();
+  const nTotal = nTurns * ptsPerTurn + 1;
+  const pts = [];
+  for (let i = 0; i < nTotal; i++) {
+    const t     = i / (nTotal - 1);
+    const angle = t * nTurns * 2 * Math.PI;
+    const along = t * totalLen;
+    const cx    = Math.cos(angle) * radius;
+    const cy    = Math.sin(angle) * radius;
+    pts.push(new THREE.Vector3(
+      fwd.x * along + right.x * cx + up.x * cy,
+      fwd.y * along + right.y * cx + up.y * cy,
+      fwd.z * along + right.z * cx + up.z * cy,
+    ));
+  }
+  return pts;
+}
+
+function parsePhotons(doc) {
+  const result = [];
+  for (const el of doc.getElementsByTagName('Photon')) {
+    const etaEl    = el.querySelector('eta');
+    const phiEl    = el.querySelector('phi');
+    const energyEl = el.querySelector('energy');
+    if (!etaEl || !phiEl) continue;
+    const etas     = etaEl.textContent.trim().split(/\s+/).map(Number);
+    const phis     = phiEl.textContent.trim().split(/\s+/).map(Number);
+    const energies = energyEl ? energyEl.textContent.trim().split(/\s+/).map(Number) : [];
+    const m = Math.min(etas.length, phis.length);
+    for (let i = 0; i < m; i++) {
+      if (!isFinite(etas[i]) || !isFinite(phis[i])) continue;
+      result.push({ eta: etas[i], phi: phis[i], energyGev: isFinite(energies[i]) ? energies[i] : 0 });
+    }
+  }
+  return result;
+}
+
+function clearPhotons() {
+  if (!photonGroup) return;
+  photonGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  scene.remove(photonGroup);
+  photonGroup = null;
+}
+
+function drawPhotons(photons) {
+  clearPhotons();
+  if (!photons.length) return;
+  photonGroup = new THREE.Group();
+  photonGroup.renderOrder = 7;
+  photonGroup.visible = (typeof photonsVisible === 'undefined') ? true : photonsVisible;
+  for (const { eta, phi } of photons) {
+    const theta = 2 * Math.atan(Math.exp(-eta));
+    const sinT  = Math.sin(theta);
+    const dx = -sinT * Math.cos(phi);
+    const dy = -sinT * Math.sin(phi);
+    const dz =  Math.cos(theta);
+    const tEnd = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
+    const pts  = _makeSpringPoints(dx, dy, dz, tEnd, PHOTON_SPRING_R, PHOTON_SPRING_TURNS, PHOTON_SPRING_PTS);
+    const geo  = new THREE.BufferGeometry().setFromPoints(pts);
+    const line = new THREE.Line(geo, PHOTON_MAT);
+    photonGroup.add(line);
+  }
+  photonGroup.matrixAutoUpdate = false;
+  scene.add(photonGroup);
 }
 
 // ── FCAL tube rendering ────────────────────────────────────────────────────────
@@ -2027,6 +2108,7 @@ function resetScene() {
   clearOutline(); clearAllOutlines();
   clearTracks();
   clearClusters();
+  clearPhotons();
   clearFcal();
   lastClusterData      = null;
   activeClusterCellIds = null;
@@ -2174,6 +2256,9 @@ async function processXml(xmlText) {
     drawClusters(rawClusters);
     rebuildActiveClusterCellIds();
   } catch (e) { console.warn('Cluster parse error', e); }
+
+  // ── Photon spring lines ───────────────────────────────────────────────────────
+  try { drawPhotons(parsePhotons(doc)); } catch (e) { console.warn('Photon parse error', e); }
 
   // ── FCAL cells ───────────────────────────────────────────────────────────────
   try { drawFcal(fcalCells); } catch (e) { console.warn('FCAL draw error', e); }
@@ -3262,6 +3347,20 @@ function toggleClusters() {
   dirty = true;
 }
 document.getElementById('btn-cluster').addEventListener('click', toggleClusters);
+
+// ── Photon spring lines toggle ───────────────────────────────────────────────
+let photonsVisible = true;
+function syncPhotonsBtn() {
+  document.getElementById('btn-photon').classList.toggle('on', photonsVisible);
+}
+function togglePhotons() {
+  photonsVisible = !photonsVisible;
+  if (photonGroup) photonGroup.visible = photonsVisible;
+  syncPhotonsBtn();
+  dirty = true;
+}
+document.getElementById('btn-photon').addEventListener('click', togglePhotons);
+
 document.addEventListener('click', () => {
   if (layersPanelOpen) closeLayersPanel();
   if (atlasPanelOpen)  closeAtlasPanel();
