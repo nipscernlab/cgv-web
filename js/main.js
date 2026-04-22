@@ -1689,15 +1689,15 @@ const CLUSTER_MAT = new THREE.LineDashedMaterial({
 const PHOTON_MAT = new THREE.LineBasicMaterial({
   color: 0xFFCC00, transparent: true, opacity: 0.85, depthWrite: false,
 });
-const PHOTON_START_OFFSET_MM  = 100;   // start the spring 10 cm away from the origin
+const PHOTON_PRE_INNER_MM     = 800;   // start the spring 80 cm before the inner LAr cylinder
 const PHOTON_SPRING_R         = 20;    // helix radius in mm
 const PHOTON_SPRING_TURNS_PER_MM = 0.014; // coils per mm of track length
 const PHOTON_SPRING_PTS       = 22;   // points sampled per coil (smoothness)
 const PHOTON_TRACK_DIR_DOT_MIN = 0.97;
 const PHOTON_TRACK_RADIAL_TOL_MM = 250;
 // Inner cylinder (start): r = 1.4 m, h = 6.4 m
-const CLUSTER_CYL_IN_R      = 1400;
-const CLUSTER_CYL_IN_HALF_H = 3200;
+const CLUSTER_CYL_IN_R      = 1421.730;
+const CLUSTER_CYL_IN_HALF_H = 3680.75;
 // Outer cylinder (end):   r = 4.25 m, h = 12 m
 const CLUSTER_CYL_OUT_R      = 3820;
 const CLUSTER_CYL_OUT_HALF_H = 6000;
@@ -1729,7 +1729,7 @@ function _makeSpringPoints(dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
   const ref = Math.abs(fwd.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
   const right = new THREE.Vector3().crossVectors(fwd, ref).normalize();
   const up    = new THREE.Vector3().crossVectors(fwd, right).normalize();
-  const startOffset = Math.min(PHOTON_START_OFFSET_MM, Math.max(0, totalLen));
+  const startOffset = Math.max(0, totalLen - PHOTON_PRE_INNER_MM);
   const visibleLen  = Math.max(0, totalLen - startOffset);
   const nTotal = nTurns * ptsPerTurn + 1;
   const pts = [];
@@ -1772,7 +1772,7 @@ function _trackDuplicatesPhoton(track, photon) {
   for (let i = 0; i < pts.length; i++) {
     const p = pts[i];
     const along = p.dot(dir);
-    if (along < PHOTON_START_OFFSET_MM || along > photonEnd + 50) continue;
+    if (along < Math.max(0, photonEnd - PHOTON_PRE_INNER_MM) || along > photonEnd + 50) continue;
     const radial = Math.sqrt(Math.max(0, p.lengthSq() - along * along));
     if (Math.abs(radial - PHOTON_SPRING_R) > PHOTON_TRACK_RADIAL_TOL_MM) return false;
     matchedPts++;
@@ -1835,7 +1835,7 @@ function drawPhotons(photons) {
     const dy = -sinT * Math.sin(phi);
     const dz =  Math.cos(theta);
     const tEnd = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
-    const nTurns = Math.round(PHOTON_SPRING_TURNS_PER_MM * tEnd);
+    const nTurns = Math.round(PHOTON_SPRING_TURNS_PER_MM * Math.min(PHOTON_PRE_INNER_MM, tEnd));
     const pts  = _makeSpringPoints(dx, dy, dz, tEnd, PHOTON_SPRING_R, nTurns, PHOTON_SPRING_PTS);
     const geo  = new THREE.BufferGeometry().setFromPoints(pts);
     const line = new THREE.Line(geo, PHOTON_MAT);
@@ -2257,8 +2257,6 @@ async function processXml(xmlText) {
     // parseClusters is called later (after resetScene) to preserve its
     // lastClusterData side-effect in the correct order.
   }
-  rawTracks = filterPhotonDuplicateTracks(rawTracks, rawPhotons);
-
   const total = tileCells.length + larCells.length + hecCells.length + mbtsCells.length;
   if (!total && !fcalCells.length) { setStatus('<span class="warn">No TILE, LAr, HEC, MBTS or FCAL cells found</span>'); return; }
 
