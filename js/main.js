@@ -448,6 +448,7 @@ const TRACK_ATLAS_TARGET_NODE_NAMES = ['MUCH_1', 'MUC1_2'];
 let _trackAtlasNodes = null;
 let _trackAtlasMeshes = null;
 let _trackAtlasOutlineMeshes = null;
+let _trackAtlasMeshBoxes = null;
 const _trackAtlasRay = new THREE.Raycaster();
 const _trackAtlasSegA = new THREE.Vector3();
 const _trackAtlasSegB = new THREE.Vector3();
@@ -563,6 +564,8 @@ function _refreshNodeCb(node) {
   node.cbEl.indeterminate = v > 0 && v < node.allMeshes.length;
 }
 
+const _trackAtlasTrackBox = new THREE.Box3();
+
 function updateTrackAtlasIntersections() {
   if (!atlasRoot) return;
   const { nodes, meshes, outlineMeshes } = _resolveTrackAtlasTargets();
@@ -576,10 +579,32 @@ function updateTrackAtlasIntersections() {
 
   if (visibleTracks.length) {
     scene.updateMatrixWorld(true);
+
+    // Cache world-space AABBs for all target meshes once (static geometry).
+    if (!_trackAtlasMeshBoxes) {
+      _trackAtlasMeshBoxes = meshes.map(m => new THREE.Box3().setFromObject(m));
+    }
+
     for (const line of visibleTracks) {
-      let lineHit = false;
       const pos = line.geometry?.getAttribute('position');
       if (!pos || pos.count < 2) continue;
+
+      // Compute track world-space AABB to pre-filter candidate meshes.
+      _trackAtlasTrackBox.makeEmpty();
+      for (let i = 0; i < pos.count; i++) {
+        _trackAtlasSegA.fromBufferAttribute(pos, i).applyMatrix4(line.matrixWorld);
+        _trackAtlasTrackBox.expandByPoint(_trackAtlasSegA);
+      }
+
+      // Only test meshes whose AABB overlaps this track's AABB.
+      const nearMeshes = [];
+      for (let mi = 0; mi < meshes.length; mi++) {
+        if (_trackAtlasMeshBoxes[mi].intersectsBox(_trackAtlasTrackBox))
+          nearMeshes.push(meshes[mi]);
+      }
+      if (!nearMeshes.length) continue;
+
+      let lineHit = false;
       for (let i = 0; i < pos.count - 1; i++) {
         _trackAtlasSegA.fromBufferAttribute(pos, i).applyMatrix4(line.matrixWorld);
         _trackAtlasSegB.fromBufferAttribute(pos, i + 1).applyMatrix4(line.matrixWorld);
@@ -589,7 +614,7 @@ function updateTrackAtlasIntersections() {
         _trackAtlasDir.multiplyScalar(1 / len);
         _trackAtlasRay.set(_trackAtlasSegA, _trackAtlasDir);
         _trackAtlasRay.far = len;
-        for (const hit of _trackAtlasRay.intersectObjects(meshes, false)) {
+        for (const hit of _trackAtlasRay.intersectObjects(nearMeshes, false)) {
           hitMeshes.add(hit.object);
           lineHit = true;
         }
@@ -1247,6 +1272,7 @@ setLoadProgress(0, 'Loading geometry…');
         _trackAtlasNodes = null;
         _trackAtlasMeshes = null;
         _trackAtlasOutlineMeshes = null;
+        _trackAtlasMeshBoxes = null;
         const body = document.getElementById('atlas-panel-body');
         body.innerHTML = '';
         for (const child of atlasRoot.children.values())
