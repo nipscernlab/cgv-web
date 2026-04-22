@@ -2,6 +2,8 @@ import * as THREE        from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { initLanguage, setupLanguagePicker, t } from './i18n/index.js';
+import { createSlicerController } from './slicer.js';
+import { registerViewerShortcuts } from './viewerShortcuts.js';
 
 // ── WASM parser: off-main-thread worker with synchronous fallback ────────────
 // The WASM ATLAS-ID parser runs in a dedicated Web Worker so that the per-event
@@ -1922,28 +1924,18 @@ function _applyFcalDraw() {
   // While the slicer is active, also carve FCAL tubes whose centre sits inside
   // the Z-aligned cylindrical wedge anchored at the ATLAS origin. FCAL cells
   // use (x,y,z,dz) in cm — convert to scene mm (×10).
-  const slicerOn   = (typeof slicerActive !== 'undefined') && slicerActive;
-  const slR2       = slicerOn ? SLICER_RADIUS * SLICER_RADIUS : 0;
-  const slZMax     = slicerOn ? slicerZOffset + slicerHalfHeight : 0;
-  const slZMin     = slicerOn ? slicerZOffset - slicerHalfHeight : 0;
-  const slThetaLen = slicerOn ? slicerThetaLength : 0;
-  const slFullTh   = slThetaLen >= 2 * Math.PI - 1e-6;
+  const slicerMask = slicer.getMaskState();
 
   const visible = fcalCellsData.filter(c => {
     if (!showFcal) return false;
     // Hide cells with negative energy — they aren't physically meaningful for
     // display, unless show-all is on (user explicitly asked for every cell).
-    if (!showAllCells && c.energy < 0) return false;
-    if (!showAllCells && c.energy * 1000 < thrFcalMev) return false;
-    if (!showAllCells && activeClusterCellIds !== null && c.id && !activeClusterCellIds.has(c.id)) return false;
-    if (slicerOn && slThetaLen > 1e-6) {
+    if (!slicer.isShowAllCells() && c.energy < 0) return false;
+    if (!slicer.isShowAllCells() && c.energy * 1000 < thrFcalMev) return false;
+    if (!slicer.isShowAllCells() && activeClusterCellIds !== null && c.id && !activeClusterCellIds.has(c.id)) return false;
+    if (slicerMask.active) {
       const cx = -c.x * 10, cy = -c.y * 10, cz = c.z * 10;
-      if (cx*cx + cy*cy < slR2 && cz > slZMin && cz < slZMax) {
-        if (slFullTh) return false;
-        let ang = Math.atan2(cy, cx);
-        if (ang < 0) ang += 2 * Math.PI;
-        if (ang < slThetaLen) return false;
-      }
+      if (slicer.isPointInsideWedge(cx, cy, cz, slicerMask)) return false;
     }
     return true;
   });
@@ -2133,30 +2125,17 @@ function resetScene() {
 // slicer wedge currently covers it. Non-active cells that become visible are
 // appended to visHandles so outlines+raycast include them.
 function _syncNonActiveShowAll() {
-  if (!showAllCells) return;
-  const slicerOn = slicerActive;
-  const r2       = slicerOn ? SLICER_RADIUS * SLICER_RADIUS : 0;
-  const zMax     = slicerOn ? slicerZOffset + slicerHalfHeight : 0;
-  const zMin     = slicerOn ? slicerZOffset - slicerHalfHeight : 0;
-  const thetaLen = slicerOn ? slicerThetaLength : 0;
-  const fullTh   = slicerOn && thetaLen >= 2 * Math.PI - 1e-6;
-  const emptyTh  = slicerOn && thetaLen <= 1e-6;
+  if (!slicer.isShowAllCells()) return;
+  const slicerMask = slicer.getMaskState();
   const sweep = (list, detOn, minColor) => {
     for (let i = 0; i < list.length; i++) {
       const h = list[i];
       if (active.has(h)) continue;      // active cells: normal flow handles them
       if (!detOn) { _setHandleVisible(h, false); continue; }
       let vis = true;
-      if (slicerOn && !emptyTh) {
+      if (slicerMask.active) {
         const c = _cellCenter(h);
-        if (c.x*c.x + c.y*c.y < r2 && c.z > zMin && c.z < zMax) {
-          if (fullTh) vis = false;
-          else {
-            let ang = Math.atan2(c.y, c.x);
-            if (ang < 0) ang += 2 * Math.PI;
-            if (ang < thetaLen) vis = false;
-          }
-        }
+        if (slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
       }
       if (vis) {
         h.iMesh.setColorAt(h.instId, minColor);
@@ -2175,7 +2154,7 @@ function applyThreshold() {
   // When the slicer is active it owns cell visibility (its mask already
   // incorporates the thresholds / cluster filter). Delegate to it so we don't
   // un-hide cells that should be inside the bubble.
-  if (slicerActive) { _applySlicerMask(); return; }
+  if (slicer.isActive()) { _applySlicerMask(); return; }
   visHandles = [];
   for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
     const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
@@ -2192,9 +2171,9 @@ function applyThreshold() {
     }
     // Show-all bypasses every filter (threshold, cluster, negative energy) —
     // the user wants literally every cell on an enabled detector visible.
-    const passThr = showAllCells || (!isFinite(thr) || energyMev >= thr);
-    const passCl  = showAllCells || inCluster;
-    const passNeg = showAllCells || energyMev >= 0;
+    const passThr = slicer.isShowAllCells() || (!isFinite(thr) || energyMev >= thr);
+    const passCl  = slicer.isShowAllCells() || inCluster;
+    const passNeg = slicer.isShowAllCells() || energyMev >= 0;
     const vis     = detOn && passNeg && passThr && passCl;
     _setHandleVisible(h, vis);
     if (vis) visHandles.push(h);
@@ -4098,6 +4077,7 @@ async function renderAndDownload(targetW, targetH) {
     renderer.setClearColor(0x000000, 0);
   }
   // Hide slicer gizmo for the screenshot — the carve stays, the handle vanishes.
+  const slicerGroup = slicer.getGroup();
   const slicerVisSaved = slicerGroup ? slicerGroup.visible : null;
   if (slicerGroup) slicerGroup.visible = false;
   renderer.render(scene, camera);
@@ -4440,27 +4420,15 @@ document.getElementById('btn-about').addEventListener('click', () => {
 // filled mesh AND its outline), so you can carve a hole through the detector.
 // Cells outside the bubble render normally (subject to the usual thresholds /
 // cluster filters).
-let slicerGroup   = null;
-let slicerActive  = false;
 // Cut-volume is an invisible Z-aligned cylindrical wedge anchored at the origin.
 // The user controls two parameters by click-dragging the handle:
 //   · screen-Y drag → angular sweep (thetaLength, 0..2π)
 //   · screen-X drag → total height (mm, symmetric around origin)
-const SLICER_RADIUS       = 5000;            // cylinder radius, mm (fixed)
-const SLICER_HEIGHT_MIN   = 0;                // minimum total height, mm
-const SLICER_HEIGHT_MAX   = 20000;            // maximum total height, mm
-const SLICER_HEIGHT_INIT  = 3000;             // initial total height, mm (3 m)
-let   slicerHalfHeight    = SLICER_HEIGHT_INIT * 0.5;  // current half-height, mm
-let   slicerThetaLength   = 2 * Math.PI;      // wedge sweep, 0..2π
-const SLICER_THETA_DRAG_PX   = 300;           // px for a full 2π Y-drag
-const SLICER_HEIGHT_MM_PER_PX = 20;           // mm per px of X-drag (total height)
 // Right-click + drag translates the whole cut volume (handle + cylinder)
 // along the scene's Z axis. Independent of the left-drag behaviours above.
-let   slicerZOffset = 0;                      // world-Z translation of the cut volume, mm
 // Show-all-cells toggle: when true, every mesh from the GLB whose detector is
 // enabled is made visible. Cells absent from the current XML (not in `active`)
 // are painted with the minimum-palette colour for their detector.
-let   showAllCells  = false;
 // Cell center world positions are cached on the handle itself (stable identity,
 // no extra Map lookup). The center is computed from origMatrix + geometry
 // bounding sphere, identical to the pre-refactor semantics.
@@ -4480,62 +4448,12 @@ function _cellCenter(h) {
   return c;
 }
 
-function _buildSlicerGizmo() {
-  const g = new THREE.Group();
-  g.renderOrder = 20;
-  const L = 800;
-  const head = 120;
-  const rad  = 40;
-  const sphR = 60;
-
-  const mkArrow = (dir, color) => {
-    const a = new THREE.ArrowHelper(dir, new THREE.Vector3(0,0,0), L, color, head, rad);
-    a.line.material.linewidth = 3;
-    a.line.material.depthTest = false;
-    a.cone.material.depthTest = false;
-    a.renderOrder = 21;
-    return a;
-  };
-  g.userData.arrowZ = mkArrow(new THREE.Vector3(0,0,1), 0xff2a2a); g.add(g.userData.arrowZ);
-  g.userData.arrowP = mkArrow(new THREE.Vector3(0,1,0), 0x33dd55); g.add(g.userData.arrowP);
-  g.userData.arrowT = mkArrow(new THREE.Vector3(1,0,0), 0x3b8cff); g.add(g.userData.arrowT);
-
-  // Central draggable sphere
-  const sphGeo = new THREE.SphereGeometry(sphR, 16, 12);
-  const sphMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false });
-  const sph = new THREE.Mesh(sphGeo, sphMat);
-  sph.userData.slicerHandle = true;
-  sph.renderOrder = 22;
-  g.add(sph);
-  g.userData.handle = sph;
-
-  return g;
-}
-
-function _updateSlicerBasis() {
-  if (!slicerGroup) return;
-  // Handle sits at the slicer's current Z offset (0 unless translated by right-drag);
-  // arrows show fixed ATLAS axes.
-  slicerGroup.position.set(0, 0, slicerZOffset);
-  slicerGroup.userData.arrowZ.setDirection(new THREE.Vector3(0, 0, 1));
-  slicerGroup.userData.arrowP.setDirection(new THREE.Vector3(0, 1, 0));
-  slicerGroup.userData.arrowT.setDirection(new THREE.Vector3(1, 0, 0));
-  slicerGroup.updateMatrix();
-  _applySlicerMask();
-}
-
 // Apply the slicer cut — hide any active cell whose centre is inside the bubble,
 // then rebuild outlines so the outlined set matches what's visible.
 function _applySlicerMask() {
-  if (!slicerActive) return;
+  if (!slicer.isActive()) return;
   visHandles = [];
-  // Cylindrical wedge, optionally translated along Z by right-click drag.
-  const r2       = SLICER_RADIUS * SLICER_RADIUS;
-  const zMax     = slicerZOffset + slicerHalfHeight;
-  const zMin     = slicerZOffset - slicerHalfHeight;
-  const thetaLen = slicerThetaLength;
-  const fullTh   = thetaLen >= 2 * Math.PI - 1e-6;
-  const emptyTh  = thetaLen <= 1e-6;
+  const slicerMask = slicer.getMaskState();
   for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
     const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
     const detOn  = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
@@ -4549,24 +4467,16 @@ function _applySlicerMask() {
     } else {
       inCluster = true;
     }
-    const passThr    = showAllCells || (!isFinite(thr) || energyMev >= thr);
-    const passCl     = showAllCells || inCluster;
-    const passNeg    = showAllCells || energyMev >= 0;
+    const passThr    = slicer.isShowAllCells() || (!isFinite(thr) || energyMev >= thr);
+    const passCl     = slicer.isShowAllCells() || inCluster;
+    const passNeg    = slicer.isShowAllCells() || energyMev >= 0;
     const passFilter = detOn && passNeg && passThr && passCl;
     let vis = passFilter;
-    if (vis && !emptyTh) {
+    if (vis) {
       const c = _cellCenter(h);
       // Inside Z-aligned cylindrical wedge at origin: r² in XY, z within
       // [zMin, zMax], and polar angle within [0, thetaLen).
-      if (c.x*c.x + c.y*c.y < r2 && c.z > zMin && c.z < zMax) {
-        if (fullTh) {
-          vis = false;
-        } else {
-          let ang = Math.atan2(c.y, c.x);
-          if (ang < 0) ang += 2 * Math.PI;
-          if (ang < thetaLen) vis = false;
-        }
-      }
+      if (slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
     }
     _setHandleVisible(h, vis);
     if (vis) visHandles.push(h);
@@ -4580,281 +4490,48 @@ function _applySlicerMask() {
   dirty = true;
 }
 
-function enableSlicer() {
-  if (slicerActive) return;
-  slicerActive = true;
-  if (!slicerGroup) {
-    slicerGroup = _buildSlicerGizmo();
-    scene.add(slicerGroup);
-  }
-  slicerGroup.visible = true;
-  _updateSlicerBasis();
-  _applySlicerMask();
-  document.getElementById('btn-slicer').classList.add('on');
-}
-function disableSlicer() {
-  if (!slicerActive) return;
-  slicerActive = false;
-  if (slicerGroup) slicerGroup.visible = false;
-  // Re-apply user filters now that the cut is gone.
-  applyThreshold();
-  applyFcalThreshold();
-  document.getElementById('btn-slicer').classList.remove('on');
-}
-function toggleSlicer() { slicerActive ? disableSlicer() : enableSlicer(); }
-
-// Show-all-cells toggle — makes every GLB mesh visible for enabled detectors,
-// painting cells absent from the XML with the minimum palette colour of their
-// detector. Delegates to applyThreshold/_applySlicerMask for the actual sweep.
-function toggleShowAllCells() {
-  const wasOn = showAllCells;
-  showAllCells = !showAllCells;
-  document.getElementById('btn-showall').classList.toggle('on', showAllCells);
-  // When turning off, hide the non-active handles we had shown so the normal
-  // flow (which skips non-active cells) leaves the scene clean.
-  if (wasOn) {
-    for (const det of ['TILE', 'LAR', 'HEC'])
-      for (const h of cellMeshesByDet[det])
+const slicer = createSlicerController({
+  THREE,
+  camera,
+  canvas,
+  controls,
+  scene,
+  slicerButton: document.getElementById('btn-slicer'),
+  showAllButton: document.getElementById('btn-showall'),
+  onMaskChange: _applySlicerMask,
+  onDisable: () => {
+    applyThreshold();
+    applyFcalThreshold();
+  },
+  onHideNonActiveShowAll: () => {
+    for (const det of ['TILE', 'LAR', 'HEC']) {
+      for (const h of cellMeshesByDet[det]) {
         if (!active.has(h)) _setHandleVisible(h, false);
+      }
+    }
     _flushIMDirty();
-  }
-  applyThreshold();
-  applyFcalThreshold();
-}
-document.getElementById('btn-showall').addEventListener('click', toggleShowAllCells);
-
-// Drag interaction — click and drag the handle to reshape the cut volume.
-// The handle itself is pinned at the origin and never moves.
-//   · screen-Y  → angular sweep (thetaLength, 0..2π)
-//   · screen-X  → total cylinder height (mm, symmetric around origin)
-(function () {
-  const btn = document.getElementById('btn-slicer');
-  if (btn) btn.addEventListener('click', toggleSlicer);
-
-  const dragRay = new THREE.Raycaster();
-  dragRay.params.Line = { threshold: 25 };
-  let dragging        = false;
-  let dragStartX      = 0;
-  let dragStartY      = 0;
-  let dragStartTheta  = 0;
-  let dragStartHeight = 0;
-
-  function _pointerXY(e) {
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x:  ((e.clientX - rect.left) / rect.width)  *  2 - 1,
-      y: -((e.clientY - rect.top)  / rect.height) *  2 + 1,
-    };
-  }
-
-  canvas.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return;                 // left-button only; other buttons → new IIFE
-    if (!slicerActive || !slicerGroup) return;
-    const pt = _pointerXY(e);
-    dragRay.setFromCamera(pt, camera);
-    const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
-    if (!hits.length) return;
-    dragging         = true;
-    dragStartX       = e.clientX;
-    dragStartY       = e.clientY;
-    dragStartTheta   = slicerThetaLength;
-    dragStartHeight  = slicerHalfHeight * 2;
-    controls.enabled = false;
-    canvas.setPointerCapture(e.pointerId);
-    e.preventDefault();
-    e.stopPropagation();
-  }, /* capture: */ true);
-  canvas.addEventListener('pointermove', e => {
-    if (!dragging) return;
-    // Drag upward (clientY decreases) → grows the sweep toward 2π.
-    const dy          = dragStartY - e.clientY;
-    const dTheta      = (dy / SLICER_THETA_DRAG_PX) * 2 * Math.PI;
-    slicerThetaLength = Math.max(0, Math.min(2 * Math.PI, dragStartTheta + dTheta));
-    // Drag rightward (clientX increases) → grows the total height.
-    const dx          = e.clientX - dragStartX;
-    const newHeight   = dragStartHeight + dx * SLICER_HEIGHT_MM_PER_PX;
-    const clampedH    = Math.max(SLICER_HEIGHT_MIN, Math.min(SLICER_HEIGHT_MAX, newHeight));
-    slicerHalfHeight  = clampedH * 0.5;
-    _updateSlicerBasis();
-  });
-  const endDrag = e => {
-    if (!dragging) return;
-    dragging = false;
-    controls.enabled = true;
-    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
-  };
-  canvas.addEventListener('pointerup',     endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
-})();
-
-// Right-click + drag on the handle translates the whole cut volume (handle
-// gizmo + cylindrical wedge) along the scene's Z axis. The handle follows the
-// mouse cursor: we project each frame's pointer delta (in NDC) onto the
-// screen-space direction of +Z, so the motion matches visually regardless of
-// which side the camera is on. The left-button drag behaviours are untouched.
-(function () {
-  const dragRay = new THREE.Raycaster();
-  dragRay.params.Line = { threshold: 25 };
-  const _p0 = new THREE.Vector3();
-  const _p1 = new THREE.Vector3();
-  let zDragging = false;
-  let zPrevNdcX = 0;
-  let zPrevNdcY = 0;
-
-  function _pointerXY(e) {
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x:  ((e.clientX - rect.left) / rect.width)  *  2 - 1,
-      y: -((e.clientY - rect.top)  / rect.height) *  2 + 1,
-    };
-  }
-
-  canvas.addEventListener('pointerdown', e => {
-    if (e.button !== 2) return;                 // right-button only
-    if (!slicerActive || !slicerGroup) return;
-    const pt = _pointerXY(e);
-    dragRay.setFromCamera(pt, camera);
-    const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
-    if (!hits.length) return;
-    zDragging        = true;
-    zPrevNdcX        = pt.x;
-    zPrevNdcY        = pt.y;
-    controls.enabled = false;
-    canvas.setPointerCapture(e.pointerId);
-    e.preventDefault();
-    e.stopPropagation();
-  }, /* capture: */ true);
-  canvas.addEventListener('pointermove', e => {
-    if (!zDragging) return;
-    const pt    = _pointerXY(e);
-    const dNdcX = pt.x - zPrevNdcX;
-    const dNdcY = pt.y - zPrevNdcY;
-    // Screen-space direction of +Z axis (1 mm step) at the handle's current Z.
-    _p0.set(0, 0, slicerZOffset).project(camera);
-    _p1.set(0, 0, slicerZOffset + 1).project(camera);
-    const zdx   = _p1.x - _p0.x;
-    const zdy   = _p1.y - _p0.y;
-    const len2  = zdx * zdx + zdy * zdy;
-    if (len2 > 1e-10) {
-      // Scalar projection of the mouse NDC delta onto (zdx, zdy) gives the
-      // millimetres of +Z that keep the handle under the cursor.
-      slicerZOffset += (dNdcX * zdx + dNdcY * zdy) / len2;
-      _updateSlicerBasis();
-    }
-    zPrevNdcX = pt.x;
-    zPrevNdcY = pt.y;
-  });
-  const endZDrag = e => {
-    if (!zDragging) return;
-    zDragging = false;
-    controls.enabled = true;
-    try { canvas.releasePointerCapture(e.pointerId); } catch (_) {}
-  };
-  canvas.addEventListener('pointerup',     endZDrag);
-  canvas.addEventListener('pointercancel', endZDrag);
-
-  // Suppress the browser context menu when right-clicking on the handle so the
-  // drag isn't interrupted. Other right-clicks over the canvas are unaffected.
-  canvas.addEventListener('contextmenu', e => {
-    if (!slicerActive || !slicerGroup) return;
-    const pt = _pointerXY(e);
-    dragRay.setFromCamera(pt, camera);
-    const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
-    if (hits.length) e.preventDefault();
-  });
-})();
-
-// ── Keyboard shortcuts ────────────────────────────────────────────────────────
-// Viewer:   G ghost · B beam · R reset · I info · C cinema · P screenshot
-// Panels:   M menu sidebar · E energy · S settings
-// Layers:   T TILE · A LAr · H HEC (toggle each detector visibility)
-// Escape:   close topmost overlay / menu
-document.addEventListener('keydown', e => {
-  // Ignore when focus is inside a text input
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  // Ignore modifier combos (browser shortcuts) — except Shift, which we use
-  // for slicer/background-colour shortcuts.
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-
-  // Shift-modified shortcuts: handle first, then bail.
-  if (e.shiftKey) {
-    switch (e.key.toUpperCase()) {
-      case 'B':
-        window.__cgvToggleBgPicker?.();
-        return;
-      case 'S':
-        toggleSlicer();
-        return;
-      case 'K':
-        // Toggle the cluster-threshold slider on/off (mirrors the right-panel
-        // "Cluster Threshold" button).
-        document.getElementById('cluster-filter-toggle')?.click();
-        return;
-    }
-    return;
-  }
-
-  switch (e.key.toUpperCase()) {
-    case 'G':
-      toggleAllGhosts();
-      break;
-    case 'B':
-      toggleBeam();
-      break;
-    case 'R':
-      resetCamera();
-      break;
-    case 'I':
-      document.getElementById('btn-info').click();
-      break;
-    case 'C':
-      cinemaMode ? exitCinema() : enterCinema();
-      break;
-    case 'M':
-      document.getElementById('btn-panel').click();
-      break;
-    case 'E':
-      setPinnedR(!rpanelPinned);
-      break;
-    case 'P':
-      document.getElementById('btn-shot').click();
-      break;
-    case 'S':
-      settingsPanelOpen ? closeSettingsPanel() : openSettingsPanel();
-      break;
-    // Detector layer toggles (item 8)
-    case 'T':
-      document.getElementById('ltog-tile').click();
-      break;
-    case 'L':
-    case 'A':
-      document.getElementById('ltog-lar').click();
-      break;
-    case 'H':
-      document.getElementById('ltog-hec').click();
-      break;
-    case 'F':
-      document.getElementById('ltog-fcal').click();
-      break;
-    case 'J':
-      document.getElementById('btn-tracks').click();
-      break;
-    case 'K':
-      document.getElementById('btn-cluster').click();
-      break;
-    case 'V':
-      toggleShowAllCells();
-      break;
-    case 'ESCAPE':
-      if (slicerActive)        { disableSlicer(); return; }
-      if (cinemaMode)          { exitCinema(); return; }
-      if (settingsPanelOpen)   { closeSettingsPanel(); return; }
-      if (layersPanelOpen)     { closeLayersPanel(); return; }
-      if (rpanelPinned)        { setPinnedR(false); return; }
-      if (document.getElementById('shot-overlay').classList.contains('open'))
-        { document.getElementById('btn-shot-cancel').click(); return; }
-      if (panelPinned)         { setPinned(false); return; }
-      aboutOverlay.classList.remove('open');
-      break;
-  }
+  },
 });
+
+registerViewerShortcuts({
+  aboutOverlay,
+  closeLayersPanel,
+  closeSettingsPanel,
+  enterCinema,
+  exitCinema,
+  getState: () => ({
+    cinemaMode,
+    layersPanelOpen,
+    panelPinned,
+    rpanelPinned,
+    settingsPanelOpen,
+  }),
+  openSettingsPanel,
+  resetCamera,
+  setPinned,
+  setPinnedR,
+  slicer,
+  toggleAllGhosts,
+  toggleBeam,
+});
+
