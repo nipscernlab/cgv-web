@@ -2,11 +2,7 @@ import * as THREE        from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { initLanguage, setupLanguagePicker, t } from './i18n/index.js';
-import { setupLiveMode } from './liveMode.js';
-import { setupSidebarControls } from './sidebarControls.js';
 import { createSlicerController } from './slicer.js';
-import { setupLocalMode } from './localMode.js';
-import { setupSampleMode } from './sampleMode.js';
 import { registerViewerShortcuts } from './viewerShortcuts.js';
 
 // ── WASM parser: off-main-thread worker with synchronous fallback ────────────
@@ -268,6 +264,7 @@ let showFcal   = true;
 let wasmOk     = false;
 let sceneOk    = false;
 let dirty      = true;
+let curEvtId   = null;
 let isLive     = true;
 let showInfo   = true;
 let cinemaMode = false;
@@ -275,9 +272,10 @@ let cinemaMode = false;
 // Ghost visibility is tracked per-mesh in `ghostVisible` (see GHOST_MESH_NAMES).
 let beamGroup  = null;
 let beamOn     = false;
+let panelPinned  = true;
+let panelHovered = false;
 let reqCount     = 0;
 let allOutlinesMesh = null;
-let sidebarControls = null;
 let trackGroup    = null;
 let clusterGroup  = null;
 let photonGroup   = null;
@@ -989,7 +987,8 @@ function checkReady() {
   }
   if (isLive && poller) {
     poller.start();
-    liveMode.loadFirstAvailableEvent();
+    const list = poller.getList();
+    if (list.length) { curEvtId = list[0].id; processXml(list[0].text); renderEvtList(); }
   }
 }
 
@@ -1390,7 +1389,7 @@ function _buildCollisionHud() {
     .join('');
 }
 function updateCollisionHud() {
-  const visible = !(sidebarControls ? sidebarControls.getState().panelPinned : true) || cinemaMode;
+  const visible = !panelPinned || cinemaMode;
   collisionHud.hidden = !(visible && _lastEventInfo);
   if (!collisionHud.hidden) _buildCollisionHud();
 }
@@ -2459,6 +2458,40 @@ async function processXml(xmlText) {
 }
 
 // ── Right panel (rpanel) toggle — mirrors left panel behavior ────────────────
+const rpanelWrap = document.getElementById('rpanel-wrap');
+const btnRpanel  = document.getElementById('btn-rpanel');
+let rpanelPinned = true;
+let rpanelHovered = false;
+
+function syncRPanelUI() {
+  const open = rpanelPinned || rpanelHovered;
+  rpanelWrap.classList.toggle('collapsed', !open);
+  btnRpanel.classList.toggle('on', rpanelPinned);
+  document.body.classList.toggle('rpanel-unpinned', !rpanelPinned);
+}
+function setPinnedR(v) { rpanelPinned = v; if (v) rpanelHovered = false; syncRPanelUI(); }
+function closeRPanel() { setPinnedR(false); rpanelHovered = false; syncRPanelUI(); }
+function openRPanel()  { setPinnedR(true); }
+
+// Hover from right edge — temporary show (only when not pinned & auto-open on)
+const rpanelEdge = document.getElementById('rpanel-edge');
+rpanelEdge.addEventListener('mouseenter', () => {
+  if (!rpanelPinned && autoOpenEnabled) { rpanelHovered = true; syncRPanelUI(); }
+});
+rpanelWrap.addEventListener('mouseleave', () => {
+  if (!rpanelPinned && rpanelHovered) { rpanelHovered = false; syncRPanelUI(); }
+});
+// Canvas click closes the right panel if it was hovered (not pinned)
+canvas.addEventListener('click', () => {
+  if (!rpanelPinned && rpanelHovered) { rpanelHovered = false; syncRPanelUI(); }
+});
+// Toolbar button — toggle pinned state
+btnRpanel.addEventListener('click', e => {
+  e.stopPropagation();
+  setPinnedR(!rpanelPinned);
+});
+// Start collapsed
+setPinnedR(false);
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 const TAB_IDS = ['tile', 'lar', 'fcal', 'hec', 'track'];
@@ -2482,6 +2515,37 @@ switchTab('tile');
 // ── Mobile: edge-TAP zones to open side panels ────────────────────────────────
 // Dragging interferes with the ATLAS 3D orbit, so we use stationary taps
 // instead. Tapping the left/right edge strip opens the respective panel.
+const mobileMQ = window.matchMedia('(orientation: landscape) and (max-height: 520px)');
+(function setupEdgeTaps() {
+  const panelEdgeEl  = document.getElementById('panel-edge');
+  const rpanelEdgeEl = document.getElementById('rpanel-edge');
+
+  // A "tap" means touch down + up at roughly the same point within 350ms.
+  function tapOpener(el, openFn) {
+    let sx = 0, sy = 0, st = 0, tracking = false;
+    el.addEventListener('touchstart', e => {
+      if (!mobileMQ.matches) return;
+      const t = e.touches[0];
+      sx = t.clientX; sy = t.clientY; st = Date.now();
+      tracking = true;
+    }, { passive: true });
+    el.addEventListener('touchend', e => {
+      if (!tracking) return;
+      tracking = false;
+      const t  = e.changedTouches[0];
+      const dx = Math.abs(t.clientX - sx);
+      const dy = Math.abs(t.clientY - sy);
+      const dt = Date.now() - st;
+      if (dt <= 350 && dx <= 12 && dy <= 12) {
+        openFn();
+        e.preventDefault();
+      }
+    });
+    el.addEventListener('click', () => { if (mobileMQ.matches) openFn(); });
+  }
+  tapOpener(panelEdgeEl,  () => setPinned(true));
+  tapOpener(rpanelEdgeEl, () => setPinnedR(true));
+})();
 
 // ── Slider helpers ────────────────────────────────────────────────────────────
 function parseMevInput(s) {
@@ -2711,7 +2775,7 @@ function initDetPanel(hasTile, hasLAr, hasHec, hasTracks, hasFcal) {
   hecSlider.updateUI(thrHecMev);
   clusterEtSlider.updateUI();
   syncClusterFilterToggle();
-  sidebarControls.setPinnedR(true);
+  openRPanel();
   if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasFcal) switchTab('fcal');
   else if (hasHec) switchTab('hec'); else if (hasTracks) switchTab('track');
 }
@@ -3240,17 +3304,12 @@ function syncLayerToggles() {
   document.getElementById('btn-layers').classList.toggle('on', showTile || showLAr || showHec || showFcal);
 }
 
-function refreshSceneVisibility() {
-  applyThreshold();
-  applyFcalThreshold();
-}
-
 document.getElementById('ltog-tile').addEventListener('click', () => { showTile = !showTile; syncLayerToggles(); applyThreshold(); });
 document.getElementById('ltog-lar') .addEventListener('click', () => { showLAr  = !showLAr;  syncLayerToggles(); applyThreshold(); });
 document.getElementById('ltog-hec') .addEventListener('click', () => { showHec  = !showHec;  syncLayerToggles(); applyThreshold(); });
 document.getElementById('ltog-fcal').addEventListener('click', () => { showFcal = !showFcal; syncLayerToggles(); applyFcalThreshold(); });
-document.getElementById('lbtn-all') .addEventListener('click', () => { showTile = showLAr = showHec = showFcal = true;  syncLayerToggles(); refreshSceneVisibility(); });
-document.getElementById('lbtn-none').addEventListener('click', () => { showTile = showLAr = showHec = showFcal = false; syncLayerToggles(); refreshSceneVisibility(); });
+document.getElementById('lbtn-all') .addEventListener('click', () => { showTile = showLAr = showHec = showFcal = true;  syncLayerToggles(); applyThreshold(); applyFcalThreshold(); });
+document.getElementById('lbtn-none').addEventListener('click', () => { showTile = showLAr = showHec = showFcal = false; syncLayerToggles(); applyThreshold(); applyFcalThreshold(); });
 document.getElementById('cluster-filter-toggle').addEventListener('click', () => {
   clusterFilterEnabled = !clusterFilterEnabled;
   syncClusterFilterToggle();
@@ -3326,7 +3385,6 @@ layersPanel.addEventListener('click', e => e.stopPropagation());
 const panelEl      = document.getElementById('panel');
 const panelEdge    = document.getElementById('panel-edge');
 const panelResizer = document.getElementById('panel-resizer');
-const rpanelWrap   = document.getElementById('rpanel-wrap');
 const savedPW = localStorage.getItem('cgv-panel-width');
 if (savedPW) document.documentElement.style.setProperty('--pw', savedPW + 'px');
 let prDrag = false, prStartX = 0, prStartW = 0;
@@ -3345,29 +3403,42 @@ document.addEventListener('pointerup', () => {
   localStorage.setItem('cgv-panel-width', w);
 });
 
+// ── Shared auto-open preference (set by Settings toggle) ─────────────────────
+let autoOpenEnabled = true;
 
-// ── About overlay ─────────────────────────────────────────────────────────────
-sidebarControls = setupSidebarControls({
-  canvas,
-  getCinemaMode: () => cinemaMode,
-  getTourMode: () => tourMode,
-  onDisableTourMode: () => {
-    tourMode = false;
-    if (cinemaMode) {
-      _tourExiting = false;
-      _tourBlending = false;
-      controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.55;
-    }
-  },
-  onEnableTourMode: () => {
-    tourMode = true;
-    if (cinemaMode) _startTour();
-  },
-  t,
-  updateCollisionHud,
+// ── Panel pin / unpin ─────────────────────────────────────────────────────────
+function setPinned(v) {
+  panelPinned = v;
+  document.body.classList.toggle('panel-unpinned', !v);
+  panelEl.classList.toggle('collapsed', !v);
+  document.getElementById('btn-pin').classList.toggle('on', v);
+  document.querySelector('#pin-icon use').setAttribute('href', v ? '#i-pin' : '#i-pin-off');
+  document.getElementById('btn-pin').dataset.tip = t(v ? 'tip-pin' : 'tip-panel');
+  document.getElementById('btn-panel').classList.toggle('on', v);
+  updateCollisionHud();
+}
+document.getElementById('btn-pin').addEventListener('click', () => setPinned(!panelPinned));
+// Hover from left edge — temporary show (only if auto-open enabled)
+panelEdge.addEventListener('mouseenter', () => {
+  if (!panelPinned && autoOpenEnabled) { panelEl.classList.remove('collapsed'); panelHovered = true; }
+});
+panelEl.addEventListener('mouseleave', () => {
+  if (!panelPinned && panelHovered) { panelEl.classList.add('collapsed'); panelHovered = false; }
+});
+canvas.addEventListener('click', () => {
+  if (!panelPinned && panelHovered) { panelEl.classList.add('collapsed'); panelHovered = false; }
+});
+if (window.innerWidth < 640 || mobileMQ.matches) setPinned(false);
+
+// ── Panel toggle button in toolbar (L key) — pin/unpin ───────────────────────
+document.getElementById('btn-panel').addEventListener('click', () => {
+  // If hovered (temporary): pin it so it stays
+  if (!panelPinned && panelHovered) { panelHovered = false; setPinned(true); return; }
+  // Otherwise toggle pin
+  setPinned(!panelPinned);
 });
 
+// ── About overlay ─────────────────────────────────────────────────────────────
 const aboutOverlay = document.getElementById('about-overlay');
 document.getElementById('btn-about-close').addEventListener('click', () => aboutOverlay.classList.remove('open'));
 aboutOverlay.addEventListener('click', e => { if (e.target===aboutOverlay) aboutOverlay.classList.remove('open'); });
@@ -3423,7 +3494,7 @@ document.querySelectorAll('[data-tip]').forEach(el => {
     hint.innerHTML = html || `<span class="sh-key">Event</span><span class="sh-val">no metadata</span>`;
   }
   function show() {
-    if (!sidebarControls.isHintsEnabled()) return;
+    if (!hintsEnabled) return;
     build();
     hint.classList.add('show');
     const sr = sb.getBoundingClientRect();
@@ -3441,16 +3512,6 @@ document.querySelectorAll('[data-tip]').forEach(el => {
 })();
 
 // ── Mode toggle ───────────────────────────────────────────────────────────────
-const sampleMode = setupSampleMode({
-  advanceProgress,
-  endProgress,
-  esc,
-  processXml,
-  setStatus,
-  startProgress,
-  t,
-});
-
 function setMode(mode) {
   // mode: 'live' | 'local' | 'sample'
   isLive = (mode === 'live');
@@ -3463,38 +3524,251 @@ function setMode(mode) {
   if (mode === 'live') {
     if (poller && wasmOk && sceneOk) poller.start();
   } else {
-    if (poller) poller.stop();
-    if (mode === 'sample') sampleMode.loadSampleIndex();
+    if (poller) { poller.stop(); setLiveDot('stopped'); }
+    if (mode === 'sample') loadSampleIndex();
   }
 }
 document.getElementById('btn-live').addEventListener('click',   () => { if (!isLive) setMode('live'); });
 document.getElementById('btn-local').addEventListener('click',  () => { if (document.getElementById('local-sec').hidden) setMode('local'); });
 document.getElementById('btn-sample').addEventListener('click', () => { if (document.getElementById('sample-sec').hidden) setMode('sample'); });
 
-const liveMode = setupLiveMode({
-  LivePoller,
-  advanceProgress,
-  bumpReq,
-  endProgress,
-  esc,
-  onFallbackToLocal: () => document.getElementById('btn-local').click(),
-  processXml,
-  relTime,
-  startProgress,
-  t,
+// ── LivePoller ────────────────────────────────────────────────────────────────
+let poller = null;
+if (LivePoller) poller = new LivePoller();
+function setLiveDot(state) {
+  const dot   = document.getElementById('ldot');
+  const txt   = document.getElementById('live-txt');
+  dot.className = 'ldot';
+  switch (state) {
+    case 'polling':     dot.classList.add('ok','pulse'); txt.textContent = t('live-polling'); break;
+    case 'same':        dot.classList.add('ok');         txt.textContent = t('live-same'); break;
+    case 'downloading': dot.classList.add('dl','pulse'); txt.textContent = t('live-fetching'); bumpReq(); startProgress(); advanceProgress('download'); break;
+    case 'error':       dot.classList.add('err');        txt.textContent = t('live-error'); break;
+    default:            txt.textContent = t('live-stopped');
+  }
+}
+function renderEvtList() {
+  const list = poller ? poller.getList() : [];
+  const el   = document.getElementById('evt-list');
+  const empty = document.getElementById('live-empty');
+  el.innerHTML = '';
+  // Show empty state when no events available
+  if (empty) empty.hidden = list.length > 0;
+  let marked = false;
+  list.slice(0, 10).forEach((entry, idx) => {
+    const row = document.createElement('div');
+    const isCur = !marked && entry.id === curEvtId;
+    if (isCur) marked = true;
+    row.className = 'erow' + (isCur ? ' cur' : '');
+    const displayName = /\.xml$/i.test(entry.name) ? entry.name : entry.name + '.xml';
+    row.innerHTML = `
+      <div class="einfo">
+        <div class="ename">${esc(displayName)}</div>
+        <div class="etime" data-ts="${entry.timestamp}">${relTime(entry.timestamp)}</div>
+      </div>
+      <button class="edl"><svg class="ic" style="width:11px;height:11px"><use href="#i-dl"/></svg></button>`;
+    row.querySelector('.einfo').addEventListener('click', () => {
+      curEvtId = entry.id; processXml(entry.text); renderEvtList();
+    });
+    row.querySelector('.edl').addEventListener('click', ev => { ev.stopPropagation(); poller.download(idx); });
+    el.appendChild(row);
+  });
+}
+setInterval(() => {
+  for (const el of document.querySelectorAll('.etime[data-ts]')) el.textContent = relTime(+el.dataset.ts);
+}, 30_000);
+if (poller) {
+  poller.addEventListener('newxml', ({ detail: { entry } }) => {
+    startProgress(); advanceProgress('load');
+    curEvtId = entry.id; processXml(entry.text); renderEvtList(); bumpReq();
+    endProgress();
+  });
+  poller.addEventListener('listupdate', renderEvtList);
+  poller.addEventListener('status', ({ detail: { state } }) => setLiveDot(state));
+  poller.addEventListener('error', ({ detail }) => { console.warn('[LivePoller]', detail.message); });
+  poller.init().then(() => { renderEvtList(); }).catch(()=>{});
+} else {
+  document.getElementById('btn-local').click();
+}
+document.getElementById('ibtn-play').addEventListener('click', () => {
+  if (!poller) return; poller.start();
+  document.getElementById('ibtn-play').hidden = true; document.getElementById('ibtn-stop').hidden = false;
 });
-const poller = liveMode.hasPoller() ? { start: () => liveMode.start(), stop: () => liveMode.stop() } : null;
+document.getElementById('ibtn-stop').addEventListener('click', () => {
+  if (!poller) return; poller.stop();
+  document.getElementById('ibtn-stop').hidden = true; document.getElementById('ibtn-play').hidden = false;
+  setLiveDot('stopped');
+});
 
-setupLocalMode({
-  advanceProgress,
-  endProgress,
-  esc,
-  fmtSize,
-  processXml,
-  setStatus,
-  startProgress,
-  activateLocalTab: () => document.getElementById('btn-local')?.click(),
+
+
+// ── Local mode ────────────────────────────────────────────────────────────────
+let localFiles = [];
+document.getElementById('file-folder-in').addEventListener('change', async e => {
+  const files = [...(e.target.files??[])].filter(f => f.name.toLowerCase().endsWith('.xml'));
+  e.target.value = '';
+  if (!files.length) return;
+  localFiles = files.sort((a,b) => a.name.localeCompare(b.name));
+  renderLocalList();
 });
+
+// ── Carousel ──────────────────────────────────────────────────────────────────
+let carouselActive = false;
+let carouselTimer  = null;
+let carouselIdx    = 0;
+
+// Carousel delay step buttons
+let carouselDelaySec = 5;
+document.querySelectorAll('.cdstep').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.cdstep').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    carouselDelaySec = parseInt(btn.dataset.s);
+  });
+});
+document.getElementById('btn-carousel-play').addEventListener('click', () => {
+  if (!localFiles.length) return;
+  carouselActive = true;
+  document.getElementById('btn-carousel-play').hidden = true;
+  document.getElementById('btn-carousel-stop').hidden = false;
+  runCarouselStep();
+});
+document.getElementById('btn-carousel-stop').addEventListener('click', stopCarousel);
+
+function stopCarousel() {
+  carouselActive = false;
+  clearTimeout(carouselTimer);
+  document.getElementById('btn-carousel-stop').hidden = true;
+  document.getElementById('btn-carousel-play').hidden = false;
+}
+async function runCarouselStep() {
+  if (!carouselActive || !localFiles.length) return;
+  carouselIdx = carouselIdx % localFiles.length;
+  document.querySelectorAll('#local-list .lrow').forEach((r, i) =>
+    r.classList.toggle('cur', i === carouselIdx));
+  document.getElementById('carousel-status').textContent =
+    `${carouselIdx + 1} / ${localFiles.length}`;
+  const file = localFiles[carouselIdx];
+  try { processXml(await file.text()); } catch(e) { console.warn('Carousel error:', e.message); }
+  carouselIdx++;
+  carouselTimer = setTimeout(runCarouselStep, carouselDelaySec * 1000);
+}
+function renderLocalList() {
+  const listEl = document.getElementById('local-list');
+  const carBar = document.getElementById('carousel-bar');
+  listEl.hidden = !localFiles.length; listEl.innerHTML = '';
+  if (carBar) { carBar.hidden = localFiles.length < 2; }
+  carouselIdx = 0; stopCarousel();
+  localFiles.forEach(file => {
+    const row = document.createElement('div'); row.className = 'lrow';
+    row.innerHTML = `<span class="lrow-name">${esc(file.name)}</span><span class="lrow-size">${fmtSize(file.size)}</span>`;
+    row.addEventListener('click', async () => {
+      document.querySelectorAll('#local-list .lrow.cur').forEach(r => r.classList.remove('cur'));
+      row.classList.add('cur'); setStatus('Reading file…');
+      startProgress('local'); advanceProgress('acquire');
+      try {
+        const text = await file.text();
+        advanceProgress('load');
+        processXml(text);
+        endProgress();
+      } catch (err) {
+        endProgress();
+        setStatus(`<span class="err">Read error: ${esc(err.message)}</span>`);
+      }
+    });
+    listEl.appendChild(row);
+  });
+}
+document.getElementById('file-in').addEventListener('change', async e => {
+  const f = e.target.files?.[0];
+  if (f) {
+    setStatus('Parsing…');
+    startProgress('local'); advanceProgress('acquire');
+    try { processXml(await f.text()); advanceProgress('load'); endProgress(); }
+    catch (err) { endProgress(); setStatus(`<span class="err">${esc(err.message)}</span>`); }
+  }
+  e.target.value = '';
+});
+
+// ── Drag & drop XML onto Local tab ────────────────────────────────────────────
+(function initLocalDnD() {
+  const sec = document.getElementById('local-sec');
+  if (!sec) return;
+  ['dragenter','dragover'].forEach(ev => sec.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation();
+    sec.classList.add('dragover');
+    e.dataTransfer.dropEffect = 'copy';
+  }));
+  ['dragleave','dragend'].forEach(ev => sec.addEventListener(ev, e => {
+    if (e.target === sec) sec.classList.remove('dragover');
+  }));
+  sec.addEventListener('drop', async e => {
+    e.preventDefault(); e.stopPropagation();
+    sec.classList.remove('dragover');
+    const items = e.dataTransfer?.files ? [...e.dataTransfer.files] : [];
+    const xmls = items.filter(f => f.name.toLowerCase().endsWith('.xml'));
+    if (!xmls.length) return;
+    if (xmls.length === 1) {
+      const f = xmls[0];
+      setStatus('Reading file…');
+      startProgress('local'); advanceProgress('acquire');
+      try { processXml(await f.text()); advanceProgress('load'); endProgress(); }
+      catch (err) { endProgress(); setStatus(`<span class="err">${esc(err.message)}</span>`); }
+    } else {
+      localFiles = xmls.sort((a,b) => a.name.localeCompare(b.name));
+      renderLocalList();
+    }
+    // Switch to local tab
+    document.getElementById('btn-local')?.click();
+  });
+})();
+
+// ── Sample events mode ────────────────────────────────────────────────────────
+let _sampleLoaded = false;
+async function loadSampleIndex() {
+  if (_sampleLoaded) return;
+  const msgEl  = document.getElementById('sample-list-msg');
+  const listEl = document.getElementById('sample-list');
+  msgEl.textContent = t('sample-loading');
+  msgEl.hidden = false;
+  listEl.innerHTML = '';
+  try {
+    const res = await fetch('./default_xml/index.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const names = await res.json();
+    msgEl.hidden = true;
+    if (!names.length) { msgEl.textContent = t('sample-empty'); msgEl.hidden = false; return; }
+    names.forEach(name => {
+      const btn = document.createElement('button');
+      btn.className = 'sample-item';
+      btn.innerHTML = `<svg class="ic sample-item-icon" style="width:11px;height:11px"><use href="#i-star"/></svg><span class="sample-item-name">${esc(name)}</span>`;
+      btn.addEventListener('click', async () => {
+        document.querySelectorAll('.sample-item.cur').forEach(b => b.classList.remove('cur'));
+        btn.classList.add('cur');
+        setStatus('Loading sample…');
+        startProgress(); advanceProgress('request');
+        try {
+          const xmlRes = await fetch(`./default_xml/${encodeURIComponent(name)}`);
+          advanceProgress('download');
+          if (!xmlRes.ok) throw new Error(`HTTP ${xmlRes.status}`);
+          const xmlText = await xmlRes.text();
+          advanceProgress('load');
+          processXml(xmlText);
+          endProgress();
+        } catch (err) {
+          endProgress();
+          setStatus(`<span class="err">Error: ${esc(err.message)}</span>`);
+          btn.classList.remove('cur');
+        }
+      });
+      listEl.appendChild(btn);
+    });
+    _sampleLoaded = true;
+  } catch (err) {
+    msgEl.textContent = t('sample-error');
+    msgEl.hidden = false;
+  }
+}
 
 // ── Screenshot ────────────────────────────────────────────────────────────────
 const shotOverlay  = document.getElementById('shot-overlay');
@@ -4018,6 +4292,78 @@ function endProgress() {
 }
 
 // ── Settings panel ────────────────────────────────────────────────────────────
+const settingsPanel = document.getElementById('settings-panel');
+let settingsPanelOpen = false;
+function openSettingsPanel() {
+  settingsPanelOpen = true;
+  settingsPanel.classList.add('open');
+  document.getElementById('btn-settings').classList.add('on');
+  const br = document.getElementById('btn-settings').getBoundingClientRect();
+  requestAnimationFrame(() => {
+    const pw = settingsPanel.offsetWidth  || 290;
+    const ph = settingsPanel.offsetHeight || 320;
+    let left = br.left + br.width / 2 - pw / 2;
+    let top  = br.top - ph - 10;
+    left = Math.max(6, Math.min(left, window.innerWidth - pw - 6));
+    top  = Math.max(6, top);
+    settingsPanel.style.left = left + 'px';
+    settingsPanel.style.top  = top  + 'px';
+  });
+}
+function closeSettingsPanel() {
+  settingsPanelOpen = false;
+  settingsPanel.classList.remove('open');
+  document.getElementById('btn-settings').classList.remove('on');
+}
+document.getElementById('btn-settings').addEventListener('click', e => {
+  e.stopPropagation();
+  settingsPanelOpen ? closeSettingsPanel() : openSettingsPanel();
+});
+document.addEventListener('click', () => { if (settingsPanelOpen) closeSettingsPanel(); });
+settingsPanel.addEventListener('click', e => e.stopPropagation());
+
+// Settings toggles — hints
+let hintsEnabled = true;
+document.getElementById('stog-hints').addEventListener('click', function() {
+  hintsEnabled = !hintsEnabled;
+  this.classList.toggle('on', hintsEnabled);
+  this.setAttribute('aria-checked', hintsEnabled);
+  document.getElementById('btn-tip').style.display = hintsEnabled ? '' : 'none';
+});
+
+// Settings toggles — auto-open sidebar on hover
+document.getElementById('stog-autopen').addEventListener('click', function() {
+  autoOpenEnabled = this.classList.toggle('on');
+  this.setAttribute('aria-checked', autoOpenEnabled);
+  panelEdge.style.pointerEvents    = autoOpenEnabled ? '' : 'none';
+  rpanelEdge.style.pointerEvents   = autoOpenEnabled ? '' : 'none';
+});
+
+// Settings toggles — guided tour in cinema mode
+(function () {
+  const tog = document.getElementById('stog-tour');
+  if (!tog) return;
+  const sync = () => {
+    tog.classList.toggle('on', tourMode);
+    tog.setAttribute('aria-checked', tourMode ? 'true' : 'false');
+  };
+  sync();
+  tog.addEventListener('click', () => {
+    tourMode = !tourMode;
+    localStorage.setItem('cgv-tour-mode', tourMode ? '1' : '0');
+    sync();
+    if (cinemaMode) {
+      // Swap mode live: turning on → smooth entry from current pose;
+      // off → fall back to auto-rotate with the cinema ramp restarted.
+      if (tourMode) { _startTour(); }
+      else {
+        _tourExiting = false; _tourBlending = false;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.55;
+      }
+    }
+  });
+})();
 
 // ── About button (panel head) ─────────────────────────────────────────────────
 document.getElementById('btn-about').addEventListener('click', () => {
@@ -4152,11 +4498,11 @@ const slicer = createSlicerController({
   scene,
   slicerButton: document.getElementById('btn-slicer'),
   showAllButton: document.getElementById('btn-showall'),
-  onMaskChange: () => {
-    if (slicer.isActive()) _applySlicerMask();
-    else refreshSceneVisibility();
+  onMaskChange: _applySlicerMask,
+  onDisable: () => {
+    applyThreshold();
+    applyFcalThreshold();
   },
-  onDisable: refreshSceneVisibility,
   onHideNonActiveShowAll: () => {
     for (const det of ['TILE', 'LAR', 'HEC']) {
       for (const h of cellMeshesByDet[det]) {
@@ -4170,23 +4516,22 @@ const slicer = createSlicerController({
 registerViewerShortcuts({
   aboutOverlay,
   closeLayersPanel,
-  closeSettingsPanel: sidebarControls.closeSettingsPanel,
+  closeSettingsPanel,
   enterCinema,
   exitCinema,
   getState: () => ({
     cinemaMode,
     layersPanelOpen,
-    panelPinned: sidebarControls.getState().panelPinned,
-    rpanelPinned: sidebarControls.getState().rpanelPinned,
-    settingsPanelOpen: sidebarControls.getState().settingsPanelOpen,
+    panelPinned,
+    rpanelPinned,
+    settingsPanelOpen,
   }),
-  openSettingsPanel: sidebarControls.openSettingsPanel,
+  openSettingsPanel,
   resetCamera,
-  setPinned: sidebarControls.setPinned,
-  setPinnedR: sidebarControls.setPinnedR,
+  setPinned,
+  setPinnedR,
   slicer,
   toggleAllGhosts,
   toggleBeam,
 });
-
 
