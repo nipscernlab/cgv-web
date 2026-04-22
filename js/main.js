@@ -1734,9 +1734,12 @@ function clearTracks() {
 }
 
 function applyTrackThreshold() {
-  if (!trackGroup) return;
-  for (const child of trackGroup.children)
-    child.visible = child.userData.ptGev >= thrTrackGev;
+  if (trackGroup)
+    for (const child of trackGroup.children)
+      child.visible = child.userData.ptGev >= thrTrackGev;
+  if (photonGroup)
+    for (const child of photonGroup.children)
+      child.visible = child.userData.ptGev >= thrTrackGev;
   updateTrackAtlasIntersections();
   dirty = true;
 }
@@ -1772,9 +1775,9 @@ const CLUSTER_MAT = new THREE.LineDashedMaterial({
 const PHOTON_MAT = new THREE.LineBasicMaterial({
   color: 0xFFCC00, transparent: true, opacity: 0.85, depthWrite: false,
 });
-const PHOTON_SPRING_R      = 40;   // helix radius in mm
-const PHOTON_SPRING_TURNS  = 14;   // number of full coils
-const PHOTON_SPRING_PTS    = 22;   // points sampled per coil (smoothness)
+const PHOTON_SPRING_R         = 20;    // helix radius in mm
+const PHOTON_SPRING_TURNS_PER_MM = 0.014; // coils per mm of track length
+const PHOTON_SPRING_PTS       = 22;   // points sampled per coil (smoothness)
 // Inner cylinder (start): r = 1.4 m, h = 6.4 m
 const CLUSTER_CYL_IN_R      = 1400;
 const CLUSTER_CYL_IN_HALF_H = 3200;
@@ -1832,14 +1835,20 @@ function parsePhotons(doc) {
     const etaEl    = el.querySelector('eta');
     const phiEl    = el.querySelector('phi');
     const energyEl = el.querySelector('energy');
+    const ptEl     = el.querySelector('pt');
     if (!etaEl || !phiEl) continue;
     const etas     = etaEl.textContent.trim().split(/\s+/).map(Number);
     const phis     = phiEl.textContent.trim().split(/\s+/).map(Number);
     const energies = energyEl ? energyEl.textContent.trim().split(/\s+/).map(Number) : [];
+    const pts      = ptEl     ? ptEl.textContent.trim().split(/\s+/).map(Number)     : [];
     const m = Math.min(etas.length, phis.length);
     for (let i = 0; i < m; i++) {
       if (!isFinite(etas[i]) || !isFinite(phis[i])) continue;
-      result.push({ eta: etas[i], phi: phis[i], energyGev: isFinite(energies[i]) ? energies[i] : 0 });
+      result.push({
+        eta: etas[i], phi: phis[i],
+        energyGev: isFinite(energies[i]) ? energies[i] : 0,
+        ptGev:     isFinite(pts[i])      ? pts[i]      : 0,
+      });
     }
   }
   return result;
@@ -1857,17 +1866,20 @@ function drawPhotons(photons) {
   if (!photons.length) return;
   photonGroup = new THREE.Group();
   photonGroup.renderOrder = 7;
-  photonGroup.visible = (typeof photonsVisible === 'undefined') ? true : photonsVisible;
-  for (const { eta, phi } of photons) {
+  photonGroup.visible = (typeof tracksVisible === 'undefined') ? true : tracksVisible;
+  for (const { eta, phi, ptGev } of photons) {
     const theta = 2 * Math.atan(Math.exp(-eta));
     const sinT  = Math.sin(theta);
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz =  Math.cos(theta);
     const tEnd = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
-    const pts  = _makeSpringPoints(dx, dy, dz, tEnd, PHOTON_SPRING_R, PHOTON_SPRING_TURNS, PHOTON_SPRING_PTS);
+    const nTurns = Math.round(PHOTON_SPRING_TURNS_PER_MM * tEnd);
+    const pts  = _makeSpringPoints(dx, dy, dz, tEnd, PHOTON_SPRING_R, nTurns, PHOTON_SPRING_PTS);
     const geo  = new THREE.BufferGeometry().setFromPoints(pts);
     const line = new THREE.Line(geo, PHOTON_MAT);
+    line.userData.ptGev = ptGev;
+    line.visible = ptGev >= thrTrackGev;
     photonGroup.add(line);
   }
   photonGroup.matrixAutoUpdate = false;
@@ -2254,16 +2266,18 @@ async function processXml(xmlText) {
   resetScene();
 
   // ── Particle tracks ─────────────────────────────────────────────────────────
-  try {
-    const raw = parseTracks(doc);
-    if (raw.length) {
-      trackPtMinGev = 0;
-      trackPtMaxGev = 5;
-      thrTrackGev   = 2;
-      trackPtSlider.update(0, 5);
-    }
-    drawTracks(raw);
-  } catch (e) { console.warn('Track parse error', e); }
+  let rawTracks = [], rawPhotons = [];
+  try { rawTracks  = parseTracks(doc);  } catch (e) { console.warn('Track parse error', e); }
+  try { rawPhotons = parsePhotons(doc); } catch (e) { console.warn('Photon parse error', e); }
+
+  if (rawTracks.length || rawPhotons.length) {
+    let ptMax = 5;
+    for (const { ptGev } of rawTracks)  if (isFinite(ptGev)  && ptGev  > ptMax) ptMax = ptGev;
+    for (const { ptGev } of rawPhotons) if (isFinite(ptGev)  && ptGev  > ptMax) ptMax = ptGev;
+    trackPtSlider.update(0, ptMax);
+  }
+  try { drawTracks(rawTracks);   } catch (e) { console.warn('Track draw error', e); }
+  try { drawPhotons(rawPhotons); } catch (e) { console.warn('Photon draw error', e); }
 
   // ── Cluster η/φ lines ────────────────────────────────────────────────────────
   try {
@@ -2282,9 +2296,6 @@ async function processXml(xmlText) {
     drawClusters(rawClusters);
     rebuildActiveClusterCellIds();
   } catch (e) { console.warn('Cluster parse error', e); }
-
-  // ── Photon spring lines ───────────────────────────────────────────────────────
-  try { drawPhotons(parsePhotons(doc)); } catch (e) { console.warn('Photon parse error', e); }
 
   // ── FCAL cells ───────────────────────────────────────────────────────────────
   try { drawFcal(fcalCells); } catch (e) { console.warn('FCAL draw error', e); }
@@ -2937,9 +2948,10 @@ let   lastRay    = 0;
 let   mousePos = { x: 0, y: 0 };
 function doRaycast(clientX, clientY) {
   const hasTrackLines   = trackGroup   && trackGroup.visible   && trackGroup.children.length   > 0;
+  const hasPhotonLines  = photonGroup  && photonGroup.visible  && photonGroup.children.length  > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
   const hasFcalTubes    = fcalGroup && fcalGroup.children.some(c => c.isInstancedMesh) && fcalVisibleMap.length > 0;
-  if (!showInfo || cinemaMode || (!active.size && !hasTrackLines && !hasClusterLines && !hasFcalTubes)) { tooltip.hidden = true; clearOutline(); return; }
+  if (!showInfo || cinemaMode || (!active.size && !hasTrackLines && !hasPhotonLines && !hasClusterLines && !hasFcalTubes)) { tooltip.hidden = true; clearOutline(); return; }
   // Don't show cell info when the pointer is over any UI element (panels, toolbar, overlays)
   const topEl = document.elementFromPoint(clientX, clientY);
   if (topEl && topEl !== canvas) { tooltip.hidden = true; clearOutline(); return; }
@@ -3000,16 +3012,19 @@ function doRaycast(clientX, clientY) {
       tooltip.hidden = false; dirty = true; return;
     }
   }
-  // ── Track hit ─────────────────────────────────────────────────────────────
-  if (hasTrackLines) {
-    const visibleTracks = trackGroup.children.filter(c => c.visible);
-    const trackHits = raycast.intersectObjects(visibleTracks, false);
-    if (trackHits.length) {
-      const line         = trackHits[0].object;
+  // ── Track / Photon hit (pick closest) ────────────────────────────────────
+  if (hasTrackLines || hasPhotonLines) {
+    const candidates = [];
+    if (hasTrackLines)  candidates.push(...trackGroup.children.filter(c => c.visible));
+    if (hasPhotonLines) candidates.push(...photonGroup.children.filter(c => c.visible));
+    const hits = raycast.intersectObjects(candidates, false);
+    if (hits.length) {
+      const line         = hits[0].object;
       const ptGev        = line.userData.ptGev        ?? 0;
       const storeGateKey = line.userData.storeGateKey ?? '';
+      const isPhoton     = photonGroup && photonGroup.children.includes(line);
       clearOutline();
-      tipCellEl.textContent  = 'Track';
+      tipCellEl.textContent  = isPhoton ? 'Photon' : 'Track';
       tipCoordEl.textContent = storeGateKey;
       tipEEl.textContent     = `${ptGev.toFixed(3)} GeV`;
       if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
@@ -3354,7 +3369,8 @@ function syncTracksBtn() {
 }
 function toggleTracks() {
   tracksVisible = !tracksVisible;
-  if (trackGroup) trackGroup.visible = tracksVisible;
+  if (trackGroup)  trackGroup.visible  = tracksVisible;
+  if (photonGroup) photonGroup.visible = tracksVisible;
   updateTrackAtlasIntersections();
   syncTracksBtn();
   dirty = true;
@@ -3374,18 +3390,6 @@ function toggleClusters() {
 }
 document.getElementById('btn-cluster').addEventListener('click', toggleClusters);
 
-// ── Photon spring lines toggle ───────────────────────────────────────────────
-let photonsVisible = true;
-function syncPhotonsBtn() {
-  document.getElementById('btn-photon').classList.toggle('on', photonsVisible);
-}
-function togglePhotons() {
-  photonsVisible = !photonsVisible;
-  if (photonGroup) photonGroup.visible = photonsVisible;
-  syncPhotonsBtn();
-  dirty = true;
-}
-document.getElementById('btn-photon').addEventListener('click', togglePhotons);
 
 document.addEventListener('click', () => {
   if (layersPanelOpen) closeLayersPanel();
