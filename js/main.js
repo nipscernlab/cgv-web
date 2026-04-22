@@ -889,6 +889,25 @@ let _fpsFrames = 0, _fpsLast = performance.now();
 // but stopping the loop entirely frees the main thread for other tabs. Resumed
 // on visibilitychange.
 let _loopRunning = false;
+let _resumeWarmFrames = 0;
+function _scheduleWarmFrames(count = 12) {
+  _resumeWarmFrames = Math.max(_resumeWarmFrames, count | 0);
+  dirty = true;
+}
+function _restoreRendererAfterFocus() {
+  const pr = Math.min(window.devicePixelRatio || 1, 2);
+  renderer.setPixelRatio(pr);
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  dirLight.position.copy(camera.position);
+  controls.update();
+  if (renderer.isWebGLRenderer) {
+    if (typeof renderer.resetState === 'function') renderer.resetState();
+    if (renderer.info && typeof renderer.info.reset === 'function') renderer.info.reset();
+  }
+  _scheduleWarmFrames(18);
+}
 function _startLoop() {
   if (_loopRunning) return;
   _loopRunning = true;
@@ -905,6 +924,10 @@ function _startLoop() {
     }
     if (cinemaMode || _tourExiting) _tourTick();
     controls.update();
+    if (_resumeWarmFrames > 0) {
+      _resumeWarmFrames--;
+      dirty = true;
+    }
     if (controls.autoRotate) dirty = true;
     if (!dirty) return;
     renderer.render(scene, camera);
@@ -913,9 +936,21 @@ function _startLoop() {
 }
 function _stopLoop() { _loopRunning = false; }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) _stopLoop(); else _startLoop();
+  if (document.hidden) _stopLoop();
+  else {
+    _restoreRendererAfterFocus();
+    _startLoop();
+  }
 });
 _startLoop();
+window.addEventListener('focus', () => {
+  _restoreRendererAfterFocus();
+  _startLoop();
+});
+window.addEventListener('pageshow', () => {
+  _restoreRendererAfterFocus();
+  _startLoop();
+});
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
