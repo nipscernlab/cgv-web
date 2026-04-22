@@ -52,6 +52,16 @@ export function parse_atlas_ids_bulk(ids: string): Int32Array;
  */
 export function parse_atlas_ids_bulk_zc(ids: string): number;
 
+/**
+ * Parse a full JiveXML event string.
+ * Returns a JS object with all detector data and pre-decoded ATLAS ID packs.
+ * The return value mirrors the protocol used by `parseXmlAndDecode` in the worker:
+ *   { eventInfo, tileCells, larCells, hecCells, mbtsCells, fcalCells,
+ *     tracks, photons, clusters, clusterCollections,
+ *     tilePacked, larPacked, hecPacked }
+ */
+export function parse_jivexml(xml_text: string): any;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -63,6 +73,7 @@ export interface InitOutput {
     readonly parse_atlas_id: (a: number, b: number) => number;
     readonly parse_atlas_ids_bulk: (a: number, b: number, c: number) => void;
     readonly parse_atlas_ids_bulk_zc: (a: number, b: number) => number;
+    readonly parse_jivexml: (a: number, b: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;

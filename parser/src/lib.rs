@@ -833,7 +833,7 @@ fn tile_comp_k(tower: i32, sampling: i32, x: i32) -> Option<i32> {
 ///
 ///   invalid:  [0..7]=0
 #[inline]
-fn decode_id_compact(id: u64) -> [i32; 8] {
+pub(crate) fn decode_id_compact(id: u64) -> [i32; 8] {
     let subdet_values: &[i32] = &[2, 4, 5, 7, 10, 11, 12, 13];
     let subdet = match subdet_values.get(extract(id, 64, 3)) {
         Some(&v) => v,
@@ -1127,6 +1127,22 @@ pub fn example_ids() -> JsValue {
     ];
 
     serde_wasm_bindgen::to_value(&examples).unwrap()
+}
+
+// ─── JiveXML parser ──────────────────────────────────────────────────────────
+
+mod xml_parser;
+
+/// Parse a full JiveXML event string.
+/// Returns a JS object with all detector data and pre-decoded ATLAS ID packs.
+/// The return value mirrors the protocol used by `parseXmlAndDecode` in the worker:
+///   { eventInfo, tileCells, larCells, hecCells, mbtsCells, fcalCells,
+///     tracks, photons, clusters, clusterCollections,
+///     tilePacked, larPacked, hecPacked }
+#[wasm_bindgen]
+pub fn parse_jivexml(xml_text: &str) -> JsValue {
+    let result = xml_parser::parse_jivexml_inner(xml_text);
+    serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
 }
 
 // ─── Native tests ─────────────────────────────────────────────────────────────
