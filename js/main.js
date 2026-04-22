@@ -87,6 +87,17 @@ class _WasmParserPool {
       hec:  hecStr  && f ? f(hecStr)  : null,
     });
   }
+  /** Parse XML text and bulk-decode ATLAS IDs entirely in the worker.
+   *  Returns the full parseXmlResult message, or null if no worker is available
+   *  (caller must fall back to inline parsing + parse()). */
+  parseXmlAndDecode(xmlText) {
+    if (!this._worker) return Promise.resolve(null);
+    const rid = ++this._rid;
+    return new Promise((resolve, reject) => {
+      this._pending.set(rid, { resolve, reject });
+      this._worker.postMessage({ type: 'parseXmlAndDecode', rid, xmlText });
+    });
+  }
 }
 const _wasmPool = new _WasmParserPool();
 
@@ -1775,9 +1786,12 @@ const CLUSTER_MAT = new THREE.LineDashedMaterial({
 const PHOTON_MAT = new THREE.LineBasicMaterial({
   color: 0xFFCC00, transparent: true, opacity: 0.85, depthWrite: false,
 });
+const PHOTON_START_OFFSET_MM  = 100;   // start the spring 10 cm away from the origin
 const PHOTON_SPRING_R         = 20;    // helix radius in mm
 const PHOTON_SPRING_TURNS_PER_MM = 0.014; // coils per mm of track length
 const PHOTON_SPRING_PTS       = 22;   // points sampled per coil (smoothness)
+const PHOTON_TRACK_DIR_DOT_MIN = 0.97;
+const PHOTON_TRACK_RADIAL_TOL_MM = 250;
 // Inner cylinder (start): r = 1.4 m, h = 6.4 m
 const CLUSTER_CYL_IN_R      = 1400;
 const CLUSTER_CYL_IN_HALF_H = 3200;
@@ -1812,12 +1826,14 @@ function _makeSpringPoints(dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
   const ref = Math.abs(fwd.x) < 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
   const right = new THREE.Vector3().crossVectors(fwd, ref).normalize();
   const up    = new THREE.Vector3().crossVectors(fwd, right).normalize();
+  const startOffset = Math.min(PHOTON_START_OFFSET_MM, Math.max(0, totalLen));
+  const visibleLen  = Math.max(0, totalLen - startOffset);
   const nTotal = nTurns * ptsPerTurn + 1;
   const pts = [];
   for (let i = 0; i < nTotal; i++) {
     const t     = i / (nTotal - 1);
     const angle = t * nTurns * 2 * Math.PI;
-    const along = t * totalLen;
+    const along = startOffset + t * visibleLen;
     const cx    = Math.cos(angle) * radius;
     const cy    = Math.sin(angle) * radius;
     pts.push(new THREE.Vector3(
@@ -1827,6 +1843,48 @@ function _makeSpringPoints(dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
     ));
   }
   return pts;
+}
+
+function _photonDirection(eta, phi) {
+  const theta = 2 * Math.atan(Math.exp(-eta));
+  const sinT  = Math.sin(theta);
+  return new THREE.Vector3(
+    -sinT * Math.cos(phi),
+    -sinT * Math.sin(phi),
+     Math.cos(theta),
+  );
+}
+
+function _trackDuplicatesPhoton(track, photon) {
+  const pts = track.pts;
+  if (!pts || pts.length < 2) return false;
+  const dir = _photonDirection(photon.eta, photon.phi).normalize();
+  const seg = new THREE.Vector3().subVectors(pts[pts.length - 1], pts[0]);
+  if (seg.lengthSq() < 1e-6) return false;
+  seg.normalize();
+  if (Math.abs(seg.dot(dir)) < PHOTON_TRACK_DIR_DOT_MIN) return false;
+
+  const photonEnd = _cylIntersect(dir.x, dir.y, dir.z, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
+  let matchedPts = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    const along = p.dot(dir);
+    if (along < PHOTON_START_OFFSET_MM || along > photonEnd + 50) continue;
+    const radial = Math.sqrt(Math.max(0, p.lengthSq() - along * along));
+    if (Math.abs(radial - PHOTON_SPRING_R) > PHOTON_TRACK_RADIAL_TOL_MM) return false;
+    matchedPts++;
+  }
+  return matchedPts >= 2;
+}
+
+function filterPhotonDuplicateTracks(tracks, photons) {
+  if (!tracks.length || !photons.length) return tracks;
+  return tracks.filter(track => {
+    for (let i = 0; i < photons.length; i++) {
+      if (_trackDuplicatesPhoton(track, photons[i])) return false;
+    }
+    return true;
+  });
 }
 
 function parsePhotons(doc) {
@@ -2248,28 +2306,63 @@ async function processXml(xmlText) {
   const rid = ++_procXmlRid;
   const t0 = performance.now();
 
-  // Parse XML once — all detectors share the same Document
-  let doc, tileCells, larCells, hecCells, mbtsCells, fcalCells;
-  try { doc = parseXmlDoc(xmlText); }
-  catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); return; }
-  currentEventInfo = parseEventInfo(doc);
-  try { tileCells = parseTile(doc); } catch { tileCells = []; }
-  try { larCells  = parseLAr(doc);  } catch { larCells  = []; }
-  try { hecCells  = parseHec(doc);  } catch { hecCells  = []; }
-  try { mbtsCells = parseMBTS(doc); } catch { mbtsCells = []; }
-  try { fcalCells = parseFcal(doc); } catch { fcalCells = []; }
+  let doc = null;
+  let tileCells, larCells, hecCells, mbtsCells, fcalCells;
+  let tilePacked = null, larPacked = null, hecPacked = null;
+  let rawTracks = [], rawPhotons = [], rawClusters = [];
+  let _clusterCollections = null;
+
+  // ── Off-thread XML parse + WASM decode (worker path) ─────────────────────
+  // Both DOMParser and bulk ID decode run in the existing WASM worker so the
+  // main thread is never blocked, even on 47 MB events.
+  let workerResult;
+  try { workerResult = await _wasmPool.parseXmlAndDecode(xmlText); }
+  catch (e) { console.warn('[parseXmlAndDecode] worker error, falling back:', e && e.message); workerResult = null; }
+  // Drop stale replies — a newer event arrived while the worker was busy.
+  if (rid !== _procXmlRid) return;
+
+  if (workerResult) {
+    if (workerResult.error) { setStatus(`<span class="err">${esc(workerResult.error)}</span>`); return; }
+    currentEventInfo    = workerResult.eventInfo;
+    tileCells           = workerResult.tileCells;
+    larCells            = workerResult.larCells;
+    hecCells            = workerResult.hecCells;
+    mbtsCells           = workerResult.mbtsCells;
+    fcalCells           = workerResult.fcalCells;
+    tilePacked          = workerResult.tilePacked;
+    larPacked           = workerResult.larPacked;
+    hecPacked           = workerResult.hecPacked;
+    rawPhotons          = workerResult.photons;
+    rawClusters         = workerResult.clusters;
+    _clusterCollections = workerResult.clusterCollections;
+    // Worker returns plain {x,y,z} objects; reconstruct THREE.Vector3 here.
+    rawTracks = workerResult.tracks.map(t => ({
+      ...t, pts: t.pts.map(p => new THREE.Vector3(p.x, p.y, p.z)),
+    }));
+  } else {
+    // ── Fallback: synchronous parse on main thread ─────────────────────────
+    try { doc = parseXmlDoc(xmlText); }
+    catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); return; }
+    currentEventInfo = parseEventInfo(doc);
+    try { tileCells = parseTile(doc); } catch { tileCells = []; }
+    try { larCells  = parseLAr(doc);  } catch { larCells  = []; }
+    try { hecCells  = parseHec(doc);  } catch { hecCells  = []; }
+    try { mbtsCells = parseMBTS(doc); } catch { mbtsCells = []; }
+    try { fcalCells = parseFcal(doc); } catch { fcalCells = []; }
+    try { rawTracks  = parseTracks(doc);  } catch (e) { console.warn('Track parse error', e); }
+    try { rawPhotons = parsePhotons(doc); } catch (e) { console.warn('Photon parse error', e); }
+    // parseClusters is called later (after resetScene) to preserve its
+    // lastClusterData side-effect in the correct order.
+  }
+  rawTracks = filterPhotonDuplicateTracks(rawTracks, rawPhotons);
 
   const total = tileCells.length + larCells.length + hecCells.length + mbtsCells.length;
   if (!total && !fcalCells.length) { setStatus('<span class="warn">No TILE, LAr, HEC, MBTS or FCAL cells found</span>'); return; }
 
   setStatus(`Decoding ${total} cells…`);
-  resetScene();
+  resetScene();  // clears lastClusterData
 
   // ── Particle tracks ─────────────────────────────────────────────────────────
-  let rawTracks = [], rawPhotons = [];
-  try { rawTracks  = parseTracks(doc);  } catch (e) { console.warn('Track parse error', e); }
-  try { rawPhotons = parsePhotons(doc); } catch (e) { console.warn('Photon parse error', e); }
-
   if (rawTracks.length || rawPhotons.length) {
     let ptMax = 5;
     for (const { ptGev } of rawTracks)  if (isFinite(ptGev)  && ptGev  > ptMax) ptMax = ptGev;
@@ -2281,7 +2374,10 @@ async function processXml(xmlText) {
 
   // ── Cluster η/φ lines ────────────────────────────────────────────────────────
   try {
-    const rawClusters = parseClusters(doc);
+    // Fallback: parse clusters now (after resetScene) so lastClusterData is set.
+    // Worker path: restore lastClusterData from the pre-parsed collections.
+    if (!workerResult) rawClusters = parseClusters(doc);
+    else lastClusterData = { collections: _clusterCollections };
     if (rawClusters.length) {
       let etMin = Infinity, etMax = -Infinity;
       for (const { etGev } of rawClusters) {
@@ -2329,25 +2425,23 @@ async function processXml(xmlText) {
   const _missLog = { TILE: [], LAR: [], HEC: [], MBTS: [] };
   const _logMiss = (kind, msg) => { if (_missLog[kind].length < _MISS_SAMPLE) _missLog[kind].push(msg); };
 
-  // ── Bulk decode: one WASM call per detector replaces N individual FFI calls ──
-  // Array.join avoids the O(n²) growth of repeated `s += ' ' + id` (V8 builds
-  // ropes but each branch still costs a heap allocation we can skip).
-  function idsToStr(cells) {
-    const arr = new Array(cells.length);
-    for (let i = 0; i < cells.length; i++) arr[i] = cells[i].id;
-    return arr.join(' ');
+  // ── Bulk WASM decode (fallback path only — worker already did it above) ────
+  if (!workerResult) {
+    const idsToStr = (cells) => {
+      const arr = new Array(cells.length);
+      for (let i = 0; i < cells.length; i++) arr[i] = cells[i].id;
+      return arr.join(' ');
+    };
+    const _packs = await _wasmPool.parse(
+      tileCells.length ? idsToStr(tileCells) : null,
+      larCells.length  ? idsToStr(larCells)  : null,
+      hecCells.length  ? idsToStr(hecCells)  : null,
+    );
+    if (rid !== _procXmlRid) return;
+    tilePacked = _packs.tile;
+    larPacked  = _packs.lar;
+    hecPacked  = _packs.hec;
   }
-  const _packs = await _wasmPool.parse(
-    tileCells.length ? idsToStr(tileCells) : null,
-    larCells.length  ? idsToStr(larCells)  : null,
-    hecCells.length  ? idsToStr(hecCells)  : null,
-  );
-  // Another event may have started while the worker was busy — if so, drop
-  // this reply on the floor so we don't overwrite the fresher scene state.
-  if (rid !== _procXmlRid) return;
-  const tilePacked = _packs.tile;
-  const larPacked  = _packs.lar;
-  const hecPacked  = _packs.hec;
 
   // ── TileCal cells ─────────────────────────────────────────────────────────
   // The event loop paints colors via setColorAt; visibility is decided by

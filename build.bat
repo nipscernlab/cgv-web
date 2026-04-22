@@ -91,19 +91,25 @@ if exist "geometry_data\CaloGeometry.glb.gz" del "geometry_data\CaloGeometry.glb
 echo Done.
 echo.
 
-REM ---- Step 5: Check that .root file exists ----
-echo [5/8] Checking for source .root file...
+REM ---- Step 5: Check that source .root files exist ----
+echo [5/8] Checking for source .root files...
 if not exist "geometry_data\CaloGeometry.root" (
     echo ERROR: geometry_data\CaloGeometry.root not found!
-    echo Place the .root file in geometry_data\ before running this script.
+    echo Place CaloGeometry.root in geometry_data\ before running this script.
+    exit /b 1
+)
+if not exist "geometry_data\atlas.root" (
+    echo ERROR: geometry_data\atlas.root not found!
+    echo Place atlas.root in geometry_data\ before running this script.
     exit /b 1
 )
 echo Found geometry_data\CaloGeometry.root
+echo Found geometry_data\atlas.root
 echo.
 
 REM ---- Step 6: Compile .root -> optimized .glb (single step) ----
-echo [6/8] Compiling .root to optimized .glb...
-call node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
+echo [6/8] Compiling .root files to merged optimized .glb...
+call node setup/root2scene.mjs geometry_data/CaloGeometry.root --atlas geometry_data/atlas.root --out geometry_data
 if %errorlevel% neq 0 (
     echo ERROR: root2scene.mjs failed.
     exit /b 1
