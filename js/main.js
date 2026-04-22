@@ -889,6 +889,7 @@ let _fpsFrames = 0, _fpsLast = performance.now();
 // but stopping the loop entirely frees the main thread for other tabs. Resumed
 // on visibilitychange.
 let _loopRunning = false;
+let _loopRafId = 0;
 let _resumeWarmFrames = 0;
 function _scheduleWarmFrames(count = 12) {
   _resumeWarmFrames = Math.max(_resumeWarmFrames, count | 0);
@@ -908,33 +909,43 @@ function _restoreRendererAfterFocus() {
   }
   _scheduleWarmFrames(18);
 }
+function _loopTick() {
+  if (!_loopRunning) {
+    _loopRafId = 0;
+    return;
+  }
+  _loopRafId = requestAnimationFrame(_loopTick);
+  _fpsFrames++;
+  const now = performance.now();
+  if (now - _fpsLast >= 500) {
+    fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
+    _fpsFrames = 0; _fpsLast = now;
+  }
+  if (cinemaMode || _tourExiting) _tourTick();
+  controls.update();
+  if (_resumeWarmFrames > 0) {
+    _resumeWarmFrames--;
+    dirty = true;
+  }
+  if (controls.autoRotate) dirty = true;
+  if (!dirty) return;
+  renderer.render(scene, camera);
+  dirty = false;
+}
 function _startLoop() {
   if (_loopRunning) return;
   _loopRunning = true;
   _fpsLast = performance.now(); _fpsFrames = 0;
   dirty = true;
-  (function loop() {
-    if (!_loopRunning) return;
-    requestAnimationFrame(loop);
-    _fpsFrames++;
-    const now = performance.now();
-    if (now - _fpsLast >= 500) {
-      fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
-      _fpsFrames = 0; _fpsLast = now;
-    }
-    if (cinemaMode || _tourExiting) _tourTick();
-    controls.update();
-    if (_resumeWarmFrames > 0) {
-      _resumeWarmFrames--;
-      dirty = true;
-    }
-    if (controls.autoRotate) dirty = true;
-    if (!dirty) return;
-    renderer.render(scene, camera);
-    dirty = false;
-  })();
+  if (!_loopRafId) _loopRafId = requestAnimationFrame(_loopTick);
 }
-function _stopLoop() { _loopRunning = false; }
+function _stopLoop() {
+  _loopRunning = false;
+  if (_loopRafId) {
+    cancelAnimationFrame(_loopRafId);
+    _loopRafId = 0;
+  }
+}
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) _stopLoop();
   else {
