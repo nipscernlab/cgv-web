@@ -8,11 +8,6 @@ import {
 } from './state.js';
 import { palColorTile, palColorHec, palColorLAr } from './palette.js';
 import {
-  parseXmlDoc, parseEventInfo,
-  parseTile, parseLAr, parseHec, parseMBTS, parseFcal,
-  parseTracks, parsePhotons, parseClusters,
-} from './parser.js';
-import {
   cellLabel, HEC_INNER,
   physLarEmEta, physLarEmPhi, physLarHecEta, physLarHecPhi,
   physTileEta, physTilePhi, _wrapPhi,
@@ -93,55 +88,31 @@ export async function processXml(xmlText) {
   if (!_deps.getWasmOk()) return;
   const rid = ++_procXmlRid;
 
-  let doc = null;
-  let tileCells, larCells, hecCells, mbtsCells, fcalCells;
-  let tilePacked = null, larPacked = null, hecPacked = null;
-  let rawTracks = [], rawPhotons = [], rawClusters = [];
-  let _clusterCollections = null;
-  let currentEventInfo = null;
-
-  // ── Off-thread XML parse + WASM decode (worker path) ─────────────────────
-  // Both DOMParser and bulk ID decode run in the existing WASM worker so the
-  // main thread is never blocked, even on 47 MB events.
+  // ── Off-thread XML parse + ID decode (entirely in the WASM worker) ──────
   let workerResult;
   try { workerResult = await _wasmPool.parseXmlAndDecode(xmlText); }
-  catch (e) { console.warn('[parseXmlAndDecode] worker error, falling back:', e && e.message); workerResult = null; }
+  catch (e) { setStatus(`<span class="err">${esc(e && e.message || String(e))}</span>`); return; }
   // Drop stale replies — a newer event arrived while the worker was busy.
   if (rid !== _procXmlRid) return;
+  if (workerResult.error) { setStatus(`<span class="err">${esc(workerResult.error)}</span>`); return; }
 
-  if (workerResult) {
-    if (workerResult.error) { setStatus(`<span class="err">${esc(workerResult.error)}</span>`); return; }
-    currentEventInfo    = workerResult.eventInfo;
-    tileCells           = workerResult.tileCells;
-    larCells            = workerResult.larCells;
-    hecCells            = workerResult.hecCells;
-    mbtsCells           = workerResult.mbtsCells;
-    fcalCells           = workerResult.fcalCells;
-    tilePacked          = workerResult.tilePacked;
-    larPacked           = workerResult.larPacked;
-    hecPacked           = workerResult.hecPacked;
-    rawPhotons          = workerResult.photons;
-    rawClusters         = workerResult.clusters;
-    _clusterCollections = workerResult.clusterCollections;
-    // Worker returns plain {x,y,z} objects; reconstruct THREE.Vector3 here.
-    rawTracks = workerResult.tracks.map(t => ({
-      ...t, pts: t.pts.map(p => new THREE.Vector3(p.x, p.y, p.z)),
-    }));
-  } else {
-    // ── Fallback: synchronous parse on main thread ─────────────────────────
-    try { doc = parseXmlDoc(xmlText); }
-    catch (e) { setStatus(`<span class="err">${esc(e.message)}</span>`); return; }
-    currentEventInfo = parseEventInfo(doc);
-    try { tileCells = parseTile(doc); } catch { tileCells = []; }
-    try { larCells  = parseLAr(doc);  } catch { larCells  = []; }
-    try { hecCells  = parseHec(doc);  } catch { hecCells  = []; }
-    try { mbtsCells = parseMBTS(doc); } catch { mbtsCells = []; }
-    try { fcalCells = parseFcal(doc); } catch { fcalCells = []; }
-    try { rawTracks  = parseTracks(doc);  } catch (e) { console.warn('Track parse error', e); }
-    try { rawPhotons = parsePhotons(doc); } catch (e) { console.warn('Photon parse error', e); }
-    // parseClusters is called later (after resetScene) so lastClusterData is set
-    // after the scene is cleared, keeping state consistent.
-  }
+  const currentEventInfo    = workerResult.eventInfo;
+  const tileCells           = workerResult.tileCells;
+  const larCells            = workerResult.larCells;
+  const hecCells            = workerResult.hecCells;
+  const mbtsCells           = workerResult.mbtsCells;
+  const fcalCells           = workerResult.fcalCells;
+  const tilePacked          = workerResult.tilePacked;
+  const larPacked           = workerResult.larPacked;
+  const hecPacked           = workerResult.hecPacked;
+  const rawPhotons          = workerResult.photons;
+  const rawClusters         = workerResult.clusters;
+  const _clusterCollections = workerResult.clusterCollections;
+  // Worker returns plain {x,y,z} objects; reconstruct THREE.Vector3 here.
+  const rawTracks = workerResult.tracks.map(t => ({
+    ...t, pts: t.pts.map(p => new THREE.Vector3(p.x, p.y, p.z)),
+  }));
+
   const total = tileCells.length + larCells.length + hecCells.length + mbtsCells.length;
   if (!total && !fcalCells.length) { setStatus('<span class="warn">No TILE, LAr, HEC, MBTS or FCAL cells found</span>'); return; }
 
@@ -160,13 +131,7 @@ export async function processXml(xmlText) {
 
   // ── Cluster η/φ lines ────────────────────────────────────────────────────────
   try {
-    // Fallback: parse clusters now (after resetScene) so lastClusterData is set.
-    // Worker path: restore lastClusterData from the pre-parsed collections.
-    if (!workerResult) {
-      const r = parseClusters(doc);
-      rawClusters = r.flat;
-      setLastClusterData({ collections: r.collections });
-    } else setLastClusterData({ collections: _clusterCollections });
+    setLastClusterData({ collections: _clusterCollections });
     if (rawClusters.length) {
       let etMin = Infinity, etMax = -Infinity;
       for (const { etGev } of rawClusters) {
@@ -213,24 +178,6 @@ export async function processXml(xmlText) {
   const _MISS_SAMPLE = 3;
   const _missLog = { TILE: [], LAR: [], HEC: [], MBTS: [] };
   const _logMiss = (kind, msg) => { if (_missLog[kind].length < _MISS_SAMPLE) _missLog[kind].push(msg); };
-
-  // ── Bulk WASM decode (fallback path only — worker already did it above) ────
-  if (!workerResult) {
-    const idsToStr = (cells) => {
-      const arr = new Array(cells.length);
-      for (let i = 0; i < cells.length; i++) arr[i] = cells[i].id;
-      return arr.join(' ');
-    };
-    const _packs = await _wasmPool.parse(
-      tileCells.length ? idsToStr(tileCells) : null,
-      larCells.length  ? idsToStr(larCells)  : null,
-      hecCells.length  ? idsToStr(hecCells)  : null,
-    );
-    if (rid !== _procXmlRid) return;
-    tilePacked = _packs.tile;
-    larPacked  = _packs.lar;
-    hecPacked  = _packs.hec;
-  }
 
   // ── TileCal cells ─────────────────────────────────────────────────────────
   // The event loop paints colors via setColorAt; visibility is decided by
