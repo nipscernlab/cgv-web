@@ -43,6 +43,11 @@ import {
   parseTracks, parsePhotons, parseClusters,
 } from './parser.js';
 import { setupColorPicker } from './colorpicker.js';
+import { setupCinemaControls } from './cinema.js';
+import { setupScreenshotControls } from './screenshot.js';
+import { setupDetectorPanels } from './detectorPanels.js';
+import { fmtSize, esc, makeRelTime } from './utils.js';
+import { createDownloadProgressController } from './progress.js';
 
 let LivePoller = null;
 try { ({ LivePoller } = await import('../live_atlas/live_cern/live_poller.js')); } catch (_) {}
@@ -68,7 +73,6 @@ let wasmOk     = false;
 let sceneOk    = false;
 let isLive     = true;
 let showInfo   = true;
-let cinemaMode = false;
 
 // Ghost visibility is tracked per-mesh in `ghostVisible` (see GHOST_MESH_NAMES).
 let beamGroup  = null;
@@ -295,13 +299,13 @@ function updateTrackAtlasIntersections() {
 }
 
 
-// Tooltip + dirty on camera drag — stays here since it references cinemaMode and tooltip.
+// Tooltip + dirty on camera drag.
 let _ctrlActive = false;
 controls.addEventListener('start',  () => { _ctrlActive = true; });
 controls.addEventListener('end',    () => { _ctrlActive = false; });
 controls.addEventListener('change', () => {
   markDirty();
-  if (!cinemaMode && _ctrlActive) { tooltip.hidden = true; clearOutline(); }
+  if (!cinema.isCinemaMode() && _ctrlActive) { tooltip.hidden = true; clearOutline(); }
 });
 
 // ── FPS counter ──────────────────────────────────────────────────────────────
@@ -351,7 +355,7 @@ function _loopTick() {
     fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
     _fpsFrames = 0; _fpsLast = now;
   }
-  if (cinemaMode || _tourExiting) _tourTick();
+  if (cinema.isAnimating()) cinema.tick();
   controls.update();
   if (_resumeWarmFrames > 0) {
     _resumeWarmFrames--;
@@ -455,7 +459,7 @@ function _buildCollisionHud() {
     .join('');
 }
 function updateCollisionHud() {
-  const visible = !(sidebarControls ? sidebarControls.getState().panelPinned : true) || cinemaMode;
+  const visible = !(sidebarControls ? sidebarControls.getState().panelPinned : true) || cinema.isCinemaMode();
   collisionHud.hidden = !(visible && _lastEventInfo);
   if (!collisionHud.hidden) _buildCollisionHud();
 }
@@ -489,6 +493,15 @@ let trackPtMaxGev = 5;
 let thrClusterEtGev   = 0;
 let clusterEtMinGev   = 0;
 let clusterEtMaxGev   = 1;
+let tileSlider = null;
+let larSlider = null;
+let fcalSlider = null;
+let hecSlider = null;
+let trackPtSlider = null;
+let clusterEtSlider = null;
+let initDetPanel = null;
+const relTime = makeRelTime(t);
+const { startProgress, advanceProgress, endProgress } = createDownloadProgressController();
 
 const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, linewidth: 2 });
 const TRACK_HIT_MAT = new THREE.LineBasicMaterial({ color: 0x4A90D9, linewidth: 2 });
@@ -1235,263 +1248,7 @@ async function processXml(xmlText) {
   showEventInfo(currentEventInfo);
 }
 
-// ── Right panel (rpanel) toggle — mirrors left panel behavior ────────────────
-
-// ── Tab switching ─────────────────────────────────────────────────────────────
-const TAB_IDS = ['tile', 'lar', 'fcal', 'hec', 'track'];
-function switchTab(det) {
-  const tabs = [...TAB_IDS];
-  // Include 'cluster' only when its pane has been moved into #rpanel (mobile mode).
-  const pc = document.getElementById('pane-cluster');
-  if (pc && pc.parentElement && pc.parentElement.id === 'rpanel') tabs.push('cluster');
-  tabs.forEach(d => {
-    const pane = document.getElementById('pane-' + d);
-    const tab  = document.getElementById('tab-'  + d);
-    if (pane) pane.style.display = d === det ? 'flex' : 'none';
-    if (tab)  tab.classList.toggle('on', d === det);
-  });
-}
-TAB_IDS.forEach(d => document.getElementById('tab-' + d).addEventListener('click', () => switchTab(d)));
-document.getElementById('tab-cluster').addEventListener('click', () => switchTab('cluster'));
-// Initialize: TILE pane visible, others hidden
-switchTab('tile');
-
-// ── Mobile: edge-TAP zones to open side panels ────────────────────────────────
-// Dragging interferes with the ATLAS 3D orbit, so we use stationary taps
-// instead. Tapping the left/right edge strip opens the respective panel.
-
-// ── Slider helpers ────────────────────────────────────────────────────────────
-function parseMevInput(s) {
-  s = s.trim().toLowerCase();
-  if (!s || s === 'all') return -Infinity;
-  const g = s.match(/^([\d.]+)\s*gev$/i); if (g) return parseFloat(g[1]) * 1000;
-  const m = s.match(/^([\d.]+)\s*(mev)?$/i); if (m) return parseFloat(m[1]);
-  return null;
-}
-function ratioFromPtr(e, trackEl) {
-  const rect = trackEl.getBoundingClientRect();
-  return 1 - Math.max(0, Math.min(1, ((e.clientY ?? e.touches?.[0]?.clientY ?? 0) - rect.top) / rect.height));
-}
-
-// Generic vertical energy slider — max in MeV (dynamic, updated per event via .update())
-function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev, maxLblId) {
-  const track  = document.getElementById(trackId);
-  const thumb  = document.getElementById(thumbId);
-  const input  = document.getElementById(inputId);
-  const maxLbl = maxLblId ? document.getElementById(maxLblId) : null;
-  let drag = false;
-
-  function updateUI(mev) {
-    const ratio = isFinite(mev) && mev > 0 ? Math.max(0, Math.min(1, mev / maxMev)) : 0;
-    thumb.style.top = ((1 - ratio) * 100) + '%';
-    if (document.activeElement !== input) input.value = isFinite(mev) && mev > 0 ? fmtMev(mev) : '';
-  }
-
-  track.addEventListener('pointerdown', e => {
-    drag = true; rpanelWrap.classList.add('dragging'); track.setPointerCapture(e.pointerId);
-    const r = ratioFromPtr(e, track); setThr(r <= 0 ? -Infinity : maxMev * r);
-    updateUI(getThr()); applyThreshold();
-  });
-  track.addEventListener('pointermove', e => {
-    if (!drag) return;
-    const r = ratioFromPtr(e, track); setThr(r <= 0 ? -Infinity : maxMev * r);
-    updateUI(getThr()); applyThreshold();
-  });
-  ['pointerup', 'pointercancel'].forEach(ev =>
-    track.addEventListener(ev, () => { drag = false; rpanelWrap.classList.remove('dragging'); })
-  );
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
-  input.addEventListener('blur', () => {
-    const v = parseMevInput(input.value);
-    if (v !== null) {
-      const clamped = v === -Infinity ? v : Math.max(0, Math.min(maxMev, v));
-      setThr(clamped);
-      applyThreshold();
-    }
-    updateUI(getThr());
-  });
-
-  function update(newMaxMev) {
-    maxMev = newMaxMev;
-    if (maxLbl) maxLbl.textContent = fmtMev(newMaxMev);
-    updateUI(getThr());
-  }
-
-  return { updateUI, update };
-}
-
-const tileSlider = makeDetSlider('tile-strak', 'tile-sthumb', 'tile-thr-input',
-  () => thrTileMev, v => { thrTileMev = v; }, TILE_SCALE, 'tile-sval-max');
-const larSlider  = makeDetSlider('lar-strak',  'lar-sthumb',  'lar-thr-input',
-  () => thrLArMev,  v => { thrLArMev = v; },  LAR_SCALE,  'lar-sval-max');
-const fcalSlider = makeDetSlider('fcal-strak', 'fcal-sthumb', 'fcal-thr-input',
-  () => thrFcalMev, v => { thrFcalMev = v; applyFcalThreshold(); }, FCAL_SCALE, 'fcal-sval-max');
-const hecSlider  = makeDetSlider('hec-strak',  'hec-sthumb',  'hec-thr-input',
-  () => thrHecMev,  v => { thrHecMev = v; },  HEC_SCALE,  'hec-sval-max');
-
-function fmtGev(v) { return v.toFixed(2) + ' GeV'; }
-
-// ── Track pT slider (dynamic range — updates each event) ─────────────────────
-function makeTrackPtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
-  const trackEl  = document.getElementById(trackId);
-  const thumbEl  = document.getElementById(thumbId);
-  const inputEl  = document.getElementById(inputId);
-  const maxLblEl = document.getElementById(maxLblId);
-  const minLblEl = document.getElementById(minLblId);
-  let drag = false;
-
-  function updateUI() {
-    const span = trackPtMaxGev - trackPtMinGev;
-    const r    = span > 0 ? Math.max(0, Math.min(1, (thrTrackGev - trackPtMinGev) / span)) : 0;
-    thumbEl.style.top = ((1 - r) * 100) + '%';
-    if (document.activeElement !== inputEl)
-      inputEl.value = thrTrackGev > trackPtMinGev + 1e-9 ? fmtGev(thrTrackGev) : '';
-  }
-
-  function setFromRatio(r) {
-    const span = trackPtMaxGev - trackPtMinGev;
-    thrTrackGev = r <= 0 ? trackPtMinGev : trackPtMinGev + span * r;
-    updateUI();
-    applyTrackThreshold();
-  }
-
-  trackEl.addEventListener('pointerdown', e => {
-    drag = true; rpanelWrap.classList.add('dragging'); trackEl.setPointerCapture(e.pointerId);
-    setFromRatio(ratioFromPtr(e, trackEl));
-  });
-  trackEl.addEventListener('pointermove', e => { if (drag) setFromRatio(ratioFromPtr(e, trackEl)); });
-  ['pointerup', 'pointercancel'].forEach(ev =>
-    trackEl.addEventListener(ev, () => { drag = false; rpanelWrap.classList.remove('dragging'); })
-  );
-  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') inputEl.blur(); });
-  inputEl.addEventListener('blur', () => {
-    const s = inputEl.value.trim().toLowerCase();
-    if (!s || s === 'all') {
-      thrTrackGev = trackPtMinGev;
-    } else {
-      const g = s.match(/^([\d.]+)\s*gev$/i);
-      const v = g ? parseFloat(g[1]) : parseFloat(s);
-      if (isFinite(v)) thrTrackGev = Math.max(trackPtMinGev, Math.min(trackPtMaxGev, v));
-    }
-    updateUI();
-    applyTrackThreshold();
-  });
-
-  function update(minGev, maxGev) {
-    trackPtMinGev = minGev;
-    trackPtMaxGev = maxGev;
-    thrTrackGev   = 2; // fixed initial threshold
-    if (maxLblEl) maxLblEl.textContent = fmtGev(maxGev);
-    if (minLblEl) minLblEl.textContent = fmtGev(minGev);
-    updateUI();
-  }
-
-  return { updateUI, update };
-}
-
-const trackPtSlider = makeTrackPtSlider(
-  'track-strak', 'track-sthumb', 'track-thr-input',
-  'track-sval-max', 'track-sval-min'
-);
-
-// ── Cluster Et slider (dynamic range — updates each event) ───────────────────
-function makeClusterEtSlider(trackId, thumbId, inputId, maxLblId, minLblId) {
-  const trackEl  = document.getElementById(trackId);
-  const thumbEl  = document.getElementById(thumbId);
-  const inputEl  = document.getElementById(inputId);
-  const maxLblEl = document.getElementById(maxLblId);
-  const minLblEl = document.getElementById(minLblId);
-  let drag = false;
-
-
-  function updateUI() {
-    const span = clusterEtMaxGev - clusterEtMinGev;
-    const r    = span > 0 ? Math.max(0, Math.min(1, (thrClusterEtGev - clusterEtMinGev) / span)) : 0;
-    thumbEl.style.top = ((1 - r) * 100) + '%';
-    if (document.activeElement !== inputEl)
-      inputEl.value = thrClusterEtGev > clusterEtMinGev + 1e-9 ? fmtGev(thrClusterEtGev) : '';
-  }
-
-  function setFromRatio(r) {
-    if (!clusterFilterEnabled) return;
-    const span = clusterEtMaxGev - clusterEtMinGev;
-    thrClusterEtGev = r <= 0 ? clusterEtMinGev : clusterEtMinGev + span * r;
-    updateUI();
-    applyClusterThreshold();
-  }
-
-  trackEl.addEventListener('pointerdown', e => {
-    drag = true; rpanelWrap.classList.add('dragging'); trackEl.setPointerCapture(e.pointerId);
-    setFromRatio(ratioFromPtr(e, trackEl));
-  });
-  trackEl.addEventListener('pointermove', e => { if (drag) setFromRatio(ratioFromPtr(e, trackEl)); });
-  ['pointerup', 'pointercancel'].forEach(ev =>
-    trackEl.addEventListener(ev, () => { drag = false; rpanelWrap.classList.remove('dragging'); })
-  );
-  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter') inputEl.blur(); });
-  inputEl.addEventListener('blur', () => {
-    if (!clusterFilterEnabled) {
-      updateUI();
-      return;
-    }
-    const s = inputEl.value.trim().toLowerCase();
-    if (!s || s === 'all') {
-      thrClusterEtGev = clusterEtMinGev;
-    } else {
-      const g = s.match(/^([\d.]+)\s*gev$/i);
-      const v = g ? parseFloat(g[1]) : parseFloat(s);
-      if (isFinite(v)) thrClusterEtGev = Math.max(clusterEtMinGev, Math.min(clusterEtMaxGev, v));
-    }
-    updateUI();
-    applyClusterThreshold();
-  });
-
-  function update(minGev, maxGev) {
-    clusterEtMinGev   = minGev;
-    clusterEtMaxGev   = maxGev;
-    thrClusterEtGev   = Math.max(3, minGev); // default 3 GeV
-    if (maxLblEl) maxLblEl.textContent = fmtGev(maxGev);
-    if (minLblEl) minLblEl.textContent = fmtGev(minGev);
-    updateUI();
-  }
-
-  return { updateUI, update };
-}
-
-const clusterEtSlider = makeClusterEtSlider(
-  'cluster-strak', 'cluster-sthumb', 'cluster-thr-input',
-  'cluster-sval-max', 'cluster-sval-min'
-);
-
-function syncClusterFilterToggle() {
-  const btn  = document.getElementById('cluster-filter-toggle');
-  const pane = document.getElementById('pane-cluster');
-  const input = document.getElementById('cluster-thr-input');
-  if (!btn || !pane) return;
-  btn.classList.toggle('on', clusterFilterEnabled);
-  btn.setAttribute('aria-checked', clusterFilterEnabled ? 'true' : 'false');
-  btn.textContent = clusterFilterEnabled ? 'On' : 'Off';
-  pane.classList.toggle('cluster-filter-disabled', !clusterFilterEnabled);
-  if (input) input.disabled = !clusterFilterEnabled;
-}
-
-// Initialize thumb positions at default threshold
-tileSlider.updateUI(thrTileMev);
-larSlider.updateUI(thrLArMev);
-fcalSlider.updateUI(thrFcalMev);
-hecSlider.updateUI(thrHecMev);
-
-function initDetPanel(hasTile, hasLAr, hasHec, hasTracks, hasFcal) {
-  tileSlider.updateUI(thrTileMev);
-  larSlider.updateUI(thrLArMev);
-  fcalSlider.updateUI(thrFcalMev);
-  hecSlider.updateUI(thrHecMev);
-  clusterEtSlider.updateUI();
-  syncClusterFilterToggle();
-  sidebarControls.setPinnedR(true);
-  if (hasTile) switchTab('tile'); else if (hasLAr) switchTab('lar'); else if (hasFcal) switchTab('fcal');
-  else if (hasHec) switchTab('hec'); else if (hasTracks) switchTab('track');
-}
+// Detector tabs and threshold sliders live in js/detectorPanels.js.
 
 // (ghost functions defined above near GHOST_MESH_NAMES)
 
@@ -1649,7 +1406,7 @@ function doRaycast(clientX, clientY) {
   const hasPhotonLines  = photonGroup  && photonGroup.visible  && photonGroup.children.length  > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
   const hasFcalTubes    = fcalGroup && fcalGroup.children.some(c => c.isInstancedMesh) && fcalVisibleMap.length > 0;
-  if (!showInfo || cinemaMode || (!active.size && !hasTrackLines && !hasPhotonLines && !hasClusterLines && !hasFcalTubes)) { tooltip.hidden = true; clearOutline(); return; }
+  if (!showInfo || cinema.isCinemaMode() || (!active.size && !hasTrackLines && !hasPhotonLines && !hasClusterLines && !hasFcalTubes)) { tooltip.hidden = true; clearOutline(); return; }
   // Don't show cell info when the pointer is over any UI element (panels, toolbar, overlays)
   const topEl = document.elementFromPoint(clientX, clientY);
   if (topEl && topEl !== canvas) { tooltip.hidden = true; clearOutline(); return; }
@@ -1759,234 +1516,18 @@ document.addEventListener('mousemove', e => {
 canvas.addEventListener('mouseleave', () => { clearOutline(); tooltip.hidden = true; });
 controls.addEventListener('end', () => { lastRay = 0; setTimeout(() => doRaycast(mousePos.x, mousePos.y), 50); });
 
-// ── Cinema ────────────────────────────────────────────────────────────────────
-let tourMode = localStorage.getItem('cgv-tour-mode') === '1';
-// Tour path — a single continuous Catmull-Rom spline, no segment-based ease so
-// the camera glides at near-uniform speed with no pauses at waypoints.
-// Scene units = mm. Beam axis is the z-axis (x=y=0). Inside the FCAL z-range
-// (|z| ~4700-6200 mm) the cells have a beam-pipe bore at r < ~70 mm, so we
-// keep the camera at r ≈ 10 mm throughout — always on the axis, never inside
-// any cell volume.
-// Narrative: wide establishing → swing down to the beam axis at +z → approach
-// face-on toward the +z FCAL → glide along the bore while panning the camera
-// to look at each inner wall then back to center → exit face-on through the
-// -z FCAL → arc around outside, see the detector from far → return to start.
-const _tourCamWaypoints = [
-  // Phase 1: wide establishing, swing onto beam axis
-  new THREE.Vector3(  8500,  3500,  12500),  // 1  wide oblique
-  new THREE.Vector3(  3000,  1200,  13000),  // 2  banking toward axis
-
-  // Phase 2: face-on approach to +z FCAL, zoom in
-  new THREE.Vector3(     0,    12,  11500),  // 3  on beam axis, distant
-  new THREE.Vector3(     0,    10,   8500),  // 4  zooming in on +z face
-  new THREE.Vector3(     0,    10,   7000),  // 5  close-up on +z FCAL face
-
-  // Phase 3: pass through FCAL bore, look at inner walls, return to center
-  new THREE.Vector3(     0,    10,   4500),  // 6  inside bore, swinging gaze to interior
-  new THREE.Vector3(     0,    10,   2500),  // 7  pan to +x wall
-  new THREE.Vector3(     0,    10,   1000),  // 8  pan upward diagonal
-  new THREE.Vector3(     0,    10,   -500),  // 9  pan to opposite wall
-  new THREE.Vector3(     0,    10,  -2000),  // 10 pan to -x wall
-  new THREE.Vector3(     0,    10,  -4000),  // 11 return gaze to center
-
-  // Phase 4: exit face-on through -z FCAL, zoom out
-  new THREE.Vector3(     0,    10,  -7000),  // 12 just past -z face, look back at it
-  new THREE.Vector3(     0,    12,  -8500),  // 13 pulling back, -z face still in view
-  new THREE.Vector3(     0,    15, -11500),  // 14 wide on -z axis
-
-  // Phase 5: arc around outside, pass near -x, climb back up and loop
-  new THREE.Vector3( -5500,  2500,  -9500),  // 15 banking out to -x side
-  new THREE.Vector3( -9000,  2000,      0),  // 16 wide pass along -x side
-  new THREE.Vector3( -5500,  3200,   8500),  // 17 arcing back toward +z
-  new THREE.Vector3(  1000,  4500,  12000),  // 18 closing the loop
-];
-const _tourTgtWaypoints = [
-  new THREE.Vector3(     0,     0,     0),  // 1
-  new THREE.Vector3(     0,     0,  3000),  // 2
-  new THREE.Vector3(     0,     0,  5800),  // 3  look at +z FCAL face
-  new THREE.Vector3(     0,     0,  5800),  // 4  hold on the face
-  new THREE.Vector3(     0,     0,  5500),  // 5  zoomed on the face
-  new THREE.Vector3(     0,     0,  1500),  // 6  swinging gaze into the barrel
-  new THREE.Vector3(  2800,   800,  1800),  // 7  +x wall slightly up
-  new THREE.Vector3(  1200,  2400,    400),  // 8  up-right diagonal (safe, 32° off +y)
-  new THREE.Vector3( -1200,  2400,   -400),  // 9  up-left diagonal
-  new THREE.Vector3( -2800,   800, -1800),  // 10 -x wall slightly up
-  new THREE.Vector3(     0,     0, -1500),  // 11 back to center of calorimeter
-  new THREE.Vector3(     0,     0, -5500),  // 12 look back at -z FCAL face
-  new THREE.Vector3(     0,     0, -5500),  // 13 hold on -z face
-  new THREE.Vector3(     0,     0,     0),  // 14 look back at ATLAS (whole thing)
-  new THREE.Vector3(     0,     0,     0),  // 15
-  new THREE.Vector3(     0,     0,     0),  // 16
-  new THREE.Vector3(     0,     0,     0),  // 17
-  new THREE.Vector3(     0,     0,     0),  // 18
-];
-const _tourPosCurve = new THREE.CatmullRomCurve3(_tourCamWaypoints, true, 'centripetal', 0.5);
-const _tourTgtCurve = new THREE.CatmullRomCurve3(_tourTgtWaypoints, true, 'centripetal', 0.5);
-const TOUR_TOTAL_DURATION = 105_000;  // full loop in ms
-const TOUR_BLEND_MS       = 2200;      // smooth entry from current pose
-
-// Exit inertia: track per-frame velocity of camera+target during the active
-// tour so we can keep drifting (with quadratic decay) after user leaves cinema.
-// `var` (not `let`) so the render-loop guard up-file can read it via hoisting.
-var _tourExiting = false;
-let _tourExitT0 = 0;
-const TOUR_EXIT_DURATION = 1400;
-const _tourPrevPos = new THREE.Vector3();
-const _tourPrevTgt = new THREE.Vector3();
-const _tourVelPos  = new THREE.Vector3();
-const _tourVelTgt  = new THREE.Vector3();
-let _tourPrevT = 0;
-
-// Continuous-motion state: `_tourU0` is the spline u-coordinate at time _tourT0
-// so the tour can resume mid-spline when re-entered.
-let _tourT0   = 0;
-let _tourU0   = 0;
-let _tourBlending   = false;
-let _tourBlendT0    = 0;
-const _tourBlendFromPos = new THREE.Vector3();
-const _tourBlendFromTgt = new THREE.Vector3();
-const _tourTmpPos = new THREE.Vector3();
-const _tourTmpTgt = new THREE.Vector3();
-
-function _tourEase(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }  // easeInOutQuad
-
-// Find the spline u-coordinate (0..1) whose point is closest to `v`.
-// Coarse sample then local refine — good enough for smooth resume.
-function _tourNearestU(v) {
-  const N = 240;
-  let bestU = 0, bestD = Infinity;
-  for (let i = 0; i < N; i++) {
-    const u = i / N;
-    _tourPosCurve.getPoint(u, _tourTmpPos);
-    const d = _tourTmpPos.distanceToSquared(v);
-    if (d < bestD) { bestD = d; bestU = u; }
-  }
-  return bestU;
-}
-
-function _tourSampleU(u) {
-  u = ((u % 1) + 1) % 1;
-  _tourPosCurve.getPoint(u, _tourTmpPos);
-  _tourTgtCurve.getPoint(u, _tourTmpTgt);
-}
-
-function _tourTick() {
-  const now = performance.now();
-
-  // Exit-inertia phase: cinema already off, but tour drift continues.
-  if (_tourExiting) {
-    const et = now - _tourExitT0;
-    if (et >= TOUR_EXIT_DURATION) { _tourExiting = false; return; }
-    const decay = Math.pow(1 - et / TOUR_EXIT_DURATION, 2);
-    const dtSec = Math.max(0.001, (now - _tourPrevT) / 1000);
-    camera.position.addScaledVector(_tourVelPos, decay * dtSec);
-    controls.target.addScaledVector(_tourVelTgt, decay * dtSec);
-    controls.update();
-    markDirty();
-    _tourPrevT = now;
-    return;
-  }
-
-  if (!cinemaMode || !tourMode) return;
-
-  // Blend-in: 2.2 s easeInOut from whatever pose the camera had to the start
-  // of the spline, so entering the tour from anywhere is smooth.
-  if (_tourBlending) {
-    const bt = now - _tourBlendT0;
-    const k  = Math.min(1, bt / TOUR_BLEND_MS);
-    const e  = _tourEase(k);
-    _tourSampleU(_tourU0);
-    camera.position.lerpVectors(_tourBlendFromPos, _tourTmpPos, e);
-    controls.target.lerpVectors(_tourBlendFromTgt, _tourTmpTgt, e);
-    controls.update();
-    markDirty();
-
-    const dtSec = Math.max(0.001, (now - _tourPrevT) / 1000);
-    _tourVelPos.subVectors(camera.position,  _tourPrevPos).divideScalar(dtSec);
-    _tourVelTgt.subVectors(controls.target, _tourPrevTgt).divideScalar(dtSec);
-    _tourPrevPos.copy(camera.position);
-    _tourPrevTgt.copy(controls.target);
-    _tourPrevT = now;
-
-    if (k >= 1) {
-      _tourBlending = false;
-      _tourT0 = now;  // spline-time clock starts now from u = _tourU0
-    }
-    return;
-  }
-
-  // Continuous spline traversal — no per-segment pauses.
-  const u = (_tourU0 + (now - _tourT0) / TOUR_TOTAL_DURATION) % 1;
-  _tourSampleU(u);
-  camera.position.copy(_tourTmpPos);
-  controls.target.copy(_tourTmpTgt);
-  controls.update();
-  markDirty();
-
-  // Record per-frame velocity (scene-units / second) for exit inertia.
-  const dtSec = Math.max(0.001, (now - _tourPrevT) / 1000);
-  _tourVelPos.subVectors(camera.position,  _tourPrevPos).divideScalar(dtSec);
-  _tourVelTgt.subVectors(controls.target, _tourPrevTgt).divideScalar(dtSec);
-  _tourPrevPos.copy(camera.position);
-  _tourPrevTgt.copy(controls.target);
-  _tourPrevT = now;
-}
-
-function _startTour() {
-  // Resume from wherever the camera is: find the nearest u on the spline and
-  // blend in over TOUR_BLEND_MS. From u=_tourU0 the spline-time clock advances.
-  const now = performance.now();
-  _tourU0 = _tourNearestU(camera.position);
-  _tourBlending = true;
-  _tourBlendT0  = now;
-  _tourT0       = now;  // will be rebased when blend completes
-  _tourBlendFromPos.copy(camera.position);
-  _tourBlendFromTgt.copy(controls.target);
-  _tourPrevPos.copy(camera.position);
-  _tourPrevTgt.copy(controls.target);
-  _tourVelPos.set(0, 0, 0);
-  _tourVelTgt.set(0, 0, 0);
-  _tourPrevT = now;
-  _tourExiting = false;
-  controls.autoRotate = false;
-}
-
-function enterCinema() {
-  cinemaMode = true; document.body.classList.add('cinema');
-  document.getElementById('btn-cinema').classList.add('on');
-  clearOutline(); tooltip.hidden = true;
-  _tourExiting = false;
-  updateCollisionHud();
-  if (tourMode) {
-    _startTour();
-  } else {
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.55;
-  }
-}
-function exitCinema() {
-  const wasTour = cinemaMode && tourMode;
-  cinemaMode = false; document.body.classList.remove('cinema');
-  controls.autoRotate = false; document.getElementById('btn-cinema').classList.remove('on');
-  updateCollisionHud();
-  if (wasTour) {
-    _tourExiting = true;
-    _tourExitT0  = performance.now();
-    _tourPrevT   = _tourExitT0;
-  }
-}
-function resetCamera() {
-  camera.position.set(0, 0, 12_000);
-  controls.target.set(0, 0, 0);
-  controls.update();
-  markDirty();
-}
-document.getElementById('btn-cinema').addEventListener('click', () => cinemaMode ? exitCinema() : enterCinema());
-document.getElementById('cinema-exit').addEventListener('click', exitCinema);
-let cDragged = false;
-canvas.addEventListener('mousedown', () => { cDragged = false; });
-canvas.addEventListener('mousemove', () => { cDragged = true; });
-canvas.addEventListener('mouseup',   () => { if (cinemaMode && !cDragged) exitCinema(); });
+const cinema = setupCinemaControls({
+  camera,
+  canvas,
+  controls,
+  markDirty,
+  clearOutline,
+  hideTooltip: () => { tooltip.hidden = true; },
+  updateCollisionHud,
+});
+const enterCinema = () => cinema.enterCinema();
+const exitCinema = () => cinema.exitCinema();
+const resetCamera = () => cinema.resetCamera();
 
 // ── Tooltip toggle ────────────────────────────────────────────────────────────
 document.getElementById('btn-info').addEventListener('click', () => {
@@ -2028,11 +1569,6 @@ document.getElementById('ltog-hec') .addEventListener('click', () => { showHec  
 document.getElementById('ltog-fcal').addEventListener('click', () => { showFcal = !showFcal; syncLayerToggles(); applyFcalThreshold(); });
 document.getElementById('lbtn-all') .addEventListener('click', () => { showTile = showLAr = showHec = showFcal = true;  syncLayerToggles(); refreshSceneVisibility(); });
 document.getElementById('lbtn-none').addEventListener('click', () => { showTile = showLAr = showHec = showFcal = false; syncLayerToggles(); refreshSceneVisibility(); });
-document.getElementById('cluster-filter-toggle').addEventListener('click', () => {
-  clusterFilterEnabled = !clusterFilterEnabled;
-  syncClusterFilterToggle();
-  applyClusterThreshold();
-});
 
 // Layers panel open / close
 const layersPanel = document.getElementById('layers-panel');
@@ -2126,24 +1662,57 @@ document.addEventListener('pointerup', () => {
 // ── About overlay ─────────────────────────────────────────────────────────────
 sidebarControls = setupSidebarControls({
   canvas,
-  getCinemaMode: () => cinemaMode,
-  getTourMode: () => tourMode,
-  onDisableTourMode: () => {
-    tourMode = false;
-    if (cinemaMode) {
-      _tourExiting = false;
-      _tourBlending = false;
-      controls.autoRotate = true;
-      controls.autoRotateSpeed = 0.55;
-    }
-  },
-  onEnableTourMode: () => {
-    tourMode = true;
-    if (cinemaMode) _startTour();
-  },
+  getCinemaMode: () => cinema.isCinemaMode(),
+  getTourMode: () => cinema.isTourMode(),
+  onDisableTourMode: () => cinema.disableTourMode(),
+  onEnableTourMode: () => cinema.enableTourMode(),
   t,
   updateCollisionHud,
 });
+
+({
+  tileSlider,
+  larSlider,
+  fcalSlider,
+  hecSlider,
+  trackPtSlider,
+  clusterEtSlider,
+  initDetPanel,
+} = setupDetectorPanels({
+  TILE_SCALE,
+  LAR_SCALE,
+  FCAL_SCALE,
+  HEC_SCALE,
+  applyThreshold,
+  applyFcalThreshold,
+  applyTrackThreshold,
+  applyClusterThreshold,
+  sidebarControls,
+  state: {
+    getThrTileMev: () => thrTileMev,
+    setThrTileMev: v => { thrTileMev = v; },
+    getThrLArMev: () => thrLArMev,
+    setThrLArMev: v => { thrLArMev = v; },
+    getThrFcalMev: () => thrFcalMev,
+    setThrFcalMev: v => { thrFcalMev = v; },
+    getThrHecMev: () => thrHecMev,
+    setThrHecMev: v => { thrHecMev = v; },
+    getThrTrackGev: () => thrTrackGev,
+    setThrTrackGev: v => { thrTrackGev = v; },
+    getTrackPtMinGev: () => trackPtMinGev,
+    setTrackPtMinGev: v => { trackPtMinGev = v; },
+    getTrackPtMaxGev: () => trackPtMaxGev,
+    setTrackPtMaxGev: v => { trackPtMaxGev = v; },
+    getThrClusterEtGev: () => thrClusterEtGev,
+    setThrClusterEtGev: v => { thrClusterEtGev = v; },
+    getClusterEtMinGev: () => clusterEtMinGev,
+    setClusterEtMinGev: v => { clusterEtMinGev = v; },
+    getClusterEtMaxGev: () => clusterEtMaxGev,
+    setClusterEtMaxGev: v => { clusterEtMaxGev = v; },
+    getClusterFilterEnabled: () => clusterFilterEnabled,
+    setClusterFilterEnabled: v => { clusterFilterEnabled = v; },
+  },
+}));
 
 const aboutOverlay = document.getElementById('about-overlay');
 document.getElementById('btn-about-close').addEventListener('click', () => aboutOverlay.classList.remove('open'));
@@ -2274,81 +1843,10 @@ setupLocalMode({
 });
 
 // ── Screenshot ────────────────────────────────────────────────────────────────
-const shotOverlay  = document.getElementById('shot-overlay');
-const shotSaveBtn  = document.getElementById('btn-shot-save');
-const shotProgress = document.getElementById('shot-progress');
-const shotProgTxt  = document.getElementById('shot-progress-txt');
-let   shotW = 0, shotH = 0;
 
 // Pick a sensible default resolution based on device capabilities.
 // Mobile (landscape small screens, touch/coarse pointer, low DPR) → 2K.
 // Desktop → 10K (maximum available).
-function _pickDefaultShotRes() {
-  const coarse  = window.matchMedia('(pointer: coarse)').matches;
-  const small   = window.matchMedia('(orientation: landscape) and (max-height: 520px)').matches
-               || window.innerWidth < 900;
-  const isMob   = coarse || small;
-  return isMob ? { w: 2560, h: 1440 } : { w: 10240, h: 5760 };
-}
-
-function _applyDefaultShotRes() {
-  const { w, h } = _pickDefaultShotRes();
-  const target = document.querySelector(`.shot-res[data-w="${w}"][data-h="${h}"]`);
-  if (!target) return;
-  document.querySelectorAll('.shot-res').forEach(b => b.classList.remove('active'));
-  target.classList.add('active');
-  shotW = w; shotH = h;
-  shotSaveBtn.disabled = false;
-}
-
-// Resolution button selection
-document.querySelectorAll('.shot-res').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.shot-res').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    shotW = parseInt(btn.dataset.w, 10);
-    shotH = parseInt(btn.dataset.h, 10);
-    shotSaveBtn.disabled = false;
-  });
-});
-
-function openShotDialog() {
-  shotOverlay.classList.add('open');
-  _applyDefaultShotRes();
-}
-function closeShotDialog() {
-  shotOverlay.classList.remove('open');
-  document.querySelectorAll('.shot-res').forEach(b => b.classList.remove('active'));
-  shotSaveBtn.disabled = true;
-  shotProgress.classList.remove('running');
-  shotProgTxt.textContent = '';
-  shotW = 0; shotH = 0;
-}
-
-document.getElementById('btn-shot').addEventListener('click', openShotDialog);
-document.getElementById('btn-shot-cancel').addEventListener('click', closeShotDialog);
-shotOverlay.addEventListener('click', e => { if (e.target === shotOverlay) closeShotDialog(); });
-
-shotSaveBtn.addEventListener('click', async () => {
-  if (!shotW || !shotH) return;
-  shotSaveBtn.disabled = true;
-  shotProgTxt.textContent = t('shot-rendering').replace('{w}', shotW).replace('{h}', shotH);
-  shotProgress.classList.add('running');
-
-  // Let the DOM update (spinner + text visible) before the blocking render
-  await new Promise(r => setTimeout(r, 80));
-
-  try {
-    await renderAndDownload(shotW, shotH);
-    shotProgTxt.textContent = t('shot-done');
-    await new Promise(r => setTimeout(r, 900));
-    closeShotDialog();
-  } catch (err) {
-    shotProgTxt.textContent = t('shot-error').replace('{msg}', err.message);
-    shotSaveBtn.disabled = false;
-  }
-});
-
 setupColorPicker();
 
 async function renderAndDownload(targetW, targetH) {
@@ -2550,67 +2048,9 @@ function fmtMev(v) {
   if (a>=1)    return `${v.toFixed(1)} MeV`;
   return `${v.toFixed(3)} MeV`;
 }
-function fmtSize(b) {
-  if (b<1024) return `${b} B`;
-  if (b<1048576) return `${(b/1024).toFixed(1)} KB`;
-  return `${(b/1048576).toFixed(1)} MB`;
-}
-function esc(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function relTime(ts) {
-  const s = (Date.now()-ts)/1000;
-  if (s<10)   return t('just-now');
-  if (s<60)   return `${Math.floor(s)}${t('s-ago')}`;
-  if (s<3600) return `${Math.floor(s/60)}${t('m-ago')}`;
-  return `${Math.floor(s/3600)}${t('h-ago')}`;
-}
 
 
 // ── Download progress bar ─────────────────────────────────────────────────────
-const DL_STAGES = ['request', 'recogn', 'download', 'acquire', 'load'];
-const DL_PCTS   = { request: 10, recogn: 28, download: 58, acquire: 78, load: 95 };
-let _dlTimer = null;
-function startProgress(kind = 'live') {
-  const pEl = document.getElementById('dl-progress');
-  if (!pEl) return;
-  pEl.classList.toggle('local', kind === 'local');
-  pEl.classList.toggle('live',  kind !== 'local');
-  pEl.hidden = false;
-  DL_STAGES.forEach(s => {
-    const el = document.getElementById('dlst-' + s);
-    if (el) el.classList.remove('active','done');
-  });
-  const bar = document.getElementById('dl-bar-fill');
-  if (bar) bar.style.width = '0%';
-  advanceProgress('request');
-}
-function advanceProgress(stage) {
-  if (_dlTimer) clearTimeout(_dlTimer);
-  const pEl = document.getElementById('dl-progress');
-  if (!pEl) return;
-  const idx = DL_STAGES.indexOf(stage);
-  DL_STAGES.forEach((s, i) => {
-    const el = document.getElementById('dlst-' + s);
-    if (!el) return;
-    el.classList.toggle('done',   i < idx);
-    el.classList.toggle('active', i === idx);
-  });
-  const bar = document.getElementById('dl-bar-fill');
-  if (bar) bar.style.width = (DL_PCTS[stage] || 0) + '%';
-}
-function endProgress() {
-  const bar = document.getElementById('dl-bar-fill');
-  if (!bar) return;
-  bar.style.width = '100%';
-  DL_STAGES.forEach(s => {
-    const el = document.getElementById('dlst-' + s);
-    if (el) { el.classList.remove('active'); el.classList.add('done'); }
-  });
-  _dlTimer = setTimeout(() => {
-    const p = document.getElementById('dl-progress');
-    if (p) p.hidden = true;
-    bar.style.width = '0%';
-  }, 900);
-}
 
 // ── Settings panel ────────────────────────────────────────────────────────────
 
@@ -2762,6 +2202,20 @@ const slicer = createSlicerController({
   },
 });
 
+setupScreenshotControls({
+  camera,
+  canvas,
+  markDirty,
+  renderer,
+  scene,
+  slicer,
+  t,
+  getLastEventInfo: () => _lastEventInfo,
+  tooltip,
+  tipCellEl,
+  tipEEl,
+});
+
 registerViewerShortcuts({
   aboutOverlay,
   closeLayersPanel,
@@ -2769,7 +2223,7 @@ registerViewerShortcuts({
   enterCinema,
   exitCinema,
   getState: () => ({
-    cinemaMode,
+    cinemaMode: cinema.isCinemaMode(),
     layersPanelOpen,
     panelPinned: sidebarControls.getState().panelPinned,
     rpanelPinned: sidebarControls.getState().rpanelPinned,
