@@ -179,7 +179,6 @@ function _applyFcalDraw() {
 
   const visible = fcalCellsData.filter(c => {
     if (!showFcal) return false;
-    if (!_slicer?.isShowAllCells() && c.energy < 0) return false;
     if (!_slicer?.isShowAllCells() && c.energy * 1000 < thrFcalMev) return false;
     if (!_slicer?.isShowAllCells() && activeClusterCellIds !== null && c.id && !activeClusterCellIds.has(c.id)) return false;
     if (slicerMask.active) {
