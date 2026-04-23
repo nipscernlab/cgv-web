@@ -3,7 +3,7 @@ import { initLanguage, setupLanguagePicker, t } from './i18n/index.js';
 import { setupLiveMode } from './liveMode.js';
 import { setupSidebarControls } from './sidebarControls.js';
 import { createSlicerController } from './slicer.js';
-import { setupLocalMode } from './localMode.js';
+import { setupServerMode } from './serverMode.js';
 import { setupSampleMode } from './sampleMode.js';
 import { registerViewerShortcuts } from './viewerShortcuts.js';
 import { _wasmPool } from './state.js';
@@ -36,7 +36,7 @@ import {
   getTracksVisible, getClustersVisible,
   setTracksVisible, setClustersVisible,
 } from './visibility.js';
-import { fmtSize, esc, makeRelTime } from './utils.js';
+import { esc, makeRelTime } from './utils.js';
 import { createDownloadProgressController } from './progress.js';
 import {
   initTrackAtlasIntersections, setAtlasRoot, updateTrackAtlasIntersections,
@@ -66,6 +66,7 @@ setupLanguagePicker();
 let wasmOk     = false;
 let sceneOk    = false;
 let isLive     = true;
+let liveSub    = 'web'; // 'web' | 'server'
 let showInfo   = true;
 
 let sidebarControls = null;
@@ -106,7 +107,7 @@ function checkReady() {
     // Dismiss loading screen after a brief moment so 100% is visible
     setTimeout(dismissLoadingScreen, 280);
   }
-  if (isLive && poller) {
+  if (isLive && liveSub === 'web' && poller) {
     poller.start();
     liveMode.loadFirstAvailableEvent();
   }
@@ -327,50 +328,88 @@ const sampleMode = setupSampleMode({
   t,
 });
 
+const serverMode = setupServerMode({
+  advanceProgress,
+  endProgress,
+  esc,
+  processXml,
+  setStatus,
+  startProgress,
+  t,
+});
+
+const TAB_KEY = 'cgv-tab';
+const SUB_KEY = 'cgv-live-sub';
+
+function setLiveSub(sub) {
+  liveSub = (sub === 'server') ? 'server' : 'web';
+  document.getElementById('btn-live-web').classList.toggle('on',    liveSub === 'web');
+  document.getElementById('btn-live-server').classList.toggle('on', liveSub === 'server');
+  document.getElementById('live-web-sec').hidden    = (liveSub !== 'web');
+  document.getElementById('live-server-sec').hidden = (liveSub !== 'server');
+
+  if (isLive) {
+    if (liveSub === 'web') {
+      serverMode.setActive(false);
+      if (poller && wasmOk && sceneOk) poller.start();
+    } else {
+      if (poller) poller.stop();
+      serverMode.setActive(true);
+    }
+  }
+  try { localStorage.setItem(SUB_KEY, liveSub); } catch (_) {}
+}
+
 function setMode(mode) {
-  // mode: 'live' | 'local' | 'sample'
   isLive = (mode === 'live');
   document.getElementById('btn-live').classList.toggle('on',   mode === 'live');
-  document.getElementById('btn-local').classList.toggle('on',  mode === 'local');
   document.getElementById('btn-sample').classList.toggle('on', mode === 'sample');
   document.getElementById('live-sec').hidden   = (mode !== 'live');
-  document.getElementById('local-sec').hidden  = (mode !== 'local');
   document.getElementById('sample-sec').hidden = (mode !== 'sample');
   if (mode === 'live') {
-    if (poller && wasmOk && sceneOk) poller.start();
+    setLiveSub(liveSub);
   } else {
     if (poller) poller.stop();
+    serverMode.setActive(false);
     if (mode === 'sample') sampleMode.loadSampleIndex();
   }
+  try { localStorage.setItem(TAB_KEY, mode); } catch (_) {}
 }
 document.getElementById('btn-live').addEventListener('click',   () => { if (!isLive) setMode('live'); });
-document.getElementById('btn-local').addEventListener('click',  () => { if (document.getElementById('local-sec').hidden) setMode('local'); });
 document.getElementById('btn-sample').addEventListener('click', () => { if (document.getElementById('sample-sec').hidden) setMode('sample'); });
+document.getElementById('btn-live-web').addEventListener('click',    () => { if (liveSub !== 'web')    setLiveSub('web'); });
+document.getElementById('btn-live-server').addEventListener('click', () => { if (liveSub !== 'server') setLiveSub('server'); });
 
+let poller = null;
 const liveMode = setupLiveMode({
   LivePoller,
   advanceProgress,
   bumpReq,
   endProgress,
   esc,
-  onFallbackToLocal: () => document.getElementById('btn-local').click(),
+  onFallbackToLocal: () => setLiveSub('server'),
   processXml,
   relTime,
   startProgress,
   t,
 });
-const poller = liveMode.hasPoller() ? { start: () => liveMode.start(), stop: () => liveMode.stop() } : null;
+poller = liveMode.hasPoller() ? { start: () => liveMode.start(), stop: () => liveMode.stop() } : null;
 
-setupLocalMode({
-  advanceProgress,
-  endProgress,
-  esc,
-  fmtSize,
-  processXml,
-  setStatus,
-  startProgress,
-  activateLocalTab: () => document.getElementById('btn-local')?.click(),
-});
+// Restore last-used tab and sub-tab from localStorage
+(function restoreTabs() {
+  let savedTab = null;
+  let savedSub = null;
+  try {
+    savedTab = localStorage.getItem(TAB_KEY);
+    savedSub = localStorage.getItem(SUB_KEY);
+  } catch (_) {}
+  if (savedSub === 'server' || savedSub === 'web') liveSub = savedSub;
+  if (savedTab === 'sample') {
+    setMode('sample');
+  } else {
+    setLiveSub(liveSub);
+  }
+})();
 
 setupColorPicker();
 
