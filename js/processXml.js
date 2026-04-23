@@ -16,11 +16,11 @@ import { applyAllGhostMeshes } from './ghost.js';
 import {
   clearVisibilityState, clearFcal, drawFcal,
   rebuildActiveClusterCellIds, setLastClusterData, applyThreshold,
+  getTrackGroup,
 } from './visibility.js';
 import {
   drawTracks, drawPhotons, drawClusters,
   clearTracks, clearClusters, clearPhotons,
-  getTrackGroup,
 } from './particles.js';
 import { clearOutline, clearAllOutlines } from './outlines.js';
 import { setStatus, showEventInfo } from './statusHud.js';

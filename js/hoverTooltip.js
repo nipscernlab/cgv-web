@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { canvas, camera, controls, markDirty } from './renderer.js';
 import { active, rayTargets } from './state.js';
 import { fcalGroup, fcalVisibleMap } from './visibility.js';
-import { getTrackGroup, getPhotonGroup, getClusterGroup } from './particles.js';
+import { getTrackGroup, getPhotonGroup, getClusterGroup } from './visibility.js';
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
 
 export const tooltip    = document.getElementById('tip');

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { scene } from './renderer.js';
 import {
+  getTrackGroup, getPhotonGroup, getClusterGroup,
   setTrackGroup, setPhotonGroup, setClusterGroup,
   thrTrackGev,
   applyTrackThreshold, applyClusterThreshold,
@@ -30,31 +31,6 @@ const CLUSTER_CYL_IN_HALF_H = 3680.75;
 const CLUSTER_CYL_OUT_R      = 3820;
 const CLUSTER_CYL_OUT_HALF_H = 6000;
 
-let _trackGroup   = null;
-let _photonGroup  = null;
-let _clusterGroup = null;
-
-let _tracksVisible   = true;
-let _clustersVisible = true;
-
-export function getTrackGroup()   { return _trackGroup; }
-export function getPhotonGroup()  { return _photonGroup; }
-export function getClusterGroup() { return _clusterGroup; }
-
-export const getTracksVisible   = () => _tracksVisible;
-export const getClustersVisible = () => _clustersVisible;
-
-export function setTracksVisible(v) {
-  _tracksVisible = v;
-  if (_trackGroup)  _trackGroup.visible  = v;
-  if (_photonGroup) _photonGroup.visible = v;
-}
-
-export function setClustersVisible(v) {
-  _clustersVisible = v;
-  if (_clusterGroup) _clusterGroup.visible = v;
-}
-
 // Returns t at which the unit-direction ray (dx,dy,dz) from the origin hits
 // the surface of a cylinder with given radius and half-height.
 function _cylIntersect(dx, dy, dz, r, halfH) {
@@ -68,10 +44,10 @@ function _cylIntersect(dx, dy, dz, r, halfH) {
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
 export function clearTracks() {
-  if (!_trackGroup) return;
-  _trackGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
-  scene.remove(_trackGroup);
-  _trackGroup = null;
+  const g = getTrackGroup();
+  if (!g) return;
+  g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  scene.remove(g);
   setTrackGroup(null);
   updateTrackAtlasIntersections();
 }
@@ -79,9 +55,8 @@ export function clearTracks() {
 export function drawTracks(tracks) {
   clearTracks();
   if (!tracks.length) return;
-  _trackGroup = new THREE.Group();
-  _trackGroup.renderOrder = 5;
-  _trackGroup.visible = _tracksVisible;
+  const g = new THREE.Group();
+  g.renderOrder = 5;
   for (const { pts, ptGev, hitIds, storeGateKey } of tracks) {
     const geo  = new THREE.BufferGeometry().setFromPoints(pts);
     const line = new THREE.Line(geo, TRACK_MAT);
@@ -89,11 +64,11 @@ export function drawTracks(tracks) {
     line.userData.hitIds       = hitIds;
     line.userData.storeGateKey = storeGateKey;
     line.matrixAutoUpdate = false;
-    _trackGroup.add(line);
+    g.add(line);
   }
-  _trackGroup.matrixAutoUpdate = false;
-  scene.add(_trackGroup);
-  setTrackGroup(_trackGroup);
+  g.matrixAutoUpdate = false;
+  scene.add(g);
+  setTrackGroup(g);   // stores ref + applies _tracksVisible
   applyTrackThreshold();
   updateTrackAtlasIntersections();
 }
@@ -124,19 +99,18 @@ function _makeSpringPoints(dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
 }
 
 export function clearPhotons() {
-  if (!_photonGroup) return;
-  _photonGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
-  scene.remove(_photonGroup);
-  _photonGroup = null;
+  const g = getPhotonGroup();
+  if (!g) return;
+  g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  scene.remove(g);
   setPhotonGroup(null);
 }
 
 export function drawPhotons(photons) {
   clearPhotons();
   if (!photons.length) return;
-  _photonGroup = new THREE.Group();
-  _photonGroup.renderOrder = 7;
-  _photonGroup.visible = _tracksVisible;
+  const g = new THREE.Group();
+  g.renderOrder = 7;
   for (const { eta, phi, ptGev } of photons) {
     const theta = 2 * Math.atan(Math.exp(-eta));
     const sinT  = Math.sin(theta);
@@ -150,28 +124,27 @@ export function drawPhotons(photons) {
     const line = new THREE.Line(geo, PHOTON_MAT);
     line.userData.ptGev = ptGev;
     line.visible = ptGev >= thrTrackGev;
-    _photonGroup.add(line);
+    g.add(line);
   }
-  _photonGroup.matrixAutoUpdate = false;
-  scene.add(_photonGroup);
-  setPhotonGroup(_photonGroup);
+  g.matrixAutoUpdate = false;
+  scene.add(g);
+  setPhotonGroup(g);
 }
 
 // ── Clusters (η/φ lines between inner and outer cylinders) ───────────────────
 export function clearClusters() {
-  if (!_clusterGroup) return;
-  _clusterGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
-  scene.remove(_clusterGroup);
-  _clusterGroup = null;
+  const g = getClusterGroup();
+  if (!g) return;
+  g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  scene.remove(g);
   setClusterGroup(null);
 }
 
 export function drawClusters(clusters) {
   clearClusters();
   if (!clusters.length) return;
-  _clusterGroup = new THREE.Group();
-  _clusterGroup.renderOrder = 6;
-  _clusterGroup.visible = _clustersVisible;
+  const g = new THREE.Group();
+  g.renderOrder = 6;
   for (const { eta, phi, etGev, storeGateKey } of clusters) {
     const theta = 2 * Math.atan(Math.exp(-eta));
     const sinT  = Math.sin(theta);
@@ -188,10 +161,10 @@ export function drawClusters(clusters) {
     line.userData.etGev        = etGev;
     line.userData.storeGateKey = storeGateKey ?? '';
     line.matrixAutoUpdate = false;
-    _clusterGroup.add(line);
+    g.add(line);
   }
-  _clusterGroup.matrixAutoUpdate = false;
-  scene.add(_clusterGroup);
-  setClusterGroup(_clusterGroup);
+  g.matrixAutoUpdate = false;
+  scene.add(g);
+  setClusterGroup(g);
   applyClusterThreshold();
 }

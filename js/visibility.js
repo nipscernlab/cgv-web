@@ -22,13 +22,43 @@ export function initVisibility({ slicer, rebuildAllOutlines, updateTrackAtlasInt
   _updateTrackAtlasIntersections = updateTrackAtlasIntersections;
 }
 
-// ── Group refs — updated by main.js after draw / clear ────────────────────────
+// ── Track / Photon / Cluster groups (created by particles.js, lifecycle owned here) ──
 let _trackGroup   = null;
 let _photonGroup  = null;
 let _clusterGroup = null;
-export function setTrackGroup(g)   { _trackGroup   = g; }
-export function setPhotonGroup(g)  { _photonGroup  = g; }
-export function setClusterGroup(g) { _clusterGroup = g; }
+
+let _tracksVisible   = true;
+let _clustersVisible = true;
+
+export const getTrackGroup   = () => _trackGroup;
+export const getPhotonGroup  = () => _photonGroup;
+export const getClusterGroup = () => _clusterGroup;
+
+export const getTracksVisible   = () => _tracksVisible;
+export const getClustersVisible = () => _clustersVisible;
+
+export function setTrackGroup(g) {
+  _trackGroup = g;
+  if (g) g.visible = _tracksVisible;
+}
+export function setPhotonGroup(g) {
+  _photonGroup = g;
+  if (g) g.visible = _tracksVisible;
+}
+export function setClusterGroup(g) {
+  _clusterGroup = g;
+  if (g) g.visible = _clustersVisible;
+}
+
+export function setTracksVisible(v) {
+  _tracksVisible = v;
+  if (_trackGroup)  _trackGroup.visible  = v;
+  if (_photonGroup) _photonGroup.visible = v;
+}
+export function setClustersVisible(v) {
+  _clustersVisible = v;
+  if (_clusterGroup) _clusterGroup.visible = v;
+}
 
 // ── Energy threshold state ────────────────────────────────────────────────────
 export let thrTileMev = 50;

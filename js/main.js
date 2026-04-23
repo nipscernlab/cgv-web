@@ -32,17 +32,15 @@ import {
   hideNonActiveCells,
   applyThreshold, applyFcalThreshold, applyTrackThreshold, applyClusterThreshold,
   refreshSceneVisibility,
+  getTrackGroup,
+  getTracksVisible, getClustersVisible,
+  setTracksVisible, setClustersVisible,
 } from './visibility.js';
 import { fmtSize, esc, makeRelTime } from './utils.js';
 import { createDownloadProgressController } from './progress.js';
 import {
   initTrackAtlasIntersections, setAtlasRoot, updateTrackAtlasIntersections,
 } from './trackAtlasIntersections.js';
-import {
-  getTrackGroup, getPhotonGroup, getClusterGroup,
-  getTracksVisible, getClustersVisible,
-  setTracksVisible, setClustersVisible,
-} from './particles.js';
 import { clearOutline, rebuildAllOutlines } from './outlines.js';
 import {
   initHoverTooltip, hideTooltip,
