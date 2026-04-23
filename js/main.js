@@ -11,14 +11,13 @@ import {
   _wasmPool, SUBSYS_TILE, SUBSYS_LAR_EM, SUBSYS_LAR_HEC,
   meshByKey, cellMeshesByDet, active, rayTargets,
   _ZERO_MAT4, _markIMDirty, _flushIMDirty,
-  _allCellIMeshes, _rayIMeshes,
+  _rayIMeshes,
   _tileKey, _larEmKey, _hecKey,
 } from './state.js';
 import {
-  PAL_TILE_COLOR, PAL_HEC_COLOR, PAL_LAR_COLOR,
   matTile, matHec, matLAr,
   TILE_SCALE, HEC_SCALE, LAR_SCALE, FCAL_SCALE,
-  palColorTile, palColorHec, palColorLAr, palColorFcalRgb,
+  palColorTile, palColorHec, palColorLAr,
 } from './palette.js';
 import { setLoadProgress, dismissLoadingScreen, bumpReq } from './loading.js';
 import {
@@ -46,6 +45,27 @@ import { setupColorPicker } from './colorpicker.js';
 import { setupCinemaControls } from './cinema.js';
 import { setupScreenshotControls } from './screenshot.js';
 import { setupDetectorPanels } from './detectorPanels.js';
+import {
+  initVisibility,
+  thrTileMev, thrLArMev, thrHecMev, thrFcalMev,
+  showTile, showLAr, showHec, showFcal,
+  thrTrackGev, trackPtMinGev, trackPtMaxGev,
+  thrClusterEtGev, clusterEtMinGev, clusterEtMaxGev, clusterFilterEnabled,
+  lastClusterData,
+  visHandles, fcalVisibleMap, fcalGroup,
+  setThrTileMev, setThrLArMev, setThrHecMev, setThrFcalMev,
+  setShowTile, setShowLAr, setShowHec, setShowFcal,
+  setThrTrackGev, setTrackPtMinGev, setTrackPtMaxGev,
+  setThrClusterEtGev, setClusterEtMinGev, setClusterEtMaxGev, setClusterFilterEnabled,
+  setLastClusterData,
+  setTrackGroup, setPhotonGroup, setClusterGroup,
+  _setHandleVisible, hideNonActiveCells,
+  rebuildActiveClusterCellIds,
+  applyThreshold, applyFcalThreshold, applyTrackThreshold, applyClusterThreshold,
+  refreshSceneVisibility, clearVisibilityState,
+  drawFcal, clearFcal,
+  fcalEdgeMat4, getFcalEdgeBase,
+} from './visibility.js';
 import { fmtSize, esc, makeRelTime } from './utils.js';
 import { createDownloadProgressController } from './progress.js';
 
@@ -59,15 +79,6 @@ setupLanguagePicker();
 let tileMaxMev = 1, tileMinMev = 0;
 let larMaxMev  = 1, larMinMev  = 0;
 let hecMaxMev  = 1, hecMinMev  = 0;
-let thrTileMev = 50;   // 0.05 GeV default
-let thrLArMev  = 0;    // 0    GeV default
-let thrHecMev  = 600;  // 0.6  GeV default
-let thrFcalMev = 0;    // 0    GeV default
-
-let showTile   = true;
-let showLAr    = true;
-let showHec    = true;
-let showFcal   = true;
 
 let wasmOk     = false;
 let sceneOk    = false;
@@ -82,13 +93,6 @@ let sidebarControls = null;
 let trackGroup    = null;
 let clusterGroup  = null;
 let photonGroup   = null;
-let fcalGroup     = null;
-let fcalCellsData  = [];   // cached for threshold rebuilds
-let fcalVisibleMap = [];   // [instanceId] → cell object for the current visible set
-let lastClusterData       = null;  // { collections: [{key, clusters: [{eta,phi,etGev,cells:{TILE,LAR_EM,HEC,OTHER}}]}] }
-let activeClusterCellIds  = null;  // null = no cluster filter; Set<string> = only these cell IDs are visible
-let activeMbtsLabels      = null;  // null = no cluster filter; Set<string> = MBTS labels activated by cluster eta/phi
-let clusterFilterEnabled  = true;
 let _readyFired  = false;
 
 
@@ -485,14 +489,8 @@ function showEventInfo(info) {
 
 
 // ── Track rendering ───────────────────────────────────────────────────────────
-let thrTrackGev   = 2;
-let trackPtMinGev = 0;
-let trackPtMaxGev = 5;
 
 // ── Cluster Et threshold ──────────────────────────────────────────────────────
-let thrClusterEtGev   = 0;
-let clusterEtMinGev   = 0;
-let clusterEtMaxGev   = 1;
 let tileSlider = null;
 let larSlider = null;
 let fcalSlider = null;
@@ -511,18 +509,8 @@ function clearTracks() {
   trackGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   scene.remove(trackGroup);
   trackGroup = null;
+  setTrackGroup(null);
   updateTrackAtlasIntersections();
-}
-
-function applyTrackThreshold() {
-  if (trackGroup)
-    for (const child of trackGroup.children)
-      child.visible = child.userData.ptGev >= thrTrackGev;
-  if (photonGroup)
-    for (const child of photonGroup.children)
-      child.visible = child.userData.ptGev >= thrTrackGev;
-  updateTrackAtlasIntersections();
-  markDirty();
 }
 
 function drawTracks(tracks) {
@@ -542,6 +530,7 @@ function drawTracks(tracks) {
   }
   trackGroup.matrixAutoUpdate = false;
   scene.add(trackGroup);
+  setTrackGroup(trackGroup);
   applyTrackThreshold();
   updateTrackAtlasIntersections();
 }
@@ -585,6 +574,7 @@ function clearClusters() {
   clusterGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   scene.remove(clusterGroup);
   clusterGroup = null;
+  setClusterGroup(null);
 }
 
 // ── Photon spring rendering ────────────────────────────────────────────────────
@@ -621,6 +611,7 @@ function clearPhotons() {
   photonGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   scene.remove(photonGroup);
   photonGroup = null;
+  setPhotonGroup(null);
 }
 
 function drawPhotons(photons) {
@@ -646,192 +637,11 @@ function drawPhotons(photons) {
   }
   photonGroup.matrixAutoUpdate = false;
   scene.add(photonGroup);
+  setPhotonGroup(photonGroup);
 }
 
-// ── FCAL tube rendering ────────────────────────────────────────────────────────
-// Each cell is an InstancedMesh cylinder: centre at midpoint, aligned to (dx,dy,dz),
-// radius 25 mm (diameter 50 mm), colour from copper palette keyed on |energy|.
-// Uses MeshStandardMaterial + per-instance colour via setColorAt,
-// matching the approach used for Tile/LAr/HEC cell materials.
-// Coordinate convention: ATLAS x→–X, y→–Y, z→Z ; cm × 10 = mm.
-
-function clearFcal() {
-  if (!fcalGroup) return;
-  fcalGroup.traverse(o => {
-    if (o.geometry) o.geometry.dispose();
-    if (o.material) o.material.dispose();
-  });
-  scene.remove(fcalGroup);
-  fcalGroup = null;
-}
-
-function drawFcal(cells) {
-  clearFcal();
-  fcalCellsData = cells;
-  if (!cells.length) return;
-  _applyFcalDraw();
-}
-
-// Rebuild visible tubes from fcalCellsData with current threshold/show state.
-// Keeps fcalGroup in the scene; only replaces its child InstancedMesh.
-function applyFcalThreshold() {
-  if (!fcalCellsData.length) return;
-  if (fcalGroup) {
-    for (const child of [...fcalGroup.children]) {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
-      fcalGroup.remove(child);
-    }
-  }
-  _applyFcalDraw();
-}
-
-// Reusable helpers — allocated once, reused across rebuilds.
-const _fcalUp    = new THREE.Vector3(0, 1, 0);
-const _fcalDir   = new THREE.Vector3();
-const _fcalDummy = new THREE.Object3D();
-const _fcalCol   = new THREE.Color();
-const _fcalMat4  = new THREE.Matrix4();
-const _fcalTwist = new THREE.Quaternion();
-const _fcalTwistAxis = new THREE.Vector3(0, 1, 0);
-const _FCAL_TWIST_RAD = (2 * Math.PI) / 16;
-// Edge base for outline: local-space positions of all edges of CylinderGeometry(25,25,1,6).
-// Lazily computed once (same parameters every time).
-let _fcalEdgeBase = null;
-function _getFcalEdgeBase() {
-  if (_fcalEdgeBase) return _fcalEdgeBase;
-  const tmpGeo  = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
-  const edgeGeo = new THREE.EdgesGeometry(tmpGeo, 30);
-  tmpGeo.dispose();
-  _fcalEdgeBase = edgeGeo.getAttribute('position').array.slice(); // copy — edgeGeo is discarded
-  edgeGeo.dispose();
-  return _fcalEdgeBase;
-}
-
-function _applyFcalDraw() {
-  // While the slicer is active, also carve FCAL tubes whose centre sits inside
-  // the Z-aligned cylindrical wedge anchored at the ATLAS origin. FCAL cells
-  // use (x,y,z,dz) in cm — convert to scene mm (×10).
-  const slicerMask = slicer.getMaskState();
-
-  const visible = fcalCellsData.filter(c => {
-    if (!showFcal) return false;
-    // Hide cells with negative energy — they aren't physically meaningful for
-    // display, unless show-all is on (user explicitly asked for every cell).
-    if (!slicer.isShowAllCells() && c.energy < 0) return false;
-    if (!slicer.isShowAllCells() && c.energy * 1000 < thrFcalMev) return false;
-    if (!slicer.isShowAllCells() && activeClusterCellIds !== null && c.id && !activeClusterCellIds.has(c.id)) return false;
-    if (slicerMask.active) {
-      const cx = -c.x * 10, cy = -c.y * 10, cz = c.z * 10;
-      if (slicer.isPointInsideWedge(cx, cy, cz, slicerMask)) return false;
-    }
-    return true;
-  });
-  fcalVisibleMap = visible;   // instance index i → visible[i] for tooltip lookup
-  if (!fcalGroup) {
-    fcalGroup = new THREE.Group();
-    fcalGroup.matrixAutoUpdate = false;
-    scene.add(fcalGroup);
-  }
-  if (!visible.length) { markDirty(); return; }
-
-  const n      = visible.length;
-  // Shared geometry: unit-height cylinder (height scaled per instance via matrix).
-  // 6 radial segments keeps poly count low; openEnded:false adds caps.
-  const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
-  // MeshStandardMaterial, colour 0xffffff so per-instance colour shows directly.
-  const cylMat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide });
-  const iMesh  = new THREE.InstancedMesh(cylGeo, cylMat, n);
-  iMesh.matrixAutoUpdate = false;
-
-  for (let i = 0; i < n; i++) {
-    const { x, y, z, dx, dy, dz, energy } = visible[i];
-    // Tube runs along Z only: centre at (x, y, z), length = 2·dz (full cell depth).
-    // dx/dy are transverse half-widths — not the tube direction.
-    const rx  = Math.max(Math.abs(dx) * 5, 1e-3);
-    const ry  = Math.max(Math.abs(dy) * 5, 1e-3);
-    const len = Math.max(Math.abs(dz) * 2 * 10, 1e-3);   // cm → mm, full depth
-    const cx  = -x * 10,  cy = -y * 10,  cz = z * 10;
-    // Direction: +Z or -Z depending on which side of the detector
-    _fcalDir.set(0, 0, dz >= 0 ? 1 : -1);
-    // Place cylinder: centre at cell centre, Y-axis aligned to ±Z, scaled to length
-    _fcalDummy.position.set(cx, cy, cz);
-    _fcalDummy.scale.set(rx, len, ry);
-    _fcalDummy.quaternion.setFromUnitVectors(_fcalUp, _fcalDir);
-    _fcalTwist.setFromAxisAngle(_fcalTwistAxis, _FCAL_TWIST_RAD);
-    _fcalDummy.quaternion.multiply(_fcalTwist);
-    _fcalDummy.updateMatrix();
-    iMesh.setMatrixAt(i, _fcalDummy.matrix);
-    // Per-instance colour from copper palette
-    const [r, g, b] = palColorFcalRgb(Math.abs(energy) * 1000 / FCAL_SCALE);
-    _fcalCol.setRGB(r, g, b);
-    iMesh.setColorAt(i, _fcalCol);
-  }
-  iMesh.instanceMatrix.needsUpdate = true;
-  if (iMesh.instanceColor) iMesh.instanceColor.needsUpdate = true;
-  fcalGroup.add(iMesh);
-
-  // ── Outline: transform local cylinder edges into world-space for every instance ──
-  // Mirrors the strategy used by _buildOutlinesNow for Tile/LAr/HEC cells:
-  // collect all edge segments into a single flat Float32Array, one LineSegments draw call.
-  const eb      = _getFcalEdgeBase();          // local-space edge positions, 3 floats/vert
-  const outBuf  = new Float32Array(n * eb.length);
-  let op = 0;
-  for (let i = 0; i < n; i++) {
-    iMesh.getMatrixAt(i, _fcalMat4);
-    const m = _fcalMat4.elements;
-    for (let j = 0; j < eb.length; j += 3) {
-      const lx = eb[j], ly = eb[j + 1], lz = eb[j + 2];
-      outBuf[op++] = m[0]*lx + m[4]*ly + m[8]*lz  + m[12];
-      outBuf[op++] = m[1]*lx + m[5]*ly + m[9]*lz  + m[13];
-      outBuf[op++] = m[2]*lx + m[6]*ly + m[10]*lz + m[14];
-    }
-  }
-  const outGeo   = new THREE.BufferGeometry();
-  outGeo.setAttribute('position', new THREE.BufferAttribute(outBuf, 3));
-  const outLines = new THREE.LineSegments(outGeo, new THREE.LineBasicMaterial({ color: 0x000000 }));
-  outLines.matrixAutoUpdate = false;
-  outLines.frustumCulled   = false;
-  outLines.renderOrder     = 3;
-  fcalGroup.add(outLines);
-
-  markDirty();
-}
-
-function rebuildActiveClusterCellIds() {
-  if (!clusterFilterEnabled || !lastClusterData) { activeClusterCellIds = null; activeMbtsLabels = null; return; }
-  const ids  = new Set();
-  const mbts = new Set();
-  for (const { clusters } of lastClusterData.collections) {
-    for (const { eta, phi: rawPhi, etGev, cells } of clusters) {
-      if (etGev < thrClusterEtGev) continue;
-      for (const k of ['TILE', 'LAR_EM', 'HEC', 'FCAL', 'TRACK', 'OTHER'])
-        for (const id of cells[k]) ids.add(id);
-      // MBTS activation: map cluster (eta, phi) → type_X_ch_Y_mod_Z
-      const absEta = Math.abs(eta);
-      let ch;
-      if      (absEta >= 2.78 && absEta <= 3.86) ch = 1;
-      else if (absEta >= 2.08 && absEta <  2.78) ch = 0;
-      else continue; // outside MBTS eta range
-      const type    = eta >= 0 ? 1 : -1;
-      const phiPos  = rawPhi < 0 ? rawPhi + 2 * Math.PI : rawPhi;
-      const mod     = Math.floor(phiPos / (2 * Math.PI / 8)) % 8;
-      mbts.add(`type_${type}_ch_${ch}_mod_${mod}`);
-    }
-  }
-  activeClusterCellIds = ids;
-  activeMbtsLabels     = mbts;
-}
-
-function applyClusterThreshold() {
-  if (clusterGroup)
-    for (const child of clusterGroup.children)
-      child.visible = clusterFilterEnabled && child.userData.etGev >= thrClusterEtGev;
-  rebuildActiveClusterCellIds();
-  applyThreshold();
-  applyFcalThreshold();
-  applyTrackThreshold();
-}
+// ── FCAL tube rendering — logic lives in visibility.js ──────────────────────
+// drawFcal / clearFcal / applyFcalThreshold are imported from visibility.js.
 
 function drawClusters(clusters) {
   clearClusters();
@@ -859,27 +669,12 @@ function drawClusters(clusters) {
   }
   clusterGroup.matrixAutoUpdate = false;
   scene.add(clusterGroup);
+  setClusterGroup(clusterGroup);
   applyClusterThreshold();
 }
 
 // ── Scene reset ───────────────────────────────────────────────────────────────
-// The visHandles list is the authoritative set of "cells that passed every
-// filter" — used by the outline builder and the hover proxies.
-let visHandles = [];
-function _setHandleVisible(h, vis) {
-  if (h.visible === vis) return;
-  h.visible = vis;
-  h.iMesh.setMatrixAt(h.instId, vis ? h.origMatrix : _ZERO_MAT4);
-  _markIMDirty(h.iMesh);
-}
-function _rebuildRayIMeshes() {
-  _rayIMeshes.clear();
-  for (const h of visHandles) _rayIMeshes.add(h.iMesh);
-  rayTargets.length = 0; _rayIMeshes.forEach(im => rayTargets.push(im));
-}
-
 function resetScene() {
-  // Zero-scale every handle's matrix (hides every cell instance).
   for (const det of ['TILE', 'LAR', 'HEC']) {
     for (const h of cellMeshesByDet[det]) {
       if (h.visible) {
@@ -894,83 +689,14 @@ function resetScene() {
   // which would desync the ghostVisible map and make the next ghost toggle
   // render only the phi lines without the solid envelopes.
   applyAllGhostMeshes();
-  active.clear(); visHandles = []; rayTargets.length = 0; _rayIMeshes.clear();
+  active.clear(); rayTargets.length = 0; _rayIMeshes.clear();
+  clearVisibilityState();
   clearOutline(); clearAllOutlines();
   clearTracks();
   clearClusters();
   clearPhotons();
   clearFcal();
-  lastClusterData      = null;
-  activeClusterCellIds = null;
-  activeMbtsLabels     = null;
   tooltip.hidden = true; markDirty();
-}
-
-// Sweep every cell that isn't part of the XML's `active` set and decide its
-// visibility for "show all cells" mode. When showAllCells is off, non-active
-// cells stay hidden (the normal flow). When on, each non-active cell is
-// painted with the minimum-palette colour of its detector, and hidden if the
-// slicer wedge currently covers it. Non-active cells that become visible are
-// appended to visHandles so outlines+raycast include them.
-function _syncNonActiveShowAll() {
-  if (!slicer.isShowAllCells()) return;
-  const slicerMask = slicer.getMaskState();
-  const sweep = (list, detOn, minColor) => {
-    for (let i = 0; i < list.length; i++) {
-      const h = list[i];
-      if (active.has(h)) continue;      // active cells: normal flow handles them
-      if (!detOn) { _setHandleVisible(h, false); continue; }
-      let vis = true;
-      if (slicerMask.active) {
-        const c = _cellCenter(h);
-        if (slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
-      }
-      if (vis) {
-        h.iMesh.setColorAt(h.instId, minColor);
-        _markIMDirty(h.iMesh);
-        visHandles.push(h);
-      }
-      _setHandleVisible(h, vis);
-    }
-  };
-  sweep(cellMeshesByDet.TILE, showTile, PAL_TILE_COLOR[0]);
-  sweep(cellMeshesByDet.LAR,  showLAr,  PAL_LAR_COLOR[0]);
-  sweep(cellMeshesByDet.HEC,  showHec,  PAL_HEC_COLOR[0]);
-}
-
-function applyThreshold() {
-  // When the slicer is active it owns cell visibility (its mask already
-  // incorporates the thresholds / cluster filter). Delegate to it so we don't
-  // un-hide cells that should be inside the bubble.
-  if (slicer.isActive()) { _applySlicerMask(); return; }
-  visHandles = [];
-  for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
-    const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
-    const detOn  = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
-    let inCluster;
-    if (activeClusterCellIds === null) {
-      inCluster = true;                                           // no cluster data → no filter
-    } else if (mbtsLabel != null) {
-      inCluster = activeMbtsLabels !== null && activeMbtsLabels.has(mbtsLabel); // MBTS: cluster eta/phi match
-    } else if (cellId != null) {
-      inCluster = activeClusterCellIds.has(cellId);              // normal cell: ID match
-    } else {
-      inCluster = true;                                           // no ID and not MBTS → always pass
-    }
-    // Show-all bypasses every filter (threshold, cluster, negative energy) —
-    // the user wants literally every cell on an enabled detector visible.
-    const passThr = slicer.isShowAllCells() || (!isFinite(thr) || energyMev >= thr);
-    const passCl  = slicer.isShowAllCells() || inCluster;
-    const passNeg = slicer.isShowAllCells() || energyMev >= 0;
-    const vis     = detOn && passNeg && passThr && passCl;
-    _setHandleVisible(h, vis);
-    if (vis) visHandles.push(h);
-  }
-  _syncNonActiveShowAll();
-  _flushIMDirty();
-  _rebuildRayIMeshes();
-  rebuildAllOutlines();
-  markDirty();
 }
 
 // ── Process XML ───────────────────────────────────────────────────────────────
@@ -1058,8 +784,8 @@ async function processXml(xmlText) {
     if (!workerResult) {
       const r = parseClusters(doc);
       rawClusters = r.flat;
-      lastClusterData = { collections: r.collections };
-    } else lastClusterData = { collections: _clusterCollections };
+      setLastClusterData({ collections: r.collections });
+    } else setLastClusterData({ collections: _clusterCollections });
     if (rawClusters.length) {
       let etMin = Infinity, etMax = -Infinity;
       for (const { etGev } of rawClusters) {
@@ -1304,10 +1030,10 @@ function showFcalOutline(instanceId) {
   clearOutline();
   const iMesh = fcalGroup?.children.find(c => c.isInstancedMesh);
   if (!iMesh) return;
-  iMesh.getMatrixAt(instanceId, _fcalMat4);
-  const eb  = _getFcalEdgeBase();
+  iMesh.getMatrixAt(instanceId, fcalEdgeMat4);
+  const eb  = getFcalEdgeBase();
   const buf = new Float32Array(eb.length);
-  const m   = _fcalMat4.elements;
+  const m   = fcalEdgeMat4.elements;
   for (let j = 0; j < eb.length; j += 3) {
     const lx = eb[j], ly = eb[j + 1], lz = eb[j + 2];
     buf[j]     = m[0]*lx + m[4]*ly + m[8]*lz  + m[12];
@@ -1558,17 +1284,14 @@ function syncLayerToggles() {
   document.getElementById('btn-layers').classList.toggle('on', showTile || showLAr || showHec || showFcal);
 }
 
-function refreshSceneVisibility() {
-  applyThreshold();
-  applyFcalThreshold();
-}
+// refreshSceneVisibility is imported from visibility.js
 
-document.getElementById('ltog-tile').addEventListener('click', () => { showTile = !showTile; syncLayerToggles(); applyThreshold(); });
-document.getElementById('ltog-lar') .addEventListener('click', () => { showLAr  = !showLAr;  syncLayerToggles(); applyThreshold(); });
-document.getElementById('ltog-hec') .addEventListener('click', () => { showHec  = !showHec;  syncLayerToggles(); applyThreshold(); });
-document.getElementById('ltog-fcal').addEventListener('click', () => { showFcal = !showFcal; syncLayerToggles(); applyFcalThreshold(); });
-document.getElementById('lbtn-all') .addEventListener('click', () => { showTile = showLAr = showHec = showFcal = true;  syncLayerToggles(); refreshSceneVisibility(); });
-document.getElementById('lbtn-none').addEventListener('click', () => { showTile = showLAr = showHec = showFcal = false; syncLayerToggles(); refreshSceneVisibility(); });
+document.getElementById('ltog-tile').addEventListener('click', () => { setShowTile(!showTile); syncLayerToggles(); applyThreshold(); });
+document.getElementById('ltog-lar') .addEventListener('click', () => { setShowLAr(!showLAr);   syncLayerToggles(); applyThreshold(); });
+document.getElementById('ltog-hec') .addEventListener('click', () => { setShowHec(!showHec);   syncLayerToggles(); applyThreshold(); });
+document.getElementById('ltog-fcal').addEventListener('click', () => { setShowFcal(!showFcal); syncLayerToggles(); applyFcalThreshold(); });
+document.getElementById('lbtn-all') .addEventListener('click', () => { setShowTile(true);  setShowLAr(true);  setShowHec(true);  setShowFcal(true);  syncLayerToggles(); refreshSceneVisibility(); });
+document.getElementById('lbtn-none').addEventListener('click', () => { setShowTile(false); setShowLAr(false); setShowHec(false); setShowFcal(false); syncLayerToggles(); refreshSceneVisibility(); });
 
 // Layers panel open / close
 const layersPanel = document.getElementById('layers-panel');
@@ -1689,28 +1412,17 @@ sidebarControls = setupSidebarControls({
   applyClusterThreshold,
   sidebarControls,
   state: {
-    getThrTileMev: () => thrTileMev,
-    setThrTileMev: v => { thrTileMev = v; },
-    getThrLArMev: () => thrLArMev,
-    setThrLArMev: v => { thrLArMev = v; },
-    getThrFcalMev: () => thrFcalMev,
-    setThrFcalMev: v => { thrFcalMev = v; },
-    getThrHecMev: () => thrHecMev,
-    setThrHecMev: v => { thrHecMev = v; },
-    getThrTrackGev: () => thrTrackGev,
-    setThrTrackGev: v => { thrTrackGev = v; },
-    getTrackPtMinGev: () => trackPtMinGev,
-    setTrackPtMinGev: v => { trackPtMinGev = v; },
-    getTrackPtMaxGev: () => trackPtMaxGev,
-    setTrackPtMaxGev: v => { trackPtMaxGev = v; },
-    getThrClusterEtGev: () => thrClusterEtGev,
-    setThrClusterEtGev: v => { thrClusterEtGev = v; },
-    getClusterEtMinGev: () => clusterEtMinGev,
-    setClusterEtMinGev: v => { clusterEtMinGev = v; },
-    getClusterEtMaxGev: () => clusterEtMaxGev,
-    setClusterEtMaxGev: v => { clusterEtMaxGev = v; },
-    getClusterFilterEnabled: () => clusterFilterEnabled,
-    setClusterFilterEnabled: v => { clusterFilterEnabled = v; },
+    getThrTileMev: () => thrTileMev,       setThrTileMev,
+    getThrLArMev:  () => thrLArMev,        setThrLArMev,
+    getThrFcalMev: () => thrFcalMev,       setThrFcalMev,
+    getThrHecMev:  () => thrHecMev,        setThrHecMev,
+    getThrTrackGev:    () => thrTrackGev,    setThrTrackGev,
+    getTrackPtMinGev:  () => trackPtMinGev,  setTrackPtMinGev,
+    getTrackPtMaxGev:  () => trackPtMaxGev,  setTrackPtMaxGev,
+    getThrClusterEtGev: () => thrClusterEtGev, setThrClusterEtGev,
+    getClusterEtMinGev: () => clusterEtMinGev, setClusterEtMinGev,
+    getClusterEtMaxGev: () => clusterEtMaxGev, setClusterEtMaxGev,
+    getClusterFilterEnabled: () => clusterFilterEnabled, setClusterFilterEnabled,
   },
 }));
 
@@ -2104,80 +1816,7 @@ document.getElementById('btn-about').addEventListener('click', () => {
 })();
 
 // ── Slicer gizmo ──────────────────────────────────────────────────────────────
-// A draggable 3D marker defining a cylindrical "bubble" at its current position.
-// While active, any cell whose centre is inside the bubble is hidden (both the
-// filled mesh AND its outline), so you can carve a hole through the detector.
-// Cells outside the bubble render normally (subject to the usual thresholds /
-// cluster filters).
-// Cut-volume is an invisible Z-aligned cylindrical wedge anchored at the origin.
-// The user controls two parameters by click-dragging the handle:
-//   · screen-Y drag → angular sweep (thetaLength, 0..2π)
-//   · screen-X drag → total height (mm, symmetric around origin)
-// Right-click + drag translates the whole cut volume (handle + cylinder)
-// along the scene's Z axis. Independent of the left-drag behaviours above.
-// Show-all-cells toggle: when true, every mesh from the GLB whose detector is
-// enabled is made visible. Cells absent from the current XML (not in `active`)
-// are painted with the minimum-palette colour for their detector.
-// Cell center world positions are cached on the handle itself (stable identity,
-// no extra Map lookup). The center is computed from origMatrix + geometry
-// bounding sphere, identical to the pre-refactor semantics.
-function _cellCenter(h) {
-  if (h._center) return h._center;
-  const m = h.origMatrix.elements;
-  const c = new THREE.Vector3(m[12], m[13], m[14]);
-  // For a few un-transformed cells the translation is 0. Fall back to the
-  // geometry's bounding-sphere centre so our "bubble" check isn't wrong.
-  if (c.lengthSq() < 1e-6) {
-    const geo = h.iMesh.geometry;
-    if (!geo.boundingSphere) geo.computeBoundingSphere();
-    const bs = geo.boundingSphere;
-    if (bs) c.copy(bs.center).applyMatrix4(h.origMatrix);
-  }
-  h._center = c;
-  return c;
-}
-
-// Apply the slicer cut — hide any active cell whose centre is inside the bubble,
-// then rebuild outlines so the outlined set matches what's visible.
-function _applySlicerMask() {
-  if (!slicer.isActive()) return;
-  visHandles = [];
-  const slicerMask = slicer.getMaskState();
-  for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
-    const thr    = det === 'LAR' ? thrLArMev  : det === 'HEC' ? thrHecMev : thrTileMev;
-    const detOn  = det === 'LAR' ? showLAr    : det === 'HEC' ? showHec   : showTile;
-    let inCluster;
-    if (activeClusterCellIds === null) {
-      inCluster = true;
-    } else if (mbtsLabel != null) {
-      inCluster = activeMbtsLabels !== null && activeMbtsLabels.has(mbtsLabel);
-    } else if (cellId != null) {
-      inCluster = activeClusterCellIds.has(cellId);
-    } else {
-      inCluster = true;
-    }
-    const passThr    = slicer.isShowAllCells() || (!isFinite(thr) || energyMev >= thr);
-    const passCl     = slicer.isShowAllCells() || inCluster;
-    const passNeg    = slicer.isShowAllCells() || energyMev >= 0;
-    const passFilter = detOn && passNeg && passThr && passCl;
-    let vis = passFilter;
-    if (vis) {
-      const c = _cellCenter(h);
-      // Inside Z-aligned cylindrical wedge at origin: r² in XY, z within
-      // [zMin, zMax], and polar angle within [0, thetaLen).
-      if (slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
-    }
-    _setHandleVisible(h, vis);
-    if (vis) visHandles.push(h);
-  }
-  _syncNonActiveShowAll();
-  _flushIMDirty();
-  _rebuildRayIMeshes();
-  rebuildAllOutlines();
-  // FCAL tubes are drawn separately (instanced) — rebuild with current bubble.
-  applyFcalThreshold();
-  markDirty();
-}
+// _cellCenter, _applySlicerMask, and all visibility logic live in visibility.js.
 
 const slicer = createSlicerController({
   THREE,
@@ -2187,20 +1826,12 @@ const slicer = createSlicerController({
   scene,
   slicerButton: document.getElementById('btn-slicer'),
   showAllButton: document.getElementById('btn-showall'),
-  onMaskChange: () => {
-    if (slicer.isActive()) _applySlicerMask();
-    else refreshSceneVisibility();
-  },
-  onDisable: refreshSceneVisibility,
-  onHideNonActiveShowAll: () => {
-    for (const det of ['TILE', 'LAR', 'HEC']) {
-      for (const h of cellMeshesByDet[det]) {
-        if (!active.has(h)) _setHandleVisible(h, false);
-      }
-    }
-    _flushIMDirty();
-  },
+  onMaskChange:            refreshSceneVisibility,
+  onDisable:               refreshSceneVisibility,
+  onHideNonActiveShowAll:  hideNonActiveCells,
 });
+
+initVisibility({ slicer, rebuildAllOutlines, updateTrackAtlasIntersections });
 
 setupScreenshotControls({
   camera,
