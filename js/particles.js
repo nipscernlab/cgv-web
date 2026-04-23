@@ -3,7 +3,6 @@ import { scene } from './renderer.js';
 import {
   getTrackGroup, getPhotonGroup, getClusterGroup,
   setTrackGroup, setPhotonGroup, setClusterGroup,
-  thrTrackGev,
   applyTrackThreshold, applyClusterThreshold,
 } from './visibility.js';
 import { TRACK_MAT, updateTrackAtlasIntersections } from './trackAtlasIntersections.js';
@@ -123,12 +122,12 @@ export function drawPhotons(photons) {
     const geo  = new THREE.BufferGeometry().setFromPoints(pts);
     const line = new THREE.Line(geo, PHOTON_MAT);
     line.userData.ptGev = ptGev;
-    line.visible = ptGev >= thrTrackGev;
     g.add(line);
   }
   g.matrixAutoUpdate = false;
   scene.add(g);
   setPhotonGroup(g);
+  applyTrackThreshold();
 }
 
 // ── Clusters (η/φ lines between inner and outer cylinders) ───────────────────
