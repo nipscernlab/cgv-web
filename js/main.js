@@ -1,5 +1,4 @@
 import * as THREE        from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { initLanguage, setupLanguagePicker, t } from './i18n/index.js';
 import { setupLiveMode } from './liveMode.js';
@@ -8,176 +7,36 @@ import { createSlicerController } from './slicer.js';
 import { setupLocalMode } from './localMode.js';
 import { setupSampleMode } from './sampleMode.js';
 import { registerViewerShortcuts } from './viewerShortcuts.js';
-
-// ── WASM parser: off-main-thread worker with synchronous fallback ────────────
-// The WASM ATLAS-ID parser runs in a dedicated Web Worker so that the per-event
-// bulk decode (tens of thousands of IDs) never blocks the render thread. The
-// main thread posts three whitespace-joined ID strings (TILE/LAR/HEC); the
-// worker returns three Int32Array packs via `postMessage`'s transferList for
-// zero-copy hand-off. If the Worker API is unavailable or the worker crashes at
-// init we fall back to importing the WASM module directly on the main thread.
-class _WasmParserPool {
-  constructor() {
-    this._worker = null;
-    this._ready = false;
-    this._rid = 0;
-    this._pending = new Map();
-    this._fallbackFn = null;
-    this._initPromise = null;
-  }
-  init() {
-    if (this._initPromise) return this._initPromise;
-    this._initPromise = (async () => {
-      if (typeof Worker !== 'undefined') {
-        try {
-          const w = new Worker(new URL('./wasm_worker.js', import.meta.url), { type: 'module' });
-          w.onmessage = (ev) => this._onMessage(ev);
-          w.onerror   = (e) => { console.warn('[wasm worker] runtime error', e && e.message); };
-          await new Promise((resolve, reject) => {
-            const to = setTimeout(() => reject(new Error('wasm worker init timeout')), 20000);
-            const onMsg = (ev) => {
-              if (ev.data && ev.data.type === 'ready') {
-                clearTimeout(to);
-                w.removeEventListener('message', onMsg);
-                resolve();
-              }
-            };
-            w.addEventListener('message', onMsg);
-            w.postMessage({ type: 'init' });
-          });
-          this._worker = w;
-          this._ready  = true;
-          return;
-        } catch (e) {
-          console.warn('[wasm worker] unavailable, falling back to main-thread WASM:', e && e.message);
-        }
-      }
-      await this._initFallback();
-    })();
-    return this._initPromise;
-  }
-  async _initFallback() {
-    const mod = await import('../parser/pkg/atlas_id_parser.js');
-    await mod.default();
-    this._fallbackFn = mod.parse_atlas_ids_bulk;
-    this._ready = true;
-  }
-  _onMessage(ev) {
-    const m = ev.data;
-    if (!m) return;
-    if (m.type === 'ready') return;
-    const pend = this._pending.get(m.rid);
-    if (!pend) return;
-    this._pending.delete(m.rid);
-    if (m.type === 'error') pend.reject(new Error(m.message || 'wasm worker error'));
-    else pend.resolve(m);
-  }
-  /** Parse three whitespace-joined ID strings; any may be empty/null.
-   *  Returns { tile, lar, hec } of Int32Array | null. */
-  parse(tileStr, larStr, hecStr) {
-    if (this._worker) {
-      const rid = ++this._rid;
-      return new Promise((resolve, reject) => {
-        this._pending.set(rid, { resolve, reject });
-        this._worker.postMessage({
-          type: 'parse', rid,
-          tile: tileStr || '', lar: larStr || '', hec: hecStr || '',
-        });
-      }).then(({ tile, lar, hec }) => ({ tile, lar, hec }));
-    }
-    // Fallback: main-thread sync WASM (already awaited in init())
-    const f = this._fallbackFn;
-    return Promise.resolve({
-      tile: tileStr && f ? f(tileStr) : null,
-      lar:  larStr  && f ? f(larStr)  : null,
-      hec:  hecStr  && f ? f(hecStr)  : null,
-    });
-  }
-  /** Parse XML text and bulk-decode ATLAS IDs entirely in the worker.
-   *  Returns the full parseXmlResult message, or null if no worker is available
-   *  (caller must fall back to inline parsing + parse()). */
-  parseXmlAndDecode(xmlText) {
-    if (!this._worker) return Promise.resolve(null);
-    const rid = ++this._rid;
-    return new Promise((resolve, reject) => {
-      this._pending.set(rid, { resolve, reject });
-      this._worker.postMessage({ type: 'parseXmlAndDecode', rid, xmlText });
-    });
-  }
-}
-const _wasmPool = new _WasmParserPool();
-
-// Subsystem codes returned by parse_atlas_ids_bulk (slot [0] of each 6-i32 record)
-const SUBSYS_TILE     = 1;
-const SUBSYS_LAR_EM   = 2;
-const SUBSYS_LAR_HEC  = 3;
+import {
+  _wasmPool, SUBSYS_TILE, SUBSYS_LAR_EM, SUBSYS_LAR_HEC,
+  meshByKey, cellMeshesByDet, active, rayTargets,
+  _ZERO_MAT4, _markIMDirty, _flushIMDirty,
+  _allCellIMeshes, _rayIMeshes,
+  _tileKey, _larEmKey, _hecKey,
+} from './state.js';
+import {
+  PAL_TILE_COLOR, PAL_HEC_COLOR, PAL_LAR_COLOR,
+  matTile, matHec, matLAr,
+  TILE_SCALE, HEC_SCALE, LAR_SCALE, FCAL_SCALE,
+  palColorTile, palColorHec, palColorLAr, palColorFcalRgb,
+} from './palette.js';
+import { setLoadProgress, dismissLoadingScreen, bumpReq } from './loading.js';
+import {
+  markDirty, isDirty, clearDirty,
+  canvas, renderer, scene, camera, controls, dirLight,
+} from './renderer.js';
+import {
+  GHOST_MESH_NAMES, ghostVisible, ghostMeshByName,
+  anyGhostOn, applyGhostMeshOne, applyAllGhostMeshes, syncGhostToggles,
+  toggleGhostByName, setAllGhosts, toggleAllGhosts,
+  enableDefaultGhosts, updateGhostColors,
+} from './ghost.js';
 
 let LivePoller = null;
 try { ({ LivePoller } = await import('../live_atlas/live_cern/live_poller.js')); } catch (_) {}
 
-// i18n
 initLanguage();
 setupLanguagePicker();
-
-// State
-// Cell "handles" replace one-Mesh-per-cell. A handle is an opaque stable
-// object identifying one instance inside an InstancedMesh, with enough info
-// to toggle visibility (zero-scale the matrix), paint it (setColorAt), or
-// build its hover/outline geometry (origMatrix + shared cell geometry).
-//   handle = { iMesh, instId, det, name, origMatrix: Matrix4, visible: bool, _center?: Vector3 }
-const meshByKey  = new Map();   // int -> handle (hot-path: event loop lookup)
-// Every non-envelope cell handle, grouped by detector. Populated once at load
-// so "show all cells" can reach cells whose names bypass meshNameToKey
-// (gap scintillators, ITC cells).
-const cellMeshesByDet = { TILE: [], LAR: [], HEC: [] };
-let   active     = new Map();   // handle -> tooltip data (keyed by object reference)
-let   rayTargets = [];          // InstancedMesh[] with ≥1 visible active instance
-
-// Shared constants for InstancedMesh bookkeeping.
-// Zero-determinant matrix: hides an instance (collapses its geometry to a
-// point; degenerate triangles are rejected by the rasterizer AND the raycaster).
-const _ZERO_MAT4 = new THREE.Matrix4().set(0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0);
-const _dirtyIM = new Set();
-function _markIMDirty(iMesh) { _dirtyIM.add(iMesh); }
-function _flushIMDirty() {
-  for (const im of _dirtyIM) {
-    im.instanceMatrix.needsUpdate = true;
-    if (im.instanceColor) im.instanceColor.needsUpdate = true;
-    // Recompute bounding sphere for raycasting, skipping hidden instances.
-    // Three.js's computeBoundingSphere() calls Sphere.applyMatrix4(_ZERO_MAT4)
-    // which evaluates w = 1/det = 1/0 = Infinity → NaN center, poisoning the
-    // sphere and making ray.intersectsSphere always return false (no tooltip).
-    // Fix: skip any instance where elements[15] == 0 (our zero-matrix sentinel).
-    if (!im.geometry.boundingSphere) im.geometry.computeBoundingSphere();
-    if (!im.boundingSphere) im.boundingSphere = new THREE.Sphere();
-    im.boundingSphere.makeEmpty();
-    for (let i = 0; i < im.count; i++) {
-      im.getMatrixAt(i, _bsMat);
-      if (_bsMat.elements[15] === 0) continue;
-      _bsSph.copy(im.geometry.boundingSphere).applyMatrix4(_bsMat);
-      im.boundingSphere.union(_bsSph);
-    }
-    if (im.boundingSphere.isEmpty()) im.boundingSphere.set(new THREE.Vector3(), 0);
-  }
-  _dirtyIM.clear();
-}
-// All cell InstancedMeshes (one per unique detector+geometry pair), for bulk
-// raycasting and reset sweeps.
-const _allCellIMeshes = [];
-const _rayIMeshes = new Set();
-
-// Reusable temporaries for bounding-sphere computation (avoids per-frame GC).
-const _bsMat   = new THREE.Matrix4();
-const _bsSph   = new THREE.Sphere();
-
-// Integer key encoding: avoids string construction in the per-cell hot path.
-// Bits [1:0] = detector type tag: TILE=0b00, LAr EM=0b01, HEC=0b10 (no cross-type collision).
-// TILE:   layer(5b<<2) | pn(1b<<7) | ieta(4b<<8) | module(6b<<12) - 18 bits total
-// LAr EM: (eb-1)(2b<<2) | sampling(2b<<4) | region(3b<<6) | pn(1b<<9) | eta(9b<<10) | phi(8b<<19)
-// HEC:    group(2b<<2) | region(1b<<4) | pn(1b<<5) | eta(5b<<6) | phi(6b<<11)
-const _tileKey  = (layer, pn, ieta, mod) => (layer<<2)|(pn<<7)|(ieta<<8)|(mod<<12);
-const _larEmKey = (eb, sampling, region, pn, eta, phi) => 1|((eb-1)<<2)|(sampling<<4)|(region<<6)|(pn<<9)|(eta<<10)|(phi<<19);
-const _hecKey   = (group, region, pn, eta, phi) => 2|(group<<2)|(region<<4)|(pn<<5)|(eta<<6)|(phi<<11);
 
 // Parse a GLB mesh name string into its integer key (called once per mesh at load time).
 function meshNameToKey(name) {
@@ -267,7 +126,6 @@ let showFcal   = true;
 
 let wasmOk     = false;
 let sceneOk    = false;
-let dirty      = true;
 let isLive     = true;
 let showInfo   = true;
 let cinemaMode = false;
@@ -275,7 +133,6 @@ let cinemaMode = false;
 // Ghost visibility is tracked per-mesh in `ghostVisible` (see GHOST_MESH_NAMES).
 let beamGroup  = null;
 let beamOn     = false;
-let reqCount     = 0;
 let allOutlinesMesh = null;
 let sidebarControls = null;
 let trackGroup    = null;
@@ -290,161 +147,7 @@ let activeMbtsLabels      = null;  // null = no cluster filter; Set<string> = MB
 let clusterFilterEnabled  = true;
 let _readyFired  = false;
 
-// Loading screen helpers
-const _loadBar = document.getElementById('loading-bar');
-const _loadMsg = document.getElementById('loading-msg');
 
-// RAF loop: eases _barCurrent toward _barTarget, plus an asymptotic creep so
-// the bar is never truly frozen during the GLB parse phase.
-// Creep ceiling: 79% - success callback jumps to 100%.
-let _barTarget  = 0;
-let _barCurrent = 0;
-let _barRafId   = null;
-function _barTick() {
-  // Asymptotic creep toward 79% (visible during parse phase, never freezes)
-  if (_barTarget < 79) {
-    _barTarget += (79 - _barTarget) * 0.003;
-  }
-  const gap = _barTarget - _barCurrent;
-  _barCurrent += gap > 0.05 ? gap * 0.1 : gap;
-  if (_loadBar) _loadBar.style.width = _barCurrent.toFixed(2) + '%';
-  _barRafId = requestAnimationFrame(_barTick);
-}
-_barRafId = requestAnimationFrame(_barTick);
-
-function setLoadProgress(pct, msg) {
-  _barTarget = Math.max(_barTarget, Math.min(100, pct));
-  if (_loadMsg && msg) _loadMsg.textContent = msg;
-}
-
-function dismissLoadingScreen() {
-  const overlay = document.getElementById('loading-overlay');
-  if (!overlay) return;
-  cancelAnimationFrame(_barRafId); _barRafId = null;
-  if (_loadBar) _loadBar.style.width = '100%';
-  overlay.classList.add('done');
-  setTimeout(() => { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 750);
-}
-
-const reqBadge = document.getElementById('req-badge');
-function bumpReq() {
-  reqCount++;
-  if (reqBadge) reqBadge.textContent = `${reqCount} req`;
-}
-
-// Palette helpers
-const PAL_N = 256;
-
-// Palette ramps (256 entries each). With InstancedMesh we no longer need one
-// Material per palette bin — one shared material per detector plus per-instance
-// colors via setColorAt gives identical visuals at a fraction of the GPU state.
-function _rampTile(t) {
-  t = Math.max(0, Math.min(1, t));
-  return new THREE.Color(
-    1.000 + t * (0.502 - 1.000),       // R: 1.0 -> 0.502
-    1.000 + t * (0.000 - 1.000),       // G: 1.0 -> 0.0
-    0.0                                 // B: always 0
-  );
-}
-function _rampHec(t) {
-  t = Math.max(0, Math.min(1, t));
-  return new THREE.Color(
-    0.4000 + t * (0.0471 - 0.4000),   // R: 0.40 -> 0.05
-    0.8784 + t * (0.0118 - 0.8784),   // G: 0.88 -> 0.01
-    0.9647 + t * (0.4078 - 0.9647)    // B: 0.96 -> 0.41
-  );
-}
-function _rampLAr(t) {
-  t = Math.max(0, Math.min(1, t));
-  return new THREE.Color(
-    0.0902 + t * (0.1529 - 0.0902),   // R: 0.09 -> 0.15
-    0.8118 + t * (0.0000 - 0.8118),   // G: 0.81 -> 0
-    0.2588                              // B: constant
-  );
-}
-const _mkPal = ramp => Array.from({ length: PAL_N }, (_, i) => {
-  const c = ramp(i / (PAL_N - 1));
-  c.offsetHSL(0, 0.35, 0);  // boost saturation, keep hue & lightness
-  return c;
-});
-const PAL_TILE_COLOR = _mkPal(_rampTile);
-const PAL_HEC_COLOR  = _mkPal(_rampHec);
-const PAL_LAR_COLOR  = _mkPal(_rampLAr);
-
-// Shared cell materials — one per detector. Instance-color is applied by
-// InstancedMesh.setColorAt on top of the material's base white; the per-bin
-// ramp colors live in PAL_*_COLOR instead of per-Material instances.
-const matTile = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide, flatShading: true });
-const matHec  = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide, flatShading: true });
-const matLAr  = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide, flatShading: true });
-
-const TILE_SCALE = 2000;
-const HEC_SCALE  = 5000;
-const LAR_SCALE  = 1000; // MeV - fixed 0-1 GeV
-const _palIdx = (v, s) => Math.round(Math.max(0, Math.min(1, v / s)) * (PAL_N - 1));
-function palColorTile(eMev) { return PAL_TILE_COLOR[_palIdx(eMev, TILE_SCALE)]; }
-function palColorHec (eMev) { return PAL_HEC_COLOR [_palIdx(eMev, HEC_SCALE)];  }
-function palColorLAr (eMev) { return PAL_LAR_COLOR [_palIdx(eMev, LAR_SCALE)];  }
-
-// Palette FCAL: copper ramp (deep patina -> molten copper -> hot gold)
-// Non-linear curve (gamma 0.55) keeps low energies dark and lets high values
-// pop visibly; stops: #1a0600 -> #6b2310 -> #c8642a -> #ffb26a -> #ffeabe
-const FCAL_SCALE = 7000; // MeV slider range (7 GeV)
-const _FCAL_STOPS = [
-  [0.102, 0.024, 0.000], // 0.00  deep patina
-  [0.420, 0.137, 0.063], // 0.25  oxidised copper
-  [0.784, 0.392, 0.165], // 0.55  molten copper
-  [1.000, 0.698, 0.416], // 0.80  bright copper
-  [1.000, 0.918, 0.745], // 1.00  hot highlight
-];
-const _FCAL_STEPS = [0.0, 0.25, 0.55, 0.80, 1.0];
-function palColorFcalRgb(t) {
-  t = Math.max(0, Math.min(1, t));
-  t = Math.pow(t, 0.55);  // gamma boost so the upper range dominates
-  for (let i = 1; i < _FCAL_STEPS.length; i++) {
-    if (t <= _FCAL_STEPS[i]) {
-      const k = (t - _FCAL_STEPS[i-1]) / (_FCAL_STEPS[i] - _FCAL_STEPS[i-1]);
-      const a = _FCAL_STOPS[i-1], b = _FCAL_STOPS[i];
-      return [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k];
-    }
-  }
-  return _FCAL_STOPS[_FCAL_STOPS.length-1];
-}
-
-// Ghost: calorimeter envelope meshes
-// All envelope meshes from the .glb share a single ghost material (same color,
-// same opacity) so they render as a visually unified outline regardless of any
-// material that might have been assigned by the exporter.
-const GHOST_MESH_NAMES = [
-  'C→LBTile_0',
-  'C→EBTilep_0',
-  'C→EBTilen_0',
-  'Calorimeter→LBTile_0',
-  'Calorimeter→LBTileLArg_0',
-  'Calorimeter→LBLArg_0',
-  'Calorimeter→EBTilep_0',
-  'Calorimeter→EBTilen_0',
-  'Calorimeter→EBTileHECp_0',
-  'Calorimeter→EBTileHECn_0',
-  'Calorimeter→EBHECp_0',
-  'Calorimeter→EBHECn_0',
-];
-// Ghosts enabled by default on startup (the TileCal envelopes).
-const GHOST_DEFAULT_ON = new Set([
-  'C→LBTile_0',
-  'C→EBTilep_0',
-  'C→EBTilen_0',
-  'Calorimeter→LBTile_0',
-  'Calorimeter→LBTileLArg_0',
-  'Calorimeter→EBTilep_0',
-  'Calorimeter→EBTilen_0',
-  'Calorimeter→EBTileHECp_0',
-  'Calorimeter→EBTileHECn_0',
-]);
-// Per-ghost visibility state (name -> bool); seeded from defaults at boot.
-const ghostVisible = new Map();
-for (const n of GHOST_MESH_NAMES) ghostVisible.set(n, GHOST_DEFAULT_ON.has(n));
-const ghostMeshByName = new Map();
 
 // ── Atlas structural geometry (from atlas.root merged into GLB) ───────────────
 const atlasMat = new THREE.MeshBasicMaterial({
@@ -648,7 +351,7 @@ function updateTrackAtlasIntersections() {
       line.material = hitTracks.has(line) ? TRACK_HIT_MAT : TRACK_MAT;
   }
   if (!changed) return;
-  dirty = true;
+  markDirty();
 }
 
 // Build a tree from mesh name paths "atlas→A→B→...".
@@ -673,209 +376,15 @@ function _buildAtlasTree(meshes) {
   return root;
 }
 
-// Fixed ghost colors / opacity - RGB(92,95,102) = #5C5F66; 94% transparent = 6% opacity
-let ghostSolidColor = 0x5C5F66;
-let ghostSolidOpacity = 0.01;  // 94% transparent
-
-const ghostSolidMat = new THREE.MeshBasicMaterial({
-  color: ghostSolidColor, transparent: true, opacity: ghostSolidOpacity,
-  depthWrite: false, side: THREE.DoubleSide,
-});
-// Phi lines: fixed white + high transparency (90%), independent of the alpha
-// slider which only affects the solid envelope. This keeps them as subtle
-// segmentation guides regardless of envelope opacity.
-const GHOST_PHI_FIXED_OPACITY = 0.06;
-const ghostPhiMat = new THREE.LineBasicMaterial({
-  color: 0xFFFFFF, transparent: true, opacity: GHOST_PHI_FIXED_OPACITY, depthWrite: false,
-});
-
-// ── Phi-segmentation lines (TileCal) ─────────────────────────────────────────
-// 64 radial planes in φ, each as a rectangle: 4 edges at r_inner → r_outer,
-// spanning z_min → z_max of each TileCal barrel+ext-barrel envelope.
-//   LB  : r_in=2288  r_out=3835  z = ±2820
-//   EB p: r_in=2288  r_out=3835  z = [3600, 6050]
-//   EB n: r_in=2288  r_out=3835  z = [-6050, -3600]
-const TILE_PHI_SEGS = [
-  { rIn: 2288, rOut: 3835, zMin: -2820, zMax:  2820 },  // LB
-  { rIn: 2288, rOut: 3835, zMin:  3600, zMax:  6050 },  // EB+
-  { rIn: 2288, rOut: 3835, zMin: -6050, zMax: -3600 },  // EB-
-];
-const N_PHI = 64;
-let ghostPhiGroup = null;
-
-function buildPhiLines() {
-  if (ghostPhiGroup) { scene.remove(ghostPhiGroup); ghostPhiGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
-  ghostPhiGroup = new THREE.Group();
-  ghostPhiGroup.renderOrder = 6;
-  ghostPhiGroup.visible = false;
-  for (let i = 0; i < N_PHI; i++) {
-    const phi = (i / N_PHI) * Math.PI * 2;
-    const cx = Math.cos(phi), cy = Math.sin(phi);
-    for (const { rIn, rOut, zMin, zMax } of TILE_PHI_SEGS) {
-      const pts = [
-        new THREE.Vector3(cx * rIn,  cy * rIn,  zMin),
-        new THREE.Vector3(cx * rIn,  cy * rIn,  zMax),
-        new THREE.Vector3(cx * rOut, cy * rOut, zMax),
-        new THREE.Vector3(cx * rOut, cy * rOut, zMin),
-        new THREE.Vector3(cx * rIn,  cy * rIn,  zMin),
-      ];
-      const geo = new THREE.BufferGeometry().setFromPoints(pts);
-      ghostPhiGroup.add(new THREE.Line(geo, ghostPhiMat));
-    }
-  }
-  scene.add(ghostPhiGroup);
-}
-
-function anyGhostOn() {
-  for (const v of ghostVisible.values()) if (v) return true;
-  return false;
-}
-
-// Apply a single ghost mesh's visibility + force the unified ghost material.
-function applyGhostMeshOne(name, visible) {
-  const mesh = ghostMeshByName.get(name);
-  if (!mesh) return;
-  if (visible) {
-    mesh.material    = ghostSolidMat;
-    mesh.renderOrder = 5;
-    mesh.visible     = true;
-  } else {
-    mesh.renderOrder = 0;
-    mesh.visible     = false;
-  }
-}
-
-// Re-apply every ghost's visibility from the ghostVisible map. Safe to call
-// after resetScene, which hides all meshes and restores original materials.
-function applyAllGhostMeshes() {
-  for (const [name, v] of ghostVisible) applyGhostMeshOne(name, v);
-  if (ghostPhiGroup) ghostPhiGroup.visible = anyGhostOn();
-  dirty = true;
-}
-
-function syncGhostToggles() {
-  document.getElementById('btn-ghost').classList.toggle('on', anyGhostOn());
-}
-
-function toggleGhostByName(name) {
-  if (!ghostVisible.has(name)) return;
-  const next = !ghostVisible.get(name);
-  ghostVisible.set(name, next);
-  if (next && !ghostPhiGroup) buildPhiLines();
-  applyGhostMeshOne(name, next);
-  if (ghostPhiGroup) ghostPhiGroup.visible = anyGhostOn();
-  syncGhostToggles();
-  dirty = true;
-}
-
-function setAllGhosts(on) {
-  for (const name of GHOST_MESH_NAMES) ghostVisible.set(name, on);
-  if (on && !ghostPhiGroup) buildPhiLines();
-  applyAllGhostMeshes();
-  syncGhostToggles();
-}
-
-// Keyboard shortcut (G): toggles combined ghost visibility — if any is on,
-// turn everything off; otherwise restore the default TileCal ghost set.
-function toggleAllGhosts() {
-  if (anyGhostOn()) { setAllGhosts(false); return; }
-  for (const name of GHOST_MESH_NAMES) ghostVisible.set(name, GHOST_DEFAULT_ON.has(name));
-  if (!ghostPhiGroup) buildPhiLines();
-  applyAllGhostMeshes();
-  syncGhostToggles();
-}
-
-// Startup: materialise the default ghost set (same path resetScene uses).
-function enableDefaultGhosts() {
-  buildPhiLines();
-  applyAllGhostMeshes();
-  syncGhostToggles();
-}
-
-function updateGhostColors() {
-  ghostSolidMat.color.set(ghostSolidColor);
-  ghostSolidMat.opacity = ghostSolidOpacity;
-  // Phi lines stay locked at white + high transparency — don't inherit from slider.
-  ghostPhiMat.opacity = GHOST_PHI_FIXED_OPACITY;
-  ghostPhiMat.color.set(0xFFFFFF);
-  if (ghostPhiGroup) ghostPhiGroup.traverse(o => { if (o.material) o.material.needsUpdate = true; });
-  dirty = true;
-}
 
 
-// ── Renderer ──────────────────────────────────────────────────────────────────
-// Default: Three.js WebGLRenderer — rock-solid and used for every feature.
-// Opt-in WebGPU path enabled via `?renderer=webgpu` (requires a WebGPU-capable
-// browser). WebGPU removes CPU overhead for draw-call dispatch and unlocks
-// compute shaders for future GPU-side geometry work. We fall back silently to
-// WebGL if the dynamic import or `init()` fails, so the URL flag is safe to
-// leave on even in browsers without WebGPU support.
-const canvas    = document.getElementById('c');
-const _rendererQuery = new URLSearchParams(location.search).get('renderer');
-const _wantWebGPU = _rendererQuery === 'webgpu' && typeof navigator !== 'undefined' && 'gpu' in navigator;
-
-let renderer = null;
-if (_wantWebGPU) {
-  try {
-    // Three.js ships WebGPURenderer under examples/jsm/renderers/webgpu/; the
-    // importmap resolves `three/addons/` to that directory.
-    const mod = await import('three/addons/renderers/webgpu/WebGPURenderer.js');
-    const WebGPURenderer = mod.default || mod.WebGPURenderer;
-    if (WebGPURenderer) {
-      renderer = new WebGPURenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-      await renderer.init();
-      console.info('[renderer] WebGPU active');
-    }
-  } catch (e) {
-    renderer = null;
-    console.warn('[renderer] WebGPU unavailable, falling back to WebGL:', e && e.message ? e.message : e);
-  }
-}
-if (!renderer) {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance', precision: 'mediump', preserveDrawingBuffer: true, stencil: false, depth: true });
-}
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-// WebGL-only knobs — WebGPURenderer does not expose these fields.
-if (renderer.isWebGLRenderer) {
-  renderer.sortObjects = false;
-  // renderer.info is only read by the FPS HUD (which uses its own frame counter),
-  // so let Three.js skip the per-frame reset.
-  renderer.info.autoReset = false;
-}
-
-// ── Scene / Camera / Controls ─────────────────────────────────────────────────
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x020d1c);
-scene.matrixAutoUpdate = false;  // we manage transforms manually
-const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 10, 100_000);
-camera.position.set(0, 0, 12_000);
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.14;   // faster stop (~2.5× quicker than 0.055)
-controls.zoomSpeed     = 1.2;
-// Only clear tooltip while the user is *actively* dragging/panning/zooming.
-// During the damped deceleration phase (after release) we let the tooltip
-// appear normally so it can show as soon as the mouse enters a cell.
+// Tooltip + dirty on camera drag — stays here since it references cinemaMode and tooltip.
 let _ctrlActive = false;
 controls.addEventListener('start',  () => { _ctrlActive = true; });
 controls.addEventListener('end',    () => { _ctrlActive = false; });
 controls.addEventListener('change', () => {
-  dirty = true;
+  markDirty();
   if (!cinemaMode && _ctrlActive) { tooltip.hidden = true; clearOutline(); }
-});
-
-// Lights are needed — all cell materials are MeshStandardMaterial (PBR lit)
-const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
-scene.add(ambientLight);
-
-// Directional light that follows the camera, always pointing at the origin.
-const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
-dirLight.position.copy(camera.position);
-scene.add(dirLight);
-controls.addEventListener('change', () => {
-  dirLight.position.copy(camera.position);
 });
 
 // ── FPS counter ──────────────────────────────────────────────────────────────
@@ -897,7 +406,7 @@ let _loopRafId = 0;
 let _resumeWarmFrames = 0;
 function _scheduleWarmFrames(count = 12) {
   _resumeWarmFrames = Math.max(_resumeWarmFrames, count | 0);
-  dirty = true;
+  markDirty();
 }
 function _restoreRendererAfterFocus() {
   const pr = Math.min(window.devicePixelRatio || 1, 2);
@@ -929,18 +438,18 @@ function _loopTick() {
   controls.update();
   if (_resumeWarmFrames > 0) {
     _resumeWarmFrames--;
-    dirty = true;
+    markDirty();
   }
-  if (controls.autoRotate) dirty = true;
-  if (!dirty) return;
+  if (controls.autoRotate) markDirty();
+  if (!isDirty()) return;
   renderer.render(scene, camera);
-  dirty = false;
+  clearDirty();
 }
 function _startLoop() {
   if (_loopRunning) return;
   _loopRunning = true;
   _fpsLast = performance.now(); _fpsFrames = 0;
-  dirty = true;
+  markDirty();
   if (!_loopRafId) _loopRafId = requestAnimationFrame(_loopTick);
 }
 function _stopLoop() {
@@ -970,7 +479,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  dirty = true;
+  markDirty();
 });
 
 // ── Status bar ────────────────────────────────────────────────────────────────
@@ -1208,7 +717,7 @@ setLoadProgress(0, 'Loading geometry…');
         _trackAtlasMeshBoxes = null;
       }
 
-      sceneOk = true; dirty = true;
+      sceneOk = true; markDirty();
       setLoadProgress(100, 'Geometry loaded');
       checkReady();
     },
@@ -1669,7 +1178,7 @@ function applyTrackThreshold() {
     for (const child of photonGroup.children)
       child.visible = child.userData.ptGev >= thrTrackGev;
   updateTrackAtlasIntersections();
-  dirty = true;
+  markDirty();
 }
 
 function drawTracks(tracks) {
@@ -1946,7 +1455,7 @@ function _applyFcalDraw() {
     fcalGroup.matrixAutoUpdate = false;
     scene.add(fcalGroup);
   }
-  if (!visible.length) { dirty = true; return; }
+  if (!visible.length) { markDirty(); return; }
 
   const n      = visible.length;
   // Shared geometry: unit-height cylinder (height scaled per instance via matrix).
@@ -2008,7 +1517,7 @@ function _applyFcalDraw() {
   outLines.renderOrder     = 3;
   fcalGroup.add(outLines);
 
-  dirty = true;
+  markDirty();
 }
 
 function rebuildActiveClusterCellIds() {
@@ -2088,7 +1597,7 @@ function _setHandleVisible(h, vis) {
 function _rebuildRayIMeshes() {
   _rayIMeshes.clear();
   for (const h of visHandles) _rayIMeshes.add(h.iMesh);
-  rayTargets = Array.from(_rayIMeshes);
+  rayTargets.length = 0; _rayIMeshes.forEach(im => rayTargets.push(im));
 }
 
 function resetScene() {
@@ -2107,7 +1616,7 @@ function resetScene() {
   // which would desync the ghostVisible map and make the next ghost toggle
   // render only the phi lines without the solid envelopes.
   applyAllGhostMeshes();
-  active.clear(); visHandles = []; rayTargets = []; _rayIMeshes.clear();
+  active.clear(); visHandles = []; rayTargets.length = 0; _rayIMeshes.clear();
   clearOutline(); clearAllOutlines();
   clearTracks();
   clearClusters();
@@ -2116,7 +1625,7 @@ function resetScene() {
   lastClusterData      = null;
   activeClusterCellIds = null;
   activeMbtsLabels     = null;
-  tooltip.hidden = true; dirty = true;
+  tooltip.hidden = true; markDirty();
 }
 
 // Sweep every cell that isn't part of the XML's `active` set and decide its
@@ -2183,7 +1692,7 @@ function applyThreshold() {
   _flushIMDirty();
   _rebuildRayIMeshes();
   rebuildAllOutlines();
-  dirty = true;
+  markDirty();
 }
 
 // ── Process XML ───────────────────────────────────────────────────────────────
@@ -2738,7 +2247,7 @@ function toggleBeam() {
   buildBeamIndicator(); beamOn = !beamOn;
   beamGroup.visible = beamOn;
   document.getElementById('btn-beam').classList.toggle('on', beamOn);
-  dirty = true;
+  markDirty();
 }
 
 // ── EdgesGeometry outline (hover) ─────────────────────────────────────────────
@@ -2746,7 +2255,7 @@ const eGeoCache  = new Map();
 const outlineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
 let   outlineMesh = null;
 function clearOutline() {
-  if (!outlineMesh) return; scene.remove(outlineMesh); outlineMesh = null; dirty = true;
+  if (!outlineMesh) return; scene.remove(outlineMesh); outlineMesh = null; markDirty();
 }
 function showOutline(h) {
   if (outlineMesh?.userData.src === h.name) return;
@@ -2759,7 +2268,7 @@ function showOutline(h) {
   outlineMesh.matrix.copy(h.origMatrix);
   outlineMesh.matrixWorld.copy(h.origMatrix);
   outlineMesh.renderOrder = 999; outlineMesh.userData.src = h.name;
-  scene.add(outlineMesh); dirty = true;
+  scene.add(outlineMesh); markDirty();
 }
 
 // Show hover outline (white) for a specific FCAL InstancedMesh instance.
@@ -2786,7 +2295,7 @@ function showFcalOutline(instanceId) {
   outlineMesh.matrixAutoUpdate = false;
   outlineMesh.renderOrder = 999;
   outlineMesh.userData.src = src;
-  scene.add(outlineMesh); dirty = true;
+  scene.add(outlineMesh); markDirty();
 }
 
 // ── All-cells outline (optimised: cached world-space edges per mesh) ─────────
@@ -2819,7 +2328,7 @@ function clearAllOutlines() {
   scene.remove(allOutlinesMesh);
   allOutlinesMesh.geometry.dispose();
   allOutlinesMesh = null;
-  dirty = true;
+  markDirty();
 }
 
 function rebuildAllOutlines() {
@@ -2852,7 +2361,7 @@ function _buildOutlinesNow() {
   allOutlinesMesh.frustumCulled = false;
   allOutlinesMesh.renderOrder = 3;
   scene.add(allOutlinesMesh);
-  dirty = true;
+  markDirty();
 }
 
 // ── Hover tooltip — raycasting fix ───────────────────────────────────────────
@@ -2917,7 +2426,7 @@ function doRaycast(clientX, clientY) {
       if (tipEKeyEl) tipEKeyEl.textContent = t('tip-energy-key');
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
-      tooltip.hidden = false; dirty = true; return;
+      tooltip.hidden = false; markDirty(); return;
     }
     if (fcalHit) {
       const iid  = fcalHit.instanceId;
@@ -2930,7 +2439,7 @@ function doRaycast(clientX, clientY) {
       if (tipEKeyEl) tipEKeyEl.textContent = t('tip-energy-key');
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
-      tooltip.hidden = false; dirty = true; return;
+      tooltip.hidden = false; markDirty(); return;
     }
   }
   // ── Track / Photon hit (pick closest) ────────────────────────────────────
@@ -2951,7 +2460,7 @@ function doRaycast(clientX, clientY) {
       if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
-      tooltip.hidden = false; dirty = true; return;
+      tooltip.hidden = false; markDirty(); return;
     }
   }
   // ── Cluster hit ───────────────────────────────────────────────────────────
@@ -2969,7 +2478,7 @@ function doRaycast(clientX, clientY) {
       if (tipEKeyEl) tipEKeyEl.innerHTML = 'E<sub>T</sub>';
       tooltip.style.left = Math.min(clientX+18, rect.right-210)+'px';
       tooltip.style.top  = Math.min(clientY+18, rect.bottom-90)+'px';
-      tooltip.hidden = false; dirty = true; return;
+      tooltip.hidden = false; markDirty(); return;
     }
   }
   clearOutline(); tooltip.hidden = true;
@@ -3105,7 +2614,7 @@ function _tourTick() {
     camera.position.addScaledVector(_tourVelPos, decay * dtSec);
     controls.target.addScaledVector(_tourVelTgt, decay * dtSec);
     controls.update();
-    dirty = true;
+    markDirty();
     _tourPrevT = now;
     return;
   }
@@ -3122,7 +2631,7 @@ function _tourTick() {
     camera.position.lerpVectors(_tourBlendFromPos, _tourTmpPos, e);
     controls.target.lerpVectors(_tourBlendFromTgt, _tourTmpTgt, e);
     controls.update();
-    dirty = true;
+    markDirty();
 
     const dtSec = Math.max(0.001, (now - _tourPrevT) / 1000);
     _tourVelPos.subVectors(camera.position,  _tourPrevPos).divideScalar(dtSec);
@@ -3144,7 +2653,7 @@ function _tourTick() {
   camera.position.copy(_tourTmpPos);
   controls.target.copy(_tourTmpTgt);
   controls.update();
-  dirty = true;
+  markDirty();
 
   // Record per-frame velocity (scene-units / second) for exit inertia.
   const dtSec = Math.max(0.001, (now - _tourPrevT) / 1000);
@@ -3202,7 +2711,7 @@ function resetCamera() {
   camera.position.set(0, 0, 12_000);
   controls.target.set(0, 0, 0);
   controls.update();
-  dirty = true;
+  markDirty();
 }
 document.getElementById('btn-cinema').addEventListener('click', () => cinemaMode ? exitCinema() : enterCinema());
 document.getElementById('cinema-exit').addEventListener('click', exitCinema);
@@ -3299,7 +2808,7 @@ function toggleTracks() {
   if (photonGroup) photonGroup.visible = tracksVisible;
   updateTrackAtlasIntersections();
   syncTracksBtn();
-  dirty = true;
+  markDirty();
 }
 document.getElementById('btn-tracks').addEventListener('click', toggleTracks);
 
@@ -3312,7 +2821,7 @@ function toggleClusters() {
   clustersVisible = !clustersVisible;
   if (clusterGroup) clusterGroup.visible = clustersVisible;
   syncClustersBtn();
-  dirty = true;
+  markDirty();
 }
 document.getElementById('btn-cluster').addEventListener('click', toggleClusters);
 
@@ -3648,7 +3157,7 @@ const DEFAULT_BG_HEX = '#020d1c';
     _positionCursors();
     _markActivePreset(hex);
     if (save) localStorage.setItem('cgv-bg-color', hex);
-    dirty = true;
+    markDirty();
   }
 
   function _paintSvBackground() {
@@ -3937,7 +3446,7 @@ async function renderAndDownload(targetW, targetH) {
   camera.aspect = origAspect;
   camera.fov    = origFov;
   camera.updateProjectionMatrix();
-  dirty = true;
+  markDirty();
 
   // ── 9. Download ─────────────────────────────────────────────────────────
   const ts   = new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
@@ -4141,7 +3650,7 @@ function _applySlicerMask() {
   rebuildAllOutlines();
   // FCAL tubes are drawn separately (instanced) — rebuild with current bubble.
   applyFcalThreshold();
-  dirty = true;
+  markDirty();
 }
 
 const slicer = createSlicerController({
