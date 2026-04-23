@@ -39,8 +39,9 @@ import {
   initTrackAtlasIntersections, setAtlasRoot, updateTrackAtlasIntersections,
 } from './trackAtlasIntersections.js';
 import {
-  initParticles,
   getTrackGroup, getPhotonGroup, getClusterGroup,
+  getTracksVisible, getClustersVisible,
+  setTracksVisible, setClustersVisible,
 } from './particles.js';
 import { clearOutline, rebuildAllOutlines } from './outlines.js';
 import {
@@ -81,10 +82,6 @@ const atlasMat = new THREE.MeshBasicMaterial({
 });
 
 initTrackAtlasIntersections({ getTrackGroup });
-initParticles({
-  getTracksVisible:   () => tracksVisible,
-  getClustersVisible: () => clustersVisible,
-});
 
 // Tooltip + dirty on camera drag.
 let _ctrlActive = false;
@@ -228,16 +225,11 @@ document.getElementById('btn-layers').addEventListener('click', e => {
 });
 
 // ── Particle tracks (collision tracer) toggle ───────────────────────────────
-let tracksVisible = true;
 function syncTracksBtn() {
-  document.getElementById('btn-tracks').classList.toggle('on', tracksVisible);
+  document.getElementById('btn-tracks').classList.toggle('on', getTracksVisible());
 }
 function toggleTracks() {
-  tracksVisible = !tracksVisible;
-  const tg = getTrackGroup();
-  const pg = getPhotonGroup();
-  if (tg) tg.visible = tracksVisible;
-  if (pg) pg.visible = tracksVisible;
+  setTracksVisible(!getTracksVisible());
   updateTrackAtlasIntersections();
   syncTracksBtn();
   markDirty();
@@ -245,14 +237,11 @@ function toggleTracks() {
 document.getElementById('btn-tracks').addEventListener('click', toggleTracks);
 
 // ── Cluster η/φ lines toggle ────────────────────────────────────────────────
-let clustersVisible = true;
 function syncClustersBtn() {
-  document.getElementById('btn-cluster').classList.toggle('on', clustersVisible);
+  document.getElementById('btn-cluster').classList.toggle('on', getClustersVisible());
 }
 function toggleClusters() {
-  clustersVisible = !clustersVisible;
-  const cg = getClusterGroup();
-  if (cg) cg.visible = clustersVisible;
+  setClustersVisible(!getClustersVisible());
   syncClustersBtn();
   markDirty();
 }

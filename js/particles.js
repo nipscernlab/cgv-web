@@ -34,17 +34,26 @@ let _trackGroup   = null;
 let _photonGroup  = null;
 let _clusterGroup = null;
 
-let _getTracksVisible   = () => true;
-let _getClustersVisible = () => true;
-
-export function initParticles({ getTracksVisible, getClustersVisible }) {
-  if (getTracksVisible)   _getTracksVisible   = getTracksVisible;
-  if (getClustersVisible) _getClustersVisible = getClustersVisible;
-}
+let _tracksVisible   = true;
+let _clustersVisible = true;
 
 export function getTrackGroup()   { return _trackGroup; }
 export function getPhotonGroup()  { return _photonGroup; }
 export function getClusterGroup() { return _clusterGroup; }
+
+export const getTracksVisible   = () => _tracksVisible;
+export const getClustersVisible = () => _clustersVisible;
+
+export function setTracksVisible(v) {
+  _tracksVisible = v;
+  if (_trackGroup)  _trackGroup.visible  = v;
+  if (_photonGroup) _photonGroup.visible = v;
+}
+
+export function setClustersVisible(v) {
+  _clustersVisible = v;
+  if (_clusterGroup) _clusterGroup.visible = v;
+}
 
 // Returns t at which the unit-direction ray (dx,dy,dz) from the origin hits
 // the surface of a cylinder with given radius and half-height.
@@ -72,7 +81,7 @@ export function drawTracks(tracks) {
   if (!tracks.length) return;
   _trackGroup = new THREE.Group();
   _trackGroup.renderOrder = 5;
-  _trackGroup.visible = _getTracksVisible();
+  _trackGroup.visible = _tracksVisible;
   for (const { pts, ptGev, hitIds, storeGateKey } of tracks) {
     const geo  = new THREE.BufferGeometry().setFromPoints(pts);
     const line = new THREE.Line(geo, TRACK_MAT);
@@ -127,7 +136,7 @@ export function drawPhotons(photons) {
   if (!photons.length) return;
   _photonGroup = new THREE.Group();
   _photonGroup.renderOrder = 7;
-  _photonGroup.visible = _getTracksVisible();
+  _photonGroup.visible = _tracksVisible;
   for (const { eta, phi, ptGev } of photons) {
     const theta = 2 * Math.atan(Math.exp(-eta));
     const sinT  = Math.sin(theta);
@@ -162,7 +171,7 @@ export function drawClusters(clusters) {
   if (!clusters.length) return;
   _clusterGroup = new THREE.Group();
   _clusterGroup.renderOrder = 6;
-  _clusterGroup.visible = _getClustersVisible();
+  _clusterGroup.visible = _clustersVisible;
   for (const { eta, phi, etGev, storeGateKey } of clusters) {
     const theta = 2 * Math.atan(Math.exp(-eta));
     const sinT  = Math.sin(theta);
