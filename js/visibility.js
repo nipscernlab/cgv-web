@@ -388,8 +388,7 @@ export function applyThreshold() {
     }
     const passThr = _slicer?.isShowAllCells() || (!isFinite(thr) || energyMev >= thr);
     const passCl  = _slicer?.isShowAllCells() || inCluster;
-    const passNeg = _slicer?.isShowAllCells() || energyMev >= 0;
-    const vis     = detOn && passNeg && passThr && passCl;
+    const vis     = detOn && passThr && passCl;
     _setHandleVisible(h, vis);
     if (vis) visHandles.push(h);
   }
@@ -419,8 +418,7 @@ function _applySlicerMask() {
     }
     const passThr    = _slicer.isShowAllCells() || (!isFinite(thr) || energyMev >= thr);
     const passCl     = _slicer.isShowAllCells() || inCluster;
-    const passNeg    = _slicer.isShowAllCells() || energyMev >= 0;
-    const passFilter = detOn && passNeg && passThr && passCl;
+    const passFilter = detOn && passThr && passCl;
     let vis = passFilter;
     if (vis) {
       const c = _cellCenter(h);
