@@ -2,21 +2,17 @@ import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
 
 // ── Ghost envelope mesh names ────────────────────────────────────────────────
-export const GHOST_MESH_NAMES = [
+// TileCal envelopes. All are visible by default on startup.
+const GHOST_MESH_NAMES = [
   'C→LBTile_0',
   'C→EBTilep_0',
   'C→EBTilen_0',
 ];
 
-// TileCal envelopes visible by default on startup.
-const GHOST_DEFAULT_ON = new Set([
-  'C→LBTile_0', 'C→EBTilep_0', 'C→EBTilen_0',
-]);
-
 // Per-ghost visibility (name -> bool). All modules read this; mutation via .set().
 export const ghostVisible    = new Map();
 export const ghostMeshByName = new Map();
-for (const n of GHOST_MESH_NAMES) ghostVisible.set(n, GHOST_DEFAULT_ON.has(n));
+for (const n of GHOST_MESH_NAMES) ghostVisible.set(n, true);
 
 // ── Ghost materials ──────────────────────────────────────────────────────────
 // RGB(92,95,102) = #5C5F66; very high transparency (99%) for a subtle outline.
@@ -41,7 +37,7 @@ const TILE_PHI_SEGS = [
 const N_PHI = 64;
 let ghostPhiGroup = null;
 
-export function buildPhiLines() {
+function buildPhiLines() {
   if (ghostPhiGroup) {
     scene.remove(ghostPhiGroup);
     ghostPhiGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
@@ -66,12 +62,12 @@ export function buildPhiLines() {
   scene.add(ghostPhiGroup);
 }
 
-export function anyGhostOn() {
+function anyGhostOn() {
   for (const v of ghostVisible.values()) if (v) return true;
   return false;
 }
 
-export function applyGhostMeshOne(name, visible) {
+function applyGhostMeshOne(name, visible) {
   const mesh = ghostMeshByName.get(name);
   if (!mesh) return;
   if (visible) {
@@ -91,24 +87,20 @@ export function applyAllGhostMeshes() {
   markDirty();
 }
 
-export function syncGhostToggles() {
+function syncGhostToggles() {
   document.getElementById('btn-ghost').classList.toggle('on', anyGhostOn());
 }
 
-export function setAllGhosts(on) {
+function setAllGhosts(on) {
   for (const name of GHOST_MESH_NAMES) ghostVisible.set(name, on);
   if (on && !ghostPhiGroup) buildPhiLines();
   applyAllGhostMeshes();
   syncGhostToggles();
 }
 
-// Keyboard shortcut G: if any ghost on → turn all off; else restore TileCal defaults.
+// Keyboard shortcut G: toggle all envelopes on/off.
 export function toggleAllGhosts() {
-  if (anyGhostOn()) { setAllGhosts(false); return; }
-  for (const name of GHOST_MESH_NAMES) ghostVisible.set(name, GHOST_DEFAULT_ON.has(name));
-  if (!ghostPhiGroup) buildPhiLines();
-  applyAllGhostMeshes();
-  syncGhostToggles();
+  setAllGhosts(!anyGhostOn());
 }
 
 export function enableDefaultGhosts() {

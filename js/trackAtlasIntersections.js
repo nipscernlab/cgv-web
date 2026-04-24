@@ -3,7 +3,7 @@ import { scene, markDirty } from './renderer.js';
 
 // Track line materials — shared with drawTracks() so hit/miss restyling stays consistent.
 export const TRACK_MAT     = new THREE.LineBasicMaterial({ color: 0xffea00, linewidth: 2 });
-export const TRACK_HIT_MAT = new THREE.LineBasicMaterial({ color: 0x4A90D9, linewidth: 2 });
+const TRACK_HIT_MAT        = new THREE.LineBasicMaterial({ color: 0x4A90D9, linewidth: 2 });
 
 const atlasTrackHitMat = new THREE.MeshBasicMaterial({
   color: 0x4A90D9, transparent: true, opacity: 0.035,

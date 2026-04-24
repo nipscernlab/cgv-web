@@ -8,7 +8,7 @@ export function t(key) {
       ?? key;
 }
 
-export function applyLang(lang) {
+function applyLang(lang) {
   currentLang = lang;
 
   const htmlLang = { no: 'nb', pt: 'pt-BR' };

@@ -9,7 +9,6 @@ import {
   palColorFcal,
 } from './palette.js';
 import { scene, markDirty } from './renderer.js';
-import { applyAllGhostMeshes } from './ghost.js';
 
 // ── Late-injected dependencies (set via initVisibility after slicer is ready) ─
 let _slicer                        = null;
@@ -103,9 +102,9 @@ export function setClusterEtMaxGev(v)      { clusterEtMaxGev    = v; }
 export function setClusterFilterEnabled(v) { clusterFilterEnabled = v; }
 
 // ── Cluster filter sets (computed from cluster data) ─────────────────────────
-export let lastClusterData      = null;
-export let activeClusterCellIds = null;
-export let activeMbtsLabels     = null;
+let lastClusterData      = null;
+let activeClusterCellIds = null;
+let activeMbtsLabels     = null;
 
 export function setLastClusterData(v) { lastClusterData = v; }
 
@@ -120,7 +119,7 @@ export function clearVisibilityState() {
 }
 
 // ── FCAL state and rendering ──────────────────────────────────────────────────
-export let fcalCellsData = [];
+let fcalCellsData        = [];
 export let fcalGroup     = null;
 export let fcalVisibleMap = [];
 

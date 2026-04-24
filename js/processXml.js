@@ -49,7 +49,7 @@ export function setProcessXmlDeps(deps) {
 }
 
 // ── Scene reset ───────────────────────────────────────────────────────────────
-export function resetScene() {
+function resetScene() {
   for (const det of ['TILE', 'LAR', 'HEC']) {
     for (const h of cellMeshesByDet[det]) {
       if (h.visible) {

@@ -53,7 +53,7 @@ import { setupButtonTooltips } from './buttonTooltips.js';
 import { setupMobileToolbar } from './mobileToolbar.js';
 import { processXml, setProcessXmlDeps } from './processXml.js';
 import {
-  initStatusHud, setStatus, showEventInfo, updateCollisionHud, getLastEventInfo,
+  initStatusHud, setStatus, updateCollisionHud, getLastEventInfo,
 } from './statusHud.js';
 
 let LivePoller = null;

@@ -44,7 +44,7 @@ export function initHoverTooltip({ getShowInfo, getCinemaMode, t }) {
   });
 }
 
-export function doRaycast(clientX, clientY) {
+function doRaycast(clientX, clientY) {
   const trackGroup   = getTrackGroup();
   const photonGroup  = getPhotonGroup();
   const clusterGroup = getClusterGroup();
