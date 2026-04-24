@@ -54,3 +54,31 @@ export function makeRelTime(t) {
     return `${Math.floor(s / 3600)}${t('h-ago')}`;
   };
 }
+
+/**
+ * Classify a past timestamp into a date-group label ("today", "yesterday",
+ * "this-week", or an absolute date like "2026-04-18"). Day boundaries use the
+ * local-timezone midnight. Returns {key, label} where key is stable across
+ * items in the same group and label is the display string.
+ *
+ * @param {number} ts  Unix ms.
+ * @param {Translator} t
+ * @returns {{ key: string, label: string }}
+ */
+export function dateGroup(ts, t) {
+  if (!Number.isFinite(ts)) return { key: 'unknown', label: t('date-group-earlier') };
+  const now = new Date();
+  const item = new Date(ts);
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const today = startOfDay(now);
+  const itemDay = startOfDay(item);
+  const msPerDay = 86_400_000;
+  const daysAgo = Math.round((today - itemDay) / msPerDay);
+
+  if (daysAgo <= 0) return { key: 'today', label: t('date-group-today') };
+  if (daysAgo === 1) return { key: 'yesterday', label: t('date-group-yesterday') };
+  if (daysAgo < 7) return { key: 'this-week', label: t('date-group-this-week') };
+  const pad = (n) => String(n).padStart(2, '0');
+  const iso = `${item.getFullYear()}-${pad(item.getMonth() + 1)}-${pad(item.getDate())}`;
+  return { key: iso, label: iso };
+}

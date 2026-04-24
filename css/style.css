@@ -523,6 +523,21 @@ body.rpanel-unpinned #rpanel-edge {
   transition: all 0.12s;
   margin-bottom: 8px;
 }
+.date-sep {
+  display: block;
+  font-size: 0.58rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: rgba(160, 180, 210, 0.38);
+  padding: 10px 4px 4px;
+  margin: 0;
+  pointer-events: none;
+  user-select: none;
+  text-transform: lowercase;
+}
+.date-sep:first-child {
+  padding-top: 2px;
+}
 @media (hover: hover) {
   .erow:hover:not(.cur) {
     background: rgba(255, 255, 255, 0.04);
@@ -1674,44 +1689,24 @@ input[type='file'] {
   opacity: 1;
   transform: translateY(0);
 }
-/* Multi-line hint used by the collision-info statusbar */
-#stat-hint {
-  position: fixed;
-  z-index: 200;
-  pointer-events: none;
-  padding: 9px 13px;
-  background: rgba(2, 9, 22, 0.97);
-  border: 1px solid var(--border2);
-  border-radius: 7px;
-  font: 400 0.64rem var(--font);
-  color: var(--bright);
-  letter-spacing: 0.01em;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
-  opacity: 0;
-  transform: translateY(4px);
-  transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
-  max-width: 320px;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 4px 12px;
+#btn-tip .tip-kbd {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: 2px;
+  align-items: center;
 }
-#stat-hint.show {
-  opacity: 1;
-  transform: translateY(0);
-}
-#stat-hint .sh-key {
-  color: var(--muted);
-  font-size: 0.58rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-#stat-hint .sh-val {
-  color: var(--bright);
-  font-family: var(--mono);
-  font-size: 0.62rem;
-  word-break: break-all;
+#btn-tip kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-bottom-color: rgba(255, 255, 255, 0.28);
+  border-radius: 3px;
+  color: #d4e4ff;
+  font: 600 0.58rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  vertical-align: baseline;
 }
 #statusbar {
   cursor: default;
@@ -1783,6 +1778,24 @@ input[type='file'] {
 }
 #collision-hud[hidden] {
   display: none !important;
+}
+
+/* η × φ radar minimap (top-right) */
+#minimap {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 24;
+  border: 1px solid rgba(120, 150, 190, 0.25);
+  border-radius: 6px;
+  background: rgba(8, 14, 28, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+@media (max-width: 720px) {
+  #minimap { display: none; }
 }
 #collision-hud .ch-key {
   color: #66ccff;

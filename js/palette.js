@@ -68,17 +68,12 @@ export const matLAr = new THREE.MeshStandardMaterial({
   flatShading: true,
 });
 
-// Default energy scale ceilings (MeV). Used as the slider cap before any
-// event loads and as a fallback when a per-event ceiling can't be computed.
+// Default energy scale ceilings (MeV).
 export const TILE_SCALE = 2000;
 export const HEC_SCALE = 5000;
 export const LAR_SCALE = 1000;
 export const FCAL_SCALE = 7000;
 
-// Live palette floor+ceiling — overwritten per event so the full [min, p_N]
-// range of the actual event maps to the palette's full color range. Floor can
-// go negative (real ATLAS XML contains negative cell energies from pedestal
-// subtraction), so the smallest cell maps to the light end of the ramp.
 let _tileMin = 0,
   _tileMax = TILE_SCALE;
 let _hecMin = 0,

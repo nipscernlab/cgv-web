@@ -75,7 +75,14 @@ import { setupPanelResize } from './panelResize.js';
 import { setupButtonTooltips } from './buttonTooltips.js';
 import { setupMobileToolbar } from './mobileToolbar.js';
 import { processXml, setProcessXmlDeps } from './processXml.js';
-import { initStatusHud, setStatus, updateCollisionHud, getLastEventInfo } from './statusHud.js';
+import { initMinimap } from './minimap.js';
+import {
+  initStatusHud,
+  setStatus,
+  updateCollisionHud,
+  getLastEventInfo,
+  setCollisionHudEnabled,
+} from './statusHud.js';
 
 let LivePoller = null;
 try {
@@ -84,6 +91,7 @@ try {
 
 initLanguage();
 setupLanguagePicker();
+initMinimap();
 
 let wasmOk = false;
 let sceneOk = false;
@@ -343,14 +351,14 @@ sidebarControls = setupSidebarControls({
   getTourMode: () => cinema.isTourMode(),
   onDisableTourMode: () => cinema.disableTourMode(),
   onEnableTourMode: () => cinema.enableTourMode(),
+  onToggleCollisionHud: (enabled) => setCollisionHudEnabled(enabled),
   t,
   updateCollisionHud,
 });
 
 initStatusHud({
-  getPanelPinned: () => sidebarControls.getState().panelPinned,
-  getCinemaMode: () => cinema.isCinemaMode(),
-  isHintsEnabled: () => sidebarControls.isHintsEnabled(),
+  t,
+  isCollisionHudEnabled: () => sidebarControls.isCollisionHudEnabled(),
 });
 
 ({ tileSlider, larSlider, fcalSlider, hecSlider, trackPtSlider, clusterEtSlider, initDetPanel } =
