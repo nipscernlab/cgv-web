@@ -364,6 +364,48 @@
       outline-offset: -6px;
       background: rgba(36,103,224,.08);
     }
+    /* Remote-mode bar (shown when /api/xml/* is reachable) */
+    .server-remote-bar { flex: 1; min-width: 0; display: flex; }
+    .server-remote-bar[hidden] { display: none; }
+    .server-folder-btn {
+      flex: 1; min-width: 0; justify-content: flex-start; gap: 6px;
+    }
+    .server-folder-cur-text {
+      flex: 1; min-width: 0; text-align: left;
+      font-family: var(--mono); font-size: .58rem; letter-spacing: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      color: var(--text); text-transform: none;
+    }
+    .server-folder-edit-ic { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+    .server-folder-btn:hover .server-folder-edit-ic { color: var(--bright); }
+    /* Inline edit row */
+    .server-folder-edit {
+      display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+      padding: 0 0 4px;
+    }
+    .server-folder-edit[hidden] { display: none; }
+    .server-folder-input {
+      flex: 1; min-width: 0;
+      padding: 6px 8px;
+      background: rgba(0,0,0,.25); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      font: 400 .62rem var(--mono); letter-spacing: 0;
+      outline: none;
+    }
+    .server-folder-input:focus { border-color: var(--accent); }
+    .server-folder-act {
+      width: 26px; height: 26px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); border-radius: 6px;
+      color: var(--muted); background: transparent; cursor: pointer;
+      transition: color .14s, border-color .14s;
+    }
+    .server-folder-act:hover { color: var(--bright); border-color: rgba(255,255,255,.25); }
+    .server-folder-error {
+      font: 400 .58rem var(--font); padding: 2px 4px 4px;
+      flex-shrink: 0;
+    }
+    .server-folder-error[hidden] { display: none; }
 
     /* ── Log section ──────────────────────────────────────── */
     #log-sec {

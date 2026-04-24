@@ -33,13 +33,13 @@ echo
 ) &
 
 if command -v python3 >/dev/null 2>&1; then
-  exec python3 -m http.server "$PORT" --bind 127.0.0.1
+  exec python3 ./serve.py "$PORT"
 fi
 
 if command -v python >/dev/null 2>&1; then
   PYV=$(python -c 'import sys; print(sys.version_info[0])' 2>/dev/null || echo 0)
   if [ "$PYV" = "3" ]; then
-    exec python -m http.server "$PORT" --bind 127.0.0.1
+    exec python ./serve.py "$PORT"
   fi
 fi
 

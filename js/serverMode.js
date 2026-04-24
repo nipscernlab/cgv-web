@@ -1,5 +1,7 @@
 const MAX_ENTRIES = 100;
 const REFRESH_MS = 5000;
+const REMOTE_API = '/api/xml';
+const HAS_FSA    = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
 function fmtTime(ts) {
   if (!Number.isFinite(ts)) return '';
@@ -59,6 +61,8 @@ export function setupServerMode({
   let isActive = false;
   let isPaused = false;
   let canPoll = false;
+  let remoteMode = false;
+  let remoteFolderPath = null;
 
   const sec = document.getElementById('live-server-sec');
   const listEl = document.getElementById('server-list');
@@ -66,6 +70,14 @@ export function setupServerMode({
   const refreshBtn = document.getElementById('server-refresh-btn');
   const pickBtn = document.getElementById('btn-server-pick');
   const folderInput = document.getElementById('server-folder-in');
+  const remoteBar = document.getElementById('server-remote-bar');
+  const remoteFolderBtn = document.getElementById('server-folder-cur');
+  const remoteFolderText = document.getElementById('server-folder-cur-text');
+  const remoteEditRow = document.getElementById('server-folder-edit');
+  const remoteEditInput = document.getElementById('server-folder-input');
+  const remoteApplyBtn = document.getElementById('server-folder-apply');
+  const remoteCancelBtn = document.getElementById('server-folder-cancel');
+  const remoteErrorEl = document.getElementById('server-folder-error');
 
   function keyFor(f, rel) {
     return `${rel || f.name}|${f.size}|${f.lastModified}`;
@@ -208,17 +220,50 @@ export function setupServerMode({
     updateEntries(out);
   }
 
+  function makeRemoteFile(meta) {
+    const url = `${REMOTE_API}/file/${encodeURIComponent(meta.name)}`;
+    return {
+      name: meta.name,
+      size: meta.size,
+      lastModified: meta.mtime,
+      async text() {
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      },
+    };
+  }
+
+  async function reloadFromRemote() {
+    try {
+      const r = await fetch(`${REMOTE_API}/list`, { cache: 'no-store' });
+      if (!r.ok) {
+        if (r.status === 503) {
+          entries = [];
+          renderList();
+        }
+        return;
+      }
+      const list = await r.json();
+      const out = list.map(it => ({ file: makeRemoteFile(it), rel: it.name }));
+      updateEntries(out);
+    } catch (err) {
+      console.warn('[serverMode] remote reload failed:', err);
+    }
+  }
+
   async function refreshTick() {
     if (!isActive || isPaused) return;
     flashRefresh();
-    if (folderHandle) await reloadFromHandle();
+    if (remoteMode)        await reloadFromRemote();
+    else if (folderHandle) await reloadFromHandle();
     scheduleRefresh();
   }
 
   function scheduleRefresh() {
     clearTimeout(refreshTimer);
     if (!isActive || isPaused) return;
-    if (!folderHandle) return;
+    if (!remoteMode && !folderHandle) return;
     refreshTimer = setTimeout(refreshTick, REFRESH_MS);
   }
 
@@ -228,7 +273,9 @@ export function setupServerMode({
   }
 
   function showFallbackWarning() {
-    setStatus(`<span class="warn">${esc(t('server-no-watch'))}</span>`);
+    const main = esc(t('server-no-watch'));
+    const tip  = HAS_FSA ? '' : ` <span class="warn-tip">${esc(t('server-try-chromium'))}</span>`;
+    setStatus(`<span class="warn">${main}${tip}</span>`);
   }
 
   async function pickFolder() {
@@ -336,7 +383,99 @@ export function setupServerMode({
     }
   }
 
+  // ── Remote mode (server-side folder via /api/xml/*) ───────────────────
+  function updateRemoteFolderDisplay() {
+    if (!remoteFolderText) return;
+    remoteFolderText.textContent = remoteFolderPath || t('server-folder-not-set');
+    if (remoteFolderBtn) remoteFolderBtn.title = remoteFolderPath || '';
+  }
+
+  function showRemoteError(msg) {
+    if (!remoteErrorEl) return;
+    if (!msg) { remoteErrorEl.hidden = true; remoteErrorEl.textContent = ''; return; }
+    remoteErrorEl.hidden = false;
+    remoteErrorEl.textContent = msg;
+  }
+
+  function openFolderEdit() {
+    if (!remoteEditRow) return;
+    showRemoteError('');
+    remoteEditInput.value = remoteFolderPath || '';
+    remoteEditRow.hidden = false;
+    if (remoteBar) remoteBar.hidden = true;
+    setTimeout(() => remoteEditInput.focus(), 0);
+  }
+
+  function closeFolderEdit() {
+    if (!remoteEditRow) return;
+    remoteEditRow.hidden = true;
+    if (remoteBar) remoteBar.hidden = false;
+    showRemoteError('');
+  }
+
+  async function applyFolderEdit() {
+    const path = (remoteEditInput?.value || '').trim();
+    if (!path) return;
+    try {
+      const r = await fetch(`${REMOTE_API}/set-folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      remoteFolderPath = data.path || path;
+      updateRemoteFolderDisplay();
+      lastAutoLoadedKey = null;
+      currentKey = null;
+      closeFolderEdit();
+      await reloadFromRemote();
+    } catch (err) {
+      showRemoteError(err.message || String(err));
+    }
+  }
+
+  async function tryEnterRemoteMode() {
+    try {
+      const r = await fetch(`${REMOTE_API}/folder`, {
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!r.ok) return false;
+      // Guard against static hosts (Cloudflare Pages, etc.) that return a 200
+      // HTML 404 page on unknown routes — only accept a JSON body with `path`.
+      const ct = r.headers.get('content-type') || '';
+      if (!ct.toLowerCase().includes('json')) return false;
+      const data = await r.json();
+      if (!data || typeof data !== 'object' || !('path' in data)) return false;
+      remoteMode = true;
+      remoteFolderPath = data.path || null;
+      // Hide the local picker; show the remote bar.
+      if (pickBtn) pickBtn.hidden = true;
+      if (remoteBar) remoteBar.hidden = false;
+      updateRemoteFolderDisplay();
+      canPoll = true;
+      isPaused = false;
+      syncRefreshBtn();
+      await reloadFromRemote();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  if (remoteFolderBtn) remoteFolderBtn.addEventListener('click', openFolderEdit);
+  if (remoteApplyBtn)  remoteApplyBtn.addEventListener('click', applyFolderEdit);
+  if (remoteCancelBtn) remoteCancelBtn.addEventListener('click', closeFolderEdit);
+  if (remoteEditInput) {
+    remoteEditInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); applyFolderEdit(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeFolderEdit(); }
+    });
+  }
+
   syncRefreshBtn();
+  tryEnterRemoteMode();
 
   return {
     setActive,

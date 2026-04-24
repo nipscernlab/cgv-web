@@ -267,6 +267,15 @@
           <span data-i18n="server-folder">Select Folder</span>
         </button>
         <input id="server-folder-in" type="file" accept=".xml" multiple webkitdirectory>
+        <!-- Remote-mode bar: shown when /api/xml/* is reachable -->
+        <div id="server-remote-bar" class="server-remote-bar" hidden>
+          <button id="server-folder-cur" class="file-pick-btn sm server-folder-btn"
+            data-tip="Change folder" data-i18n-tip="tip-server-change">
+            <svg class="ic" style="width:11px;height:11px"><use href="#i-folder"/></svg>
+            <span id="server-folder-cur-text" class="server-folder-cur-text"></span>
+            <i class="ti ti-pencil server-folder-edit-ic"></i>
+          </button>
+        </div>
         <button id="server-refresh-btn" class="server-refresh-btn"
           data-tip="Pause folder polling" data-i18n-tip="tip-poll-stop" hidden>
           <i class="ti ti-rotate-clockwise refresh-ic"></i>
@@ -274,6 +283,21 @@
           <svg class="ic play-ic"  style="width:9px;height:9px"><use href="#i-play"/></svg>
         </button>
       </div>
+      <!-- Inline edit row: open via remote bar click -->
+      <div id="server-folder-edit" class="server-folder-edit" hidden>
+        <input id="server-folder-input" type="text" class="server-folder-input"
+          data-i18n-ph="server-folder-placeholder"
+          placeholder="/path/to/jivexml/folder">
+        <button id="server-folder-apply" class="sm-icon-btn server-folder-act"
+          data-tip="Apply" data-i18n-tip="tip-server-apply">
+          <i class="ti ti-check"></i>
+        </button>
+        <button id="server-folder-cancel" class="sm-icon-btn server-folder-act"
+          data-tip="Cancel" data-i18n-tip="tip-server-cancel">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+      <div id="server-folder-error" class="server-folder-error warn" hidden></div>
       <div id="server-empty" data-i18n="server-empty">
         Pick a folder with JiveXML files. The 100 most recent are shown and refresh every 5s.
       </div>
