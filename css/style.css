@@ -1797,7 +1797,9 @@ input[type='file'] {
   pointer-events: none;
 }
 @media (max-width: 720px) {
-  #minimap { display: none; }
+  #minimap {
+    display: none;
+  }
 }
 #collision-hud .ch-key {
   color: #66ccff;
