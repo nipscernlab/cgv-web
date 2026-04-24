@@ -1,0 +1,11 @@
+node_modules/
+parser/pkg/
+parser/target/
+geometry_data/
+atlantis/
+live_atlas/
+tmp_atlas_*/
+.chrome-headless/
+js/atlas_id_parser.js
+*.min.js
+*.min.css

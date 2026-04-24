@@ -1,30 +1,63 @@
 {
   "name": "cgv-web",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "directories": {
-    "lib": "lib"
-  },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
+  "description": "CGV Web — browser-based 3D viewer for the ATLAS Tile Calorimeter (TileCal) at CERN. Renders .root geometry compiled to .glb via Three.js + WebGL, and overlays live event data (cells, clusters, tracks) parsed from JiveXML by a Rust/WASM ATLAS-ID decoder.",
+  "keywords": [
+    "atlas",
+    "cern",
+    "lhc",
+    "tilecal",
+    "calorimeter",
+    "particle-physics",
+    "visualization",
+    "threejs",
+    "webgl",
+    "wasm",
+    "jivexml",
+    "nipscern"
+  ],
+  "homepage": "https://github.com/nipscernlab/cgv-web#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nipscernlab/cgv-web.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "bugs": {
     "url": "https://github.com/nipscernlab/cgv-web/issues"
   },
-  "homepage": "https://github.com/nipscernlab/cgv-web#readme",
+  "license": "ISC",
+  "author": "Luciano Manhães de Andrade Filho <luciano.ma.filho@gmail.com>",
+  "contributors": [
+    "Chrysthofer Arthur Amaro Afonso <chrysthofer.afonso@estudante.ufjf.br>"
+  ],
+  "private": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start":        "python serve.py",
+    "dev":          "python serve.py",
+    "start:win":    "powershell -NoProfile -ExecutionPolicy Bypass -File run-server.ps1",
+    "build":        "build.bat",
+    "build:geom":   "node setup/setup.mjs",
+    "deploy":       "deploy.bat",
+    "lint":         "eslint \"js/**/*.js\" \"setup/**/*.mjs\"",
+    "lint:fix":     "eslint --fix \"js/**/*.js\" \"setup/**/*.mjs\"",
+    "format":       "prettier --write \"js/**/*.js\" \"setup/**/*.mjs\" \"css/**/*.css\"",
+    "format:check": "prettier --check \"js/**/*.js\" \"setup/**/*.mjs\" \"css/**/*.css\"",
+    "test":         "echo \"No tests yet — see README for adding Vitest\" && exit 0"
+  },
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",
     "@gltf-transform/extensions": "^4.3.0",
     "@gltf-transform/functions": "^4.3.0",
     "jsroot": "^7.10.3",
     "three": "^0.162.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.4.0"
   }
 }
