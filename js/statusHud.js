@@ -5,6 +5,7 @@ const collisionHud = document.getElementById('collision-hud');
 
 let _lastEventInfo = null;
 let _collisionHudEnabled = true;
+let _getPanelPinned = () => false;
 let _t = (k) => k;
 
 export function getLastEventInfo() {
@@ -34,13 +35,9 @@ function _buildCollisionHud() {
     .join('');
 }
 
-/**
- * Overlay visibility: controlled by the Settings toggle; shows only when an
- * event is loaded. No longer tied to panel pin / cinema state since the
- * statusbar no longer duplicates run/event/LB info.
- */
 export function updateCollisionHud() {
-  collisionHud.hidden = !(_collisionHudEnabled && _lastEventInfo);
+  const hiddenByPanel = _getPanelPinned();
+  collisionHud.hidden = !(_collisionHudEnabled && _lastEventInfo && !hiddenByPanel);
   if (!collisionHud.hidden) _buildCollisionHud();
 }
 
@@ -73,7 +70,8 @@ export function showEventInfo(info) {
   setStatus(`<span class="ev-meta">${esc(_t('status-loaded'))}</span>`);
 }
 
-export function initStatusHud({ t, isCollisionHudEnabled } = {}) {
+export function initStatusHud({ t, isCollisionHudEnabled, getPanelPinned } = {}) {
   if (t) _t = t;
   if (typeof isCollisionHudEnabled === 'function') _collisionHudEnabled = !!isCollisionHudEnabled();
+  if (typeof getPanelPinned === 'function') _getPanelPinned = getPanelPinned;
 }

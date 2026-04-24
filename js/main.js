@@ -75,7 +75,7 @@ import { setupPanelResize } from './panelResize.js';
 import { setupButtonTooltips } from './buttonTooltips.js';
 import { setupMobileToolbar } from './mobileToolbar.js';
 import { processXml, setProcessXmlDeps } from './processXml.js';
-import { initMinimap } from './minimap.js';
+import { initMinimap, setMinimapVisible } from './minimap.js';
 import {
   initStatusHud,
   setStatus,
@@ -352,6 +352,7 @@ sidebarControls = setupSidebarControls({
   onDisableTourMode: () => cinema.disableTourMode(),
   onEnableTourMode: () => cinema.enableTourMode(),
   onToggleCollisionHud: (enabled) => setCollisionHudEnabled(enabled),
+  onToggleMinimap: (enabled) => setMinimapVisible(enabled),
   t,
   updateCollisionHud,
 });
@@ -359,6 +360,7 @@ sidebarControls = setupSidebarControls({
 initStatusHud({
   t,
   isCollisionHudEnabled: () => sidebarControls.isCollisionHudEnabled(),
+  getPanelPinned: () => sidebarControls.getState().panelPinned,
 });
 
 ({ tileSlider, larSlider, fcalSlider, hecSlider, trackPtSlider, clusterEtSlider, initDetPanel } =
