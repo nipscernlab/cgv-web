@@ -1,3 +1,12 @@
+// @ts-check
+
+/**
+ * Format an energy value in MeV, promoting to GeV at ≥ 1 GeV.
+ * ±Infinity and NaN are rendered as "ALL" (meaning "no threshold").
+ *
+ * @param {number} v  Energy in MeV.
+ * @returns {string}
+ */
 export function fmtMev(v) {
   if (!isFinite(v)) return 'ALL';
   const a = Math.abs(v);
@@ -6,6 +15,15 @@ export function fmtMev(v) {
   return `${v.toFixed(3)} MeV`;
 }
 
+/**
+ * HTML-escape &, <, > for safe insertion into innerHTML. Null/undefined
+ * become the empty string; other values are stringified first.
+ *
+ * The `&` replacement runs first so subsequent escapes aren't double-encoded.
+ *
+ * @param {unknown} s
+ * @returns {string}
+ */
 export function esc(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -13,6 +31,20 @@ export function esc(s) {
     .replace(/>/g, '&gt;');
 }
 
+/**
+ * Translator callback — maps an i18n key to a localized string.
+ * @typedef {(key: string) => string} Translator
+ */
+
+/**
+ * Build a relative-time formatter bound to a translator. The returned
+ * function takes a past Unix-ms timestamp and returns "just now" for
+ * anything under 10s, then Ns/Nm/Nh buckets using the translator's
+ * suffix strings.
+ *
+ * @param {Translator} t
+ * @returns {(ts: number) => string}
+ */
 export function makeRelTime(t) {
   return function relTime(ts) {
     const s = (Date.now() - ts) / 1000;

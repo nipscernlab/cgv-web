@@ -25,6 +25,9 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Type-check annotated files (tsc)
+        run: npm run typecheck
+
       - name: Check Prettier formatting
         run: npm run format:check
         continue-on-error: true
