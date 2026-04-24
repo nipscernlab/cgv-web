@@ -1,17 +1,49 @@
-ISC License
-
+NIPSCERN Non-Commercial Source License — Version 1.0
 Copyright (c) 2024-2026 Luciano Manhães de Andrade Filho
                         Chrysthofer Arthur Amaro Afonso
                         NIPSCERN / UFJF
 
-Permission to use, copy, modify, and/or distribute this software for any
-purpose with or without fee is hereby granted, provided that the above
-copyright notice and this permission notice appear in all copies.
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to use, copy, modify, merge, publish, and distribute the Software, and to
+contribute to it (including through pull requests on the official repository),
+subject to the following conditions:
 
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+1. NON-COMMERCIAL USE ONLY.
+   The Software may not be used, in whole or in part, for any commercial
+   purpose — including sale, licensing, subscription, hosting for payment,
+   integration into a commercial product or service, or any activity whose
+   primary purpose is financial gain — without prior written permission from
+   the copyright holders. To request commercial permission, contact:
+
+       contact@nipscern.com
+
+   The copyright holders may grant or deny such permission at their sole
+   discretion, with or without conditions.
+
+2. ATTRIBUTION.
+   All copies, modifications, or distributions of the Software — whether in
+   source or compiled form — must retain this license notice, the copyright
+   statement above, and a visible acknowledgement of the original project
+   (e.g. "Based on CGV Web — NIPSCERN / UFJF").
+
+3. CONTRIBUTIONS.
+   Contributions submitted to the official repository (pull requests, patches,
+   issues) are welcomed. By submitting a contribution the contributor agrees
+   that it is licensed under the same terms as this License and that the
+   copyright holders may incorporate it into the project without restriction
+   or additional compensation.
+
+4. OPEN SOURCE.
+   The source code is made publicly available so that the scientific community
+   can inspect, study, reproduce and improve it. This openness does not imply
+   a waiver of the commercial restriction in section 1.
+
+5. NO WARRANTY.
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
+   THE COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
+   OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.

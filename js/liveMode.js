@@ -1,3 +1,5 @@
+import { dateGroup } from './utils.js';
+
 export function setupLiveMode({
   LivePoller,
   advanceProgress,
@@ -50,7 +52,16 @@ export function setupLiveMode({
     if (emptyEl) emptyEl.hidden = list.length > 0;
 
     let marked = false;
+    let lastGroupKey = null;
     list.slice(0, 100).forEach((entry, idx) => {
+      const group = dateGroup(entry.timestamp, t);
+      if (group.key !== lastGroupKey) {
+        lastGroupKey = group.key;
+        const sep = document.createElement('div');
+        sep.className = 'date-sep';
+        sep.textContent = group.label;
+        listEl.appendChild(sep);
+      }
       const row = document.createElement('div');
       const isCurrent = !marked && entry.id === currentEventId;
       if (isCurrent) marked = true;

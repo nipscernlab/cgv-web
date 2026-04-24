@@ -6,6 +6,7 @@ parser/target/
 # Ad-hoc ATLAS XML scratch folders produced during local experimentation.
 tmp_atlas_*/
 tmp/
+/atlantis
 
 # ── Browser profiles (created when testing via headless Chrome) ───────────────
 .chrome-headless/

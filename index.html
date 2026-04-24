@@ -323,15 +323,15 @@
   <!-- Download / load progress bar (only visible while loading) -->
   <div id="dl-progress" hidden>
     <div class="dl-stages">
-      <div class="dl-stage" id="dlst-request"><div class="dl-dot"></div>Request</div>
+      <div class="dl-stage" id="dlst-request"><div class="dl-dot"></div><span data-i18n="dl-request">Request</span></div>
       <div class="dl-arrow">›</div>
-      <div class="dl-stage" id="dlst-recogn"><div class="dl-dot"></div>Recognize</div>
+      <div class="dl-stage" id="dlst-recogn"><div class="dl-dot"></div><span data-i18n="dl-recogn">Recognize</span></div>
       <div class="dl-arrow">›</div>
-      <div class="dl-stage" id="dlst-download"><div class="dl-dot"></div>Download</div>
+      <div class="dl-stage" id="dlst-download"><div class="dl-dot"></div><span data-i18n="dl-download">Download</span></div>
       <div class="dl-arrow">›</div>
-      <div class="dl-stage" id="dlst-acquire"><div class="dl-dot"></div>Acquire</div>
+      <div class="dl-stage" id="dlst-acquire"><div class="dl-dot"></div><span data-i18n="dl-acquire">Acquire</span></div>
       <div class="dl-arrow">›</div>
-      <div class="dl-stage" id="dlst-load"><div class="dl-dot"></div>Load</div>
+      <div class="dl-stage" id="dlst-load"><div class="dl-dot"></div><span data-i18n="dl-load">Load</span></div>
     </div>
     <div id="dl-bar-track"><div id="dl-bar-fill"></div></div>
   </div>
@@ -360,10 +360,10 @@
       <div class="sthumb" id="cluster-sthumb"></div>
     </div>
     <div class="sval" id="cluster-sval-min">– GeV</div>
-    <div class="slbl">Min E<sub>T</sub></div>
+    <div class="slbl" data-i18n="slbl-cluster-et">Min E<sub>T</sub></div>
     <input id="cluster-thr-input" class="thr-input" type="text"
       autocomplete="off" spellcheck="false"
-      placeholder="e.g. 1.5 GeV">
+      data-i18n-ph="thr-placeholder-gev" placeholder="e.g. 1.5 GeV">
     <button class="cluster-filter-btn on" id="cluster-filter-toggle" type="button" role="switch" aria-checked="true">
       On
     </button>
@@ -466,10 +466,10 @@
       <div class="sthumb" id="track-sthumb"></div>
     </div>
     <div class="sval" id="track-sval-min">– GeV</div>
-    <div class="slbl">Min |p<sub>T</sub>|</div>
+    <div class="slbl" data-i18n="slbl-track-pt">Min |p<sub>T</sub>|</div>
     <input id="track-thr-input" class="thr-input" type="text"
       autocomplete="off" spellcheck="false"
-      placeholder="e.g. 1.5 GeV">
+      data-i18n-ph="thr-placeholder-gev" placeholder="e.g. 1.5 GeV">
   </div>
 
 </aside>
@@ -480,12 +480,12 @@
 <!-- ── Bottom toolbar ─────────────────────────────────────── -->
 <div id="toolbar">
   <button class="tbtn" id="btn-panel"
-    data-tip="Toggle the sidebar panel" data-i18n-tip="tip-panel">
+    data-tip="Toggle the sidebar panel (M)" data-i18n-tip="tip-panel">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-sidebar"/></svg>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-cinema"
-    data-tip="Cinema mode — auto-rotation, hide UI" data-i18n-tip="tip-cinema">
+    data-tip="Cinema mode — auto-rotation, hide UI (C)" data-i18n-tip="tip-cinema">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-film"/></svg>
   </button>
   <div class="tbtn-sep"></div>
@@ -496,58 +496,58 @@
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn on" id="btn-info"
-    data-tip="Cell info — show tooltip and outline on hover" data-i18n-tip="tip-info">
+    data-tip="Cell info — show tooltip and outline on hover (I)" data-i18n-tip="tip-info">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-eye"/></svg>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-beam"
-    data-tip="Beam axis — show Z-axis N/S direction cones" data-i18n-tip="tip-beam">
+    data-tip="Beam axis — show Z-axis N/S direction cones (B)" data-i18n-tip="tip-beam">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-beam"/></svg>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn on" id="btn-layers"
-    data-tip="Detector layers — toggle geometry visibility">
+    data-tip="Detector layers — toggle geometry visibility" data-i18n-tip="tip-layers">
     <i class="ti ti-layers-subtract" style="font-size:15px"></i>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn on" id="btn-tracks"
-    data-tip="Particle tracks — toggle collision path/tracer (J)">
+    data-tip="Particle tracks — toggle collision path/tracer (J)" data-i18n-tip="tip-tracks">
     <i class="ti ti-route" style="font-size:15px"></i>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn on" id="btn-cluster"
-    data-tip="Clusters — toggle η/φ cluster lines (K)">
+    data-tip="Clusters — toggle η/φ cluster lines (K)" data-i18n-tip="tip-cluster">
     <i class="ti ti-focus-2" style="font-size:15px"></i>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-rpanel"
-    data-tip="Energy threshold panel (E)">
+    data-tip="Energy threshold panel (E)" data-i18n-tip="tip-rpanel">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-sliders"/></svg>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-reset"
-    data-tip="Reset camera to default position" data-i18n-tip="tip-reset">
+    data-tip="Reset camera to default position (R)" data-i18n-tip="tip-reset">
     <i class="ti ti-refresh"></i>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-shot"
-    data-tip="Save screenshot" data-i18n-tip="tip-shot">
+    data-tip="Save screenshot (P)" data-i18n-tip="tip-shot">
     <svg class="ic" style="width:14px;height:14px"><use href="#i-camera"/></svg>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-bgcolor"
-    data-tip="Background color — pick scene background (Shift+B)">
+    data-tip="Background color — pick scene background (Shift+B)" data-i18n-tip="tip-bgcolor">
     <i class="ti ti-color-swatch" style="font-size:15px"></i>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-slicer"
-    data-tip="Slicer — drag the handle to sweep the cylindrical-wedge carve (Y: angle wraps continuously, X: height); right-drag to slide along the Y/Z plane. Also fills the geometry with empty cells (Shift+S)"
+    data-tip="Slicer — cylindrical-wedge carve (Shift+S)"
     data-i18n-tip="tip-slicer">
     <i class="ti ti-3d-cube-sphere" style="font-size:15px"></i>
   </button>
   <div class="tbtn-sep"></div>
   <button class="tbtn" id="btn-settings"
-    data-tip="Settings — sponsors, shortcuts, preferences">
+    data-tip="Settings — sponsors, shortcuts, preferences (S)" data-i18n-tip="tip-settings">
     <i class="ti ti-settings" style="font-size:15px"></i>
   </button>
   <button class="tbtn" id="btn-lang"
@@ -587,17 +587,17 @@
 <!-- ── Layers panel ───────────────────────────────────────── -->
 <div id="layers-panel">
   <div class="layers-head">
-    <span class="layers-title">Detector Layers</span>
+    <span class="layers-title" data-i18n="layers-title">Detector Layers</span>
     <div class="layers-quick">
-      <button class="layers-qbtn" id="lbtn-all">All</button>
-      <button class="layers-qbtn" id="lbtn-none">None</button>
+      <button class="layers-qbtn" id="lbtn-all" data-i18n="layers-all">All</button>
+      <button class="layers-qbtn" id="lbtn-none" data-i18n="layers-none">None</button>
     </div>
   </div>
   <div class="layer-row">
     <span class="layer-dot" style="background:#c87c18"></span>
     <div class="layer-info">
       <div class="layer-name">TILE</div>
-      <div class="layer-sub">TileCal barrel &amp; extended</div>
+      <div class="layer-sub" data-i18n="layer-sub-tile">TileCal barrel &amp; extended</div>
     </div>
     <button class="gswitch on" id="ltog-tile" role="switch" aria-checked="true"
       style="--gswitch-col:#c87c18"></button>
@@ -606,7 +606,7 @@
     <span class="layer-dot" style="background:#27b568"></span>
     <div class="layer-info">
       <div class="layer-name">LAr</div>
-      <div class="layer-sub">EM calorimeter</div>
+      <div class="layer-sub" data-i18n="layer-sub-lar">EM calorimeter</div>
     </div>
     <button class="gswitch on" id="ltog-lar" role="switch" aria-checked="true"
       style="--gswitch-col:#27b568"></button>
@@ -615,7 +615,7 @@
     <span class="layer-dot" style="background:#66e0f6"></span>
     <div class="layer-info">
       <div class="layer-name">HEC</div>
-      <div class="layer-sub">Hadronic end-cap</div>
+      <div class="layer-sub" data-i18n="layer-sub-hec">Hadronic end-cap</div>
     </div>
     <button class="gswitch on" id="ltog-hec" role="switch" aria-checked="true"
       style="--gswitch-col:#66e0f6"></button>
@@ -624,7 +624,7 @@
     <span class="layer-dot" style="background:#b87333"></span>
     <div class="layer-info">
       <div class="layer-name">FCAL</div>
-      <div class="layer-sub">Forward calorimeter</div>
+      <div class="layer-sub" data-i18n="layer-sub-fcal">Forward calorimeter</div>
     </div>
     <button class="gswitch on" id="ltog-fcal" role="switch" aria-checked="true"
       style="--gswitch-col:#b87333"></button>
@@ -663,6 +663,22 @@
       <button class="gswitch" id="stog-tour" role="switch" aria-checked="false"
         style="--gswitch-col:#ff8a3c"></button>
     </div>
+    <div class="sett-row">
+      <div class="sett-info">
+        <div class="sett-label" data-i18n="sett-collision-label">Collision info overlay</div>
+        <div class="sett-sub" data-i18n="sett-collision-sub">Top-left HUD with run, event, lumi block &amp; timestamp</div>
+      </div>
+      <button class="gswitch on" id="stog-collision-hud" role="switch" aria-checked="true"
+        style="--gswitch-col:#66ccff"></button>
+    </div>
+    <div class="sett-row">
+      <div class="sett-info">
+        <div class="sett-label" data-i18n="sett-minimap-label">η × φ radar minimap</div>
+        <div class="sett-sub" data-i18n="sett-minimap-sub">Top-right 2D map of active cells, clusters &amp; FCAL hits</div>
+      </div>
+      <button class="gswitch on" id="stog-minimap" role="switch" aria-checked="true"
+        style="--gswitch-col:#ffa040"></button>
+    </div>
   </div>
   <!-- Keyboard shortcuts -->
   <div class="sett-section">
@@ -693,7 +709,7 @@
 <!-- ── Rotate-to-landscape hint (portrait phones only) ───── -->
 <div id="rotate-hint">
   <div class="rotate-hint-gif" role="img" aria-label="rotate device"></div>
-  <div class="rotate-hint-text">Please rotate your device to landscape</div>
+  <div class="rotate-hint-text" data-i18n="rotate-hint">Please rotate your device to landscape</div>
 </div>
 
 <!-- ── Mobile toolbar toggle ──────────────────────────────── -->
@@ -781,9 +797,7 @@
 
 <!-- ── Button hint tooltip ───────────────────────────────── -->
 <div id="btn-tip"></div>
-<!-- ── Multi-line hint (statusbar collision info) ────────── -->
-<div id="stat-hint"></div>
-<!-- ── Collision info HUD (top-left, shown when panel collapsed or cinema) -->
+<!-- ── Collision info HUD (top-left; toggleable in Settings) ── -->
 <div id="collision-hud" hidden></div>
 
 <!-- ── Cell hover tooltip ────────────────────────────────── -->

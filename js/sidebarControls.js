@@ -3,6 +3,8 @@ export function setupSidebarControls({
   getTourMode,
   onDisableTourMode,
   onEnableTourMode,
+  onToggleCollisionHud,
+  onToggleMinimap,
   t,
   updateCollisionHud,
 }) {
@@ -18,6 +20,7 @@ export function setupSidebarControls({
   const hintsToggle = document.getElementById('stog-hints');
   const autoOpenToggle = document.getElementById('stog-autopen');
   const tourToggle = document.getElementById('stog-tour');
+  const collisionToggle = document.getElementById('stog-collision-hud');
   const btnTip = document.getElementById('btn-tip');
   const mobileMQ = window.matchMedia('(orientation: landscape) and (max-height: 520px)');
 
@@ -219,6 +222,31 @@ export function setupSidebarControls({
     });
   }
 
+  // Collision-info overlay toggle (top-left HUD with run/event/LB/timestamp).
+  // Persists in localStorage; defaults to ON.
+  let collisionHudEnabled = true;
+  function syncCollisionUi() {
+    if (!collisionToggle) return;
+    collisionToggle.classList.toggle('on', collisionHudEnabled);
+    collisionToggle.setAttribute('aria-checked', collisionHudEnabled ? 'true' : 'false');
+  }
+  if (collisionToggle) {
+    try {
+      const saved = localStorage.getItem('cgv-collision-hud');
+      if (saved !== null) collisionHudEnabled = saved === '1';
+    } catch (_) {}
+    if (onToggleCollisionHud) onToggleCollisionHud(collisionHudEnabled);
+    syncCollisionUi();
+    collisionToggle.addEventListener('click', () => {
+      collisionHudEnabled = !collisionHudEnabled;
+      try {
+        localStorage.setItem('cgv-collision-hud', collisionHudEnabled ? '1' : '0');
+      } catch (_) {}
+      if (onToggleCollisionHud) onToggleCollisionHud(collisionHudEnabled);
+      syncCollisionUi();
+    });
+  }
+
   setPinnedR(false);
   if (window.innerWidth < 640 || mobileMQ.matches) setPinned(false);
   syncHintsUi();
@@ -228,12 +256,16 @@ export function setupSidebarControls({
     closeSettingsPanel,
     getState() {
       return {
+        collisionHudEnabled,
         hintsEnabled,
         mobileMQ,
         panelPinned,
         rpanelPinned,
         settingsPanelOpen,
       };
+    },
+    isCollisionHudEnabled() {
+      return collisionHudEnabled;
     },
     isHintsEnabled() {
       return hintsEnabled;

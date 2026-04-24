@@ -213,7 +213,9 @@ tests, lint, type-check, and commit conventions.
 
 ## License
 
-ISC — see [`LICENSE`](LICENSE) for full text.
+NIPSCERN Non-Commercial Source License — free for research and education;
+commercial use requires written permission from contact@nipscern.com.
+See [`LICENSE`](LICENSE) for full text.
 
 ## Links
 

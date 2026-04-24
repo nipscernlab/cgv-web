@@ -1,3 +1,5 @@
+import { dateGroup } from './utils.js';
+
 const MAX_ENTRIES = 100;
 const REFRESH_MS = 5000;
 const REMOTE_API = '/api/xml';
@@ -117,7 +119,16 @@ export function setupServerMode({
     emptyEl.hidden = entries.length > 0;
     listEl.hidden = entries.length === 0;
     listEl.innerHTML = '';
+    let lastGroupKey = null;
     entries.forEach((e, idx) => {
+      const group = dateGroup(e.file.lastModified, t);
+      if (group.key !== lastGroupKey) {
+        lastGroupKey = group.key;
+        const sep = document.createElement('div');
+        sep.className = 'date-sep';
+        sep.textContent = group.label;
+        listEl.appendChild(sep);
+      }
       const row = document.createElement('div');
       row.className = 'srow' + (e.key === currentKey ? ' cur' : '');
       const shortName = e.rel.split('/').pop();
