@@ -32,18 +32,13 @@ for (const n of GHOST_MESH_NAMES) ghostVisible.set(n, GHOST_DEFAULT_ON.has(n));
 
 // ── Ghost materials ──────────────────────────────────────────────────────────
 // RGB(92,95,102) = #5C5F66; very high transparency (99%) for a subtle outline.
-let ghostSolidColor   = 0x5C5F66;
-let ghostSolidOpacity = 0.01;
-
 const ghostSolidMat = new THREE.MeshBasicMaterial({
-  color: ghostSolidColor, transparent: true, opacity: ghostSolidOpacity,
+  color: 0x5C5F66, transparent: true, opacity: 0.01,
   depthWrite: false, side: THREE.DoubleSide,
 });
-// Phi lines are locked at white + high transparency, independent of the opacity
-// slider so they remain subtle guides regardless of envelope opacity.
-const GHOST_PHI_FIXED_OPACITY = 0.06;
+// Phi lines: white + high transparency, so they stay subtle guides.
 const ghostPhiMat = new THREE.LineBasicMaterial({
-  color: 0xFFFFFF, transparent: true, opacity: GHOST_PHI_FIXED_OPACITY, depthWrite: false,
+  color: 0xFFFFFF, transparent: true, opacity: 0.06, depthWrite: false,
 });
 
 // ── Phi-segmentation lines (TileCal) ─────────────────────────────────────────
@@ -112,17 +107,6 @@ export function syncGhostToggles() {
   document.getElementById('btn-ghost').classList.toggle('on', anyGhostOn());
 }
 
-export function toggleGhostByName(name) {
-  if (!ghostVisible.has(name)) return;
-  const next = !ghostVisible.get(name);
-  ghostVisible.set(name, next);
-  if (next && !ghostPhiGroup) buildPhiLines();
-  applyGhostMeshOne(name, next);
-  if (ghostPhiGroup) ghostPhiGroup.visible = anyGhostOn();
-  syncGhostToggles();
-  markDirty();
-}
-
 export function setAllGhosts(on) {
   for (const name of GHOST_MESH_NAMES) ghostVisible.set(name, on);
   if (on && !ghostPhiGroup) buildPhiLines();
@@ -143,13 +127,4 @@ export function enableDefaultGhosts() {
   buildPhiLines();
   applyAllGhostMeshes();
   syncGhostToggles();
-}
-
-export function updateGhostColors() {
-  ghostSolidMat.color.set(ghostSolidColor);
-  ghostSolidMat.opacity = ghostSolidOpacity;
-  ghostPhiMat.opacity = GHOST_PHI_FIXED_OPACITY;
-  ghostPhiMat.color.set(0xFFFFFF);
-  if (ghostPhiGroup) ghostPhiGroup.traverse(o => { if (o.material) o.material.needsUpdate = true; });
-  markDirty();
 }

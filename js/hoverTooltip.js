@@ -7,9 +7,9 @@ import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
 
 export const tooltip    = document.getElementById('tip');
 export const tipCellEl  = document.getElementById('tip-cell');
-export const tipCoordEl = document.getElementById('tip-coords');
+const        tipCoordEl = document.getElementById('tip-coords');
 export const tipEEl     = document.getElementById('tip-e');
-export const tipEKeyEl  = document.querySelector('#tip .tkey');
+const        tipEKeyEl  = document.querySelector('#tip .tkey');
 
 export function hideTooltip() { tooltip.hidden = true; }
 

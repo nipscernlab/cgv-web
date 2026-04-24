@@ -248,7 +248,7 @@ function _applyFcalDraw() {
 }
 
 // ── Core cell handle visibility primitive ─────────────────────────────────────
-export function _setHandleVisible(h, vis) {
+function _setHandleVisible(h, vis) {
   if (h.visible === vis) return;
   h.visible = vis;
   h.iMesh.setMatrixAt(h.instId, vis ? h.origMatrix : _ZERO_MAT4);

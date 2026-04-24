@@ -2,10 +2,6 @@ import { TRANSLATIONS } from './translations.js';
 
 let currentLang = 'en';
 
-export function getCurrentLang() {
-  return currentLang;
-}
-
 export function t(key) {
   return (TRANSLATIONS[currentLang] ?? TRANSLATIONS.en)[key]
       ?? TRANSLATIONS.en[key]

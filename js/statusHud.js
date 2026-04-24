@@ -1,6 +1,6 @@
 import { esc } from './utils.js';
 
-export const statusTxtEl = document.getElementById('status-txt');
+const statusTxtEl = document.getElementById('status-txt');
 const collisionHud       = document.getElementById('collision-hud');
 
 let _lastEventInfo = null;

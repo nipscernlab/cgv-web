@@ -74,7 +74,7 @@ export const rayTargets      = [];                   // InstancedMesh[]; use .le
 // Zero-determinant matrix collapses an instance to a point; degenerate
 // triangles are rejected by both the rasterizer and the raycaster.
 export const _ZERO_MAT4 = new THREE.Matrix4().set(0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0);
-export const _dirtyIM   = new Set();
+const _dirtyIM          = new Set();
 
 // Reusable temporaries for bounding-sphere computation (avoids per-frame GC).
 const _bsMat = new THREE.Matrix4();

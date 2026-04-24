@@ -60,8 +60,7 @@ controls.dampingFactor = 0.14;
 controls.zoomSpeed     = 1.2;
 
 // ── Lighting ──────────────────────────────────────────────────────────────────
-export const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
-scene.add(ambientLight);
+scene.add(new THREE.AmbientLight(0xffffff, 2.0));
 
 // Directional light tracks the camera so cells are always front-lit.
 export const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);

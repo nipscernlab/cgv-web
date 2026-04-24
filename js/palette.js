@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export const PAL_N = 256;
+const PAL_N = 256;
 
 // Linear color ramps — inputs clamped to [0, 1].
 function _rampTile(t) {
@@ -79,7 +79,7 @@ const _FCAL_STOPS = [
   [1.000, 0.918, 0.745],
 ];
 const _FCAL_STEPS = [0.0, 0.25, 0.55, 0.80, 1.0];
-export function palColorFcalRgb(t) {
+function palColorFcalRgb(t) {
   t = Math.max(0, Math.min(1, t));
   t = Math.pow(t, 0.55);
   for (let i = 1; i < _FCAL_STEPS.length; i++) {
