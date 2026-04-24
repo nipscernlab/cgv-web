@@ -40,18 +40,22 @@ the CERN ATLAS Experiment. Undergraduate developer:
 ## Quick start (just run the viewer)
 
 ```bash
-node scripts/fetch-geometry.mjs       # ~5 MB from the GitHub Release
+node scripts/fetch-geometry.mjs       # ~5 MB  (calorimeter mesh)
+node scripts/fetch-samples.mjs        # ~75 MB (4 JiveXML event samples)
 python -m http.server 8080            # or: npx serve .
 ```
 
 Then open <http://localhost:8080>.
 
-The geometry asset (`geometry_data/CaloGeometry.glb.gz`, ~5 MB) is hosted on
+Heavy assets (`geometry_data/CaloGeometry.glb.gz` and the JiveXML samples
+under `default_xml/`) are hosted on
 [GitHub Releases](https://github.com/nipscernlab/cgv-web/releases) and fetched
 on demand — no `npm install` or build pipeline required just to view the app.
-The Rust ATLAS-ID parser (`parser/pkg/*.wasm`) is committed.
+Both fetch scripts are idempotent: SHA-256 cached, network only on the first
+run. The Rust ATLAS-ID parser (`parser/pkg/*.wasm`) is committed.
 
-If you have npm installed, `npm run dev` does the fetch + serve in one step.
+If you have npm installed, `npm run dev` chains both fetches and starts the
+server in one step.
 
 ---
 
@@ -152,14 +156,15 @@ cgv-web/
 ├── js/main.js                  viewer logic (Three.js, UI, networking)
 ├── assets/                     icons, fonts, images (incl. cgvweb_icon.svg)
 ├── const/                      CaloBuild.C, CaloGeoConst.h (ATLAS geometry constants)
-├── default_xml/                bundled JiveXML samples + index.json
+├── default_xml/                gitignored; populated by scripts/fetch-samples.mjs
 ├── parser/                     Rust ATLAS-ID parser
 │   ├── src/lib.rs              Rust source
 │   ├── Cargo.toml
 │   └── pkg/                    wasm-pack output (committed)
 ├── geometry_data/              gitignored; populated by scripts/fetch-geometry.mjs
 ├── scripts/
-│   └── fetch-geometry.mjs      downloads .glb.gz / .root from GitHub Releases
+│   ├── fetch-geometry.mjs      downloads .glb.gz / .root from GitHub Releases
+│   └── fetch-samples.mjs       downloads JiveXML samples from GitHub Releases
 ├── setup/                      build pipeline scripts
 │   ├── setup.mjs               patches jsroot modules
 │   ├── root2scene.mjs          .root → .glb compiler (also writes .glb.gz)

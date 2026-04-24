@@ -21,14 +21,24 @@ for our usage.
 ## Running locally
 
 ```bash
-npm run dev            # python serve.py on :8080 (+ /api/xml/* folder API)
+npm run dev            # fetch:geometry + fetch:samples + python serve.py on :8080
 ```
 
-Windows without Python: `npm run start:win` (uses the bundled PowerShell
-static server).
+`npm run dev` is the recommended path: it downloads the calorimeter mesh
+(~5 MB) and the four JiveXML samples (~75 MB) from GitHub Releases, then
+starts `serve.py` (which adds the `/api/xml/*` folder API on top of a
+static server). Subsequent runs skip fetches that are already cached
+(SHA-256 verified).
 
-For the bare static viewer (no XML folder API), any static server works:
-`python -m http.server 8080`, `npx serve .`, etc.
+For the bare static viewer (no `/api/xml/*` API) — for instance, when
+testing the deployed Pages build locally — any static server works after
+the fetches have run once:
+
+```bash
+node scripts/fetch-geometry.mjs
+node scripts/fetch-samples.mjs
+python -m http.server 8080      # or: npx serve .
+```
 
 ## Before you commit
 
