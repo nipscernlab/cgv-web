@@ -5,8 +5,14 @@ import {
 } from './visibility.js';
 
 // ── EdgesGeometry outline (hover) ─────────────────────────────────────────────
+// `transparent: true` (at opacity 1.0) moves the hover into Three.js's
+// transparent pass so it draws AFTER the permanent 50%-black outline (which
+// is itself transparent); otherwise opaque→transparent ordering makes the
+// permanent outline paint over the hover.
 const eGeoCache  = new Map();
-const outlineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+const outlineMat = new THREE.LineBasicMaterial({
+  color: 0xffffff, transparent: true, opacity: 1.0,
+});
 let   outlineMesh = null;
 
 export function clearOutline() {
@@ -61,7 +67,9 @@ export function showFcalOutline(instanceId) {
 }
 
 // ── All-cells outline (optimised: cached world-space edges per mesh) ─────────
-const outlineAllMat = new THREE.LineBasicMaterial({ color: 0x000000 });
+const outlineAllMat = new THREE.LineBasicMaterial({
+  color: 0x000000, transparent: true, opacity: 0.5, depthWrite: false,
+});
 const _edgeWorldCache = new Map();  // handle.name → Float32Array (world-space positions)
 let allOutlinesMesh = null;
 
