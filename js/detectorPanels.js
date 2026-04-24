@@ -46,32 +46,39 @@ export function setupDetectorPanels({
     });
   }
 
-  function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev, maxLblId, onApply = applyThreshold) {
-    const track = document.getElementById(trackId);
-    const thumb = document.getElementById(thumbId);
-    const input = document.getElementById(inputId);
+  function makeDetSlider(trackId, thumbId, inputId, getThr, setThr, maxMev, maxLblId, minLblId, onApply = applyThreshold) {
+    const track  = document.getElementById(trackId);
+    const thumb  = document.getElementById(thumbId);
+    const input  = document.getElementById(inputId);
     const maxLbl = maxLblId ? document.getElementById(maxLblId) : null;
+    const minLbl = minLblId ? document.getElementById(minLblId) : null;
+    let minMev   = 0;
     let drag = false;
 
+    // Slider semantics: bottom (ratio=0) snaps to -Infinity = "show all";
+    // anywhere above the bottom maps linearly to [minMev, maxMev].
+    const fromRatio = r => r <= 0 ? -Infinity : minMev + (maxMev - minMev) * r;
+
     function updateUI(mev) {
-      const ratio = isFinite(mev) && mev > 0 ? Math.max(0, Math.min(1, mev / maxMev)) : 0;
+      const span  = maxMev - minMev;
+      const ratio = isFinite(mev) && span > 0 && mev > minMev
+        ? Math.max(0, Math.min(1, (mev - minMev) / span))
+        : 0;
       thumb.style.top = ((1 - ratio) * 100) + '%';
-      if (document.activeElement !== input) input.value = isFinite(mev) && mev > 0 ? fmtMev(mev) : '';
+      if (document.activeElement !== input) input.value = isFinite(mev) && mev > minMev ? fmtMev(mev) : '';
     }
 
     track.addEventListener('pointerdown', e => {
       drag = true;
       rpanelWrap.classList.add('dragging');
       track.setPointerCapture(e.pointerId);
-      const ratio = ratioFromPtr(e, track);
-      setThr(ratio <= 0 ? -Infinity : maxMev * ratio);
+      setThr(fromRatio(ratioFromPtr(e, track)));
       updateUI(getThr());
       onApply();
     });
     track.addEventListener('pointermove', e => {
       if (!drag) return;
-      const ratio = ratioFromPtr(e, track);
-      setThr(ratio <= 0 ? -Infinity : maxMev * ratio);
+      setThr(fromRatio(ratioFromPtr(e, track)));
       updateUI(getThr());
       onApply();
     });
@@ -87,16 +94,18 @@ export function setupDetectorPanels({
     input.addEventListener('blur', () => {
       const value = parseMevInput(input.value);
       if (value !== null) {
-        const clamped = value === -Infinity ? value : Math.max(0, Math.min(maxMev, value));
+        const clamped = value === -Infinity ? value : Math.max(minMev, Math.min(maxMev, value));
         setThr(clamped);
         onApply();
       }
       updateUI(getThr());
     });
 
-    function update(newMaxMev) {
+    function update(newMinMev, newMaxMev) {
+      minMev = newMinMev;
       maxMev = newMaxMev;
       if (maxLbl) maxLbl.textContent = fmtMev(newMaxMev);
+      if (minLbl) minLbl.textContent = fmtMev(newMinMev);
       updateUI(getThr());
     }
 
@@ -268,19 +277,19 @@ export function setupDetectorPanels({
 
   const tileSlider = makeDetSlider(
     'tile-strak', 'tile-sthumb', 'tile-thr-input',
-    state.getThrTileMev, state.setThrTileMev, TILE_SCALE, 'tile-sval-max'
+    state.getThrTileMev, state.setThrTileMev, TILE_SCALE, 'tile-sval-max', 'tile-sval-min'
   );
   const larSlider = makeDetSlider(
     'lar-strak', 'lar-sthumb', 'lar-thr-input',
-    state.getThrLArMev, state.setThrLArMev, LAR_SCALE, 'lar-sval-max'
+    state.getThrLArMev, state.setThrLArMev, LAR_SCALE, 'lar-sval-max', 'lar-sval-min'
   );
   const fcalSlider = makeDetSlider(
     'fcal-strak', 'fcal-sthumb', 'fcal-thr-input',
-    state.getThrFcalMev, state.setThrFcalMev, FCAL_SCALE, 'fcal-sval-max', applyFcalThreshold
+    state.getThrFcalMev, state.setThrFcalMev, FCAL_SCALE, 'fcal-sval-max', 'fcal-sval-min', applyFcalThreshold
   );
   const hecSlider = makeDetSlider(
     'hec-strak', 'hec-sthumb', 'hec-thr-input',
-    state.getThrHecMev, state.setThrHecMev, HEC_SCALE, 'hec-sval-max'
+    state.getThrHecMev, state.setThrHecMev, HEC_SCALE, 'hec-sval-max', 'hec-sval-min'
   );
   const trackPtSlider = makeTrackPtSlider(
     'track-strak', 'track-sthumb', 'track-thr-input', 'track-sval-max', 'track-sval-min'

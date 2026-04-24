@@ -9,6 +9,7 @@ import {
 import {
   palColorTile, palColorHec, palColorLAr,
   setPalMaxTile, setPalMaxHec, setPalMaxLAr, setPalMaxFcal,
+  setPalMinTile, setPalMinHec, setPalMinLAr, setPalMinFcal,
 } from './palette.js';
 import {
   cellLabel, HEC_INNER,
@@ -145,29 +146,34 @@ export async function processXml(xmlText) {
   drawClusters(rawClusters);
   rebuildActiveClusterCellIds();
 
-  // Per-detector energy ceiling: p99.5 for Tile (+MBTS), p97 LAr, p98 HEC, p99 FCAL.
-  // Computed BEFORE drawFcal so palette ceilings are already set when cells are first colored.
-  function maxMev(cells, pct) {
+  // Per-detector energy range: symmetric percentiles on each tail so a single
+  // extreme cell (e.g. FCAL down to -31 GeV) can't blow out the scale. Real
+  // ATLAS XML contains negative energies (~50% of Tile cells, ~40% of FCAL);
+  // LAr/HEC are clipped at 50 MeV upstream so the low tail is a no-op there.
+  // Computed BEFORE drawFcal so palette bounds are set when cells are first colored.
+  function rangeMev(cells, pctLo, pctHi) {
     const vals = [];
-    for (const { energy } of cells) { const v = energy * 1000; if (isFinite(v) && v > 0) vals.push(v); }
-    if (!vals.length) return 1;
+    for (const { energy } of cells) { const v = energy * 1000; if (isFinite(v)) vals.push(v); }
+    if (!vals.length) return [0, 1];
     vals.sort((a, b) => a - b);
-    return vals[Math.floor(pct * vals.length)] ?? vals[vals.length - 1];
+    const lo = vals[Math.floor(pctLo * vals.length)] ?? vals[0];
+    const hi = vals[Math.floor(pctHi * vals.length)] ?? vals[vals.length - 1];
+    return [lo, hi];
   }
   // MBTS shares the Tile palette — merge its range with Tile's
-  const tileMaxMev = maxMev(tileCells.concat(mbtsCells), 0.995);
-  const larMaxMev  = maxMev(larCells,                    0.97);
-  const hecMaxMev  = maxMev(hecCells,                    0.98);
-  const fcalMaxMev = maxMev(fcalCells,                   0.99);
-  // Drive both the threshold sliders and the cell-color palette from the same percentile.
-  _deps.tileSlider.update(tileMaxMev);
-  _deps.larSlider.update(larMaxMev);
-  _deps.hecSlider.update(hecMaxMev);
-  _deps.fcalSlider.update(fcalMaxMev);
-  setPalMaxTile(tileMaxMev);
-  setPalMaxLAr(larMaxMev);
-  setPalMaxHec(hecMaxMev);
-  setPalMaxFcal(fcalMaxMev);
+  const [tileMinMev, tileMaxMev] = rangeMev(tileCells.concat(mbtsCells), 0.05, 0.995);
+  const [larMinMev,  larMaxMev ] = rangeMev(larCells,                    0.03,  0.97);
+  const [hecMinMev,  hecMaxMev ] = rangeMev(hecCells,                    0.02,  0.98);
+  const [fcalMinMev, fcalMaxMev] = rangeMev(fcalCells,                   0.01,  0.99);
+  // Drive both the threshold sliders and the cell-color palette from the same range.
+  _deps.tileSlider.update(tileMinMev, tileMaxMev);
+  _deps.larSlider .update(larMinMev,  larMaxMev);
+  _deps.hecSlider .update(hecMinMev,  hecMaxMev);
+  _deps.fcalSlider.update(fcalMinMev, fcalMaxMev);
+  setPalMinTile(tileMinMev); setPalMaxTile(tileMaxMev);
+  setPalMinLAr (larMinMev ); setPalMaxLAr (larMaxMev);
+  setPalMinHec (hecMinMev ); setPalMaxHec (hecMaxMev);
+  setPalMinFcal(fcalMinMev); setPalMaxFcal(fcalMaxMev);
 
   // ── FCAL cells ───────────────────────────────────────────────────────────────
   drawFcal(fcalCells);

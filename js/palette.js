@@ -6,7 +6,7 @@ const PAL_N = 256;
 function _rampTile(t) {
   t = Math.max(0, Math.min(1, t));
   return new THREE.Color(
-    1.000 + t * (0.502 - 1.000),  // R: 1.0 -> 0.502
+    1.000 + t * (0.300 - 1.000),  // R: 1.0 -> 0.30
     1.000 + t * (0.000 - 1.000),  // G: 1.0 -> 0
     0.0
   );
@@ -52,25 +52,39 @@ export const HEC_SCALE  = 5000;
 export const LAR_SCALE  = 1000;
 export const FCAL_SCALE = 7000;
 
-// Live palette ceilings — overwritten per event with a per-detector percentile
-// (Tile=p99.5, LAr=p97, HEC=p98, FCAL=p99) so the darkest color always
-// corresponds to that per-event tail of the energy distribution.
-let _tileMax = TILE_SCALE;
-let _hecMax  = HEC_SCALE;
-let _larMax  = LAR_SCALE;
-let _fcalMax = FCAL_SCALE;
+// Live palette floor+ceiling — overwritten per event so the full [min, p_N]
+// range of the actual event maps to the palette's full color range. Floor can
+// go negative (real ATLAS XML contains negative cell energies from pedestal
+// subtraction), so the smallest cell maps to the light end of the ramp.
+let _tileMin = 0, _tileMax = TILE_SCALE;
+let _hecMin  = 0, _hecMax  = HEC_SCALE;
+let _larMin  = 0, _larMax  = LAR_SCALE;
+let _fcalMin = 0, _fcalMax = FCAL_SCALE;
 
-const _clampMax = (mev, fallback) => (isFinite(mev) && mev > 0 ? mev : fallback);
-export const setPalMaxTile = mev => { _tileMax = _clampMax(mev, TILE_SCALE); };
-export const setPalMaxHec  = mev => { _hecMax  = _clampMax(mev, HEC_SCALE);  };
-export const setPalMaxLAr  = mev => { _larMax  = _clampMax(mev, LAR_SCALE);  };
-export const setPalMaxFcal = mev => { _fcalMax = _clampMax(mev, FCAL_SCALE); };
+const _setFinite = (mev, fallback) => (isFinite(mev) ? mev : fallback);
+export const setPalMaxTile = mev => { _tileMax = _setFinite(mev, TILE_SCALE); };
+export const setPalMaxHec  = mev => { _hecMax  = _setFinite(mev, HEC_SCALE);  };
+export const setPalMaxLAr  = mev => { _larMax  = _setFinite(mev, LAR_SCALE);  };
+export const setPalMaxFcal = mev => { _fcalMax = _setFinite(mev, FCAL_SCALE); };
+export const setPalMinTile = mev => { _tileMin = _setFinite(mev, 0); };
+export const setPalMinHec  = mev => { _hecMin  = _setFinite(mev, 0); };
+export const setPalMinLAr  = mev => { _larMin  = _setFinite(mev, 0); };
+export const setPalMinFcal = mev => { _fcalMin = _setFinite(mev, 0); };
 
-const _palIdx = (v, s) => Math.round(Math.max(0, Math.min(1, v / s)) * (PAL_N - 1));
-export const palColorTile = (eMev) => PAL_TILE_COLOR[_palIdx(eMev, _tileMax)];
-export const palColorHec  = (eMev) => PAL_HEC_COLOR [_palIdx(eMev, _hecMax)];
-export const palColorLAr  = (eMev) => PAL_LAR_COLOR [_palIdx(eMev, _larMax)];
-export const palColorFcal = (eMev) => palColorFcalRgb(Math.abs(eMev) / _fcalMax);
+// Map v ∈ [lo, hi] to a 0..PAL_N-1 palette index. lo === hi falls back to hi.
+const _palIdx = (v, lo, hi) => {
+  const span = hi - lo;
+  const t    = span > 0 ? (v - lo) / span : 1;
+  return Math.round(Math.max(0, Math.min(1, t)) * (PAL_N - 1));
+};
+export const palColorTile = (eMev) => PAL_TILE_COLOR[_palIdx(eMev, _tileMin, _tileMax)];
+export const palColorHec  = (eMev) => PAL_HEC_COLOR [_palIdx(eMev, _hecMin,  _hecMax )];
+export const palColorLAr  = (eMev) => PAL_LAR_COLOR [_palIdx(eMev, _larMin,  _larMax )];
+export const palColorFcal = (eMev) => {
+  const span = _fcalMax - _fcalMin;
+  const t    = span > 0 ? (eMev - _fcalMin) / span : 1;
+  return palColorFcalRgb(t);
+};
 const _FCAL_STOPS = [
   [0.102, 0.024, 0.000],
   [0.420, 0.137, 0.063],
