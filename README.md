@@ -13,6 +13,14 @@
   A browser-based 3D viewer for the <b>ATLAS Tile Calorimeter (TileCal)</b> at the LHC.
 </p>
 
+<p align="center">
+  <a href="https://github.com/nipscernlab/cgv-web/actions/workflows/ci.yml"><img src="https://github.com/nipscernlab/cgv-web/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/nipscernlab/cgv-web" alt="License"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A5%2018-brightgreen" alt="Node.js 18+">
+  <img src="https://img.shields.io/badge/three.js-0.162-green" alt="Three.js 0.162">
+  <img src="https://img.shields.io/badge/code_style-prettier-ff69b4" alt="Code style: Prettier">
+</p>
+
 ---
 
 CGV Web loads CERN `.root` geometry files, compiles them to a compact mesh
@@ -198,9 +206,14 @@ User-facing documentation lives in [`twiki/`](twiki/) — start at
 
 ---
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev workflow — local setup,
+tests, lint, type-check, and commit conventions.
+
 ## License
 
-ISC. See `package.json`.
+ISC — see [`LICENSE`](LICENSE) for full text.
 
 ## Links
 
