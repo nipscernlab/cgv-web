@@ -52,15 +52,18 @@ export function setupServerMode({
 }) {
   let entries = [];
   let currentKey = null;
+  let lastAutoLoadedKey = null;
   let folderHandle = null;
   let inputFiles = null;
   let refreshTimer = null;
   let isActive = false;
+  let isPaused = false;
+  let canPoll = false;
 
   const sec = document.getElementById('live-server-sec');
   const listEl = document.getElementById('server-list');
   const emptyEl = document.getElementById('server-empty');
-  const refreshBadge = document.getElementById('server-refresh');
+  const refreshBtn = document.getElementById('server-refresh-btn');
   const pickBtn = document.getElementById('btn-server-pick');
   const folderInput = document.getElementById('server-folder-in');
 
@@ -68,15 +71,34 @@ export function setupServerMode({
     return `${rel || f.name}|${f.size}|${f.lastModified}`;
   }
 
+  function syncRefreshBtn() {
+    if (!refreshBtn) return;
+    refreshBtn.classList.remove('state-active', 'state-paused');
+    if (!canPoll) {
+      refreshBtn.hidden = true;
+      return;
+    }
+    refreshBtn.hidden = false;
+    if (isPaused) {
+      refreshBtn.classList.add('state-paused');
+      refreshBtn.dataset.i18nTip = 'tip-poll-play';
+      refreshBtn.dataset.tip = t('tip-poll-play');
+    } else {
+      refreshBtn.classList.add('state-active');
+      refreshBtn.dataset.i18nTip = 'tip-poll-stop';
+      refreshBtn.dataset.tip = t('tip-poll-stop');
+    }
+  }
+
   function flashRefresh() {
-    if (!refreshBadge) return;
-    refreshBadge.hidden = false;
-    refreshBadge.classList.add('spin');
+    if (!refreshBtn || !canPoll || isPaused) return;
+    refreshBtn.classList.remove('spin');
+    void refreshBtn.offsetWidth;
+    refreshBtn.classList.add('spin');
     clearTimeout(flashRefresh._t);
     flashRefresh._t = setTimeout(() => {
-      refreshBadge.classList.remove('spin');
-      refreshBadge.hidden = true;
-    }, 700);
+      refreshBtn.classList.remove('spin');
+    }, 750);
   }
 
   function renderList() {
@@ -134,7 +156,13 @@ export function setupServerMode({
   function updateEntries(rawItems) {
     const sorted = rawItems
       .slice()
-      .sort((a, b) => (b.file.lastModified || 0) - (a.file.lastModified || 0))
+      .sort((a, b) => {
+        const dt = (b.file.lastModified || 0) - (a.file.lastModified || 0);
+        if (dt !== 0) return dt;
+        const ds = (b.file.size || 0) - (a.file.size || 0);
+        if (ds !== 0) return ds;
+        return (a.rel || '').localeCompare(b.rel || '');
+      })
       .slice(0, MAX_ENTRIES)
       .map(it => ({ ...it, key: keyFor(it.file, it.rel) }));
     const sameLen = sorted.length === entries.length;
@@ -143,6 +171,19 @@ export function setupServerMode({
       entries = sorted;
       renderList();
     }
+    maybeAutoLoadTop();
+  }
+
+  function maybeAutoLoadTop() {
+    if (!entries.length) return;
+    const top = entries[0];
+    if (top.key === lastAutoLoadedKey) return;
+    lastAutoLoadedKey = top.key;
+    currentKey = top.key;
+    listEl.querySelectorAll('.srow.cur').forEach(r => r.classList.remove('cur'));
+    const firstRow = listEl.querySelector('.srow');
+    if (firstRow) firstRow.classList.add('cur');
+    readAndProcess(top.file);
   }
 
   async function reloadFromHandle() {
@@ -168,7 +209,7 @@ export function setupServerMode({
   }
 
   async function refreshTick() {
-    if (!isActive) return;
+    if (!isActive || isPaused) return;
     flashRefresh();
     if (folderHandle) await reloadFromHandle();
     scheduleRefresh();
@@ -176,7 +217,7 @@ export function setupServerMode({
 
   function scheduleRefresh() {
     clearTimeout(refreshTimer);
-    if (!isActive) return;
+    if (!isActive || isPaused) return;
     if (!folderHandle) return;
     refreshTimer = setTimeout(refreshTick, REFRESH_MS);
   }
@@ -186,12 +227,20 @@ export function setupServerMode({
     refreshTimer = null;
   }
 
+  function showFallbackWarning() {
+    setStatus(`<span class="warn">${esc(t('server-no-watch'))}</span>`);
+  }
+
   async function pickFolder() {
     if (window.showDirectoryPicker) {
       try {
         const handle = await window.showDirectoryPicker({ mode: 'read' });
         folderHandle = handle;
         inputFiles = null;
+        canPoll = true;
+        isPaused = false;
+        lastAutoLoadedKey = null;
+        syncRefreshBtn();
         await reloadFromHandle();
         scheduleRefresh();
       } catch (err) {
@@ -213,8 +262,26 @@ export function setupServerMode({
     if (!files.length) return;
     folderHandle = null;
     inputFiles = files;
+    canPoll = false;
+    isPaused = false;
+    lastAutoLoadedKey = null;
+    syncRefreshBtn();
     reloadFromInput();
     clearRefresh();
+    showFallbackWarning();
+  });
+
+  refreshBtn?.addEventListener('click', () => {
+    if (!canPoll) return;
+    if (isPaused) {
+      isPaused = false;
+      syncRefreshBtn();
+      refreshTick();
+    } else {
+      isPaused = true;
+      clearRefresh();
+      syncRefreshBtn();
+    }
   });
 
   ['dragenter', 'dragover'].forEach(ev => sec.addEventListener(ev, e => {
@@ -251,8 +318,13 @@ export function setupServerMode({
     if (!out.length) return;
     folderHandle = null;
     inputFiles = out.map(o => o.file);
+    canPoll = false;
+    isPaused = false;
+    lastAutoLoadedKey = null;
+    syncRefreshBtn();
     updateEntries(out);
     clearRefresh();
+    showFallbackWarning();
   });
 
   function setActive(b) {
@@ -263,6 +335,8 @@ export function setupServerMode({
       clearRefresh();
     }
   }
+
+  syncRefreshBtn();
 
   return {
     setActive,

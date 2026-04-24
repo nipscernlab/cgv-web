@@ -54,6 +54,7 @@
       backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
       border: 1px solid var(--border);
       border-radius: 14px;
+      box-shadow: 4px 4px 32px rgba(0,0,0,.45);
       display: flex; flex-direction: column;
       z-index: 30;
       transform: translateX(0);
@@ -175,23 +176,29 @@
     #sample-list::-webkit-scrollbar-thumb { background: rgba(36,103,224,.22); border-radius: 2px; }
     .sample-item {
       display: flex; align-items: center; gap: 6px;
-      padding: 7px 8px; border-radius: 5px;
-      border: 1px solid transparent;
-      font: 400 .64rem var(--mono); color: var(--text); cursor: pointer;
-      transition: all .12s; background: transparent;
-      text-align: left; width: 100%;
+      padding: 7px 8px; border-radius: 5px; cursor: pointer;
+      border: 1px solid transparent; transition: all .12s;
+      background: transparent; text-align: left; width: 100%;
       margin-bottom: 5px;
     }
     @media (hover: hover) {
       .sample-item:hover:not(.cur) { background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.08); }
     }
-    .sample-item.cur  { background: rgba(26,82,192,.18); border-color: var(--accent); color: var(--text); }
+    .sample-item.cur { background: rgba(26,82,192,.18); border-color: var(--accent); }
     .sample-item-icon { flex-shrink: 0; opacity: .55; }
-    .sample-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sample-item-info { flex: 1; min-width: 0; }
+    .sample-item-name {
+      font: 500 .64rem var(--mono); color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .sample-item-sub {
+      font: 400 .56rem var(--font); color: var(--muted);
+      margin-top: 2px; letter-spacing: .03em;
+    }
     .sample-item-x {
-      width: 18px; height: 18px; flex-shrink: 0;
+      width: 22px; height: 22px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      border: 1px solid transparent; border-radius: 4px;
+      border: 1px solid var(--border); border-radius: 4px;
       color: var(--muted); background: transparent; cursor: pointer;
       transition: all .14s; opacity: .55;
     }
@@ -294,15 +301,27 @@
       display: flex; align-items: center; gap: 6px; flex-shrink: 0;
     }
     #server-top .file-pick-btn { flex: 1; }
-    #server-refresh {
+    .server-refresh-btn {
       width: 26px; height: 26px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
       border: 1px solid var(--border); border-radius: 6px;
-      color: var(--accent2); opacity: .85;
-      transition: opacity .2s ease;
+      color: var(--accent2); background: transparent; cursor: pointer;
+      transition: color .15s, border-color .15s, background .15s;
+      padding: 0; position: relative;
     }
-    #server-refresh i { font-size: 13px; line-height: 1; }
-    #server-refresh.spin i { animation: server-spin 0.7s linear; }
+    .server-refresh-btn[hidden] { display: none; }
+    .server-refresh-btn .refresh-ic { font-size: 13px; line-height: 1; }
+    .server-refresh-btn .refresh-ic,
+    .server-refresh-btn .pause-ic,
+    .server-refresh-btn .play-ic { display: none; }
+    .server-refresh-btn.state-active .refresh-ic { display: inline-block; }
+    .server-refresh-btn.state-paused .play-ic    { display: inline-block; color: var(--muted); }
+    .server-refresh-btn.state-active.spin .refresh-ic { animation: server-spin 0.9s cubic-bezier(.4,0,.2,1); }
+    @media (hover: hover) {
+      .server-refresh-btn.state-active:hover .refresh-ic { display: none; }
+      .server-refresh-btn.state-active:hover .pause-ic   { display: inline-block; }
+      .server-refresh-btn:hover { color: var(--bright); border-color: rgba(255,255,255,.25); }
+    }
     @keyframes server-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     #server-empty {
       font: 400 .62rem var(--font); color: var(--muted);
@@ -537,14 +556,11 @@
       backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
       border: 1px solid var(--border);
       border-radius: 12px;
-      display: flex; flex-direction: column;
-      overflow-y: auto;
       box-shadow: 4px 4px 32px rgba(0,0,0,.45);
+      display: flex; flex-direction: column;
     }
     #rpanel { max-height: calc(100vh - 28px); }
     #rpanel2 { max-height: calc(100vh - 28px); }
-    #rpanel::-webkit-scrollbar { width: 3px; }
-    #rpanel::-webkit-scrollbar-thumb { background: rgba(36,103,224,.22); border-radius: 2px; }
 
     /* ── Detector tab bar ────────────────────────────────── */
     #det-tab-bar {

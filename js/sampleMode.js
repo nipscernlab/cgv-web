@@ -32,15 +32,17 @@ export function setupSampleMode({
       btn.className = 'sample-item' + (entry.key === currentKey ? ' cur' : '');
       const iconHtml = entry.kind === 'test'
         ? `<svg class="ic sample-item-icon" style="width:11px;height:11px"><use href="#i-star"/></svg>`
-        : `<i class="ti ti-file-code sample-item-icon" style="font-size:11px;opacity:.55"></i>`;
+        : `<i class="ti ti-file-code sample-item-icon" style="font-size:11px"></i>`;
+      const subKey = entry.kind === 'test' ? 'sample-sub-test' : 'sample-sub-user';
       btn.innerHTML = `
         ${iconHtml}
-        <span class="sample-item-name">${esc(entry.display)}</span>
+        <div class="sample-item-info">
+          <div class="sample-item-name">${esc(entry.display)}</div>
+          <div class="sample-item-sub" data-i18n="${subKey}">${esc(t(subKey))}</div>
+        </div>
         <button class="sample-item-x" data-tip="Remove from list" data-i18n-tip="tip-sample-remove">
           <svg class="ic" style="width:9px;height:9px;stroke-width:2.2"><use href="#i-x"/></svg>
         </button>`;
-      btn.querySelector('.sample-item-name').addEventListener('click', () => load(entry, btn));
-      btn.querySelector('.sample-item-icon').addEventListener?.('click', () => load(entry, btn));
       btn.addEventListener('click', ev => {
         if (ev.target.closest('.sample-item-x')) return;
         load(entry, btn);

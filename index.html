@@ -267,10 +267,12 @@
           <span data-i18n="server-folder">Select Folder</span>
         </button>
         <input id="server-folder-in" type="file" accept=".xml" multiple webkitdirectory>
-        <div id="server-refresh"
-          data-tip="Refreshing folder…" data-i18n-tip="server-refreshing" hidden>
-          <i class="ti ti-rotate-clockwise"></i>
-        </div>
+        <button id="server-refresh-btn" class="server-refresh-btn"
+          data-tip="Pause folder polling" data-i18n-tip="tip-poll-stop" hidden>
+          <i class="ti ti-rotate-clockwise refresh-ic"></i>
+          <svg class="ic pause-ic" style="width:9px;height:9px"><use href="#i-stop"/></svg>
+          <svg class="ic play-ic"  style="width:9px;height:9px"><use href="#i-play"/></svg>
+        </button>
       </div>
       <div id="server-empty" data-i18n="server-empty">
         Pick a folder with JiveXML files. The 100 most recent are shown and refresh every 5s.
