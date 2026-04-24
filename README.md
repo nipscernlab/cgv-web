@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/nipscernlab/cgv-web" target="_blank" style="text-decoration:none;">
-    <img src="https://github.com/nipscernlab/nipscernweb/blob/main/assets/icons/icon_cgv.svg"
+    <img src="https://raw.githubusercontent.com/nipscernlab/nipscernweb/main/assets/icons/icon_cgv.svg"
          alt="CGV-WEB"
          width="120"
          style="vertical-align:middle;margin:0 12px;border:none;">
@@ -166,7 +166,6 @@ cgv-web/
 │   └── lib/                    patched jsroot modules
 ├── nipscern/                   lightweight standalone preview (pre-baked scene_data.bin)
 ├── twiki/                      ATLAS-style user documentation
-├── atlantis/                   ATLANTIS bundled archive
 ├── live_atlas/                 live ATLANTIS bridge (optional)
 └── docs/                       design notes & PDFs
 ```

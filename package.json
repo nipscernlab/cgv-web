@@ -36,7 +36,6 @@
   "scripts": {
     "start":                 "python serve.py",
     "dev":                   "npm run fetch:geometry && npm run fetch:samples && python serve.py",
-    "start:win":             "powershell -NoProfile -ExecutionPolicy Bypass -File run-server.ps1",
     "build":                 "build.bat",
     "build:geom":            "node setup/setup.mjs",
     "deploy":                "deploy.bat",

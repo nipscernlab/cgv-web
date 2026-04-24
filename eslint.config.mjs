@@ -22,7 +22,6 @@ export default [
       'parser/pkg/**',
       'parser/target/**',
       'geometry_data/**',
-      'atlantis/**',
       'live_atlas/**',
       'tmp_atlas_*/**',
       '.chrome-headless/**',
