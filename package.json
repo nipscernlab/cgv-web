@@ -40,11 +40,12 @@
     "build":        "build.bat",
     "build:geom":   "node setup/setup.mjs",
     "deploy":       "deploy.bat",
-    "lint":         "eslint \"js/**/*.js\" \"setup/**/*.mjs\"",
-    "lint:fix":     "eslint --fix \"js/**/*.js\" \"setup/**/*.mjs\"",
-    "format":       "prettier --write \"js/**/*.js\" \"setup/**/*.mjs\" \"css/**/*.css\"",
-    "format:check": "prettier --check \"js/**/*.js\" \"setup/**/*.mjs\" \"css/**/*.css\"",
-    "test":         "echo \"No tests yet — see README for adding Vitest\" && exit 0"
+    "lint":         "eslint \"js/**/*.js\" \"setup/**/*.mjs\" \"tests/**/*.mjs\"",
+    "lint:fix":     "eslint --fix \"js/**/*.js\" \"setup/**/*.mjs\" \"tests/**/*.mjs\"",
+    "format":       "prettier --write \"js/**/*.js\" \"setup/**/*.mjs\" \"tests/**/*.mjs\" \"css/**/*.css\"",
+    "format:check": "prettier --check \"js/**/*.js\" \"setup/**/*.mjs\" \"tests/**/*.mjs\" \"css/**/*.css\"",
+    "test":         "vitest run",
+    "test:watch":   "vitest"
   },
   "dependencies": {
     "@gltf-transform/core": "^4.3.0",
@@ -58,6 +59,7 @@
     "eslint": "^9.15.0",
     "eslint-config-prettier": "^9.1.0",
     "globals": "^15.12.0",
-    "prettier": "^3.4.0"
+    "prettier": "^3.4.0",
+    "vitest": "^2.1.0"
   }
 }

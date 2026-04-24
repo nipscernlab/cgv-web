@@ -67,6 +67,20 @@ export default [
     },
   },
 
+  // Vitest unit tests (Node). describe/it/expect are imported explicitly,
+  // so no test-runner globals are needed.
+  {
+    files: ['tests/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+    rules: {
+      'no-unused-vars': ['warn', unusedVarOpts],
+    },
+  },
+
   // Disable ESLint rules that Prettier handles (must be last).
   prettier,
 ];
