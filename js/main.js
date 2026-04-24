@@ -258,7 +258,6 @@ setupPanelResize();
 // ── About overlay ─────────────────────────────────────────────────────────────
 sidebarControls = setupSidebarControls({
   canvas,
-  getCinemaMode: () => cinema.isCinemaMode(),
   getTourMode: () => cinema.isTourMode(),
   onDisableTourMode: () => cinema.disableTourMode(),
   onEnableTourMode: () => cinema.enableTourMode(),

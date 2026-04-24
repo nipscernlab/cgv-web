@@ -4,7 +4,7 @@
  * Execute a partir da raiz do projeto, após: npm install jsroot --ignore-scripts
  *   node setup/setup.mjs
  */
-import { mkdirSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

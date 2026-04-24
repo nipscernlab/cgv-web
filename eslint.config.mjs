@@ -6,6 +6,15 @@ import js from '@eslint/js';
 import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 
+const unusedVarOpts = {
+  args: 'after-used',
+  argsIgnorePattern: '^_',
+  varsIgnorePattern: '^_',
+  caughtErrors: 'all',
+  caughtErrorsIgnorePattern: '^_',
+  destructuredArrayIgnorePattern: '^_',
+};
+
 export default [
   {
     ignores: [
@@ -36,7 +45,7 @@ export default [
       },
     },
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-unused-vars': ['warn', unusedVarOpts],
       'no-empty': ['warn', { allowEmptyCatch: true }],
       'no-constant-condition': ['warn', { checkLoops: false }],
       'no-inner-declarations': 'off',
@@ -54,7 +63,7 @@ export default [
       globals: { ...globals.node },
     },
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-unused-vars': ['warn', unusedVarOpts],
     },
   },
 

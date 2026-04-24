@@ -49,10 +49,7 @@ import { weld, dedup, prune,
          mergeDocuments }         from '@gltf-transform/functions';
 
 // ─── geobase (não é parte dos exports públicos do JSROOT) ────────────────────
-import {
-  createGeometry,
-  numGeometryFaces,
-} from './lib/geobase.mjs';
+import { createGeometry } from './lib/geobase.mjs';
 
 // ─── GLTFExporter ─────────────────────────────────────────────────────────────
 import { GLTFExporter }          from 'three/examples/jsm/exporters/GLTFExporter.js';
@@ -244,103 +241,6 @@ function shapeSignature(shape) {
       // Shapes complexas ou raras: sem compartilhamento (chave única)
       return `${t}_rnd_${Math.random()}`;
   }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// HELPERS CGV
-// ═════════════════════════════════════════════════════════════════════════════
-
-function matrixXml(node, pad) {
-  const m = node?.fMatrix;
-  if (!m) return `${pad}<matrix type="TGeoIdentity"/>`;
-
-  const typ = xmlEsc(m._typename ?? 'TGeoIdentity');
-  let s = `${pad}<matrix type="${typ}"`;
-
-  const t = m.fTranslation;
-  if (t?.length >= 3)
-    s += ` dx="${t[0]}" dy="${t[1]}" dz="${t[2]}"`;
-
-  const rot = m.fRotationMatrix ?? m.fRotation?.fRotationMatrix;
-  if (rot?.length === 9)
-    s += ` rot="${rot.join(' ')}"`;
-
-  const sc = m.fScale;
-  if (sc?.length >= 3)
-    s += ` sx="${sc[0]}" sy="${sc[1]}" sz="${sc[2]}"`;
-
-  return s + '/>';
-}
-
-function shapeAttrs(shape) {
-  if (!shape) return '';
-  const t = shape._typename ?? '';
-  let s = ` shape="${xmlEsc(t)}"`;
-  switch (t) {
-    case 'TGeoBBox':
-      s += ` dx="${shape.fDX}" dy="${shape.fDY}" dz="${shape.fDZ}"`;
-      break;
-    case 'TGeoTube':
-      s += ` rmin="${shape.fRmin}" rmax="${shape.fRmax}" dz="${shape.fDZ}"`;
-      break;
-    case 'TGeoTubeSeg':
-      s += ` rmin="${shape.fRmin}" rmax="${shape.fRmax}" dz="${shape.fDZ}"` +
-           ` phi1="${shape.fPhi1}" phi2="${shape.fPhi2}"`;
-      break;
-    case 'TGeoCone':
-      s += ` rmin1="${shape.fRmin1}" rmax1="${shape.fRmax1}"` +
-           ` rmin2="${shape.fRmin2}" rmax2="${shape.fRmax2}" dz="${shape.fDZ}"`;
-      break;
-    case 'TGeoConeSeg':
-      s += ` rmin1="${shape.fRmin1}" rmax1="${shape.fRmax1}"` +
-           ` rmin2="${shape.fRmin2}" rmax2="${shape.fRmax2}" dz="${shape.fDZ}"` +
-           ` phi1="${shape.fPhi1}" phi2="${shape.fPhi2}"`;
-      break;
-    case 'TGeoSphere':
-      s += ` rmin="${shape.fRmin}" rmax="${shape.fRmax}"` +
-           ` theta1="${shape.fTheta1}" theta2="${shape.fTheta2}"`;
-      break;
-    case 'TGeoTorus':
-      s += ` r="${shape.fR}" rmin="${shape.fRmin}" rmax="${shape.fRmax}"`;
-      break;
-    case 'TGeoPcon': case 'TGeoPgon':
-      s += ` nz="${shape.fNz}" phi1="${shape.fPhi1}" dphi="${shape.fDphi}"`;
-      break;
-    case 'TGeoEltu':
-      s += ` a="${shape.fA}" b="${shape.fB}" dz="${shape.fDZ}"`;
-      break;
-    case 'TGeoParaboloid':
-      s += ` rlo="${shape.fRlo}" rhi="${shape.fRhi}" dz="${shape.fDZ}"`;
-      break;
-    case 'TGeoHype':
-      s += ` rin="${shape.fRin}" rout="${shape.fRout}" dz="${shape.fDZ}"` +
-           ` stin="${shape.fStIn}" stout="${shape.fStOut}"`;
-      break;
-    case 'TGeoTrd1':
-      s += ` dx1="${shape.fDx1}" dx2="${shape.fDx2}"` +
-           ` dy="${shape.fDy}" dz="${shape.fDZ}"`;
-      break;
-    case 'TGeoTrd2':
-      s += ` dx1="${shape.fDx1}" dx2="${shape.fDx2}"` +
-           ` dy1="${shape.fDy1}" dy2="${shape.fDy2}" dz="${shape.fDZ}"`;
-      break;
-    case 'TGeoArb8': case 'TGeoTrap': case 'TGeoGtra':
-      s += ` dz="${shape.fDZ}"`;
-      break;
-    case 'TGeoXtru':
-      s += ` nz="${shape.fNz}"`;
-      break;
-    case 'TGeoCompositeShape':
-      s += ` boolOp="${xmlEsc(shape.fNode?._typename ?? '')}"`;
-      break;
-    case 'TGeoScaledShape':
-      s += ` baseShape="${xmlEsc(shape.fShape?._typename ?? '')}"`;
-      break;
-    case 'TGeoTessellated':
-      s += ` nFacets="${shape.fFacets?.length ?? 0}"`;
-      break;
-  }
-  return s;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

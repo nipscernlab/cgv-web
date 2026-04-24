@@ -1,6 +1,5 @@
 export function setupSidebarControls({
   canvas,
-  getCinemaMode,
   getTourMode,
   onDisableTourMode,
   onEnableTourMode,

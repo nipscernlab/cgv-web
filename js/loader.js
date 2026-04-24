@@ -197,7 +197,7 @@ export async function initScene({ setStatus, atlasMat, onSceneReady, onAtlasRead
         streamForCache.cancel().catch(() => {});
       }
       buffer = await decodePromise;
-    } catch (e) {
+    } catch (_) {
       setStatus('<span class="warn">CaloGeometry.glb.gz not found.</span>');
       setLoadProgress(100, 'Geometry skipped');
       onSceneReady();
