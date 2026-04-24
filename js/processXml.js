@@ -6,7 +6,10 @@ import {
   _rayIMeshes,
   _tileKey, _larEmKey, _hecKey,
 } from './state.js';
-import { palColorTile, palColorHec, palColorLAr } from './palette.js';
+import {
+  palColorTile, palColorHec, palColorLAr,
+  setPalMaxTile, setPalMaxHec, setPalMaxLAr, setPalMaxFcal,
+} from './palette.js';
 import {
   cellLabel, HEC_INNER,
   physLarEmEta, physLarEmPhi, physLarHecEta, physLarHecPhi,
@@ -147,28 +150,35 @@ export async function processXml(xmlText) {
     rebuildActiveClusterCellIds();
   } catch (e) { console.warn('Cluster parse error', e); }
 
-  // ── FCAL cells ───────────────────────────────────────────────────────────────
-  try { drawFcal(fcalCells); } catch (e) { console.warn('FCAL draw error', e); }
-
-  // Per-detector energy ranges — min + 97th-percentile as max (top 3% above slider max)
-  function minMax(cells) {
+  // Per-detector energy ranges — min + per-detector percentile as max.
+  // Tile=p99.5, LAr=p97, HEC=p98 (chosen by how heavy each detector's high-energy tail is).
+  // Computed BEFORE drawFcal so palette ceilings are already set when cells are first colored.
+  function minMax(cells, pct) {
     const vals = [];
     for (const { energy } of cells) { const v = energy * 1000; if (isFinite(v) && v > 0) vals.push(v); }
     if (!vals.length) return [0, 1];
     vals.sort((a, b) => a - b);
-    const p97 = vals[Math.floor(0.97 * vals.length)];
-    return [vals[0], p97 ?? vals[vals.length - 1]];
+    const pVal = vals[Math.floor(pct * vals.length)];
+    return [vals[0], pVal ?? vals[vals.length - 1]];
   }
   // MBTS shares the Tile palette — merge its range with Tile's
   const allTileCells = tileCells.concat(mbtsCells);
-  [tileMinMev, tileMaxMev] = minMax(allTileCells);
-  [larMinMev,  larMaxMev]  = minMax(larCells);
-  [hecMinMev,  hecMaxMev]  = minMax(hecCells);
-  const fcalMaxMev = (() => { const [, mx] = minMax(fcalCells); return mx; })();
+  [tileMinMev, tileMaxMev] = minMax(allTileCells, 0.995);
+  [larMinMev,  larMaxMev]  = minMax(larCells,     0.97);
+  [hecMinMev,  hecMaxMev]  = minMax(hecCells,     0.98);
+  const fcalMaxMev = (() => { const [, mx] = minMax(fcalCells, 0.99); return mx; })();
+  // Drive both the threshold sliders and the cell-color palette from the same percentile.
   _deps.tileSlider.update(tileMaxMev);
   _deps.larSlider.update(larMaxMev);
   _deps.hecSlider.update(hecMaxMev);
   _deps.fcalSlider.update(fcalMaxMev);
+  setPalMaxTile(tileMaxMev);
+  setPalMaxLAr(larMaxMev);
+  setPalMaxHec(hecMaxMev);
+  setPalMaxFcal(fcalMaxMev);
+
+  // ── FCAL cells ───────────────────────────────────────────────────────────────
+  try { drawFcal(fcalCells); } catch (e) { console.warn('FCAL draw error', e); }
 
   let nTile = 0, nLAr = 0, nHec = 0, nMbts = 0, nMiss = 0, nSkip = 0;
   let nHecMiss = 0, nMbtsMiss = 0;

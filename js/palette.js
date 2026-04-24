@@ -45,19 +45,32 @@ export const matTile = new THREE.MeshStandardMaterial({ color: 0xffffff, side: T
 export const matHec  = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide, flatShading: true });
 export const matLAr  = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide, flatShading: true });
 
-// Energy scale ceilings (MeV) used to map energy -> palette index.
+// Default energy scale ceilings (MeV). Used as the slider cap before any
+// event loads and as a fallback when a per-event ceiling can't be computed.
 export const TILE_SCALE = 2000;
 export const HEC_SCALE  = 5000;
 export const LAR_SCALE  = 1000;
+export const FCAL_SCALE = 7000;
+
+// Live palette ceilings — overwritten per event with a per-detector percentile
+// (Tile=p99.5, LAr=p97, HEC=p98, FCAL=p99) so the darkest color always
+// corresponds to that per-event tail of the energy distribution.
+let _tileMax = TILE_SCALE;
+let _hecMax  = HEC_SCALE;
+let _larMax  = LAR_SCALE;
+let _fcalMax = FCAL_SCALE;
+
+const _clampMax = (mev, fallback) => (isFinite(mev) && mev > 0 ? mev : fallback);
+export const setPalMaxTile = mev => { _tileMax = _clampMax(mev, TILE_SCALE); };
+export const setPalMaxHec  = mev => { _hecMax  = _clampMax(mev, HEC_SCALE);  };
+export const setPalMaxLAr  = mev => { _larMax  = _clampMax(mev, LAR_SCALE);  };
+export const setPalMaxFcal = mev => { _fcalMax = _clampMax(mev, FCAL_SCALE); };
 
 const _palIdx = (v, s) => Math.round(Math.max(0, Math.min(1, v / s)) * (PAL_N - 1));
-export const palColorTile = (eMev) => PAL_TILE_COLOR[_palIdx(eMev, TILE_SCALE)];
-export const palColorHec  = (eMev) => PAL_HEC_COLOR [_palIdx(eMev, HEC_SCALE)];
-export const palColorLAr  = (eMev) => PAL_LAR_COLOR [_palIdx(eMev, LAR_SCALE)];
-
-// FCAL copper ramp: deep patina -> oxidised -> molten -> bright -> hot highlight.
-// Gamma 0.55 keeps low energies dark and lets high values dominate.
-export const FCAL_SCALE = 7000;
+export const palColorTile = (eMev) => PAL_TILE_COLOR[_palIdx(eMev, _tileMax)];
+export const palColorHec  = (eMev) => PAL_HEC_COLOR [_palIdx(eMev, _hecMax)];
+export const palColorLAr  = (eMev) => PAL_LAR_COLOR [_palIdx(eMev, _larMax)];
+export const palColorFcal = (eMev) => palColorFcalRgb(Math.abs(eMev) / _fcalMax);
 const _FCAL_STOPS = [
   [0.102, 0.024, 0.000],
   [0.420, 0.137, 0.063],

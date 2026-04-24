@@ -18,7 +18,7 @@ const PHOTON_MAT = new THREE.LineBasicMaterial({
   color: 0xFFCC00, transparent: true, opacity: 0.85, depthWrite: false,
 });
 
-const PHOTON_PRE_INNER_MM        = 800;    // start the spring 80 cm before the inner LAr cylinder
+const PHOTON_PRE_INNER_MM        = 500;    // spring spans the last 50 cm of the photon path
 const PHOTON_SPRING_R            = 20;     // helix radius in mm
 const PHOTON_SPRING_TURNS_PER_MM = 0.014;  // coils per mm of track length
 const PHOTON_SPRING_PTS          = 22;     // points sampled per coil (smoothness)

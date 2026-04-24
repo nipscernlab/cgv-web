@@ -6,7 +6,7 @@ import {
 } from './state.js';
 import {
   PAL_TILE_COLOR, PAL_LAR_COLOR, PAL_HEC_COLOR,
-  palColorFcalRgb, FCAL_SCALE,
+  palColorFcal,
 } from './palette.js';
 import { scene, markDirty } from './renderer.js';
 import { applyAllGhostMeshes } from './ghost.js';
@@ -215,7 +215,7 @@ function _applyFcalDraw() {
     _fcalDummy.quaternion.multiply(_fcalTwist);
     _fcalDummy.updateMatrix();
     iMesh.setMatrixAt(i, _fcalDummy.matrix);
-    const [r, g, b] = palColorFcalRgb(Math.abs(energy) * 1000 / FCAL_SCALE);
+    const [r, g, b] = palColorFcal(energy * 1000);
     _fcalCol.setRGB(r, g, b);
     iMesh.setColorAt(i, _fcalCol);
   }
