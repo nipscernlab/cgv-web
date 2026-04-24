@@ -6,6 +6,7 @@ import { scene, markDirty } from './renderer.js';
 import { ghostVisible, ghostMeshByName } from './ghost.js';
 import { HEC_NAMES } from './coords.js';
 import { setLoadProgress } from './loading.js';
+import { esc } from './utils.js';
 
 // ── Mesh name → integer key ───────────────────────────────────────────────────
 // Called once per mesh at GLB load time. Returns null for envelope/unknown meshes.
@@ -161,8 +162,6 @@ async function _decompressGz(stream, totalBytes, onProgress) {
 // InstancedMeshes. Calls onSceneReady() on success, onAtlasReady(tree) if atlas
 // meshes are present.
 export async function initScene({ setStatus, atlasMat, onSceneReady, onAtlasReady }) {
-  const _esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
   setLoadProgress(0, 'Loading geometry…');
   let buffer = null;
 
@@ -289,6 +288,6 @@ export async function initScene({ setStatus, atlasMat, onSceneReady, onAtlasRead
     setLoadProgress(100, 'Geometry loaded');
     onSceneReady();
   }, e => {
-    setStatus(`<span class="warn">GLB parse error: ${_esc(e.message)}</span>`);
+    setStatus(`<span class="warn">GLB parse error: ${esc(e.message)}</span>`);
   });
 }

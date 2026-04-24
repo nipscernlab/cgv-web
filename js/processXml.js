@@ -83,9 +83,6 @@ function resetScene() {
 // await the returned promise still get correct behavior because the final
 // scene mutation is gated on `rid === _procXmlRid`.
 let _procXmlRid = 0;
-let tileMaxMev = 1, tileMinMev = 0;
-let larMaxMev  = 1, larMinMev  = 0;
-let hecMaxMev  = 1, hecMinMev  = 0;
 
 export async function processXml(xmlText) {
   if (!_deps.getWasmOk()) return;
@@ -129,44 +126,39 @@ export async function processXml(xmlText) {
     for (const { ptGev } of rawPhotons) if (isFinite(ptGev)  && ptGev  > ptMax) ptMax = ptGev;
     _deps.trackPtSlider.update(0, ptMax);
   }
-  try { drawTracks(rawTracks);   } catch (e) { console.warn('Track draw error', e); }
-  try { drawPhotons(rawPhotons); } catch (e) { console.warn('Photon draw error', e); }
+  drawTracks(rawTracks);
+  drawPhotons(rawPhotons);
 
   // ── Cluster η/φ lines ────────────────────────────────────────────────────────
-  try {
-    setLastClusterData({ collections: _clusterCollections });
-    if (rawClusters.length) {
-      let etMin = Infinity, etMax = -Infinity;
-      for (const { etGev } of rawClusters) {
-        if (etGev < etMin) etMin = etGev;
-        if (etGev > etMax) etMax = etGev;
-      }
-      _deps.clusterEtSlider.update(
-        etMin === Infinity ? 0 : Math.max(0, etMin),
-        etMax === -Infinity ? 1 : etMax,
-      );
+  setLastClusterData({ collections: _clusterCollections });
+  if (rawClusters.length) {
+    let etMin = Infinity, etMax = -Infinity;
+    for (const { etGev } of rawClusters) {
+      if (etGev < etMin) etMin = etGev;
+      if (etGev > etMax) etMax = etGev;
     }
-    drawClusters(rawClusters);
-    rebuildActiveClusterCellIds();
-  } catch (e) { console.warn('Cluster parse error', e); }
+    _deps.clusterEtSlider.update(
+      etMin === Infinity ? 0 : Math.max(0, etMin),
+      etMax === -Infinity ? 1 : etMax,
+    );
+  }
+  drawClusters(rawClusters);
+  rebuildActiveClusterCellIds();
 
-  // Per-detector energy ranges — min + per-detector percentile as max.
-  // Tile=p99.5, LAr=p97, HEC=p98 (chosen by how heavy each detector's high-energy tail is).
+  // Per-detector energy ceiling: p99.5 for Tile (+MBTS), p97 LAr, p98 HEC, p99 FCAL.
   // Computed BEFORE drawFcal so palette ceilings are already set when cells are first colored.
-  function minMax(cells, pct) {
+  function maxMev(cells, pct) {
     const vals = [];
     for (const { energy } of cells) { const v = energy * 1000; if (isFinite(v) && v > 0) vals.push(v); }
-    if (!vals.length) return [0, 1];
+    if (!vals.length) return 1;
     vals.sort((a, b) => a - b);
-    const pVal = vals[Math.floor(pct * vals.length)];
-    return [vals[0], pVal ?? vals[vals.length - 1]];
+    return vals[Math.floor(pct * vals.length)] ?? vals[vals.length - 1];
   }
   // MBTS shares the Tile palette — merge its range with Tile's
-  const allTileCells = tileCells.concat(mbtsCells);
-  [tileMinMev, tileMaxMev] = minMax(allTileCells, 0.995);
-  [larMinMev,  larMaxMev]  = minMax(larCells,     0.97);
-  [hecMinMev,  hecMaxMev]  = minMax(hecCells,     0.98);
-  const fcalMaxMev = (() => { const [, mx] = minMax(fcalCells, 0.99); return mx; })();
+  const tileMaxMev = maxMev(tileCells.concat(mbtsCells), 0.995);
+  const larMaxMev  = maxMev(larCells,                    0.97);
+  const hecMaxMev  = maxMev(hecCells,                    0.98);
+  const fcalMaxMev = maxMev(fcalCells,                   0.99);
   // Drive both the threshold sliders and the cell-color palette from the same percentile.
   _deps.tileSlider.update(tileMaxMev);
   _deps.larSlider.update(larMaxMev);
@@ -178,16 +170,9 @@ export async function processXml(xmlText) {
   setPalMaxFcal(fcalMaxMev);
 
   // ── FCAL cells ───────────────────────────────────────────────────────────────
-  try { drawFcal(fcalCells); } catch (e) { console.warn('FCAL draw error', e); }
+  drawFcal(fcalCells);
 
-  let nTile = 0, nLAr = 0, nHec = 0, nMbts = 0, nMiss = 0, nSkip = 0;
-  let nHecMiss = 0, nMbtsMiss = 0;
-  // Sample misses instead of one console.warn per cell — full-resolution logging
-  // craters FPS when DevTools is open (each warn forces a synchronous flush).
-  // We keep the first 3 of each kind for diagnosis and aggregate the rest.
-  const _MISS_SAMPLE = 3;
-  const _missLog = { TILE: [], LAR: [], HEC: [], MBTS: [] };
-  const _logMiss = (kind, msg) => { if (_missLog[kind].length < _MISS_SAMPLE) _missLog[kind].push(msg); };
+  let nTile = 0, nLAr = 0, nHec = 0;
 
   // ── TileCal cells ─────────────────────────────────────────────────────────
   // The event loop paints colors via setColorAt; visibility is decided by
@@ -195,7 +180,7 @@ export async function processXml(xmlText) {
   // filtered-out cells). renderOrder lives on the InstancedMesh itself.
   for (let i = 0; i < tileCells.length; i++) {
     const base = i * 8;
-    if (tilePacked[base] !== SUBSYS_TILE) { nSkip++; continue; }
+    if (tilePacked[base] !== SUBSYS_TILE) continue;
     const x       = tilePacked[base + 1];
     const k       = tilePacked[base + 2];
     const side    = tilePacked[base + 3];
@@ -207,7 +192,7 @@ export async function processXml(xmlText) {
     const eMev = energy * 1000;
     const s_bit = side < 0 ? 0 : 1;
     const h  = meshByKey.get(_tileKey(x, s_bit, k, module));
-    if (!h) { _logMiss('TILE', `id=${id} | Tile${x}${s_bit?'p':'n'} k=${k} mod=${module}`); nMiss++; continue; }
+    if (!h) continue;
     h.iMesh.setColorAt(h.instId, palColorTile(eMev));
     _markIMDirty(h.iMesh);
     const tEta = physTileEta(section, side, tower, sampling);
@@ -220,7 +205,7 @@ export async function processXml(xmlText) {
   // ── LAr EM cells ──────────────────────────────────────────────────────────
   for (let i = 0; i < larCells.length; i++) {
     const base    = i * 8;
-    if (larPacked[base] !== SUBSYS_LAR_EM) { nSkip++; continue; }
+    if (larPacked[base] !== SUBSYS_LAR_EM) continue;
     const abs_be  = larPacked[base + 1];
     const sampling= larPacked[base + 2];
     const region  = larPacked[base + 3];
@@ -231,10 +216,7 @@ export async function processXml(xmlText) {
     const { id, energy } = larCells[i];
     const eMev = energy * 1000;
     const h = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi));
-    if (!h) {
-      _logMiss('LAR', `id=${id} | abs_be=${abs_be} samp=${sampling} R=${R} z=${z_pos} η=${eta} φ=${phi}`);
-      nMiss++; continue;
-    }
+    if (!h) continue;
     h.iMesh.setColorAt(h.instId, palColorLAr(eMev));
     _markIMDirty(h.iMesh);
     const rName = abs_be === 1 ? `EMB${sampling}` : abs_be === 2 ? `EMEC${sampling}` : `EMEC${sampling} (inner)`;
@@ -248,7 +230,7 @@ export async function processXml(xmlText) {
   // ── LAr HEC cells ─────────────────────────────────────────────────────────
   for (let i = 0; i < hecCells.length; i++) {
     const base     = i * 8;
-    if (hecPacked[base] !== SUBSYS_LAR_HEC) { nSkip++; continue; }
+    if (hecPacked[base] !== SUBSYS_LAR_HEC) continue;
     const group    = hecPacked[base + 1];
     const region   = hecPacked[base + 2];
     const z_pos    = hecPacked[base + 3];
@@ -257,10 +239,7 @@ export async function processXml(xmlText) {
     const { id, energy } = hecCells[i];
     const eMev = energy * 1000;
     const h = meshByKey.get(_hecKey(group, region, z_pos, cum_eta, phi));
-    if (!h) {
-      _logMiss('HEC', `id=${id} | group=${group} region=${region} z=${z_pos} cumη=${cum_eta} φ=${phi}`);
-      nHecMiss++; continue;
-    }
+    if (!h) continue;
     h.iMesh.setColorAt(h.instId, palColorHec(eMev));
     _markIMDirty(h.iMesh);
     const be      = z_pos ? 2 : -2;
@@ -280,10 +259,10 @@ export async function processXml(xmlText) {
     const { label, energy } = mbtsCells[i];
     const eMev = energy * 1000;
     const _m = /^type_(-?1)_ch_([01])_mod_([0-7])$/.exec(label);
-    if (!_m) { _logMiss('MBTS', `label=${label} | bad format`); nMbtsMiss++; continue; }
+    if (!_m) continue;
     const tileNum = _m[2]==='0' ? 14 : 15, s_bit = _m[1]==='1' ? 1 : 0, mod = +_m[3];
     const h = meshByKey.get(_tileKey(tileNum, s_bit, 0, mod));
-    if (!h) { _logMiss('MBTS', `label=${label} | no mesh`); nMbtsMiss++; continue; }
+    if (!h) continue;
     h.iMesh.setColorAt(h.instId, palColorTile(eMev));
     _markIMDirty(h.iMesh);
     const mbtsCoords = `η = ${((s_bit?1:-1)*(_m[2]==='0'?2.76:3.84)).toFixed(3)}   φ = ${_wrapPhi(2*Math.PI/16+mod*2*Math.PI/8).toFixed(3)} rad`;
@@ -293,20 +272,10 @@ export async function processXml(xmlText) {
     const _mbtsIdx   = mod + (_mbtsInner ? 0 : 8);
     const _mbtsCellName = `EB${_mbtsSide}${String(_mbtsEba).padStart(2,'0')} MBTS ${_mbtsSide}${String(_mbtsIdx).padStart(2,'0')}`;
     active.set(h, { energyGev: energy, energyMev: eMev, cellName: _mbtsCellName, coords: mbtsCoords, det: 'TILE', mbtsLabel: label });
-    nMbts++;
   }
 
   const tg = getTrackGroup();
   _deps.initDetPanel(nTile > 0, nLAr > 0, nHec > 0, tg && tg.children.length > 0, fcalCells.length > 0);
   applyThreshold();
-
-  const allMiss = nMiss + nHecMiss + nMbtsMiss;
-  // Aggregated miss summary — one console line per detector kind, with samples.
-  if (allMiss) {
-    for (const kind of ['TILE', 'LAR', 'HEC', 'MBTS']) {
-      const samples = _missLog[kind];
-      if (samples.length) console.warn(`[${kind}] ${samples.length} sample miss(es):\n  ` + samples.join('\n  '));
-    }
-  }
   showEventInfo(currentEventInfo);
 }
