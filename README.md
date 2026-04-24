@@ -39,17 +39,19 @@ the CERN ATLAS Experiment. Undergraduate developer:
 
 ## Quick start (just run the viewer)
 
-You only need a static HTTP server at the project root:
-
 ```bash
-# any of these works
-python -m http.server 8080
-npx serve .
+node scripts/fetch-geometry.mjs       # ~5 MB from the GitHub Release
+python -m http.server 8080            # or: npx serve .
 ```
 
-Then open <http://localhost:8080>. All compiled assets
-(`geometry_data/CaloGeometry.glb`, `parser/pkg/*.wasm`) are committed, so no
-build step is required to view the app.
+Then open <http://localhost:8080>.
+
+The geometry asset (`geometry_data/CaloGeometry.glb.gz`, ~5 MB) is hosted on
+[GitHub Releases](https://github.com/nipscernlab/cgv-web/releases) and fetched
+on demand — no `npm install` or build pipeline required just to view the app.
+The Rust ATLAS-ID parser (`parser/pkg/*.wasm`) is committed.
+
+If you have npm installed, `npm run dev` does the fetch + serve in one step.
 
 ---
 
@@ -102,36 +104,32 @@ cd setup
 node setup.mjs
 ```
 
-### 4. Compile `.root` → `.glb`
-
-Place the source file at `geometry_data/CaloGeometry.root`, then run:
+### 4. Fetch the `.root` inputs
 
 ```bash
-node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
+npm run fetch:geometry:source
 ```
 
-Output:
+Downloads `CaloGeometry.root` and `atlas.root` (~24 MB) from the GitHub Release
+into `geometry_data/`. Skip this step if you've placed your own `.root` files
+there manually.
 
-- `geometry_data/CaloGeometry.glb` — glTF binary (optimized, ~50+ MB)
-
-### 5. Optimize the GLB
-
-The raw GLB carries dead vertex data (UVs, tangents, materials) that the viewer
-does not use. Strip + quantize it:
+### 5. Compile `.root` → `.glb`
 
 ```bash
-node setup/optimize_glb.mjs --quantize
-# writes geometry_data/CaloGeometry_opt.glb
+node setup/root2scene.mjs geometry_data/CaloGeometry.root \
+                          --atlas geometry_data/atlas.root \
+                          --atlas-subtree-node MUCH_1,MUC1_2 \
+                          --out geometry_data
 ```
 
-Then replace the original:
+Outputs (in `geometry_data/`):
 
-```bash
-mv geometry_data/CaloGeometry_opt.glb geometry_data/CaloGeometry.glb
-```
+- `CaloGeometry.glb` — optimized glTF binary (~50 MB)
+- `CaloGeometry.glb.gz` — gzip-compressed (~5 MB; this is what the viewer loads)
 
-Typical reduction: **~330 MB → ~70 MB** (−78%), visually identical.
-After replacing, bump `GEO_CACHE_VER` in `index.html` to force client cache refresh.
+After regenerating, bump `GEO_CACHE_VER` in `index.html` to force a client
+cache refresh.
 
 ### 6. Build the Rust ATLAS-ID parser (WASM)
 
@@ -159,19 +157,17 @@ cgv-web/
 │   ├── src/lib.rs              Rust source
 │   ├── Cargo.toml
 │   └── pkg/                    wasm-pack output (committed)
-├── geometry_data/
-│   ├── CaloGeometry.root       source geometry (input)
-│   └── CaloGeometry.glb        optimized glTF binary
+├── geometry_data/              gitignored; populated by scripts/fetch-geometry.mjs
+├── scripts/
+│   └── fetch-geometry.mjs      downloads .glb.gz / .root from GitHub Releases
 ├── setup/                      build pipeline scripts
 │   ├── setup.mjs               patches jsroot modules
-│   ├── root2scene.mjs          .root → .glb compiler
-│   ├── optimize_glb.mjs        GLB stripper / quantizer
+│   ├── root2scene.mjs          .root → .glb compiler (also writes .glb.gz)
 │   └── lib/                    patched jsroot modules
 ├── nipscern/                   lightweight standalone preview (pre-baked scene_data.bin)
-├── twiki/                      ATLAS-style user documentation (Markdown)
+├── twiki/                      ATLAS-style user documentation
 ├── atlantis/                   ATLANTIS bundled archive
 ├── live_atlas/                 live ATLANTIS bridge (optional)
-├── debug/                      debug scripts + dumps
 └── docs/                       design notes & PDFs
 ```
 
@@ -202,7 +198,7 @@ cgv-web/
 ## Documentation
 
 User-facing documentation lives in [`twiki/`](twiki/) — start at
-[`twiki/WebHome.md`](twiki/WebHome.md).
+[`twiki/WebHome.twiki`](twiki/WebHome.twiki).
 
 ---
 

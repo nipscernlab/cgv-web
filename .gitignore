@@ -2,6 +2,11 @@
 node_modules/
 parser/target/
 
+# ── Geometry assets (hosted on GitHub Releases, fetched by npm run fetch:geometry)
+geometry_data/*.glb
+geometry_data/*.glb.gz
+geometry_data/*.root
+
 # ── Temporary / scratch data dumps ─────────────────────────────────────────────
 # Ad-hoc ATLAS XML scratch folders produced during local experimentation.
 tmp_atlas_*/
