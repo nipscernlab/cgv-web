@@ -21,6 +21,8 @@ jobs:
           node-version: '20'
       - name: Fetch geometry assets from release
         run: node scripts/fetch-geometry.mjs
+      - name: Fetch sample XMLs from release
+        run: node scripts/fetch-samples.mjs
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact

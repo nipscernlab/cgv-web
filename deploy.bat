@@ -21,6 +21,13 @@ if not exist "%DEST%" mkdir "%DEST%"
 if not exist "..\nipscernweb\library" mkdir "..\nipscernweb\library"
 if not exist "..\nipscernweb\library\cgvweb" mkdir "..\nipscernweb\library\cgvweb"
 
+REM ---- Ensure sample XMLs are present (fetched from GitHub Release) ----
+call node scripts\fetch-samples.mjs
+if errorlevel 1 (
+    echo ERROR: fetch-samples.mjs failed.
+    exit /b 1
+)
+
 echo [1/2] Refreshing deployed items (per-item delete + copy)...
 echo.
 
