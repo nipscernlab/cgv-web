@@ -6,26 +6,24 @@
   <meta name="color-scheme" content="dark">
   <title>CGV — ATLAS Calorimeter Viewer</title>
   <link rel="icon" type="image/svg+xml" href="./assets/cgvweb_icon.svg">
-  <!-- Preconnect to all external origins for faster resource loading -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <!-- All external resources are vendored under ./assets/vendor/ so the site
+       runs fully offline inside ATLAS Point 1 (no GPN / CDN access). -->
   <!-- Preload critical geometry file (largest asset) -->
   <link rel="preload" href="./geometry_data/CaloGeometry.glb.gz" as="fetch" crossorigin fetchpriority="high">
   <!-- Preload WASM parser -->
   <link rel="preload" href="./parser/pkg/atlas_id_parser_bg.wasm" as="fetch" crossorigin type="application/wasm" fetchpriority="high">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./assets/vendor/fonts/fonts.css">
   <!-- Tabler Icons webfont (for ghost icon) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+  <link rel="stylesheet" href="./assets/vendor/tabler-icons/tabler-icons.min.css">
   <!-- flag-icons CSS (for language picker flags) -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flag-icons@7.2.3/css/flag-icons.min.css">
+  <link rel="stylesheet" href="./assets/vendor/flag-icons/css/flag-icons.min.css">
   <!-- Importmap MUST appear before any modulepreload that imports a bare specifier
        (Firefox tries to resolve "three" during preload — fails if importmap comes later). -->
   <script type="importmap">
   {
     "imports": {
-      "three":         "https://cdn.jsdelivr.net/npm/three@0.167.1/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.1/examples/jsm/"
+      "three":         "./assets/vendor/three/build/three.module.js",
+      "three/addons/": "./assets/vendor/three/examples/jsm/"
     }
   }
   </script>
