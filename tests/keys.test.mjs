@@ -135,9 +135,9 @@ describe('cross-detector tag uniqueness', () => {
   });
 
   it('keys from different detectors never collide on zero fields', () => {
-    const tile  = _tileKey(0, 0, 0, 0);
+    const tile = _tileKey(0, 0, 0, 0);
     const larEm = _larEmKey(1, 0, 0, 0, 0, 0);
-    const hec   = _hecKey(0, 0, 0, 0, 0);
+    const hec = _hecKey(0, 0, 0, 0, 0);
     expect(new Set([tile, larEm, hec]).size).toBe(3);
   });
 });

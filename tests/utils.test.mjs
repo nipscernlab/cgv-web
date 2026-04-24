@@ -56,10 +56,10 @@ describe('makeRelTime', () => {
   const t = (key) =>
     ({
       'just-now': 'just now',
-      's-ago':    's ago',
-      'm-ago':    'm ago',
-      'h-ago':    'h ago',
-    }[key] ?? key);
+      's-ago': 's ago',
+      'm-ago': 'm ago',
+      'h-ago': 'h ago',
+    })[key] ?? key;
 
   it('returns a function', () => {
     expect(typeof makeRelTime(t)).toBe('function');

@@ -1,12 +1,12 @@
 const MAX_ENTRIES = 100;
 const REFRESH_MS = 5000;
 const REMOTE_API = '/api/xml';
-const HAS_FSA    = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+const HAS_FSA = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
 function fmtTime(ts) {
   if (!Number.isFinite(ts)) return '';
   const d = new Date(ts);
-  const pad = n => n.toString().padStart(2, '0');
+  const pad = (n) => n.toString().padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
@@ -27,7 +27,7 @@ async function walkDirectoryHandle(dirHandle, out, prefix = '') {
 async function walkDataTransferEntry(entry, out, prefix = '') {
   if (!entry) return;
   if (entry.isFile) {
-    const f = await new Promise(res => entry.file(res, () => res(null)));
+    const f = await new Promise((res) => entry.file(res, () => res(null)));
     if (f && f.name.toLowerCase().endsWith('.xml')) {
       out.push({ file: f, rel: prefix + f.name });
     }
@@ -35,7 +35,7 @@ async function walkDataTransferEntry(entry, out, prefix = '') {
     const reader = entry.createReader();
     let batch;
     do {
-      batch = await new Promise(res => reader.readEntries(res, () => res([])));
+      batch = await new Promise((res) => reader.readEntries(res, () => res([])));
       for (const child of batch) {
         await walkDataTransferEntry(child, out, prefix + entry.name + '/');
       }
@@ -131,11 +131,11 @@ export function setupServerMode({
         </button>`;
       row.querySelector('.srow-info').addEventListener('click', async () => {
         currentKey = e.key;
-        listEl.querySelectorAll('.srow.cur').forEach(r => r.classList.remove('cur'));
+        listEl.querySelectorAll('.srow.cur').forEach((r) => r.classList.remove('cur'));
         row.classList.add('cur');
         await readAndProcess(e.file);
       });
-      row.querySelector('.srow-dl').addEventListener('click', ev => {
+      row.querySelector('.srow-dl').addEventListener('click', (ev) => {
         ev.stopPropagation();
         downloadFile(e.file, shortName);
       });
@@ -161,8 +161,10 @@ export function setupServerMode({
   function downloadFile(file, name) {
     const url = URL.createObjectURL(file);
     const a = Object.assign(document.createElement('a'), { href: url, download: name });
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   function updateEntries(rawItems) {
@@ -176,7 +178,7 @@ export function setupServerMode({
         return (a.rel || '').localeCompare(b.rel || '');
       })
       .slice(0, MAX_ENTRIES)
-      .map(it => ({ ...it, key: keyFor(it.file, it.rel) }));
+      .map((it) => ({ ...it, key: keyFor(it.file, it.rel) }));
     const sameLen = sorted.length === entries.length;
     const sameKeys = sameLen && sorted.every((e, i) => e.key === entries[i].key);
     if (!sameKeys) {
@@ -192,7 +194,7 @@ export function setupServerMode({
     if (top.key === lastAutoLoadedKey) return;
     lastAutoLoadedKey = top.key;
     currentKey = top.key;
-    listEl.querySelectorAll('.srow.cur').forEach(r => r.classList.remove('cur'));
+    listEl.querySelectorAll('.srow.cur').forEach((r) => r.classList.remove('cur'));
     const firstRow = listEl.querySelector('.srow');
     if (firstRow) firstRow.classList.add('cur');
     readAndProcess(top.file);
@@ -245,7 +247,7 @@ export function setupServerMode({
         return;
       }
       const list = await r.json();
-      const out = list.map(it => ({ file: makeRemoteFile(it), rel: it.name }));
+      const out = list.map((it) => ({ file: makeRemoteFile(it), rel: it.name }));
       updateEntries(out);
     } catch (err) {
       console.warn('[serverMode] remote reload failed:', err);
@@ -255,7 +257,7 @@ export function setupServerMode({
   async function refreshTick() {
     if (!isActive || isPaused) return;
     flashRefresh();
-    if (remoteMode)        await reloadFromRemote();
+    if (remoteMode) await reloadFromRemote();
     else if (folderHandle) await reloadFromHandle();
     scheduleRefresh();
   }
@@ -274,7 +276,7 @@ export function setupServerMode({
 
   function showFallbackWarning() {
     const main = esc(t('server-no-watch'));
-    const tip  = HAS_FSA ? '' : ` <span class="warn-tip">${esc(t('server-try-chromium'))}</span>`;
+    const tip = HAS_FSA ? '' : ` <span class="warn-tip">${esc(t('server-try-chromium'))}</span>`;
     setStatus(`<span class="warn">${main}${tip}</span>`);
   }
 
@@ -303,7 +305,7 @@ export function setupServerMode({
 
   pickBtn.addEventListener('click', pickFolder);
 
-  folderInput.addEventListener('change', e => {
+  folderInput.addEventListener('change', (e) => {
     const files = [...(e.target.files ?? [])];
     e.target.value = '';
     if (!files.length) return;
@@ -331,16 +333,20 @@ export function setupServerMode({
     }
   });
 
-  ['dragenter', 'dragover'].forEach(ev => sec.addEventListener(ev, e => {
-    e.preventDefault();
-    e.stopPropagation();
-    sec.classList.add('dragover');
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-  }));
-  ['dragleave', 'dragend'].forEach(ev => sec.addEventListener(ev, e => {
-    if (e.target === sec) sec.classList.remove('dragover');
-  }));
-  sec.addEventListener('drop', async e => {
+  ['dragenter', 'dragover'].forEach((ev) =>
+    sec.addEventListener(ev, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      sec.classList.add('dragover');
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    }),
+  );
+  ['dragleave', 'dragend'].forEach((ev) =>
+    sec.addEventListener(ev, (e) => {
+      if (e.target === sec) sec.classList.remove('dragover');
+    }),
+  );
+  sec.addEventListener('drop', async (e) => {
     e.preventDefault();
     e.stopPropagation();
     sec.classList.remove('dragover');
@@ -348,8 +354,8 @@ export function setupServerMode({
     const out = [];
 
     const entriesList = items
-      .filter(it => it.kind === 'file')
-      .map(it => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+      .filter((it) => it.kind === 'file')
+      .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
       .filter(Boolean);
 
     if (entriesList.length) {
@@ -364,7 +370,7 @@ export function setupServerMode({
 
     if (!out.length) return;
     folderHandle = null;
-    inputFiles = out.map(o => o.file);
+    inputFiles = out.map((o) => o.file);
     canPoll = false;
     isPaused = false;
     lastAutoLoadedKey = null;
@@ -392,7 +398,11 @@ export function setupServerMode({
 
   function showRemoteError(msg) {
     if (!remoteErrorEl) return;
-    if (!msg) { remoteErrorEl.hidden = true; remoteErrorEl.textContent = ''; return; }
+    if (!msg) {
+      remoteErrorEl.hidden = true;
+      remoteErrorEl.textContent = '';
+      return;
+    }
     remoteErrorEl.hidden = false;
     remoteErrorEl.textContent = msg;
   }
@@ -439,7 +449,7 @@ export function setupServerMode({
     try {
       const r = await fetch(`${REMOTE_API}/folder`, {
         cache: 'no-store',
-        headers: { 'Accept': 'application/json' },
+        headers: { Accept: 'application/json' },
       });
       if (!r.ok) return false;
       // Guard against static hosts (Cloudflare Pages, etc.) that return a 200
@@ -465,12 +475,18 @@ export function setupServerMode({
   }
 
   if (remoteFolderBtn) remoteFolderBtn.addEventListener('click', openFolderEdit);
-  if (remoteApplyBtn)  remoteApplyBtn.addEventListener('click', applyFolderEdit);
+  if (remoteApplyBtn) remoteApplyBtn.addEventListener('click', applyFolderEdit);
   if (remoteCancelBtn) remoteCancelBtn.addEventListener('click', closeFolderEdit);
   if (remoteEditInput) {
-    remoteEditInput.addEventListener('keydown', e => {
-      if (e.key === 'Enter')  { e.preventDefault(); applyFolderEdit(); }
-      if (e.key === 'Escape') { e.preventDefault(); closeFolderEdit(); }
+    remoteEditInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applyFolderEdit();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeFolderEdit();
+      }
     });
   }
 

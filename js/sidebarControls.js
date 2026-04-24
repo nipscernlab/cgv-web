@@ -33,7 +33,9 @@ export function setupSidebarControls({
     document.body.classList.toggle('panel-unpinned', !panelPinned);
     panelEl.classList.toggle('collapsed', !panelPinned);
     btnPin.classList.toggle('on', panelPinned);
-    document.querySelector('#pin-icon use').setAttribute('href', panelPinned ? '#i-pin' : '#i-pin-off');
+    document
+      .querySelector('#pin-icon use')
+      .setAttribute('href', panelPinned ? '#i-pin' : '#i-pin-off');
     btnPin.dataset.tip = t(panelPinned ? 'tip-pin' : 'tip-panel');
     btnPanel.classList.toggle('on', panelPinned);
     updateCollisionHud();
@@ -144,7 +146,7 @@ export function setupSidebarControls({
       syncRightPanel();
     }
   });
-  btnRpanel.addEventListener('click', e => {
+  btnRpanel.addEventListener('click', (e) => {
     e.stopPropagation();
     setPinnedR(!rpanelPinned);
   });
@@ -155,15 +157,19 @@ export function setupSidebarControls({
       let sy = 0;
       let st = 0;
       let tracking = false;
-      el.addEventListener('touchstart', e => {
-        if (!mobileMQ.matches) return;
-        const touch = e.touches[0];
-        sx = touch.clientX;
-        sy = touch.clientY;
-        st = Date.now();
-        tracking = true;
-      }, { passive: true });
-      el.addEventListener('touchend', e => {
+      el.addEventListener(
+        'touchstart',
+        (e) => {
+          if (!mobileMQ.matches) return;
+          const touch = e.touches[0];
+          sx = touch.clientX;
+          sy = touch.clientY;
+          st = Date.now();
+          tracking = true;
+        },
+        { passive: true },
+      );
+      el.addEventListener('touchend', (e) => {
         if (!tracking) return;
         tracking = false;
         const touch = e.changedTouches[0];
@@ -183,14 +189,14 @@ export function setupSidebarControls({
     tapOpener(rpanelEdge, () => setPinnedR(true));
   })();
 
-  btnSettings.addEventListener('click', e => {
+  btnSettings.addEventListener('click', (e) => {
     e.stopPropagation();
     settingsPanelOpen ? closeSettingsPanel() : openSettingsPanel();
   });
   document.addEventListener('click', () => {
     if (settingsPanelOpen) closeSettingsPanel();
   });
-  settingsPanel.addEventListener('click', e => e.stopPropagation());
+  settingsPanel.addEventListener('click', (e) => e.stopPropagation());
 
   hintsToggle.addEventListener('click', () => {
     hintsEnabled = !hintsEnabled;

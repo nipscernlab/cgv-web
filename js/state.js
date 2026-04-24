@@ -14,13 +14,13 @@ import * as THREE from 'three';
 class _WasmParserPool {
   constructor() {
     /** @type {Worker | null} */
-    this._worker      = null;
+    this._worker = null;
     /** @type {boolean} */
-    this._ready       = false;
+    this._ready = false;
     /** @type {number} */
-    this._rid         = 0;
+    this._rid = 0;
     /** @type {Map<number, PendingRequest>} */
-    this._pending     = new Map();
+    this._pending = new Map();
     /** @type {Promise<void> | null} */
     this._initPromise = null;
   }
@@ -32,7 +32,9 @@ class _WasmParserPool {
       if (typeof Worker === 'undefined') throw new Error('Web Workers not supported');
       const w = new Worker(new URL('./wasm_worker.js', import.meta.url), { type: 'module' });
       w.onmessage = (ev) => this._onMessage(ev);
-      w.onerror   = (e) => { console.warn('[wasm worker] runtime error', e && e.message); };
+      w.onerror = (e) => {
+        console.warn('[wasm worker] runtime error', e && e.message);
+      };
       await new Promise((resolve, reject) => {
         const to = setTimeout(() => reject(new Error('wasm worker init timeout')), 20000);
         /** @param {MessageEvent} ev */
@@ -47,7 +49,7 @@ class _WasmParserPool {
         w.postMessage({ type: 'init' });
       });
       this._worker = w;
-      this._ready  = true;
+      this._ready = true;
     })();
     return this._initPromise;
   }
@@ -83,8 +85,8 @@ class _WasmParserPool {
 export const _wasmPool = new _WasmParserPool();
 
 // Subsystem codes returned by parse_atlas_ids_bulk (slot [0] of each 6-i32 record)
-export const SUBSYS_TILE    = 1;
-export const SUBSYS_LAR_EM  = 2;
+export const SUBSYS_TILE = 1;
+export const SUBSYS_LAR_EM = 2;
 export const SUBSYS_LAR_HEC = 3;
 
 // ── Cell handle storage ──────────────────────────────────────────────────────
@@ -106,7 +108,7 @@ export const rayTargets = [];
 // ── InstancedMesh bookkeeping ────────────────────────────────────────────────
 // Zero-determinant matrix collapses an instance to a point; degenerate
 // triangles are rejected by both the rasterizer and the raycaster.
-export const _ZERO_MAT4 = new THREE.Matrix4().set(0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0);
+export const _ZERO_MAT4 = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 /** @type {Set<THREE.InstancedMesh>} */
 const _dirtyIM = new Set();
@@ -116,7 +118,9 @@ const _bsMat = new THREE.Matrix4();
 const _bsSph = new THREE.Sphere();
 
 /** @param {THREE.InstancedMesh} iMesh */
-export function _markIMDirty(iMesh) { _dirtyIM.add(iMesh); }
+export function _markIMDirty(iMesh) {
+  _dirtyIM.add(iMesh);
+}
 
 export function _flushIMDirty() {
   for (const im of _dirtyIM) {
@@ -163,7 +167,7 @@ export const _rayIMeshes = new Set();
  * @returns {number}
  */
 export const _tileKey = (layer, pn, ieta, mod) =>
-  (layer<<2)|(pn<<7)|(ieta<<8)|(mod<<12);
+  (layer << 2) | (pn << 7) | (ieta << 8) | (mod << 12);
 
 /**
  * @param {number} eb
@@ -175,7 +179,7 @@ export const _tileKey = (layer, pn, ieta, mod) =>
  * @returns {number}
  */
 export const _larEmKey = (eb, sampling, region, pn, eta, phi) =>
-  1|((eb-1)<<2)|(sampling<<4)|(region<<6)|(pn<<9)|(eta<<10)|(phi<<19);
+  1 | ((eb - 1) << 2) | (sampling << 4) | (region << 6) | (pn << 9) | (eta << 10) | (phi << 19);
 
 /**
  * @param {number} group
@@ -186,4 +190,4 @@ export const _larEmKey = (eb, sampling, region, pn, eta, phi) =>
  * @returns {number}
  */
 export const _hecKey = (group, region, pn, eta, phi) =>
-  2|(group<<2)|(region<<4)|(pn<<5)|(eta<<6)|(phi<<11);
+  2 | (group << 2) | (region << 4) | (pn << 5) | (eta << 6) | (phi << 11);

@@ -67,7 +67,7 @@ export function setupLiveMode({
         processXml(entry.text);
         renderEventList();
       });
-      row.querySelector('.edl').addEventListener('click', ev => {
+      row.querySelector('.edl').addEventListener('click', (ev) => {
         ev.stopPropagation();
         poller.download(idx);
       });
@@ -128,9 +128,12 @@ export function setupLiveMode({
     poller.addEventListener('error', ({ detail }) => {
       console.warn('[LivePoller]', detail.message);
     });
-    poller.init().then(() => {
-      renderEventList();
-    }).catch(() => {});
+    poller
+      .init()
+      .then(() => {
+        renderEventList();
+      })
+      .catch(() => {});
   } else {
     onFallbackToLocal?.();
   }
