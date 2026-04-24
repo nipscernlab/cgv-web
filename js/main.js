@@ -435,7 +435,6 @@ const slicer = createSlicerController({
   controls,
   scene,
   slicerButton: document.getElementById('btn-slicer'),
-  showAllButton: document.getElementById('btn-showall'),
   onMaskChange:            refreshSceneVisibility,
   onDisable:               refreshSceneVisibility,
   onHideNonActiveShowAll:  hideNonActiveCells,
