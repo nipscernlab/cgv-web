@@ -5,11 +5,8 @@ import {
 } from './visibility.js';
 
 // ── EdgesGeometry outline (hover) ─────────────────────────────────────────────
-const eGeoCache      = new Map();
-const outlineMat     = new THREE.LineBasicMaterial({ color: 0xffffff });
-// FCAL cylinders share many edges with neighbouring cells, so a full-opaque
-// outline reads as a thick blob; fade it so the outline is visibly lighter.
-const outlineFcalMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2, depthWrite: false });
+const eGeoCache  = new Map();
+const outlineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
 let   outlineMesh = null;
 
 export function clearOutline() {
@@ -55,7 +52,7 @@ export function showFcalOutline(instanceId) {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
-  outlineMesh = new THREE.LineSegments(geo, outlineFcalMat);
+  outlineMesh = new THREE.LineSegments(geo, outlineMat);
   outlineMesh.matrixAutoUpdate = false;
   outlineMesh.renderOrder = 999;
   outlineMesh.userData.src = src;

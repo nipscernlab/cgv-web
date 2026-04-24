@@ -164,7 +164,7 @@ export async function processXml(xmlText) {
   const [tileMinMev, tileMaxMev] = rangeMev(tileCells.concat(mbtsCells), 0.05, 0.995);
   const [larMinMev,  larMaxMev ] = rangeMev(larCells,                    0.03,  0.97);
   const [hecMinMev,  hecMaxMev ] = rangeMev(hecCells,                    0.02,  0.98);
-  const [fcalMinMev, fcalMaxMev] = rangeMev(fcalCells,                   0.01,  0.99);
+  const [fcalMinMev, fcalMaxMev] = rangeMev(fcalCells,                   0.50,  0.99);
   // Drive both the threshold sliders and the cell-color palette from the same range.
   _deps.tileSlider.update(tileMinMev, tileMaxMev);
   _deps.larSlider .update(larMinMev,  larMaxMev);

@@ -237,7 +237,9 @@ function _applyFcalDraw() {
   }
   const outGeo   = new THREE.BufferGeometry();
   outGeo.setAttribute('position', new THREE.BufferAttribute(outBuf, 3));
-  const outLines = new THREE.LineSegments(outGeo, new THREE.LineBasicMaterial({ color: 0x000000 }));
+  const outLines = new THREE.LineSegments(outGeo, new THREE.LineBasicMaterial({
+    color: 0x000000, transparent: true, opacity: 0.4, depthWrite: false,
+  }));
   outLines.matrixAutoUpdate = false;
   outLines.frustumCulled   = false;
   outLines.renderOrder     = 3;
