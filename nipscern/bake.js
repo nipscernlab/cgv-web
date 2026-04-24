@@ -46,9 +46,7 @@ function palColorFcal(eMev){
 const _FCAL_TWIST_RAD = (2 * Math.PI) / 16;
 
 const GHOST_TILE_NAMES = [
-  'Calorimeter\u2192LBTile_0', 'Calorimeter\u2192LBTileLArg_0',
-  'Calorimeter\u2192EBTilep_0', 'Calorimeter\u2192EBTilen_0',
-  'Calorimeter\u2192EBTileHECp_0', 'Calorimeter\u2192EBTileHECn_0',
+  'C\u2192LBTile_0', 'C\u2192EBTilep_0', 'C\u2192EBTilen_0',
 ];
 const HEC_NAMES = ['1','23','45','67'];
 

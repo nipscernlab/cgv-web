@@ -6,23 +6,11 @@ export const GHOST_MESH_NAMES = [
   'C→LBTile_0',
   'C→EBTilep_0',
   'C→EBTilen_0',
-  'Calorimeter→LBTile_0',
-  'Calorimeter→LBTileLArg_0',
-  'Calorimeter→LBLArg_0',
-  'Calorimeter→EBTilep_0',
-  'Calorimeter→EBTilen_0',
-  'Calorimeter→EBTileHECp_0',
-  'Calorimeter→EBTileHECn_0',
-  'Calorimeter→EBHECp_0',
-  'Calorimeter→EBHECn_0',
 ];
 
 // TileCal envelopes visible by default on startup.
 const GHOST_DEFAULT_ON = new Set([
   'C→LBTile_0', 'C→EBTilep_0', 'C→EBTilen_0',
-  'Calorimeter→LBTile_0', 'Calorimeter→LBTileLArg_0',
-  'Calorimeter→EBTilep_0', 'Calorimeter→EBTilen_0',
-  'Calorimeter→EBTileHECp_0', 'Calorimeter→EBTileHECn_0',
 ]);
 
 // Per-ghost visibility (name -> bool). All modules read this; mutation via .set().
