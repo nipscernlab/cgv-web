@@ -83,6 +83,7 @@ import {
   getLastEventInfo,
   setCollisionHudEnabled,
 } from './statusHud.js';
+import { setupTopToolbar } from './bootstrap/topToolbar.js';
 
 let LivePoller = null;
 try {
@@ -97,7 +98,6 @@ let wasmOk = false;
 let sceneOk = false;
 let isLive = true;
 let liveSub = 'web'; // 'web' | 'server'
-let showInfo = true;
 
 let sidebarControls = null;
 let _readyFired = false;
@@ -187,12 +187,6 @@ let initDetPanel = null;
 const relTime = makeRelTime(t);
 const { startProgress, advanceProgress, endProgress } = createDownloadProgressController();
 
-initHoverTooltip({
-  getShowInfo: () => showInfo,
-  getCinemaMode: () => cinema.isCinemaMode(),
-  t,
-});
-
 const cinema = setupCinemaControls({
   camera,
   canvas,
@@ -206,22 +200,19 @@ const enterCinema = () => cinema.enterCinema();
 const exitCinema = () => cinema.exitCinema();
 const resetCamera = () => cinema.resetCamera();
 
-// ── Tooltip toggle ────────────────────────────────────────────────────────────
-document.getElementById('btn-info').addEventListener('click', () => {
-  showInfo = !showInfo;
-  document.getElementById('btn-info').classList.toggle('on', showInfo);
-  document.querySelector('#btn-info use').setAttribute('href', showInfo ? '#i-eye' : '#i-eye-off');
-  if (!showInfo) {
-    clearOutline();
-    hideTooltip();
-  }
+const topToolbar = setupTopToolbar({
+  resetCamera,
+  clearOutline,
+  hideTooltip,
+  toggleAllGhosts,
+  toggleBeam,
 });
-document.getElementById('btn-ghost').addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleAllGhosts();
+
+initHoverTooltip({
+  getShowInfo: topToolbar.getShowInfo,
+  getCinemaMode: () => cinema.isCinemaMode(),
+  t,
 });
-document.getElementById('btn-beam').addEventListener('click', toggleBeam);
-document.getElementById('btn-reset').addEventListener('click', resetCamera);
 
 // ── Detector layer toggles + Layers panel ────────────────────────────────────
 function syncLayerToggles() {
@@ -411,14 +402,6 @@ setProcessXmlDeps({
   initDetPanel,
 });
 
-const aboutOverlay = document.getElementById('about-overlay');
-document
-  .getElementById('btn-about-close')
-  .addEventListener('click', () => aboutOverlay.classList.remove('open'));
-aboutOverlay.addEventListener('click', (e) => {
-  if (e.target === aboutOverlay) aboutOverlay.classList.remove('open');
-});
-
 setupButtonTooltips();
 
 // ── Mode toggle ───────────────────────────────────────────────────────────────
@@ -535,11 +518,6 @@ setupColorPicker();
 
 // ── Settings panel ────────────────────────────────────────────────────────────
 
-// ── About button (panel head) ─────────────────────────────────────────────────
-document.getElementById('btn-about').addEventListener('click', () => {
-  aboutOverlay.classList.add('open');
-});
-
 setupMobileToolbar();
 
 // ── Slicer gizmo ──────────────────────────────────────────────────────────────
@@ -574,7 +552,7 @@ setupScreenshotControls({
 });
 
 registerViewerShortcuts({
-  aboutOverlay,
+  aboutOverlay: topToolbar.aboutOverlay,
   closeLayersPanel,
   closeSettingsPanel: sidebarControls.closeSettingsPanel,
   enterCinema,
