@@ -1,3 +1,39 @@
-# Keep shell scripts as LF on every checkout. Windows' core.autocrlf=true
-# would otherwise flip them to CRLF, which breaks the shebang on Linux/macOS.
-*.sh text eol=lf
+# ── Line ending policy ─────────────────────────────────────────
+# Source of truth is LF for everything except Windows-only scripts.
+# This makes line endings deterministic across contributors regardless
+# of each machine's local core.autocrlf setting.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF (cmd.exe / PowerShell choke on LF).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Shell scripts: LF (also covered by the rule above, kept here for clarity
+# since CRLF would break the shebang on Linux/macOS).
+*.sh  text eol=lf
+
+# ── Binary files ───────────────────────────────────────────────
+# Mark explicitly so Git never tries to apply text/EOL transforms.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.glb   binary
+*.gz    binary
+*.wasm  binary
+*.bin   binary
+*.zip   binary
+
+# ── Vendored / generated code ──────────────────────────────────
+# Tells GitHub's "Languages" stats not to count these as our code.
+assets/vendor/** linguist-vendored
+parser/pkg/**    linguist-generated
+setup/lib/**     linguist-vendored
