@@ -3,12 +3,9 @@ import { initLanguage, setupLanguagePicker, t } from './i18n/index.js';
 import { setupSidebarControls } from './sidebarControls.js';
 import { createSlicerController } from './slicer.js';
 import { registerViewerShortcuts } from './viewerShortcuts.js';
-import { _wasmPool } from './state.js';
 import { TILE_SCALE, HEC_SCALE, LAR_SCALE, FCAL_SCALE } from './palette.js';
-import { setLoadProgress, dismissLoadingScreen } from './loading.js';
 import { markDirty, canvas, renderer, scene, camera, controls } from './renderer.js';
-import { toggleAllGhosts, enableDefaultGhosts } from './ghost.js';
-import { initScene } from './loader.js';
+import { toggleAllGhosts } from './ghost.js';
 import { setupColorPicker } from './colorpicker.js';
 import { setupCinemaControls } from './cinema.js';
 import { setupScreenshotControls } from './screenshot.js';
@@ -45,11 +42,9 @@ import {
   refreshSceneVisibility,
   getTrackGroup,
 } from './visibility.js';
-import { esc } from './utils.js';
 import { createDownloadProgressController } from './progress.js';
 import {
   initTrackAtlasIntersections,
-  setAtlasRoot,
   updateTrackAtlasIntersections,
 } from './trackAtlasIntersections.js';
 import { clearOutline, rebuildAllOutlines } from './outlines.js';
@@ -71,6 +66,7 @@ import {
 import { setupTopToolbar } from './bootstrap/topToolbar.js';
 import { setupLayersPanel } from './bootstrap/layersPanel.js';
 import { setupModeWiring } from './bootstrap/modeWiring.js';
+import { setupSceneInit } from './bootstrap/sceneInit.js';
 
 let LivePoller = null;
 try {
@@ -81,23 +77,11 @@ initLanguage();
 setupLanguagePicker();
 initMinimap();
 
-let wasmOk = false;
-let sceneOk = false;
-
 let sidebarControls = null;
-let modeWiring = null;
-let _readyFired = false;
-
-// ── Atlas structural geometry (from atlas.root merged into GLB) ───────────────
-const atlasMat = new THREE.MeshBasicMaterial({
-  color: 0x4a90d9,
-  transparent: true,
-  opacity: 0.07,
-  depthWrite: false,
-  side: THREE.DoubleSide,
-});
 
 initTrackAtlasIntersections({ getTrackGroup });
+
+const sceneInit = setupSceneInit({ t });
 
 // Tooltip + dirty on camera drag.
 let _ctrlActive = false;
@@ -120,45 +104,6 @@ initRenderLoop({
     if (cinema.isAnimating()) cinema.tick();
   },
 });
-
-// ── Status bar ────────────────────────────────────────────────────────────────
-function checkReady() {
-  if (!wasmOk || !sceneOk) return;
-  setStatus(t('status-ready'));
-  if (!_readyFired) {
-    _readyFired = true;
-    setLoadProgress(100, 'Ready');
-    // Enable the default TileCal ghost envelopes on startup.
-    enableDefaultGhosts();
-    // Dismiss loading screen after a brief moment so 100% is visible
-    setTimeout(dismissLoadingScreen, 280);
-  }
-  modeWiring?.onSceneAndWasmReady();
-}
-
-// ── GLB loader (with OPFS cache) ──────────────────────────────────────────────
-// ── Geometry + WASM initialisation ─────────────────────────────────────────
-initScene({
-  setStatus,
-  atlasMat,
-  onSceneReady() {
-    sceneOk = true;
-    markDirty();
-    checkReady();
-  },
-  onAtlasReady(tree) {
-    setAtlasRoot(tree);
-  },
-});
-_wasmPool
-  .init()
-  .then(() => {
-    wasmOk = true;
-    checkReady();
-  })
-  .catch((e) => {
-    setStatus(`<span class="err">WASM: ${esc((e && e.message) || String(e))}</span>`);
-  });
 
 let tileSlider = null;
 let larSlider = null;
@@ -256,7 +201,7 @@ initStatusHud({
   }));
 
 setProcessXmlDeps({
-  getWasmOk: () => wasmOk,
+  getWasmOk: sceneInit.isWasmOk,
   tileSlider,
   larSlider,
   fcalSlider,
@@ -268,7 +213,7 @@ setProcessXmlDeps({
 
 setupButtonTooltips();
 
-modeWiring = setupModeWiring({
+const modeWiring = setupModeWiring({
   LivePoller,
   processXml,
   setStatus,
@@ -277,6 +222,7 @@ modeWiring = setupModeWiring({
   endProgress,
   t,
 });
+sceneInit.setOnReady(() => modeWiring.onSceneAndWasmReady());
 
 setupColorPicker();
 
