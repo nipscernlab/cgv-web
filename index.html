@@ -37,7 +37,21 @@
        + our worker) and preloading lets the browser kick off the fetch in
        parallel with main.js module resolution, so the worker is ready sooner. -->
   <link rel="modulepreload" href="./js/wasm_worker.js">
-  <link rel="stylesheet" href="./css/style.css">
+  <!-- Stylesheets are split by component; load order matches CSS cascade
+       (mobile.css overrides earlier rules via media queries; cinema.css overrides
+       panel/toolbar opacity in cinema mode). -->
+  <link rel="stylesheet" href="./css/base.css">
+  <link rel="stylesheet" href="./css/panel-left.css">
+  <link rel="stylesheet" href="./css/panel-right.css">
+  <link rel="stylesheet" href="./css/modes.css">
+  <link rel="stylesheet" href="./css/log.css">
+  <link rel="stylesheet" href="./css/hud.css">
+  <link rel="stylesheet" href="./css/toolbar.css">
+  <link rel="stylesheet" href="./css/dialogs.css">
+  <link rel="stylesheet" href="./css/loading.css">
+  <link rel="stylesheet" href="./css/floating.css">
+  <link rel="stylesheet" href="./css/cinema.css">
+  <link rel="stylesheet" href="./css/mobile.css">
 </head>
 <body>
 
