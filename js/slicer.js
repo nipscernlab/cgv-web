@@ -97,9 +97,31 @@ export function createSlicerController({
     sph.userData.slicerHandle = true;
     sph.renderOrder = 22;
     g.add(sph);
-    g.userData.handle = sph;
+    g.userData.handleMouse = sph;
+
+    // Invisible larger hit-area so touch input on mobile (where the visual
+    // sphere is only a few pixels wide) doesn't have to land on the dot exactly.
+    const hitR = 500;
+    const hitGeo = new THREE.SphereGeometry(hitR, 12, 8);
+    const hitMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const hit = new THREE.Mesh(hitGeo, hitMat);
+    hit.userData.slicerHandle = true;
+    hit.renderOrder = 22;
+    g.add(hit);
+    g.userData.handleTouch = hit;
 
     return g;
+  }
+
+  function pickHandle(e) {
+    return e.pointerType === 'touch'
+      ? slicerGroup.userData.handleTouch
+      : slicerGroup.userData.handleMouse;
   }
 
   function updateBasis() {
@@ -162,7 +184,7 @@ export function createSlicerController({
         if (!slicerActive || !slicerGroup) return;
         const pt = pointerXY(e);
         dragRay.setFromCamera(pt, camera);
-        const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
+        const hits = dragRay.intersectObject(pickHandle(e), false);
         if (!hits.length) return;
         dragging = true;
         dragStartX = e.clientX;
@@ -220,7 +242,7 @@ export function createSlicerController({
         if (!slicerActive || !slicerGroup) return;
         const pt = pointerXY(e);
         dragRay.setFromCamera(pt, camera);
-        const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
+        const hits = dragRay.intersectObject(pickHandle(e), false);
         if (!hits.length) return;
         tDragging = true;
         prevNdcX = pt.x;
@@ -286,7 +308,7 @@ export function createSlicerController({
       if (!slicerActive || !slicerGroup) return;
       const pt = pointerXY(e);
       dragRay.setFromCamera(pt, camera);
-      const hits = dragRay.intersectObject(slicerGroup.userData.handle, false);
+      const hits = dragRay.intersectObject(slicerGroup.userData.handleMouse, false);
       if (hits.length) e.preventDefault();
     });
   })();

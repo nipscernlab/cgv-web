@@ -248,7 +248,7 @@ export function setupSidebarControls({
     });
   }
 
-  let minimapEnabled = true;
+  let minimapEnabled = false;
   function syncMinimapUi() {
     if (!minimapToggle) return;
     minimapToggle.classList.toggle('on', minimapEnabled);

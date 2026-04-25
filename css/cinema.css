@@ -3,7 +3,8 @@ body.cinema #panel {
   opacity: 0 !important;
   pointer-events: none;
 }
-body.cinema #toolbar {
+body.cinema #toolbar,
+body.cinema #btn-toolbar-toggle {
   opacity: 0 !important;
   pointer-events: none;
 }
