@@ -22,10 +22,6 @@ import {
   thrLArMev,
   thrHecMev,
   thrFcalMev,
-  showTile,
-  showLAr,
-  showHec,
-  showFcal,
   thrTrackGev,
   trackPtMinGev,
   trackPtMaxGev,
@@ -37,10 +33,6 @@ import {
   setThrLArMev,
   setThrHecMev,
   setThrFcalMev,
-  setShowTile,
-  setShowLAr,
-  setShowHec,
-  setShowFcal,
   setThrTrackGev,
   setTrackPtMinGev,
   setTrackPtMaxGev,
@@ -55,10 +47,6 @@ import {
   applyClusterThreshold,
   refreshSceneVisibility,
   getTrackGroup,
-  getTracksVisible,
-  getClustersVisible,
-  setTracksVisible,
-  setClustersVisible,
 } from './visibility.js';
 import { esc, makeRelTime } from './utils.js';
 import { createDownloadProgressController } from './progress.js';
@@ -84,6 +72,7 @@ import {
   setCollisionHudEnabled,
 } from './statusHud.js';
 import { setupTopToolbar } from './bootstrap/topToolbar.js';
+import { setupLayersPanel } from './bootstrap/layersPanel.js';
 
 let LivePoller = null;
 try {
@@ -214,125 +203,7 @@ initHoverTooltip({
   t,
 });
 
-// ── Detector layer toggles + Layers panel ────────────────────────────────────
-function syncLayerToggles() {
-  const tTile = document.getElementById('ltog-tile');
-  const tLAr = document.getElementById('ltog-lar');
-  const tHec = document.getElementById('ltog-hec');
-  const tFcal = document.getElementById('ltog-fcal');
-  tTile.classList.toggle('on', showTile);
-  tTile.setAttribute('aria-checked', showTile);
-  tLAr.classList.toggle('on', showLAr);
-  tLAr.setAttribute('aria-checked', showLAr);
-  tHec.classList.toggle('on', showHec);
-  tHec.setAttribute('aria-checked', showHec);
-  tFcal.classList.toggle('on', showFcal);
-  tFcal.setAttribute('aria-checked', showFcal);
-  // Layers button: dim when all off, lit otherwise
-  document
-    .getElementById('btn-layers')
-    .classList.toggle('on', showTile || showLAr || showHec || showFcal);
-}
-
-// refreshSceneVisibility is imported from visibility.js
-
-document.getElementById('ltog-tile').addEventListener('click', () => {
-  setShowTile(!showTile);
-  syncLayerToggles();
-  applyThreshold();
-});
-document.getElementById('ltog-lar').addEventListener('click', () => {
-  setShowLAr(!showLAr);
-  syncLayerToggles();
-  applyThreshold();
-});
-document.getElementById('ltog-hec').addEventListener('click', () => {
-  setShowHec(!showHec);
-  syncLayerToggles();
-  applyThreshold();
-});
-document.getElementById('ltog-fcal').addEventListener('click', () => {
-  setShowFcal(!showFcal);
-  syncLayerToggles();
-  applyFcalThreshold();
-});
-document.getElementById('lbtn-all').addEventListener('click', () => {
-  setShowTile(true);
-  setShowLAr(true);
-  setShowHec(true);
-  setShowFcal(true);
-  syncLayerToggles();
-  refreshSceneVisibility();
-});
-document.getElementById('lbtn-none').addEventListener('click', () => {
-  setShowTile(false);
-  setShowLAr(false);
-  setShowHec(false);
-  setShowFcal(false);
-  syncLayerToggles();
-  refreshSceneVisibility();
-});
-
-// Layers panel open / close
-const layersPanel = document.getElementById('layers-panel');
-let layersPanelOpen = false;
-function openLayersPanel() {
-  layersPanelOpen = true;
-  layersPanel.classList.add('open');
-  document.getElementById('btn-layers').classList.add('on');
-  const br = document.getElementById('btn-layers').getBoundingClientRect();
-  // Position above the button, centred
-  requestAnimationFrame(() => {
-    const pw = layersPanel.offsetWidth || 210;
-    const ph = layersPanel.offsetHeight || 170;
-    let left = br.left + br.width / 2 - pw / 2;
-    let top = br.top - ph - 10;
-    left = Math.max(6, Math.min(left, window.innerWidth - pw - 6));
-    top = Math.max(6, top);
-    layersPanel.style.left = left + 'px';
-    layersPanel.style.top = top + 'px';
-  });
-}
-function closeLayersPanel() {
-  layersPanelOpen = false;
-  layersPanel.classList.remove('open');
-  // Restore btn-layers state (lit if any layer on)
-  document
-    .getElementById('btn-layers')
-    .classList.toggle('on', showTile || showLAr || showHec || showFcal);
-}
-document.getElementById('btn-layers').addEventListener('click', (e) => {
-  e.stopPropagation();
-  layersPanelOpen ? closeLayersPanel() : openLayersPanel();
-});
-
-// ── Particle tracks (collision tracer) toggle ───────────────────────────────
-function syncTracksBtn() {
-  document.getElementById('btn-tracks').classList.toggle('on', getTracksVisible());
-}
-function toggleTracks() {
-  setTracksVisible(!getTracksVisible());
-  updateTrackAtlasIntersections();
-  syncTracksBtn();
-  markDirty();
-}
-document.getElementById('btn-tracks').addEventListener('click', toggleTracks);
-
-// ── Cluster η/φ lines toggle ────────────────────────────────────────────────
-function syncClustersBtn() {
-  document.getElementById('btn-cluster').classList.toggle('on', getClustersVisible());
-}
-function toggleClusters() {
-  setClustersVisible(!getClustersVisible());
-  syncClustersBtn();
-  markDirty();
-}
-document.getElementById('btn-cluster').addEventListener('click', toggleClusters);
-
-document.addEventListener('click', () => {
-  if (layersPanelOpen) closeLayersPanel();
-});
-layersPanel.addEventListener('click', (e) => e.stopPropagation());
+const layersPanel = setupLayersPanel();
 
 setupPanelResize();
 
@@ -553,13 +424,13 @@ setupScreenshotControls({
 
 registerViewerShortcuts({
   aboutOverlay: topToolbar.aboutOverlay,
-  closeLayersPanel,
+  closeLayersPanel: layersPanel.closeLayersPanel,
   closeSettingsPanel: sidebarControls.closeSettingsPanel,
   enterCinema,
   exitCinema,
   getState: () => ({
     cinemaMode: cinema.isCinemaMode(),
-    layersPanelOpen,
+    layersPanelOpen: layersPanel.isOpen(),
     panelPinned: sidebarControls.getState().panelPinned,
     rpanelPinned: sidebarControls.getState().rpanelPinned,
     settingsPanelOpen: sidebarControls.getState().settingsPanelOpen,
