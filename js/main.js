@@ -1,14 +1,11 @@
 import * as THREE from 'three';
 import { initLanguage, setupLanguagePicker, t } from './i18n/index.js';
-import { setupLiveMode } from './liveMode.js';
 import { setupSidebarControls } from './sidebarControls.js';
 import { createSlicerController } from './slicer.js';
-import { setupServerMode } from './serverMode.js';
-import { setupSampleMode } from './sampleMode.js';
 import { registerViewerShortcuts } from './viewerShortcuts.js';
 import { _wasmPool } from './state.js';
 import { TILE_SCALE, HEC_SCALE, LAR_SCALE, FCAL_SCALE } from './palette.js';
-import { setLoadProgress, dismissLoadingScreen, bumpReq } from './loading.js';
+import { setLoadProgress, dismissLoadingScreen } from './loading.js';
 import { markDirty, canvas, renderer, scene, camera, controls } from './renderer.js';
 import { toggleAllGhosts, enableDefaultGhosts } from './ghost.js';
 import { initScene } from './loader.js';
@@ -48,7 +45,7 @@ import {
   refreshSceneVisibility,
   getTrackGroup,
 } from './visibility.js';
-import { esc, makeRelTime } from './utils.js';
+import { esc } from './utils.js';
 import { createDownloadProgressController } from './progress.js';
 import {
   initTrackAtlasIntersections,
@@ -73,6 +70,7 @@ import {
 } from './statusHud.js';
 import { setupTopToolbar } from './bootstrap/topToolbar.js';
 import { setupLayersPanel } from './bootstrap/layersPanel.js';
+import { setupModeWiring } from './bootstrap/modeWiring.js';
 
 let LivePoller = null;
 try {
@@ -85,10 +83,9 @@ initMinimap();
 
 let wasmOk = false;
 let sceneOk = false;
-let isLive = true;
-let liveSub = 'web'; // 'web' | 'server'
 
 let sidebarControls = null;
+let modeWiring = null;
 let _readyFired = false;
 
 // ── Atlas structural geometry (from atlas.root merged into GLB) ───────────────
@@ -136,10 +133,7 @@ function checkReady() {
     // Dismiss loading screen after a brief moment so 100% is visible
     setTimeout(dismissLoadingScreen, 280);
   }
-  if (isLive && liveSub === 'web' && poller) {
-    poller.start();
-    liveMode.loadFirstAvailableEvent();
-  }
+  modeWiring?.onSceneAndWasmReady();
 }
 
 // ── GLB loader (with OPFS cache) ──────────────────────────────────────────────
@@ -173,7 +167,6 @@ let hecSlider = null;
 let trackPtSlider = null;
 let clusterEtSlider = null;
 let initDetPanel = null;
-const relTime = makeRelTime(t);
 const { startProgress, advanceProgress, endProgress } = createDownloadProgressController();
 
 const cinema = setupCinemaControls({
@@ -275,113 +268,15 @@ setProcessXmlDeps({
 
 setupButtonTooltips();
 
-// ── Mode toggle ───────────────────────────────────────────────────────────────
-const sampleMode = setupSampleMode({
-  advanceProgress,
-  endProgress,
-  esc,
-  processXml,
-  setStatus,
-  startProgress,
-  t,
-});
-
-const serverMode = setupServerMode({
-  advanceProgress,
-  endProgress,
-  esc,
-  processXml,
-  setStatus,
-  startProgress,
-  t,
-});
-
-const TAB_KEY = 'cgv-tab';
-const SUB_KEY = 'cgv-live-sub';
-
-function setLiveSub(sub) {
-  liveSub = sub === 'server' ? 'server' : 'web';
-  document.getElementById('btn-live-web').classList.toggle('on', liveSub === 'web');
-  document.getElementById('btn-live-server').classList.toggle('on', liveSub === 'server');
-  document.getElementById('live-web-sec').hidden = liveSub !== 'web';
-  document.getElementById('live-server-sec').hidden = liveSub !== 'server';
-
-  if (isLive) {
-    if (liveSub === 'web') {
-      serverMode.setActive(false);
-      if (poller && wasmOk && sceneOk) poller.start();
-    } else {
-      if (poller) poller.stop();
-      serverMode.setActive(true);
-    }
-  }
-  try {
-    localStorage.setItem(SUB_KEY, liveSub);
-  } catch (_) {}
-}
-
-function setMode(mode) {
-  isLive = mode === 'live';
-  document.getElementById('btn-live').classList.toggle('on', mode === 'live');
-  document.getElementById('btn-sample').classList.toggle('on', mode === 'sample');
-  document.getElementById('live-sec').hidden = mode !== 'live';
-  document.getElementById('sample-sec').hidden = mode !== 'sample';
-  if (mode === 'live') {
-    setLiveSub(liveSub);
-  } else {
-    if (poller) poller.stop();
-    serverMode.setActive(false);
-    if (mode === 'sample') sampleMode.loadSampleIndex();
-  }
-  try {
-    localStorage.setItem(TAB_KEY, mode);
-  } catch (_) {}
-}
-document.getElementById('btn-live').addEventListener('click', () => {
-  if (!isLive) setMode('live');
-});
-document.getElementById('btn-sample').addEventListener('click', () => {
-  if (document.getElementById('sample-sec').hidden) setMode('sample');
-});
-document.getElementById('btn-live-web').addEventListener('click', () => {
-  if (liveSub !== 'web') setLiveSub('web');
-});
-document.getElementById('btn-live-server').addEventListener('click', () => {
-  if (liveSub !== 'server') setLiveSub('server');
-});
-
-let poller = null;
-const liveMode = setupLiveMode({
+modeWiring = setupModeWiring({
   LivePoller,
-  advanceProgress,
-  bumpReq,
-  endProgress,
-  esc,
-  onFallbackToLocal: () => setLiveSub('server'),
   processXml,
-  relTime,
+  setStatus,
   startProgress,
+  advanceProgress,
+  endProgress,
   t,
 });
-poller = liveMode.hasPoller()
-  ? { start: () => liveMode.start(), stop: () => liveMode.stop() }
-  : null;
-
-// Restore last-used tab and sub-tab from localStorage
-(function restoreTabs() {
-  let savedTab = null;
-  let savedSub = null;
-  try {
-    savedTab = localStorage.getItem(TAB_KEY);
-    savedSub = localStorage.getItem(SUB_KEY);
-  } catch (_) {}
-  if (savedSub === 'server' || savedSub === 'web') liveSub = savedSub;
-  if (savedTab === 'sample') {
-    setMode('sample');
-  } else {
-    setLiveSub(liveSub);
-  }
-})();
 
 setupColorPicker();
 
