@@ -53,10 +53,12 @@ import {
 import {
   drawTracks,
   drawPhotons,
+  drawElectrons,
   drawClusters,
   clearTracks,
   clearClusters,
   clearPhotons,
+  clearElectrons,
 } from './particles.js';
 import { clearOutline, clearAllOutlines } from './outlines.js';
 import { setStatus, showEventInfo } from './statusHud.js';
@@ -107,6 +109,7 @@ function resetScene() {
   clearTracks();
   clearClusters();
   clearPhotons();
+  clearElectrons();
   clearFcal();
   hideTooltip();
   markDirty();
@@ -150,6 +153,7 @@ export async function processXml(xmlText) {
   const larPacked = workerResult.larPacked;
   const hecPacked = workerResult.hecPacked;
   const rawPhotons = workerResult.photons;
+  const rawElectrons = workerResult.electrons ?? [];
   const rawClusters = workerResult.clusters;
   const _clusterCollections = workerResult.clusterCollections;
   // Worker returns plain {x,y,z} objects; reconstruct THREE.Vector3 here.
@@ -168,14 +172,16 @@ export async function processXml(xmlText) {
   resetScene(); // clears lastClusterData
 
   // ── Particle tracks ─────────────────────────────────────────────────────────
-  if (rawTracks.length || rawPhotons.length) {
+  if (rawTracks.length || rawPhotons.length || rawElectrons.length) {
     let ptMax = 5;
     for (const { ptGev } of rawTracks) if (isFinite(ptGev) && ptGev > ptMax) ptMax = ptGev;
     for (const { ptGev } of rawPhotons) if (isFinite(ptGev) && ptGev > ptMax) ptMax = ptGev;
+    for (const { ptGev } of rawElectrons) if (isFinite(ptGev) && ptGev > ptMax) ptMax = ptGev;
     _deps.trackPtSlider.update(0, ptMax);
   }
   drawTracks(rawTracks);
   drawPhotons(rawPhotons);
+  drawElectrons(rawElectrons);
 
   // ── Cluster η/φ lines ────────────────────────────────────────────────────────
   setLastClusterData({ collections: _clusterCollections });

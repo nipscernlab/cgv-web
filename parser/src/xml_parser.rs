@@ -79,6 +79,15 @@ pub struct Photon {
     #[serde(rename = "ptGev")]     pub pt_gev:     f32,
 }
 
+#[derive(Serialize)]
+pub struct Electron {
+    pub eta: f32,
+    pub phi: f32,
+    #[serde(rename = "energyGev")] pub energy_gev: f32,
+    #[serde(rename = "ptGev")]     pub pt_gev:     f32,
+    #[serde(rename = "pdgId")]     pub pdg_id:     i32,
+}
+
 #[derive(Serialize, Default)]
 pub struct ClusterCells {
     #[serde(rename = "TILE")]   pub tile:   Vec<String>,
@@ -157,6 +166,7 @@ pub struct ParseResult {
     #[serde(rename = "fcalCells")]          pub fcal_cells:          Vec<FcalCell>,
     pub tracks:                             Vec<Track>,
     pub photons:                            Vec<Photon>,
+    pub electrons:                          Vec<Electron>,
     pub clusters:                           Vec<Cluster>,
     #[serde(rename = "clusterCollections")] pub cluster_collections: Vec<ClusterCollection>,
     #[serde(rename = "tilePacked")]         pub tile_packed:         Vec<i32>,
@@ -168,7 +178,7 @@ pub struct ParseResult {
 
 #[derive(PartialEq, Clone, Copy)]
 enum Ctx {
-    None, Tile, Lar, Hec, Fcal, Mbts, Track, Photon, Cluster,
+    None, Tile, Lar, Hec, Fcal, Mbts, Track, Photon, Electron, Cluster,
 }
 
 struct Parser {
@@ -191,6 +201,7 @@ struct Parser {
     etas: Vec<f32>, phis: Vec<f32>,
     ens:  Vec<f32>,
     pts_a: Vec<f32>,
+    pdg_ids: Vec<i32>,
     num_cells:  Vec<i32>,
     cells_flat: Vec<String>,
 
@@ -207,7 +218,7 @@ impl Parser {
             num_poly: vec![], poly_x: vec![], poly_y: vec![], poly_z: vec![],
             track_pt: vec![], num_hits: vec![], hits_flat: vec![],
             etas: vec![], phis: vec![],
-            ens: vec![], pts_a: vec![],
+            ens: vec![], pts_a: vec![], pdg_ids: vec![],
             num_cells: vec![], cells_flat: vec![],
             out: ParseResult::default(),
         }
@@ -220,7 +231,7 @@ impl Parser {
         self.num_poly.clear(); self.poly_x.clear();   self.poly_y.clear(); self.poly_z.clear();
         self.track_pt.clear(); self.num_hits.clear(); self.hits_flat.clear();
         self.etas.clear();     self.phis.clear();
-        self.ens.clear();      self.pts_a.clear();
+        self.ens.clear();      self.pts_a.clear();    self.pdg_ids.clear();
         self.num_cells.clear(); self.cells_flat.clear();
     }
 
@@ -256,6 +267,12 @@ impl Parser {
             (Ctx::Photon, b"phi")            => self.phis  = split_f32(t),
             (Ctx::Photon, b"energy")         => self.ens   = split_f32(t),
             (Ctx::Photon, b"pt")             => self.pts_a = split_f32(t),
+            // Electron (same fields as Photon, plus pdgId)
+            (Ctx::Electron, b"eta")    => self.etas    = split_f32(t),
+            (Ctx::Electron, b"phi")    => self.phis    = split_f32(t),
+            (Ctx::Electron, b"energy") => self.ens     = split_f32(t),
+            (Ctx::Electron, b"pt")     => self.pts_a   = split_f32(t),
+            (Ctx::Electron, b"pdgId")  => self.pdg_ids = split_i32(t),
             // Cluster
             (Ctx::Cluster, b"eta")      => self.etas       = split_f32(t),
             (Ctx::Cluster, b"phi")      => self.phis       = split_f32(t),
@@ -352,6 +369,19 @@ impl Parser {
         }
     }
 
+    fn flush_electron(&mut self) {
+        let m = self.etas.len().min(self.phis.len());
+        for i in 0..m {
+            self.out.electrons.push(Electron {
+                eta: self.etas[i],
+                phi: self.phis[i],
+                energy_gev: self.ens.get(i).copied().unwrap_or(0.0),
+                pt_gev:     self.pts_a.get(i).copied().unwrap_or(0.0),
+                pdg_id:     self.pdg_ids.get(i).copied().unwrap_or(0),
+            });
+        }
+    }
+
     fn flush_cluster(&mut self) {
         let sgk = self.sgk.clone();
         let m = self.etas.len().min(self.phis.len());
@@ -385,9 +415,10 @@ impl Parser {
             Ctx::Hec     => self.flush_hec(),
             Ctx::Fcal    => self.flush_fcal(),
             Ctx::Mbts    => self.flush_mbts(),
-            Ctx::Track   => self.flush_track(),
-            Ctx::Photon  => self.flush_photon(),
-            Ctx::Cluster => self.flush_cluster(),
+            Ctx::Track    => self.flush_track(),
+            Ctx::Photon   => self.flush_photon(),
+            Ctx::Electron => self.flush_electron(),
+            Ctx::Cluster  => self.flush_cluster(),
             Ctx::None    => {}
         }
         self.ctx = Ctx::None;
@@ -399,7 +430,7 @@ impl Parser {
 
 pub fn parse_jivexml_inner(xml_text: &str) -> ParseResult {
     const DET: &[&[u8]] = &[b"TILE", b"LAr", b"HEC", b"FCAL", b"MBTS",
-                              b"Track", b"Photon", b"Cluster"];
+                              b"Track", b"Photon", b"Electron", b"Cluster"];
 
     let mut reader = Reader::from_str(xml_text);
     reader.config_mut().trim_text(false);
@@ -430,9 +461,10 @@ pub fn parse_jivexml_inner(xml_text: &str) -> ParseResult {
                             b"HEC"     => Ctx::Hec,
                             b"FCAL"    => Ctx::Fcal,
                             b"MBTS"    => Ctx::Mbts,
-                            b"Track"   => Ctx::Track,
-                            b"Photon"  => Ctx::Photon,
-                            b"Cluster" => Ctx::Cluster,
+                            b"Track"    => Ctx::Track,
+                            b"Photon"   => Ctx::Photon,
+                            b"Electron" => Ctx::Electron,
+                            b"Cluster"  => Ctx::Cluster,
                             _ => Ctx::None,
                         };
                     }
