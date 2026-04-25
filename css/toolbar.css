@@ -56,16 +56,6 @@
   font-size: 15px;
   line-height: 1;
 }
-/* Text-label detector toggle buttons */
-.tbtn-label {
-  width: auto;
-  padding: 0 7px;
-  min-width: 32px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  font-family: var(--mono);
-}
 
 /* ── Language dropdown ────────────────────────────────── */
 #lang-menu {

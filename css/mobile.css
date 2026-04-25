@@ -4,9 +4,6 @@
 .mobile-only {
   display: none !important;
 }
-.mobile-only-inline {
-  display: none !important;
-}
 
 /* ── Mobile (landscape-only optimization) ─────────────── */
 /* Target landscape phones/small tablets. Portrait is NOT optimized;
@@ -19,9 +16,6 @@
 
   .mobile-only {
     display: flex !important;
-  }
-  .desktop-only {
-    display: none !important;
   }
 
   /* ─── Left panel ─────────────────────────────────── */
@@ -208,10 +202,6 @@
   }
 
   /* ─── Misc ──────────────────────────────────────── */
-  #log-sec {
-    max-height: 80px;
-  }
-
   /* Hide very-large screenshot options */
   .shot-res[data-w='3840'],
   .shot-res[data-w='7680'],

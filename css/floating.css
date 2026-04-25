@@ -1,6 +1,5 @@
-/* ── Layers / Ghost floating panels ─── */
-#layers-panel,
-#ghost-panel {
+/* ── Layers floating panel ─── */
+#layers-panel {
   position: fixed;
   z-index: 50;
   padding: 10px 12px 12px;
@@ -20,8 +19,7 @@
     opacity 0.17s ease,
     transform 0.17s ease;
 }
-#layers-panel.open,
-#ghost-panel.open {
+#layers-panel.open {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;

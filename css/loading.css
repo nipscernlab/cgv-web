@@ -90,70 +90,7 @@
   transition: opacity 0.2s;
 }
 
-/* ── Download progress stages ────────────────────────── */
-#dl-progress {
-  padding: 5px 10px 6px;
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
-}
-.dl-stages {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  margin-bottom: 4px;
-  flex-wrap: nowrap;
-  overflow: hidden;
-}
-.dl-stage {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font: 500 0.6rem var(--mono);
-  color: var(--muted);
-  transition: color 0.25s;
-  white-space: nowrap;
-}
-.dl-stage.active {
-  color: var(--accent2);
-}
-.dl-stage.done {
-  color: var(--ok);
-}
-.dl-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--muted);
-  flex-shrink: 0;
-  transition: background 0.25s;
-}
-.dl-stage.active .dl-dot {
-  background: var(--accent2);
-  animation: pulse 0.8s ease-in-out infinite;
-}
-.dl-stage.done .dl-dot {
-  background: var(--ok);
-  animation: none;
-}
-.dl-arrow {
-  color: var(--border2);
-  font-size: 0.58rem;
-}
-#dl-bar-track {
-  height: 2px;
-  background: rgba(36, 103, 224, 0.1);
-  border-radius: 1px;
-  overflow: hidden;
-}
-#dl-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent), var(--accent2));
-  border-radius: 1px;
-  width: 0%;
-  transition: width 0.35s ease;
-}
-
-/* ── Standalone download/load progress (Live & Local) ── */
+/* ── Download progress (Live & Local) ─────────────────── */
 #dl-progress {
   flex-shrink: 0;
   padding: 8px 10px;
@@ -167,40 +104,46 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+  overflow: hidden;
   font: 500 0.54rem var(--font);
   color: var(--muted);
   letter-spacing: 0.04em;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
 }
 .dl-stage {
   display: flex;
   align-items: center;
   gap: 3px;
+  font: 500 0.6rem var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
   transition: color 0.15s;
+}
+.dl-stage.active {
+  color: var(--accent2);
+}
+.dl-stage.done {
+  color: var(--ok);
 }
 .dl-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.18);
+  flex-shrink: 0;
   transition:
     background 0.15s,
     box-shadow 0.15s;
-}
-.dl-stage.active {
-  color: var(--accent2);
 }
 .dl-stage.active .dl-dot {
   background: var(--accent2);
   box-shadow: 0 0 6px var(--accent2);
   animation: pulse 0.9s ease-in-out infinite;
 }
-.dl-stage.done {
-  color: var(--ok);
-}
 .dl-stage.done .dl-dot {
   background: var(--ok);
+  animation: none;
 }
 .dl-arrow {
   color: var(--dim);
@@ -216,6 +159,7 @@
   height: 100%;
   width: 0%;
   background: linear-gradient(90deg, var(--accent), var(--accent2));
+  border-radius: 1px;
   transition: width 0.25s ease;
 }
 /* Local-mode tint for distinguishing source */
