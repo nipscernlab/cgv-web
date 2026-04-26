@@ -210,8 +210,6 @@ export function showTrackHits(trackLine) {
     if (!p) continue;
     const m = new THREE.Mesh(_HIT_GEO, _HIT_MAT);
     m.position.copy(p);
-    m.matrixAutoUpdate = false;
-    m.updateMatrix();
     m.onBeforeRender = _hitOnBeforeRender;
     g.add(m);
     added++;
