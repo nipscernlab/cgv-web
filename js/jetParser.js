@@ -57,7 +57,6 @@ export function parseJets(xmlText) {
     const masses = _readNums(body, 'mass');
     const pxs = _readNums(body, 'px');
     const pys = _readNums(body, 'py');
-    const pzs = _readNums(body, 'pz');
     if (etas.length !== count || phis.length !== count) {
       // Malformed jet block — keep the collection key so the dropdown still
       // shows it, but with no usable entries.
@@ -116,9 +115,6 @@ export function parseJets(xmlText) {
         energyGev: Number.isFinite(energies[i]) ? energies[i] : 0,
         massGev: Number.isFinite(masses[i]) ? masses[i] : 0,
         ptGev,
-        pxGev: Number.isFinite(px) ? px : 0,
-        pyGev: Number.isFinite(py) ? py : 0,
-        pzGev: Number.isFinite(pzs[i]) ? pzs[i] : 0,
         cells,
         tracks,
       });

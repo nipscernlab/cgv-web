@@ -1,13 +1,20 @@
-// Hover-driven inner-detector hit overlay.
+// Hover-driven hit overlay (inner detector + muon spectrometer).
 //
 // When the user mouses over a track line, this module looks up that track's
-// pixel hits (via line.userData.hitIds) in the positions map populated by
-// hitsParser, and renders one small marker sphere at each hit's position.
-// Markers vanish as soon as the cursor leaves the track or the canvas.
+// hits (via line.userData.hitIds) in the maps populated by hitsParser, and
+// renders one small marker sphere at each resolved hit position. Markers
+// vanish as soon as the cursor leaves the track or the canvas.
 //
-// Costs are bounded — a CombinedInDetTracks line carries ~6 pixel hits in
-// typical events, so we just rebuild a fresh small Group per hover. No need
-// for InstancedMesh.
+// Three resolution paths per id:
+//   • positions  — Pixel + SCT, exact (x, y, z) from the parser.
+//   • trtParams  — TRT, polyline-interpolated at r (barrel) or z (endcap).
+//   • chamberPos — muon chambers, kept only when within _CHAMBER_KEEP_MM
+//                  of the polyline (otherwise it's a wire / chamber centre
+//                  far from the actual track crossing).
+//
+// Costs are bounded — a CombinedInDetTracks line carries ~30 hits, a muon
+// track ~25, so we just rebuild a fresh small Group per hover. No need for
+// InstancedMesh.
 
 import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
@@ -157,11 +164,15 @@ export function hideTrackHits() {
   _currentTrackLine = null;
 }
 
-// Renders a sphere for each inner-detector hit attached to `trackLine`:
+// Renders a sphere for each hit attached to `trackLine`:
 //   • Pixel / SCT: position came pre-resolved from the parser.
 //   • TRT: position is reconstructed by interpolating the track's polyline at
 //     the straw's radius (barrel) or z (endcap) — the track itself encodes
 //     where the straw was crossed, since it was fitted through these hits.
+//   • Muon chambers (MDT, RPC, TGC, MM, STGC): kept at the raw (x, y, z)
+//     when within _CHAMBER_KEEP_MM of the polyline (so realistic per-chamber
+//     scatter shows), dropped when far (those would be wire / chamber
+//     centres, off by metres for long MDT barrel wires).
 // Re-uses the existing group when the same line is hovered again (no churn
 // during raycast-driven re-fires).
 export function showTrackHits(trackLine) {

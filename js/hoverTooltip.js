@@ -2,13 +2,7 @@ import * as THREE from 'three';
 import { canvas, camera, controls, markDirty } from './renderer.js';
 import { active, rayTargets } from './state.js';
 import { fcalGroup, fcalVisibleMap } from './visibility.js';
-import {
-  getTrackGroup,
-  getPhotonGroup,
-  getElectronGroup,
-  getClusterGroup,
-  getJetGroup,
-} from './visibility.js';
+import { getTrackGroup, getPhotonGroup, getClusterGroup, getJetGroup } from './visibility.js';
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
 import { showTrackHits, hideTrackHits } from './hitsOverlay.js';
 
@@ -92,15 +86,14 @@ export function initHoverTooltip({ getShowInfo, getCinemaMode, t }) {
 }
 
 function doRaycast(clientX, clientY) {
+  // Electron group only carries sprite labels (not raycastable), so it doesn't
+  // participate in the early-return "anything to hover" check below.
   const trackGroup = getTrackGroup();
   const photonGroup = getPhotonGroup();
-  const electronGroup = getElectronGroup();
   const clusterGroup = getClusterGroup();
   const jetGroup = getJetGroup();
   const hasTrackLines = trackGroup && trackGroup.visible && trackGroup.children.length > 0;
   const hasPhotonLines = photonGroup && photonGroup.visible && photonGroup.children.length > 0;
-  const hasElectronLines =
-    electronGroup && electronGroup.visible && electronGroup.children.length > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
   const hasJetLines = jetGroup && jetGroup.visible && jetGroup.children.length > 0;
   const hasFcalTubes =
@@ -111,7 +104,6 @@ function doRaycast(clientX, clientY) {
     (!active.size &&
       !hasTrackLines &&
       !hasPhotonLines &&
-      !hasElectronLines &&
       !hasClusterLines &&
       !hasJetLines &&
       !hasFcalTubes)
@@ -243,7 +235,7 @@ function doRaycast(clientX, clientY) {
       const line = hits[0].object;
       const ptGev = line.userData.ptGev ?? 0;
       const storeGateKey = line.userData.storeGateKey ?? '';
-      const isPhoton = photonGroup && photonGroup.children.includes(line);
+      const isPhoton = line.parent === photonGroup;
       let label;
       if (isPhoton) label = 'Photon';
       else {

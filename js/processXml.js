@@ -45,7 +45,6 @@ import {
   clearVisibilityState,
   clearFcal,
   drawFcal,
-  rebuildActiveClusterCellIds,
   setLastClusterData,
   applyThreshold,
   getTrackGroup,
@@ -218,8 +217,10 @@ export async function processXml(xmlText) {
       etMax === -Infinity ? 1 : etMax,
     );
   }
+  // drawClusters → applyClusterThreshold internally rebuilds the cluster
+  // cell-id set and refreshes thresholds; no extra rebuildActiveClusterCellIds
+  // call is needed here.
   drawClusters(rawClusters);
-  rebuildActiveClusterCellIds();
 
   // ── Jets ────────────────────────────────────────────────────────────────────
   // The Rust WASM parser doesn't extract jets yet — do a light JS pass over
@@ -229,9 +230,10 @@ export async function processXml(xmlText) {
   // the user later picks a different collection.
   setJetCollections(parseJets(xmlText));
 
-  // ── Inner-detector pixel hits ───────────────────────────────────────────────
-  // Cache hit-id → world-position so the hover-tooltip overlay can render
-  // markers for the hits of the track under the cursor. No rendering here.
+  // ── Inner-detector + muon-spectrometer hits ───────────────────────────────
+  // Cache hit-id → position lookup (with TRT/muon-chamber subtleties handled
+  // inside the overlay) so the hover tooltip can render markers along the
+  // track under the cursor. No rendering happens here.
   setHitPositions(parseHits(xmlText));
 
   // Per-detector energy range: symmetric percentiles on each tail so a single

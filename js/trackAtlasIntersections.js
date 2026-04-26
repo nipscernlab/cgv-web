@@ -17,11 +17,11 @@ const TRACK_ELECTRON_POS_MAT = new THREE.LineBasicMaterial({ color: 0x33dd55, li
 // (old-AOD) collection names that JiveXML actually publishes the polylines
 // under. By convention the two run parallel — element i of one matches
 // element i of the other — which is the bridge for jet→track highlighting.
+// Only collections we actually render are listed; mappings for skipped ones
+// (GSFTracks, MS-only-extrapolated, etc.) would never resolve to a line.
 const _XAOD_TO_AOD_TRACK_KEY = {
   InDetTrackParticles_xAOD: 'CombinedInDetTracks',
-  GSFTrackParticles_xAOD: 'GSFTracks',
   CombinedMuonTrackParticles_xAOD: 'CombinedMuonTracks',
-  // InDetLargeD0TrackParticles_xAOD has no rendered equivalent today.
 };
 
 const atlasTrackHitMat = new THREE.MeshBasicMaterial({
