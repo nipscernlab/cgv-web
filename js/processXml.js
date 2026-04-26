@@ -70,6 +70,10 @@ import {
 } from './jets.js';
 import { parseHits } from './hitsParser.js';
 import { setHitPositions, clearHitsState } from './hitsOverlay.js';
+import { parseMet, pickPreferredMet } from './metParser.js';
+import { drawMet, clearMet } from './metOverlay.js';
+import { parseVertices } from './vertexParser.js';
+import { drawVertices, clearVertices } from './vertexOverlay.js';
 import { clearOutline, clearAllOutlines } from './outlines.js';
 import { setStatus, showEventInfo } from './statusHud.js';
 import { markDirty } from './renderer.js';
@@ -130,6 +134,8 @@ function resetScene() {
   clearJets();
   clearJetState();
   clearHitsState();
+  clearMet();
+  clearVertices();
   clearFcal();
   hideTooltip();
   markDirty();
@@ -235,6 +241,17 @@ export async function processXml(xmlText) {
   // inside the overlay) so the hover tooltip can render markers along the
   // track under the cursor. No rendering happens here.
   setHitPositions(parseHits(xmlText));
+
+  // ── Missing transverse energy (MET) ─────────────────────────────────────────
+  // JiveXML publishes several MET variants (EMPFlow / EMTopo / Calo / ...).
+  // We render only the preferred one (EMPFlow when present, first otherwise).
+  drawMet(pickPreferredMet(parseMet(xmlText)));
+
+  // ── Vertices (primary, pile-up, b-tag secondary) ──────────────────────────
+  // Small markers showing where the actual collisions happened — the PV is
+  // typically at z ~ ±50 mm from origin (within the BeamSpot), useful context
+  // when zooming in to the inner detector.
+  drawVertices(parseVertices(xmlText));
 
   // Per-detector energy range: symmetric percentiles on each tail so a single
   // extreme cell (e.g. FCAL down to -31 GeV) can't blow out the scale. Real

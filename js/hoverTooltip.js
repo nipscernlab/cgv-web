@@ -2,7 +2,14 @@ import * as THREE from 'three';
 import { canvas, camera, controls, markDirty } from './renderer.js';
 import { active, rayTargets } from './state.js';
 import { fcalGroup, fcalVisibleMap } from './visibility.js';
-import { getTrackGroup, getPhotonGroup, getClusterGroup, getJetGroup } from './visibility.js';
+import {
+  getTrackGroup,
+  getPhotonGroup,
+  getClusterGroup,
+  getJetGroup,
+  getMetGroup,
+  getVertexGroup,
+} from './visibility.js';
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
 import { showTrackHits, hideTrackHits } from './hitsOverlay.js';
 
@@ -92,10 +99,14 @@ function doRaycast(clientX, clientY) {
   const photonGroup = getPhotonGroup();
   const clusterGroup = getClusterGroup();
   const jetGroup = getJetGroup();
+  const metGroup = getMetGroup();
+  const vertexGroup = getVertexGroup();
   const hasTrackLines = trackGroup && trackGroup.visible && trackGroup.children.length > 0;
   const hasPhotonLines = photonGroup && photonGroup.visible && photonGroup.children.length > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
   const hasJetLines = jetGroup && jetGroup.visible && jetGroup.children.length > 0;
+  const hasMetArrow = metGroup && metGroup.visible && metGroup.children.length > 0;
+  const hasVertexMarkers = vertexGroup && vertexGroup.visible && vertexGroup.children.length > 0;
   const hasFcalTubes =
     fcalGroup && fcalGroup.children.some((c) => c.isInstancedMesh) && fcalVisibleMap.length > 0;
   if (
@@ -106,6 +117,8 @@ function doRaycast(clientX, clientY) {
       !hasPhotonLines &&
       !hasClusterLines &&
       !hasJetLines &&
+      !hasMetArrow &&
+      !hasVertexMarkers &&
       !hasFcalTubes)
   ) {
     hideTooltip();
@@ -191,6 +204,39 @@ function doRaycast(clientX, clientY) {
       tipEEl.textContent = `${cell.energy.toFixed(4)} GeV`;
       if (tipEKeyEl) tipEKeyEl.textContent = _t('tip-energy-key');
       _setExtras(null);
+      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
+      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
+      tooltip.hidden = false;
+      markDirty();
+      return;
+    }
+  }
+  // ── Vertex marker hit (priority over tracks) ─────────────────────────────
+  // Tracks emanate from the primary vertex, so they cluster densely around
+  // it. If we tested tracks first, the cursor on a vertex marker would
+  // almost always hit a nearby track and the user would never see the
+  // vertex tooltip. Vertex markers are small but distinct dots, so testing
+  // them first matches user intent ("I'm pointing at the dot").
+  if (hasVertexMarkers) {
+    const vHits = raycast.intersectObject(vertexGroup, true);
+    if (vHits.length) {
+      const v = vHits[0].object;
+      const kind = v.userData.vertexKind ?? 'primary';
+      const label =
+        kind === 'primary'
+          ? 'Primary Vertex'
+          : kind === 'pileup'
+            ? 'Pile-up Vertex'
+            : 'B-tag Vertex';
+      const p = v.userData.position;
+      const xyzMm = p ? `(${(-p.x).toFixed(2)}, ${(-p.y).toFixed(2)}, ${p.z.toFixed(2)}) mm` : '';
+      clearOutline();
+      hideTrackHits();
+      tipCellEl.textContent = label;
+      tipCoordEl.textContent = v.userData.vertexKey ?? '';
+      tipEEl.textContent = `${v.userData.numTracks ?? 0}`;
+      if (tipEKeyEl) tipEKeyEl.textContent = 'tracks';
+      _setExtras([['x, y, z', xyzMm]]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
       tooltip.hidden = false;
@@ -309,6 +355,32 @@ function doRaycast(clientX, clientY) {
         extras.push(['mass', `${massGev.toFixed(3)} GeV`]);
       }
       _setExtras(extras);
+      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
+      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
+      tooltip.hidden = false;
+      markDirty();
+      return;
+    }
+  }
+  // ── MET arrow hit ─────────────────────────────────────────────────────────
+  // The shaft is a real-length Line and the head is a Mesh; raycast against
+  // the whole group catches both at the default track threshold (40 mm).
+  if (hasMetArrow) {
+    const metHits = raycast.intersectObject(metGroup, true);
+    if (metHits.length) {
+      // Walk up to the ArrowHelper (where the metadata lives on userData).
+      let arrow = metHits[0].object;
+      while (arrow && arrow.userData.magnitude == null && arrow.parent) arrow = arrow.parent;
+      const magnitude = arrow?.userData.magnitude ?? 0;
+      const sumEt = arrow?.userData.sumEt ?? 0;
+      const key = arrow?.userData.metKey ?? '';
+      clearOutline();
+      hideTrackHits();
+      tipCellEl.textContent = 'MET';
+      tipCoordEl.textContent = key;
+      tipEEl.textContent = `${magnitude.toFixed(2)} GeV`;
+      if (tipEKeyEl) tipEKeyEl.innerHTML = 'E<sub>T</sub><sup>miss</sup>';
+      _setExtras([['Sum E', `${sumEt.toFixed(1)} GeV`]]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
       tooltip.hidden = false;

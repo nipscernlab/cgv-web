@@ -26,12 +26,14 @@ export function initVisibility({ slicer, rebuildAllOutlines, updateTrackAtlasInt
   _updateTrackAtlasIntersections = updateTrackAtlasIntersections;
 }
 
-// ── Track / Photon / Electron / Cluster / Jet groups (created by particles.js, lifecycle owned here) ──
+// ── Track / Photon / Electron / Cluster / Jet / MET / Vertex groups (lifecycle owned here) ──
 let _trackGroup = null;
 let _photonGroup = null;
 let _electronGroup = null;
 let _clusterGroup = null;
 let _jetGroup = null;
+let _metGroup = null;
+let _vertexGroup = null;
 
 let _tracksVisible = true;
 let _clustersVisible = true;
@@ -42,6 +44,8 @@ export const getPhotonGroup = () => _photonGroup;
 export const getElectronGroup = () => _electronGroup;
 export const getClusterGroup = () => _clusterGroup;
 export const getJetGroup = () => _jetGroup;
+export const getMetGroup = () => _metGroup;
+export const getVertexGroup = () => _vertexGroup;
 
 export const getTracksVisible = () => _tracksVisible;
 export const getClustersVisible = () => _clustersVisible;
@@ -66,6 +70,15 @@ export function setClusterGroup(g) {
 export function setJetGroup(g) {
   _jetGroup = g;
   if (g) g.visible = _jetsVisible && getViewLevel() === 3;
+}
+export function setMetGroup(g) {
+  _metGroup = g;
+  if (g) g.visible = getViewLevel() === 3;
+}
+// Vertices are event-level summary info — relevant at every view level, so
+// no gate. Always visible while the marker group exists.
+export function setVertexGroup(g) {
+  _vertexGroup = g;
 }
 
 // Tracks toggle (J button): controls only the track lines now. Photons and
@@ -96,6 +109,7 @@ function _applyViewLevelGate() {
   if (_photonGroup) _photonGroup.visible = lvl === 3;
   if (_electronGroup) _electronGroup.visible = lvl === 3;
   if (_jetGroup) _jetGroup.visible = _jetsVisible && lvl === 3;
+  if (_metGroup) _metGroup.visible = lvl === 3;
   // Refresh cell visibility: rebuildActiveClusterCellIds reads getViewLevel()
   // and disables the cluster-membership filter outside level 2; applyThreshold
   // then re-evaluates per-cell visibility.
