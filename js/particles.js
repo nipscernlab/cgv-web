@@ -108,10 +108,7 @@ export function getLastElectrons() {
 // collections that span disjoint regions of the detector:
 //   CombinedInDetTracks    — full ID coverage (all charged particles)
 //   MuonSpectrometerTracks — MS portion of muons (no ID overlap)
-const _PRIMARY_TRACK_COLLECTIONS = new Set([
-  'CombinedInDetTracks',
-  'MuonSpectrometerTracks',
-]);
+const _PRIMARY_TRACK_COLLECTIONS = new Set(['CombinedInDetTracks', 'MuonSpectrometerTracks']);
 
 export function drawTracks(tracks) {
   clearTracks();

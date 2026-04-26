@@ -79,7 +79,7 @@ export function parseJets(xmlText) {
     let trkOffset = 0;
     let cellOffset = 0;
     for (let i = 0; i < count; i++) {
-      const tlc = (trackLinkCount[i] | 0);
+      const tlc = trackLinkCount[i] | 0;
       const tracks = [];
       for (let j = 0; j < tlc; j++) {
         const tk = trackKey[trkOffset + j];
@@ -89,7 +89,7 @@ export function parseJets(xmlText) {
       }
       trkOffset += tlc;
 
-      const nc = (numCells[i] | 0);
+      const nc = numCells[i] | 0;
       const cells = [];
       for (let j = 0; j < nc; j++) {
         const id = cellsFlat[cellOffset + j];
@@ -102,9 +102,12 @@ export function parseJets(xmlText) {
       // expose 4-momentum components.
       const px = Number.isFinite(pxs[i]) ? pxs[i] : NaN;
       const py = Number.isFinite(pys[i]) ? pys[i] : NaN;
-      const ptGev = Number.isFinite(px) && Number.isFinite(py)
-        ? Math.sqrt(px * px + py * py)
-        : (Number.isFinite(ets[i]) ? ets[i] : 0);
+      const ptGev =
+        Number.isFinite(px) && Number.isFinite(py)
+          ? Math.sqrt(px * px + py * py)
+          : Number.isFinite(ets[i])
+            ? ets[i]
+            : 0;
 
       jets.push({
         eta: etas[i],

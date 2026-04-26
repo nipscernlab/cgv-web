@@ -5,19 +5,9 @@
 // is the hover tooltip, which we expose via getShowInfo().
 
 import { getViewLevel, setViewLevel, onViewLevelChange } from '../viewLevel.js';
-import {
-  getJetCollections,
-  getActiveJetKey,
-  setActiveJetKey,
-  onJetStateChange,
-} from '../jets.js';
+import { getJetCollections, getActiveJetKey, setActiveJetKey, onJetStateChange } from '../jets.js';
 
-export function setupTopToolbar({
-  resetCamera,
-  clearOutline,
-  hideTooltip,
-  toggleAllGhosts,
-}) {
+export function setupTopToolbar({ resetCamera, clearOutline, hideTooltip, toggleAllGhosts }) {
   let showInfo = true;
 
   const btnInfo = document.getElementById('btn-info');
@@ -68,7 +58,8 @@ export function setupTopToolbar({
       tabLabel.textContent = skin.label;
       tabLabel.style.setProperty('--tab-col', skin.color);
     }
-    if (strak) strak.style.background = `linear-gradient(to top, ${skin.gradFrom} 0%, ${skin.gradTo} 100%)`;
+    if (strak)
+      strak.style.background = `linear-gradient(to top, ${skin.gradFrom} 0%, ${skin.gradTo} 100%)`;
     // Dropdown only shows at level 3 and only when there's at least one
     // collection in the current event.
     if (jetSelect) {

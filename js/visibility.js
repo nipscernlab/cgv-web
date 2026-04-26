@@ -497,8 +497,7 @@ export function applyClusterThreshold() {
 // jet→track highlight (orange) for tracks belonging to passing jets.
 export function applyJetThreshold() {
   if (_jetGroup)
-    for (const child of _jetGroup.children)
-      child.visible = child.userData.etGev >= thrJetEtGev;
+    for (const child of _jetGroup.children) child.visible = child.userData.etGev >= thrJetEtGev;
   rebuildActiveClusterCellIds();
   applyThreshold();
   applyFcalThreshold();

@@ -69,6 +69,8 @@ import {
   getActiveJetCollection,
   onJetStateChange,
 } from './jets.js';
+import { parseHits } from './hitsParser.js';
+import { setHitPositions, clearHitsState } from './hitsOverlay.js';
 import { clearOutline, clearAllOutlines } from './outlines.js';
 import { setStatus, showEventInfo } from './statusHud.js';
 import { markDirty } from './renderer.js';
@@ -128,6 +130,7 @@ function resetScene() {
   clearElectrons();
   clearJets();
   clearJetState();
+  clearHitsState();
   clearFcal();
   hideTooltip();
   markDirty();
@@ -225,6 +228,11 @@ export async function processXml(xmlText) {
   // below); the listener handles the redraw, both for fresh events and when
   // the user later picks a different collection.
   setJetCollections(parseJets(xmlText));
+
+  // ── Inner-detector pixel hits ───────────────────────────────────────────────
+  // Cache hit-id → world-position so the hover-tooltip overlay can render
+  // markers for the hits of the track under the cursor. No rendering here.
+  setHitPositions(parseHits(xmlText));
 
   // Per-detector energy range: symmetric percentiles on each tail so a single
   // extreme cell (e.g. FCAL down to -31 GeV) can't blow out the scale. Real

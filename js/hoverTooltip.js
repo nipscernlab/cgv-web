@@ -10,6 +10,7 @@ import {
   getJetGroup,
 } from './visibility.js';
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
+import { showTrackHits, hideTrackHits } from './hitsOverlay.js';
 
 export const tooltip = document.getElementById('tip');
 export const tipCellEl = document.getElementById('tip-cell');
@@ -28,7 +29,10 @@ function _setExtras(rows) {
     return;
   }
   tipExtraEl.innerHTML = rows
-    .map(([k, v]) => `<div class="trow"><span class="tkey">${k}</span><span class="tval">${v}</span></div>`)
+    .map(
+      ([k, v]) =>
+        `<div class="trow"><span class="tkey">${k}</span><span class="tval">${v}</span></div>`,
+    )
     .join('');
 }
 
@@ -73,6 +77,7 @@ export function initHoverTooltip({ getShowInfo, getCinemaMode, t }) {
   canvas.addEventListener('mouseleave', () => {
     clearOutline();
     hideTooltip();
+    hideTrackHits();
   });
   controls.addEventListener('end', () => {
     lastRay = 0;
@@ -107,6 +112,7 @@ function doRaycast(clientX, clientY) {
   ) {
     hideTooltip();
     clearOutline();
+    hideTrackHits();
     return;
   }
   // Don't show cell info when the pointer is over any UI element (panels, toolbar, overlays)
@@ -114,12 +120,14 @@ function doRaycast(clientX, clientY) {
   if (topEl && topEl !== canvas) {
     hideTooltip();
     clearOutline();
+    hideTrackHits();
     return;
   }
   const rect = canvas.getBoundingClientRect();
   if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
     hideTooltip();
     clearOutline();
+    hideTrackHits();
     return;
   }
   mxy.set(
@@ -162,6 +170,7 @@ function doRaycast(clientX, clientY) {
     if (cellHit && cellDist <= fcalDist) {
       const data = active.get(cellHandle);
       showOutline(cellHandle);
+      hideTrackHits();
       tipCellEl.textContent = data.cellName;
       tipCoordEl.textContent = data.coords ?? '';
       tipEEl.textContent = `${data.energyGev.toFixed(4)} GeV`;
@@ -177,6 +186,7 @@ function doRaycast(clientX, clientY) {
       const iid = fcalHit.instanceId;
       const cell = fcalVisibleMap[iid];
       showFcalOutline(iid);
+      hideTrackHits();
       const side = cell.eta >= 0 ? 'A' : 'C';
       tipCellEl.textContent = `FCAL${cell.module} (${side}-side)`;
       tipCoordEl.textContent = `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`;
@@ -213,6 +223,9 @@ function doRaycast(clientX, clientY) {
         else if (line.userData.isJetMatched) label = 'Track → Jet';
         else label = 'Track';
       }
+      // Show pixel-hit markers for the hovered track; clear them for photons.
+      if (isPhoton) hideTrackHits();
+      else showTrackHits(line);
       clearOutline();
       tipCellEl.textContent = label;
       tipCoordEl.textContent = storeGateKey;
@@ -235,6 +248,7 @@ function doRaycast(clientX, clientY) {
       const etGev = line.userData.etGev ?? 0;
       const storeGateKey = line.userData.storeGateKey ?? '';
       clearOutline();
+      hideTrackHits();
       tipCellEl.textContent = 'Cluster';
       tipCoordEl.textContent = storeGateKey;
       tipEEl.textContent = `${etGev.toFixed(3)} GeV`;
@@ -257,6 +271,7 @@ function doRaycast(clientX, clientY) {
       const storeGateKey = line.userData.storeGateKey ?? '';
       const massGev = line.userData.massGev ?? 0;
       clearOutline();
+      hideTrackHits();
       tipCellEl.textContent = 'Jet';
       tipCoordEl.textContent = storeGateKey;
       tipEEl.textContent = `${ptGev.toFixed(3)} GeV`;
@@ -280,4 +295,5 @@ function doRaycast(clientX, clientY) {
   }
   clearOutline();
   hideTooltip();
+  hideTrackHits();
 }
