@@ -7,11 +7,11 @@
 // <Track><hits> uses, which means tracks → hits matching is a straight Map
 // lookup with zero conversions.
 //
-// Covers Pixel (cluster centroid), SCT (strip midpoint), and TRT (delegated:
-// sub + rhoz are kept so the overlay can interpolate the actual position
-// against the hovered track's polyline — straws don't expose a 3D point
-// directly, but their (r, phi) [barrel] or (z, phi) [endcap] are enough when
-// we know the track passed through them).
+// Covers the inner detector (Pixel cluster centroid, SCT strip midpoint, TRT
+// straw via polyline interpolation) and the muon spectrometer (MDT, RPC, TGC,
+// MM, STGC — all expose x/y/z directly per hit). TRT is the only sub-detector
+// that needs the overlay to do extra work; everything else lands in the
+// `positions` map as a plain Vector3.
 
 import * as THREE from 'three';
 
@@ -36,9 +36,15 @@ function _readNums(body, tag) {
 }
 
 // Returns:
-//   { positions: Map<id, THREE.Vector3>,           // Pixel + SCT, fully resolved
-//     trtParams: Map<id, { sub, rhoz_mm }> }       // TRT, needs polyline interp
-// Both maps are empty if the XML doesn't contain those collections.
+//   { positions:  Map<id, THREE.Vector3>           // Pixel + SCT, exact point
+//     trtParams:  Map<id, { sub, rhoz_mm }>        // TRT, polyline interp
+//     chamberPos: Map<id, THREE.Vector3> }         // Muon chambers, snap-to-track
+// Maps are empty if the XML doesn't contain those collections. Muon hits are
+// kept in `chamberPos` (not `positions`) because their (x, y, z) marks the
+// wire / chamber centre — for an MDT in the barrel that's the midpoint of a
+// 2 m wire, way off the actual track crossing for any |η| > 0. The overlay
+// resolves these by projecting the chamber position onto the hovered track's
+// polyline.
 //
 // `sub` semantics in JiveXML TRT:
 //   0 = endcap C (z<0), rhoz is z in cm
@@ -51,7 +57,8 @@ function _readNums(body, tag) {
 export function parseHits(xmlText) {
   const positionsById = new Map();
   const trtParams = new Map();
-  if (!xmlText) return { positions: positionsById, trtParams };
+  const chamberPos = new Map();
+  if (!xmlText) return { positions: positionsById, trtParams, chamberPos };
 
   // Pixel clusters — one position per hit (cluster centroid stored as x0/y0/z0).
   const pix = xmlText.match(/<PixCluster\s+count="\d+"[^>]*>([\s\S]*?)<\/PixCluster>/);
@@ -67,6 +74,28 @@ export function parseHits(xmlText) {
         if (!Number.isFinite(xs[i]) || !Number.isFinite(ys[i]) || !Number.isFinite(zs[i])) continue;
         positionsById.set(ids[i], _toScene(xs[i], ys[i], zs[i]));
       }
+    }
+  }
+
+  // Muon spectrometer chambers — each hit publishes a single (x, y, z) in cm.
+  // That coordinate is the wire / chamber centre, not the track-crossing
+  // point: for a 2 m MDT barrel wire, the published z is the wire midpoint,
+  // off by metres from where a high-η track actually went through. Stored in
+  // chamberPos so the overlay can snap each one to the closest point on the
+  // hovered track's polyline.
+  for (const blk of ['MDT', 'RPC', 'TGC', 'MM', 'STGC']) {
+    const m = xmlText.match(new RegExp(`<${blk}\\s+count="\\d+"[^>]*>([\\s\\S]*?)</${blk}>`));
+    if (!m) continue;
+    const body = m[1];
+    const ids = _readStrings(body, 'id');
+    const xs = _readNums(body, 'x');
+    const ys = _readNums(body, 'y');
+    const zs = _readNums(body, 'z');
+    if (!(ids && xs && ys && zs)) continue;
+    const n = Math.min(ids.length, xs.length, ys.length, zs.length);
+    for (let i = 0; i < n; i++) {
+      if (!Number.isFinite(xs[i]) || !Number.isFinite(ys[i]) || !Number.isFinite(zs[i])) continue;
+      chamberPos.set(ids[i], _toScene(xs[i], ys[i], zs[i]));
     }
   }
 
@@ -125,5 +154,5 @@ export function parseHits(xmlText) {
     }
   }
 
-  return { positions: positionsById, trtParams };
+  return { positions: positionsById, trtParams, chamberPos };
 }

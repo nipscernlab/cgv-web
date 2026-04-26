@@ -510,12 +510,16 @@
     <i class="ti ti-layers-subtract" style="font-size:15px"></i>
   </button>
   <div class="tbtn-sep"></div>
-  <div class="tseg" id="view-level"
-    data-tip="Visualization level — 1: hits · 2: clusters · 3: particles"
-    data-i18n-tip="tip-view-level">
-    <button class="tseg-btn" data-level="1">1</button>
-    <button class="tseg-btn" data-level="2">2</button>
-    <button class="tseg-btn on" data-level="3">3</button>
+  <div class="tseg" id="view-level">
+    <button class="tseg-btn" data-level="1"
+      data-tip="Level 1 — Hits: raw cells and tracks"
+      data-i18n-tip="tip-view-level-1">1</button>
+    <button class="tseg-btn" data-level="2"
+      data-tip="Level 2 — Clusters: adds η/φ cluster lines"
+      data-i18n-tip="tip-view-level-2">2</button>
+    <button class="tseg-btn on" data-level="3"
+      data-tip="Level 3 — Particles: jets, photons, electrons and muons"
+      data-i18n-tip="tip-view-level-3">3</button>
   </div>
   <div class="tbtn-sep"></div>
   <button class="tbtn on" id="btn-tracks"

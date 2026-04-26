@@ -312,8 +312,15 @@ export function recomputeJetTrackMatch(activeJetCollection, thrJetEtGev) {
 //     still catching most physics electrons.
 //   • Track must be visible (passes the user's track pT slider): hidden soft
 //     tracks won't steal the match from the real electron track.
+//   • Track must come from the inner-detector-only collection: muons that
+//     happen to fall close in η/φ to an egamma cluster (rare but not zero —
+//     e.g. an EM cluster shadow next to a real muon) would otherwise grab
+//     the slot, and CombinedMuonTracks polylines extend all the way to the
+//     muon chambers, so colouring them red would visually suggest "electron
+//     exiting through the muon system" — physically impossible.
 const _ELECTRON_TRACK_DR_MAX = 0.05;
 const _ELECTRON_PT_MIN_GEV = 3;
+const _ELECTRON_TRACK_COLLECTION = 'CombinedInDetTracks';
 export function recomputeElectronTrackMatch(electrons) {
   const trackGroup = _getTrackGroup();
   if (!trackGroup) return;
@@ -327,6 +334,10 @@ export function recomputeElectronTrackMatch(electrons) {
       let best = null;
       let bestDR = _ELECTRON_TRACK_DR_MAX;
       for (const line of trackGroup.children) {
+        // Only ID-only tracks are eligible: a CombinedMuonTracks line with a
+        // long polyline would, if matched, get coloured red along its full
+        // 10 m extent — making the e± look like a muon.
+        if (line.userData.storeGateKey !== _ELECTRON_TRACK_COLLECTION) continue;
         // Hidden tracks (below user pT threshold) can't claim a match —
         // otherwise a soft pile-up track would steal the slot from the real
         // visible electron track.

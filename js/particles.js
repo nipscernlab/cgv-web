@@ -101,14 +101,20 @@ export function getLastElectrons() {
 }
 
 // JiveXML emits multiple track collections that are alternative fits of the
-// same physical particles (GSFTracks duplicates electrons, CombinedMuonTracks
-// / MSOnlyExtrapolatedTracks / ExtrapolatedMuonTracks duplicate muons).
-// Rendering all of them produces visually overlapping lines — a jet-matched
-// orange line on top of an unmatched yellow twin. Render only the primary
-// collections that span disjoint regions of the detector:
-//   CombinedInDetTracks    — full ID coverage (all charged particles)
-//   MuonSpectrometerTracks — MS portion of muons (no ID overlap)
-const _PRIMARY_TRACK_COLLECTIONS = new Set(['CombinedInDetTracks', 'MuonSpectrometerTracks']);
+// same physical particles (GSFTracks duplicates electrons; the four muon
+// variants — MSOnlyExtrapolated / Extrapolated / MuonSpectrometer /
+// CombinedMuon — cover the same muon at different stages of reconstruction).
+// Rendering all of them produces visually overlapping lines. Pick the two
+// collections that show each particle in its most complete form:
+//   CombinedInDetTracks  — every ID track (vertex → r ≈ 1 m).
+//   CombinedMuonTracks   — combined fit for muons; polyline runs from the
+//                          vertex out through the muon chambers (r ≈ 9.7 m),
+//                          which makes the track-vs-muon-chamber raycast
+//                          fire and turns the muon blue end-to-end.
+// The muon's ID portion appears in both collections (r ≈ 0-1 m), but having
+// the full muon trajectory drawn as one continuous line outweighs that
+// duplication for the user.
+const _PRIMARY_TRACK_COLLECTIONS = new Set(['CombinedInDetTracks', 'CombinedMuonTracks']);
 
 export function drawTracks(tracks) {
   clearTracks();

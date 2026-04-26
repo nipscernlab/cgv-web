@@ -51,7 +51,13 @@ export function hideTooltip() {
 
 const raycast = new THREE.Raycaster();
 raycast.firstHitOnly = true; // stop after first intersection (much faster)
-raycast.params.Line = { threshold: 25 }; // 25 mm hit zone for track lines
+raycast.params.Line = { threshold: 40 }; // 40 mm hit zone for ID tracks / photons
+// Muon tracks live at much larger radii (~10 m) and are typically watched
+// from further away, so they want a wider raycast threshold to be easy to
+// hover over. Used by toggling raycast.params.Line.threshold around the
+// muon-only intersect call below.
+const _MUON_TRACK_THRESHOLD_MM = 80;
+const _DEFAULT_TRACK_THRESHOLD_MM = 40;
 const mxy = new THREE.Vector2();
 
 let lastRay = 0;
@@ -203,11 +209,36 @@ function doRaycast(clientX, clientY) {
   // ── Track / Photon hit (pick closest) ────────────────────────────────────
   // Electron group now contains only sprites (the "e±" labels), which aren't
   // raycasted — the electron identity comes from the matched track instead.
+  // Two raycasts with different Line thresholds: ID tracks / photons get the
+  // narrow 40 mm hit zone (so neighbouring tracks don't bleed into each
+  // other), muon tracks get the wider 80 mm zone since they're typically
+  // viewed from far away.
   if (hasTrackLines || hasPhotonLines) {
-    const candidates = [];
-    if (hasTrackLines) candidates.push(...trackGroup.children.filter((c) => c.visible));
-    if (hasPhotonLines) candidates.push(...photonGroup.children.filter((c) => c.visible));
-    const hits = raycast.intersectObjects(candidates, false);
+    const idCandidates = [];
+    const muonCandidates = [];
+    if (hasTrackLines) {
+      for (const c of trackGroup.children) {
+        if (!c.visible) continue;
+        if (c.userData.storeGateKey === 'CombinedMuonTracks') muonCandidates.push(c);
+        else idCandidates.push(c);
+      }
+    }
+    if (hasPhotonLines) {
+      for (const c of photonGroup.children) if (c.visible) idCandidates.push(c);
+    }
+    raycast.params.Line.threshold = _DEFAULT_TRACK_THRESHOLD_MM;
+    const idHits = idCandidates.length ? raycast.intersectObjects(idCandidates, false) : [];
+    raycast.params.Line.threshold = _MUON_TRACK_THRESHOLD_MM;
+    const muonHits = muonCandidates.length ? raycast.intersectObjects(muonCandidates, false) : [];
+    raycast.params.Line.threshold = _DEFAULT_TRACK_THRESHOLD_MM; // restore
+    // Closest of the two passes wins.
+    const bestId = idHits.length ? idHits[0] : null;
+    const bestMu = muonHits.length ? muonHits[0] : null;
+    let hits;
+    if (bestId && bestMu) hits = bestId.distance <= bestMu.distance ? [bestId] : [bestMu];
+    else if (bestId) hits = [bestId];
+    else if (bestMu) hits = [bestMu];
+    else hits = [];
     if (hits.length) {
       const line = hits[0].object;
       const ptGev = line.userData.ptGev ?? 0;
