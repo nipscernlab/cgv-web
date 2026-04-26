@@ -97,7 +97,6 @@ export function drawMet(metInfo) {
   // Cone at the tip, oriented along the arrow direction. Per-frame
   // onBeforeRender resizes it to MET_HEAD_PX pixels tall on screen.
   const cone = new THREE.Mesh(_CONE_GEO, _CONE_MAT);
-  cone.matrixAutoUpdate = true;
   cone.renderOrder = 9;
   const tipDir = new THREE.Vector3(dx, dy, 0);
   const tipQuat = new THREE.Quaternion().setFromUnitVectors(_Y_AXIS, tipDir);

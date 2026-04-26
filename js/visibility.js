@@ -336,7 +336,6 @@ function _applyFcalDraw() {
   fcalVisibleMap = visible;
   if (!fcalGroup) {
     fcalGroup = new THREE.Group();
-    fcalGroup.matrixAutoUpdate = true;
     scene.add(fcalGroup);
   }
   if (!visible.length) {
@@ -348,7 +347,6 @@ function _applyFcalDraw() {
   const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
   const cylMat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide });
   const iMesh = new THREE.InstancedMesh(cylGeo, cylMat, n);
-  iMesh.matrixAutoUpdate = true;
 
   for (let i = 0; i < n; i++) {
     const { x, y, z, dx, dy, dz, energy } = visible[i];
@@ -400,7 +398,6 @@ function _applyFcalDraw() {
       depthWrite: false,
     }),
   );
-  outLines.matrixAutoUpdate = true;
   outLines.frustumCulled = false;
   outLines.renderOrder = 3;
   fcalGroup.add(outLines);

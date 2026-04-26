@@ -100,7 +100,6 @@ function _ensureTrackAtlasOutline(mesh) {
     _trackAtlasEdgeGeoCache.set(uid, new THREE.EdgesGeometry(mesh.geometry, 30));
   const outline = new THREE.LineSegments(_trackAtlasEdgeGeoCache.get(uid), trackAtlasOutlineMat);
   outline.name = `${mesh.name}__track_outline`;
-  outline.matrixAutoUpdate = true;
   outline.renderOrder = 8;
   outline.visible = false;
   mesh.add(outline);

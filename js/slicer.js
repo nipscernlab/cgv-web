@@ -235,6 +235,15 @@ export function createSlicerController({
     markDirty?.();
   }
 
+  // Shared post-configuration sequence: refreshes the gizmo basis, rotates
+  // the scene so the wedge bisector lands at world +X, and snaps the camera
+  // to the +X front view. Used by enable / resetCamera / refreshFromActiveJets.
+  function _frameWedgeView() {
+    updateBasis();
+    _alignSceneToWedge();
+    _resetCameraToWedgeFrontView();
+  }
+
   function enable() {
     if (slicerActive) return;
     slicerActive = true;
@@ -248,9 +257,7 @@ export function createSlicerController({
     }
     slicerGroup.visible = true;
     syncButtons();
-    updateBasis();
-    _alignSceneToWedge();
-    _resetCameraToWedgeFrontView();
+    _frameWedgeView();
   }
 
   function disable() {
@@ -276,11 +283,7 @@ export function createSlicerController({
   // wedge and camera are left alone.
   function refreshFromActiveJets() {
     if (!slicerActive) return;
-    if (_configureFromLeadingJets()) {
-      updateBasis();
-      _alignSceneToWedge();
-      _resetCameraToWedgeFrontView();
-    }
+    if (_configureFromLeadingJets()) _frameWedgeView();
   }
 
   function pointerXY(e) {
@@ -513,9 +516,7 @@ export function createSlicerController({
     if (!slicerActive) return;
     resetState();
     _configureFromLeadingJets();
-    updateBasis();
-    _alignSceneToWedge();
-    _resetCameraToWedgeFrontView();
+    _frameWedgeView();
   }
 
   return {

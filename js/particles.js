@@ -155,10 +155,8 @@ export function drawTracks(tracks) {
         line.userData.phi = Math.atan2(-p.y, -p.x);
       }
     }
-    line.matrixAutoUpdate = true;
     g.add(line);
   }
-  g.matrixAutoUpdate = true;
   scene.add(g);
   setTrackGroup(g); // stores ref + applies _tracksVisible
   applyTrackThreshold();
@@ -223,7 +221,6 @@ export function drawPhotons(photons) {
     line.userData.phi = phi;
     g.add(line);
   }
-  g.matrixAutoUpdate = true;
   scene.add(g);
   setPhotonGroup(g);
   applyTrackThreshold();
@@ -308,7 +305,6 @@ function _rebuildElectronLabels() {
     }
   }
   if (!added) return;
-  g.matrixAutoUpdate = true;
   scene.add(g);
   setElectronGroup(g);
 }
@@ -395,7 +391,6 @@ function _rebuildMuonLabels() {
     }
   }
   if (!added) return;
-  g.matrixAutoUpdate = true;
   scene.add(g);
   setMuonGroup(g);
 }
@@ -439,10 +434,8 @@ export function drawClusters(clusters) {
     line.userData.eta = eta;
     line.userData.phi = phi;
     line.userData.storeGateKey = storeGateKey ?? '';
-    line.matrixAutoUpdate = true;
     g.add(line);
   }
-  g.matrixAutoUpdate = true;
   scene.add(g);
   setClusterGroup(g);
   applyClusterThreshold();
@@ -506,10 +499,8 @@ export function drawJets(collection) {
     line.userData.eta = eta;
     line.userData.phi = phi;
     line.userData.storeGateKey = sgk;
-    line.matrixAutoUpdate = true;
     g.add(line);
   }
-  g.matrixAutoUpdate = true;
   scene.add(g);
   setJetGroup(g);
   applyJetThreshold();
@@ -582,10 +573,8 @@ export function drawTaus(taus) {
     line.userData.isTau = t.isTau;
     line.userData.numTracks = t.numTracks;
     line.userData.storeGateKey = t.key;
-    line.matrixAutoUpdate = true;
     g.add(line);
   }
-  g.matrixAutoUpdate = true;
   scene.add(g);
   setTauGroup(g);
   // Honour the L3 ET slider on first draw — without this, every τ would
