@@ -7,9 +7,11 @@
 // <Track><hits> uses, which means tracks → hits matching is a straight Map
 // lookup with zero conversions.
 //
-// Covers Pixel (point per cluster) and SCT (midpoint of each strip). TRT
-// hits aren't decoded yet — their format is (rhoz, phi, driftR), which needs
-// geometry lookup that we don't carry here.
+// Covers Pixel (cluster centroid), SCT (strip midpoint), and TRT (delegated:
+// sub + rhoz are kept so the overlay can interpolate the actual position
+// against the hovered track's polyline — straws don't expose a 3D point
+// directly, but their (r, phi) [barrel] or (z, phi) [endcap] are enough when
+// we know the track passed through them).
 
 import * as THREE from 'three';
 
@@ -33,11 +35,23 @@ function _readNums(body, tag) {
   return s ? s.map(Number) : null;
 }
 
-// Returns Map<idString, THREE.Vector3>. Empty map if parsing fails or no
-// pixel hits are in the event.
+// Returns:
+//   { positions: Map<id, THREE.Vector3>,           // Pixel + SCT, fully resolved
+//     trtParams: Map<id, { sub, rhoz_mm }> }       // TRT, needs polyline interp
+// Both maps are empty if the XML doesn't contain those collections.
+//
+// `sub` semantics in JiveXML TRT:
+//   0 = endcap C (z<0), rhoz is z in cm
+//   1 = barrel A (z>0), rhoz is r in cm
+//   2 = barrel C (z<0), rhoz is r in cm
+//   3 = endcap A (z>0), rhoz is z in cm
+// We store `rhoz` already converted to mm (× 10) so the overlay doesn't have
+// to remember the unit; `sub` stays as the raw integer for the interpretation
+// switch.
 export function parseHits(xmlText) {
   const positionsById = new Map();
-  if (!xmlText) return positionsById;
+  const trtParams = new Map();
+  if (!xmlText) return { positions: positionsById, trtParams };
 
   // Pixel clusters — one position per hit (cluster centroid stored as x0/y0/z0).
   const pix = xmlText.match(/<PixCluster\s+count="\d+"[^>]*>([\s\S]*?)<\/PixCluster>/);
@@ -94,5 +108,22 @@ export function parseHits(xmlText) {
     }
   }
 
-  return positionsById;
+  // TRT — straws expose (sub, rhoz, phi). We don't compute a position here;
+  // the overlay does it lazily by interpolating the hovered track's polyline.
+  const trt = xmlText.match(/<TRT\s+count="\d+"[^>]*>([\s\S]*?)<\/TRT>/);
+  if (trt) {
+    const body = trt[1];
+    const ids = _readStrings(body, 'id');
+    const subs = _readNums(body, 'sub');
+    const rhozs = _readNums(body, 'rhoz');
+    if (ids && subs && rhozs) {
+      const n = Math.min(ids.length, subs.length, rhozs.length);
+      for (let i = 0; i < n; i++) {
+        if (!Number.isFinite(subs[i]) || !Number.isFinite(rhozs[i])) continue;
+        trtParams.set(ids[i], { sub: subs[i] | 0, rhoz_mm: rhozs[i] * 10 });
+      }
+    }
+  }
+
+  return { positions: positionsById, trtParams };
 }

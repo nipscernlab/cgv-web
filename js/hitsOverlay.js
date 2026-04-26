@@ -57,19 +57,56 @@ function _hitOnBeforeRender(renderer, _scene, camera) {
 }
 
 let _positionsById = new Map();
+let _trtById = new Map();
 let _hitsGroup = null;
 let _currentTrackLine = null;
 
 // Called once per event by processXml after parseHits().
-export function setHitPositions(map) {
-  _positionsById = map instanceof Map ? map : new Map();
+export function setHitPositions(parsed) {
+  _positionsById = parsed && parsed.positions instanceof Map ? parsed.positions : new Map();
+  _trtById = parsed && parsed.trtParams instanceof Map ? parsed.trtParams : new Map();
 }
 
-// Drops any rendered markers AND the cached positions map. Used by resetScene
+// Drops any rendered markers AND the cached positions maps. Used by resetScene
 // before a new XML loads.
 export function clearHitsState() {
   hideTrackHits();
   _positionsById = new Map();
+  _trtById = new Map();
+}
+
+// Linear-interpolates the polyline at a target radius (barrel TRT) or target
+// z (endcap TRT). Returns the (x, y, z) at the crossing, or null if the track
+// doesn't reach the target.
+//   `kind` is 'r' (barrel) or 'z' (endcap).
+function _interpolatePolyline(posAttr, kind, target) {
+  if (!posAttr || posAttr.count < 2) return null;
+  const lastIdx = posAttr.count - 1;
+  let prevX = posAttr.getX(0);
+  let prevY = posAttr.getY(0);
+  let prevZ = posAttr.getZ(0);
+  let prevVal = kind === 'r' ? Math.hypot(prevX, prevY) : prevZ;
+  for (let i = 1; i <= lastIdx; i++) {
+    const x = posAttr.getX(i);
+    const y = posAttr.getY(i);
+    const z = posAttr.getZ(i);
+    const cur = kind === 'r' ? Math.hypot(x, y) : z;
+    // Crossing in either direction.
+    if ((prevVal <= target && cur >= target) || (prevVal >= target && cur <= target)) {
+      const span = cur - prevVal;
+      const t = Math.abs(span) > 1e-9 ? (target - prevVal) / span : 0;
+      return new THREE.Vector3(
+        prevX + (x - prevX) * t,
+        prevY + (y - prevY) * t,
+        prevZ + (z - prevZ) * t,
+      );
+    }
+    prevX = x;
+    prevY = y;
+    prevZ = z;
+    prevVal = cur;
+  }
+  return null;
 }
 
 export function hideTrackHits() {
@@ -84,24 +121,36 @@ export function hideTrackHits() {
   _currentTrackLine = null;
 }
 
-// Renders a sphere for each pixel hit attached to `trackLine`. Re-uses the
-// existing group when the same line is hovered again (no churn during
-// raycast-driven re-fires). Falls back to a no-op when the track has no hits
-// or none of them resolve to known pixel positions in the current event.
+// Renders a sphere for each inner-detector hit attached to `trackLine`:
+//   • Pixel / SCT: position came pre-resolved from the parser.
+//   • TRT: position is reconstructed by interpolating the track's polyline at
+//     the straw's radius (barrel) or z (endcap) — the track itself encodes
+//     where the straw was crossed, since it was fitted through these hits.
+// Re-uses the existing group when the same line is hovered again (no churn
+// during raycast-driven re-fires).
 export function showTrackHits(trackLine) {
   if (!trackLine) return;
   if (trackLine === _currentTrackLine) return;
   hideTrackHits();
   const ids = trackLine.userData?.hitIds;
   if (!Array.isArray(ids) || ids.length === 0) return;
-  if (_positionsById.size === 0) return;
+  if (_positionsById.size === 0 && _trtById.size === 0) return;
+  const posAttr = trackLine.geometry?.getAttribute('position');
 
   const g = new THREE.Group();
   g.renderOrder = 30;
   let added = 0;
   for (const id of ids) {
-    const p = _positionsById.get(id);
-    if (!p) continue; // not a pixel hit (likely SCT or TRT — not yet supported)
+    let p = _positionsById.get(id);
+    if (!p) {
+      const trt = _trtById.get(id);
+      if (trt && posAttr) {
+        // sub 1, 2 → barrel (rhoz is r); sub 0, 3 → endcap (rhoz is z).
+        const kind = trt.sub === 1 || trt.sub === 2 ? 'r' : 'z';
+        p = _interpolatePolyline(posAttr, kind, trt.rhoz_mm);
+      }
+    }
+    if (!p) continue;
     const m = new THREE.Mesh(_HIT_GEO, _HIT_MAT);
     m.position.copy(p);
     m.matrixAutoUpdate = false;
