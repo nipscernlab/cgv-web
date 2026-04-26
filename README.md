@@ -10,7 +10,7 @@
 <h1 align="center">CGV Web — Calorimeter Geometry Viewer</h1>
 
 <p align="center">
-  A browser-based 3D viewer for the <b>ATLAS Tile Calorimeter (TileCal)</b> at the LHC.
+  A browser-based 3D viewer for the <b>ATLAS Calorimeter</b> at the LHC.
 </p>
 
 <p align="center">
