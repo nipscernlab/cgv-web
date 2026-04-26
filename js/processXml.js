@@ -55,17 +55,33 @@ import {
   drawPhotons,
   drawElectrons,
   drawClusters,
+  drawJets,
   clearTracks,
   clearClusters,
   clearPhotons,
   clearElectrons,
+  clearJets,
 } from './particles.js';
+import { parseJets } from './jetParser.js';
+import {
+  setJetCollections,
+  clearJetState,
+  getActiveJetCollection,
+  onJetStateChange,
+} from './jets.js';
 import { clearOutline, clearAllOutlines } from './outlines.js';
 import { setStatus, showEventInfo } from './statusHud.js';
 import { markDirty } from './renderer.js';
 import { hideTooltip } from './hoverTooltip.js';
 import { esc } from './utils.js';
 import { updateMinimap } from './minimap.js';
+
+// Single subscription that re-draws jets whenever jet state changes — fires on
+// fresh events (setJetCollections) and on user-driven collection switches
+// (setActiveJetKey). drawJets(null) on clearJetState removes the group.
+onJetStateChange(() => {
+  drawJets(getActiveJetCollection());
+});
 
 // Sliders + detector-panel init are assigned by setupDetectorPanels(), which
 // runs after this module loads. Main wires them via setProcessXmlDeps().
@@ -110,6 +126,8 @@ function resetScene() {
   clearClusters();
   clearPhotons();
   clearElectrons();
+  clearJets();
+  clearJetState();
   clearFcal();
   hideTooltip();
   markDirty();
@@ -199,6 +217,14 @@ export async function processXml(xmlText) {
   }
   drawClusters(rawClusters);
   rebuildActiveClusterCellIds();
+
+  // ── Jets ────────────────────────────────────────────────────────────────────
+  // The Rust WASM parser doesn't extract jets yet — do a light JS pass over
+  // the same xmlText (regex-based, jets are a tiny fraction of the file).
+  // setJetCollections triggers onJetStateChange (installed at module load
+  // below); the listener handles the redraw, both for fresh events and when
+  // the user later picks a different collection.
+  setJetCollections(parseJets(xmlText));
 
   // Per-detector energy range: symmetric percentiles on each tail so a single
   // extreme cell (e.g. FCAL down to -31 GeV) can't blow out the scale. Real

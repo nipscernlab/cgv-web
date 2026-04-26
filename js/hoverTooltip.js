@@ -2,7 +2,13 @@ import * as THREE from 'three';
 import { canvas, camera, controls, markDirty } from './renderer.js';
 import { active, rayTargets } from './state.js';
 import { fcalGroup, fcalVisibleMap } from './visibility.js';
-import { getTrackGroup, getPhotonGroup, getElectronGroup, getClusterGroup } from './visibility.js';
+import {
+  getTrackGroup,
+  getPhotonGroup,
+  getElectronGroup,
+  getClusterGroup,
+  getJetGroup,
+} from './visibility.js';
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
 
 export const tooltip = document.getElementById('tip');
@@ -10,6 +16,30 @@ export const tipCellEl = document.getElementById('tip-cell');
 const tipCoordEl = document.getElementById('tip-coords');
 export const tipEEl = document.getElementById('tip-e');
 const tipEKeyEl = document.querySelector('#tip .tkey');
+const tipExtraEl = document.getElementById('tip-extra');
+
+// Builds the extra-rows HTML for one tooltip. Each row is a key/value pair in
+// the same `.trow / .tkey / .tval` style as the energy row. innerHTML so the
+// caller can use sub/sup/HTML entities for physics labels (e.g., η, p_T).
+function _setExtras(rows) {
+  if (!tipExtraEl) return;
+  if (!rows || !rows.length) {
+    tipExtraEl.innerHTML = '';
+    return;
+  }
+  tipExtraEl.innerHTML = rows
+    .map(([k, v]) => `<div class="trow"><span class="tkey">${k}</span><span class="tval">${v}</span></div>`)
+    .join('');
+}
+
+function _fmtEta(eta) {
+  return Number.isFinite(eta) ? eta.toFixed(3) : '—';
+}
+
+// `.tkey` applies text-transform:uppercase, which would morph the lowercase
+// Greek letter η (U+03B7) into uppercase Η (U+0397) — visually identical to a
+// Latin H. Wrap Greek letters in a span that opts out of the transform.
+const _ETA_LABEL = '<span style="text-transform:none">η</span>';
 
 export function hideTooltip() {
   tooltip.hidden = true;
@@ -55,11 +85,13 @@ function doRaycast(clientX, clientY) {
   const photonGroup = getPhotonGroup();
   const electronGroup = getElectronGroup();
   const clusterGroup = getClusterGroup();
+  const jetGroup = getJetGroup();
   const hasTrackLines = trackGroup && trackGroup.visible && trackGroup.children.length > 0;
   const hasPhotonLines = photonGroup && photonGroup.visible && photonGroup.children.length > 0;
   const hasElectronLines =
     electronGroup && electronGroup.visible && electronGroup.children.length > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
+  const hasJetLines = jetGroup && jetGroup.visible && jetGroup.children.length > 0;
   const hasFcalTubes =
     fcalGroup && fcalGroup.children.some((c) => c.isInstancedMesh) && fcalVisibleMap.length > 0;
   if (
@@ -70,6 +102,7 @@ function doRaycast(clientX, clientY) {
       !hasPhotonLines &&
       !hasElectronLines &&
       !hasClusterLines &&
+      !hasJetLines &&
       !hasFcalTubes)
   ) {
     hideTooltip();
@@ -133,6 +166,7 @@ function doRaycast(clientX, clientY) {
       tipCoordEl.textContent = data.coords ?? '';
       tipEEl.textContent = `${data.energyGev.toFixed(4)} GeV`;
       if (tipEKeyEl) tipEKeyEl.textContent = _t('tip-energy-key');
+      _setExtras(null);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
       tooltip.hidden = false;
@@ -148,6 +182,7 @@ function doRaycast(clientX, clientY) {
       tipCoordEl.textContent = `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`;
       tipEEl.textContent = `${cell.energy.toFixed(4)} GeV`;
       if (tipEKeyEl) tipEKeyEl.textContent = _t('tip-energy-key');
+      _setExtras(null);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
       tooltip.hidden = false;
@@ -155,29 +190,35 @@ function doRaycast(clientX, clientY) {
       return;
     }
   }
-  // ── Track / Photon / Electron hit (pick closest) ─────────────────────────
-  if (hasTrackLines || hasPhotonLines || hasElectronLines) {
+  // ── Track / Photon hit (pick closest) ────────────────────────────────────
+  // Electron group now contains only sprites (the "e±" labels), which aren't
+  // raycasted — the electron identity comes from the matched track instead.
+  if (hasTrackLines || hasPhotonLines) {
     const candidates = [];
     if (hasTrackLines) candidates.push(...trackGroup.children.filter((c) => c.visible));
     if (hasPhotonLines) candidates.push(...photonGroup.children.filter((c) => c.visible));
-    if (hasElectronLines)
-      candidates.push(...electronGroup.children.filter((c) => c.visible && c.isMesh));
     const hits = raycast.intersectObjects(candidates, false);
     if (hits.length) {
       const line = hits[0].object;
       const ptGev = line.userData.ptGev ?? 0;
       const storeGateKey = line.userData.storeGateKey ?? '';
       const isPhoton = photonGroup && photonGroup.children.includes(line);
-      const isElectron = electronGroup && electronGroup.children.includes(line);
       let label;
-      if (isElectron) label = line.userData.pdgId < 0 ? 'Electron' : 'Positron';
-      else if (isPhoton) label = 'Photon';
-      else label = 'Track';
+      if (isPhoton) label = 'Photon';
+      else {
+        // Track label reflects the same priority as the colour: electron match
+        // wins over jet match.
+        const ePdg = line.userData.matchedElectronPdgId;
+        if (ePdg != null) label = ePdg < 0 ? 'Track → Electron' : 'Track → Positron';
+        else if (line.userData.isJetMatched) label = 'Track → Jet';
+        else label = 'Track';
+      }
       clearOutline();
       tipCellEl.textContent = label;
       tipCoordEl.textContent = storeGateKey;
       tipEEl.textContent = `${ptGev.toFixed(3)} GeV`;
       if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
+      _setExtras([[_ETA_LABEL, _fmtEta(line.userData.eta)]]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
       tooltip.hidden = false;
@@ -198,6 +239,38 @@ function doRaycast(clientX, clientY) {
       tipCoordEl.textContent = storeGateKey;
       tipEEl.textContent = `${etGev.toFixed(3)} GeV`;
       if (tipEKeyEl) tipEKeyEl.innerHTML = 'E<sub>T</sub>';
+      _setExtras([[_ETA_LABEL, _fmtEta(line.userData.eta)]]);
+      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
+      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
+      tooltip.hidden = false;
+      markDirty();
+      return;
+    }
+  }
+  // ── Jet hit ───────────────────────────────────────────────────────────────
+  if (hasJetLines) {
+    const visibleJets = jetGroup.children.filter((c) => c.visible);
+    const jetHits = raycast.intersectObjects(visibleJets, false);
+    if (jetHits.length) {
+      const line = jetHits[0].object;
+      const ptGev = line.userData.ptGev ?? line.userData.etGev ?? 0;
+      const storeGateKey = line.userData.storeGateKey ?? '';
+      const massGev = line.userData.massGev ?? 0;
+      clearOutline();
+      tipCellEl.textContent = 'Jet';
+      tipCoordEl.textContent = storeGateKey;
+      tipEEl.textContent = `${ptGev.toFixed(3)} GeV`;
+      if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
+      // η is the canonical companion to pT. Mass is only meaningful for
+      // large-R (R = 1.0) collections — boosted W/Z/top/H tagging — so we
+      // include it for AntiKt10* and skip it otherwise.
+      const extras = [[_ETA_LABEL, _fmtEta(line.userData.eta)]];
+      // (mass label below uses Latin chars, so the default uppercase styling
+      // is fine.)
+      if (storeGateKey.includes('AntiKt10')) {
+        extras.push(['mass', `${massGev.toFixed(3)} GeV`]);
+      }
+      _setExtras(extras);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
       tooltip.hidden = false;
