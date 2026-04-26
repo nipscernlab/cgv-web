@@ -55,11 +55,13 @@ import {
   drawElectrons,
   drawClusters,
   drawJets,
+  drawTaus,
   clearTracks,
   clearClusters,
   clearPhotons,
   clearElectrons,
   clearJets,
+  clearTaus,
 } from './particles.js';
 import { parseJets } from './jetParser.js';
 import {
@@ -74,6 +76,7 @@ import { parseMet, pickPreferredMet } from './metParser.js';
 import { drawMet, clearMet } from './metOverlay.js';
 import { parseVertices } from './vertexParser.js';
 import { drawVertices, clearVertices } from './vertexOverlay.js';
+import { parseTaus } from './tauParser.js';
 import { clearOutline, clearAllOutlines } from './outlines.js';
 import { setStatus, showEventInfo } from './statusHud.js';
 import { markDirty } from './renderer.js';
@@ -133,6 +136,7 @@ function resetScene() {
   clearElectrons();
   clearJets();
   clearJetState();
+  clearTaus();
   clearHitsState();
   clearMet();
   clearVertices();
@@ -252,6 +256,11 @@ export async function processXml(xmlText) {
   // typically at z ~ ±50 mm from origin (within the BeamSpot), useful context
   // when zooming in to the inner detector.
   drawVertices(parseVertices(xmlText));
+
+  // ── Hadronic τ candidates (TauJets_xAOD) ──────────────────────────────────
+  // 6-9 per event typical. drawTaus also re-runs the τ→track colour sync so
+  // tracks attached to a τ pick up the purple material.
+  drawTaus(parseTaus(xmlText));
 
   // Per-detector energy range: symmetric percentiles on each tail so a single
   // extreme cell (e.g. FCAL down to -31 GeV) can't blow out the scale. Real

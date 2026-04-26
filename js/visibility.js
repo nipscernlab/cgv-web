@@ -13,7 +13,12 @@ import { scene, markDirty } from './renderer.js';
 import { getViewLevel, onViewLevelChange } from './viewLevel.js';
 import { getActiveJetCollection } from './jets.js';
 import { recomputeJetTrackMatch } from './trackAtlasIntersections.js';
-import { getLastElectrons, syncElectronTrackMatch } from './particles.js';
+import {
+  getLastElectrons,
+  syncElectronTrackMatch,
+  getLastTaus,
+  syncTauTrackMatch,
+} from './particles.js';
 
 // ── Late-injected dependencies (set via initVisibility after slicer is ready) ─
 let _slicer = null;
@@ -26,24 +31,27 @@ export function initVisibility({ slicer, rebuildAllOutlines, updateTrackAtlasInt
   _updateTrackAtlasIntersections = updateTrackAtlasIntersections;
 }
 
-// ── Track / Photon / Electron / Cluster / Jet / MET / Vertex groups (lifecycle owned here) ──
+// ── Track / Photon / Electron / Cluster / Jet / Tau / MET / Vertex groups ──
 let _trackGroup = null;
 let _photonGroup = null;
 let _electronGroup = null;
 let _clusterGroup = null;
 let _jetGroup = null;
+let _tauGroup = null;
 let _metGroup = null;
 let _vertexGroup = null;
 
 let _tracksVisible = true;
 let _clustersVisible = true;
 let _jetsVisible = true;
+let _tausVisible = true;
 
 export const getTrackGroup = () => _trackGroup;
 export const getPhotonGroup = () => _photonGroup;
 export const getElectronGroup = () => _electronGroup;
 export const getClusterGroup = () => _clusterGroup;
 export const getJetGroup = () => _jetGroup;
+export const getTauGroup = () => _tauGroup;
 export const getMetGroup = () => _metGroup;
 export const getVertexGroup = () => _vertexGroup;
 
@@ -70,6 +78,10 @@ export function setClusterGroup(g) {
 export function setJetGroup(g) {
   _jetGroup = g;
   if (g) g.visible = _jetsVisible && getViewLevel() === 3;
+}
+export function setTauGroup(g) {
+  _tauGroup = g;
+  if (g) g.visible = _tausVisible && getViewLevel() === 3;
 }
 export function setMetGroup(g) {
   _metGroup = g;
@@ -109,6 +121,7 @@ function _applyViewLevelGate() {
   if (_photonGroup) _photonGroup.visible = lvl === 3;
   if (_electronGroup) _electronGroup.visible = lvl === 3;
   if (_jetGroup) _jetGroup.visible = _jetsVisible && lvl === 3;
+  if (_tauGroup) _tauGroup.visible = _tausVisible && lvl === 3;
   if (_metGroup) _metGroup.visible = lvl === 3;
   // Refresh cell visibility: rebuildActiveClusterCellIds reads getViewLevel()
   // and disables the cluster-membership filter outside level 2; applyThreshold
@@ -123,6 +136,8 @@ function _applyViewLevelGate() {
   // red/green colours bleeding into the simpler views. syncElectronTrackMatch
   // re-marks tracks AND rebuilds the floating "e±" label sprites.
   syncElectronTrackMatch(lvl === 3 ? getLastElectrons() : null);
+  // τ→track colour mirrors the same L3-only gate.
+  syncTauTrackMatch(lvl === 3 ? getLastTaus() : null);
   markDirty();
 }
 onViewLevelChange(_applyViewLevelGate);

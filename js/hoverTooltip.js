@@ -7,6 +7,7 @@ import {
   getPhotonGroup,
   getClusterGroup,
   getJetGroup,
+  getTauGroup,
   getMetGroup,
   getVertexGroup,
 } from './visibility.js';
@@ -99,12 +100,14 @@ function doRaycast(clientX, clientY) {
   const photonGroup = getPhotonGroup();
   const clusterGroup = getClusterGroup();
   const jetGroup = getJetGroup();
+  const tauGroup = getTauGroup();
   const metGroup = getMetGroup();
   const vertexGroup = getVertexGroup();
   const hasTrackLines = trackGroup && trackGroup.visible && trackGroup.children.length > 0;
   const hasPhotonLines = photonGroup && photonGroup.visible && photonGroup.children.length > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
   const hasJetLines = jetGroup && jetGroup.visible && jetGroup.children.length > 0;
+  const hasTauLines = tauGroup && tauGroup.visible && tauGroup.children.length > 0;
   const hasMetArrow = metGroup && metGroup.visible && metGroup.children.length > 0;
   const hasVertexMarkers = vertexGroup && vertexGroup.visible && vertexGroup.children.length > 0;
   const hasFcalTubes =
@@ -117,6 +120,7 @@ function doRaycast(clientX, clientY) {
       !hasPhotonLines &&
       !hasClusterLines &&
       !hasJetLines &&
+      !hasTauLines &&
       !hasMetArrow &&
       !hasVertexMarkers &&
       !hasFcalTubes)
@@ -285,10 +289,11 @@ function doRaycast(clientX, clientY) {
       let label;
       if (isPhoton) label = 'Photon';
       else {
-        // Track label reflects the same priority as the colour: electron match
-        // wins over jet match.
+        // Track label mirrors the colour priority chain in
+        // _applyTrackMaterials: electron > τ > jet > muon-hit > default.
         const ePdg = line.userData.matchedElectronPdgId;
         if (ePdg != null) label = ePdg < 0 ? 'Track → Electron' : 'Track → Positron';
+        else if (line.userData.isTauMatched) label = 'Track → Tau';
         else if (line.userData.isJetMatched) label = 'Track → Jet';
         else label = 'Track';
       }
@@ -323,6 +328,41 @@ function doRaycast(clientX, clientY) {
       tipEEl.textContent = `${etGev.toFixed(3)} GeV`;
       if (tipEKeyEl) tipEKeyEl.innerHTML = 'E<sub>T</sub>';
       _setExtras([[_ETA_LABEL, _fmtEta(line.userData.eta)]]);
+      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
+      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
+      tooltip.hidden = false;
+      markDirty();
+      return;
+    }
+  }
+  // ── Tau hit ───────────────────────────────────────────────────────────────
+  // Tested before jets because τ candidates often share a direction with a jet
+  // (the hadronic τ decay products *form* a narrow jet) — the τ classification
+  // is the more specific identification, so it wins the hover.
+  if (hasTauLines) {
+    const visibleTaus = tauGroup.children.filter((c) => c.visible);
+    const tauHits = raycast.intersectObjects(visibleTaus, false);
+    if (tauHits.length) {
+      const line = tauHits[0].object;
+      const ptGev = line.userData.ptGev ?? 0;
+      const storeGateKey = line.userData.storeGateKey ?? '';
+      const isTau = line.userData.isTau ?? '';
+      const numTracks = line.userData.numTracks ?? 0;
+      clearOutline();
+      hideTrackHits();
+      tipCellEl.textContent = 'Tau';
+      tipCoordEl.textContent = storeGateKey;
+      tipEEl.textContent = `${ptGev.toFixed(3)} GeV`;
+      if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
+      // ID quality token from <isTauString> ("Loose" / "Medium" / "Tight" /
+      // "none") and prong count (1 or 3 for hadronic τ). Both are essential
+      // for reading whether this candidate is a real τ vs. a jet fake.
+      const idLabel = isTau && isTau !== 'none' ? isTau : '—';
+      _setExtras([
+        [_ETA_LABEL, _fmtEta(line.userData.eta)],
+        ['ID', idLabel],
+        ['tracks', `${numTracks}`],
+      ]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
       tooltip.hidden = false;

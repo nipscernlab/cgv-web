@@ -6,11 +6,13 @@ import {
   getElectronGroup,
   getClusterGroup,
   getJetGroup,
+  getTauGroup,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
   setClusterGroup,
   setJetGroup,
+  setTauGroup,
   applyTrackThreshold,
   applyClusterThreshold,
   applyJetThreshold,
@@ -19,6 +21,7 @@ import {
   TRACK_MAT,
   updateTrackAtlasIntersections,
   recomputeElectronTrackMatch,
+  recomputeTauTrackMatch,
 } from './trackAtlasIntersections.js';
 import { getViewLevel } from './viewLevel.js';
 
@@ -465,4 +468,86 @@ export function drawJets(collection) {
   scene.add(g);
   setJetGroup(g);
   applyJetThreshold();
+}
+
+// ── Taus (η/φ lines, purple-dashed) ───────────────────────────────────────────
+// Hadronic τ candidates. Same η/φ-line style as jets/clusters but a distinct
+// purple to read against the orange jet lines, since taus and jets sometimes
+// share the same direction (overlap removal isn't perfect in the XML).
+const TAU_MAT = new THREE.LineDashedMaterial({
+  color: 0xb366ff,
+  transparent: true,
+  opacity: 0.85,
+  dashSize: 40,
+  gapSize: 60,
+  depthWrite: false,
+});
+
+// Cached tau list so the level gate can re-run the track match on re-entry to L3.
+let _lastTaus = [];
+export function getLastTaus() {
+  return _lastTaus;
+}
+
+export function clearTaus() {
+  _lastTaus = [];
+  _clearTauGroupOnly();
+}
+
+function _clearTauGroupOnly() {
+  const g = getTauGroup();
+  if (!g) return;
+  g.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+  });
+  scene.remove(g);
+  setTauGroup(null);
+}
+
+// Draws one line per tau candidate. `taus` is the flat array out of
+// tauParser. Stamps tooltip-relevant fields on each line's userData and runs
+// the track-match sync so the τ's associated tracks pick up the purple colour.
+export function drawTaus(taus) {
+  clearTaus();
+  _lastTaus = Array.isArray(taus) ? taus : [];
+  if (!_lastTaus.length) {
+    syncTauTrackMatch(null);
+    return;
+  }
+  const g = new THREE.Group();
+  g.renderOrder = 6;
+  for (const t of _lastTaus) {
+    const { eta, phi } = t;
+    const theta = 2 * Math.atan(Math.exp(-eta));
+    const sinT = Math.sin(theta);
+    const dx = -sinT * Math.cos(phi);
+    const dy = -sinT * Math.sin(phi);
+    const dz = Math.cos(theta);
+    const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
+    const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
+    const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
+    const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);
+    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
+    const line = new THREE.Line(geo, TAU_MAT);
+    // LineDashedMaterial requirement.
+    line.computeLineDistances();
+    line.userData.ptGev = t.ptGev;
+    line.userData.eta = eta;
+    line.userData.phi = phi;
+    line.userData.isTau = t.isTau;
+    line.userData.numTracks = t.numTracks;
+    line.userData.storeGateKey = t.key;
+    line.matrixAutoUpdate = false;
+    g.add(line);
+  }
+  g.matrixAutoUpdate = false;
+  scene.add(g);
+  setTauGroup(g);
+  syncTauTrackMatch(getViewLevel() === 3 ? _lastTaus : null);
+}
+
+// Single entry point for the τ→track colour update. Called by drawTaus on
+// load and by the visibility level gate when entering / leaving L3.
+export function syncTauTrackMatch(taus) {
+  recomputeTauTrackMatch(taus);
 }

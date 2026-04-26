@@ -8,6 +8,8 @@ const TRACK_HIT_MAT = new THREE.LineBasicMaterial({ color: 0x4a90d9, linewidth: 
 // jet's own colour (orange) so visually associating "this track came out of
 // that jato" is immediate.
 const TRACK_JET_MAT = new THREE.LineBasicMaterial({ color: 0xff8800, linewidth: 2 });
+// Tracks attached to a hadronic τ candidate: purple, same hue as the τ line.
+const TRACK_TAU_MAT = new THREE.LineBasicMaterial({ color: 0xb366ff, linewidth: 2 });
 // Tracks matched to a reconstructed electron / positron by ΔR — coloured to
 // match the electron arrow so the eye links the track with the e±.
 const TRACK_ELECTRON_NEG_MAT = new THREE.LineBasicMaterial({ color: 0xff3030, linewidth: 2 });
@@ -254,16 +256,21 @@ export function updateTrackAtlasIntersections() {
 }
 
 // Applies the priority chain to every track line:
-//   electron / positron match (red / green) > jet-match (orange) >
-//   muon-chamber hit (blue) > default (yellow).
+//   electron / positron match (red / green) > τ-match (purple) >
+//   jet-match (orange) > muon-chamber hit (blue) > default (yellow).
 // Each source flag lives on userData; this loop is the single place that knows
-// about the priority ordering. Electron beats jet because the e± identification
-// is more specific than just "this track is inside a jet cone".
+// about the priority ordering. Electron beats τ because e± identification is
+// the most specific. τ beats jet because hadronic τs *are* narrow jets — the
+// τ ID is a stricter classification of the same object, and the explicit
+// (key, index) link from <TauJet> is more authoritative than the jet's track
+// list, which can include the same tracks via overlap.
 function _applyTrackMaterials(trackGroup) {
   for (const line of trackGroup.children) {
     const ePdg = line.userData.matchedElectronPdgId;
     if (ePdg != null) {
       line.material = ePdg < 0 ? TRACK_ELECTRON_NEG_MAT : TRACK_ELECTRON_POS_MAT;
+    } else if (line.userData.isTauMatched) {
+      line.material = TRACK_TAU_MAT;
     } else if (line.userData.isJetMatched) {
       line.material = TRACK_JET_MAT;
     } else if (line.userData.isHitTrack) {
@@ -297,6 +304,32 @@ export function recomputeJetTrackMatch(activeJetCollection, thrJetEtGev) {
     const k = line.userData.storeGateKey;
     const i = line.userData.indexInCollection;
     line.userData.isJetMatched = k != null && i != null && matched.has(`${k}#${i}`);
+  }
+  _applyTrackMaterials(trackGroup);
+  markDirty();
+}
+
+// Resolves each TauJet's <trackKey>/<trackIndex> pairs to the rendered track
+// lines and stamps `isTauMatched` accordingly. Direct (key, index) lookup —
+// no heuristic — because <TauJet> publishes the link explicitly. Same xAOD →
+// AOD key bridge as jet→track. `taus` may be null (clears all matches).
+export function recomputeTauTrackMatch(taus) {
+  const trackGroup = _getTrackGroup();
+  if (!trackGroup) return;
+  const matched = new Set();
+  if (taus && taus.length) {
+    for (const t of taus) {
+      for (const trk of t.tracks) {
+        const aod = _XAOD_TO_AOD_TRACK_KEY[trk.key];
+        if (!aod) continue;
+        matched.add(`${aod}#${trk.index}`);
+      }
+    }
+  }
+  for (const line of trackGroup.children) {
+    const k = line.userData.storeGateKey;
+    const i = line.userData.indexInCollection;
+    line.userData.isTauMatched = k != null && i != null && matched.has(`${k}#${i}`);
   }
   _applyTrackMaterials(trackGroup);
   markDirty();
