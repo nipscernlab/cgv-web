@@ -21,6 +21,17 @@ import {
   getLastMuons,
   syncMuonTrackMatch,
 } from './particles.js';
+import {
+  layerVis,
+  setLayerLeaf,
+  setLayerSubtree,
+  anyLayerLeafOn,
+  replaceMuonState,
+} from './layerVis.js';
+
+// Re-exported for the layers panel + any other consumer that imported them
+// from visibility.js historically. Live-binding semantics preserved.
+export { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn };
 
 // ── Late-injected dependencies (set via initVisibility after slicer is ready) ─
 let _slicer = null;
@@ -173,53 +184,19 @@ export function setThrFcalMev(v) {
 }
 
 // ── Detector toggle state ─────────────────────────────────────────────────────
-// `layerVis` is a tree mirroring the layout of the floating Layers panel. Each
-// leaf is a boolean; aggregate ON/OFF for parent rows is derived (any leaf on).
-// Cell handles carry { det, subDet, sampling } tags set in loader.js, and the
-// threshold loop dispatches through `_detOnFor(h)` which walks the tree.
-//   tile.barrel    — A, BC, D                 (LB samplings)
-//   tile.extended  — A, B, D                  (EB samplings; D4→D, C10→B)
-//   tile.itc       — E                        (E1-E4 gap scintillators)
-//   mbts           — inner, outer
-//   lar.barrel     — 0, 1, 2, 3               (EMB samplings: presampler/strips/middle/back)
-//   lar.ec         — 0, 1, 2, 3               (EMEC samplings)
-//   hec            — 0, 1, 2, 3               (HEC1-HEC4)
-//   fcal           — 1, 2, 3                  (FCAL1 EM, FCAL2 Had1, FCAL3 Had2)
-//   muon           — aSide, cSide             (atlas-tree subtrees MUC1_2 / MUCH_1,
-//                                              default ON: a chamber shows only when
-//                                              a track also intersects it, so leaving
-//                                              every leaf true preserves the prior
-//                                              hit-driven behaviour. Turning a leaf
-//                                              off blocks visibility for that
-//                                              subtree even if a track hits it.)
-export const layerVis = {
-  tile: {
-    barrel: { A: true, BC: true, D: true },
-    extended: { A: true, B: true, D: true },
-    itc: { E: true },
-  },
-  mbts: { inner: true, outer: true },
-  lar: {
-    barrel: { 0: true, 1: true, 2: true, 3: true },
-    ec: { 0: true, 1: true, 2: true, 3: true },
-  },
-  hec: { 0: true, 1: true, 2: true, 3: true },
-  fcal: { 1: true, 2: true, 3: true },
-  muon: { aSide: true, cSide: true },
-};
-
-// Muon spectrometer atlas-tree subtrees, registered by the loader once the
-// GLB has been parsed. The shape of `layerVis.muon` is built to mirror these
-// subtrees so the layers panel can recurse all the way down for inspection.
+// The mutable `layerVis` tree + its set/any helpers live in ./layerVis.js so
+// they can be unit-tested without pulling Three.js / scene / canvas. See that
+// module for the schema. Muon spectrometer atlas-tree subtrees are registered
+// by the loader via setMuonTrees once the GLB has been parsed.
 let _muonAtlasTrees = { aSide: null, cSide: null };
 const _muonChangeListeners = [];
 
 export function setMuonTrees({ aSide = null, cSide = null }) {
   _muonAtlasTrees = { aSide, cSide };
-  layerVis.muon = {
+  replaceMuonState({
     aSide: _muonStateFromTree(aSide),
     cSide: _muonStateFromTree(cSide),
-  };
+  });
   applyMuonVisibility();
   for (const cb of _muonChangeListeners) cb(_muonAtlasTrees);
 }
@@ -278,38 +255,6 @@ export function applyMuonVisibility() {
   _applyMuonNode(_muonAtlasTrees.cSide, layerVis.muon.cSide);
   _updateTrackAtlasIntersections?.();
   markDirty();
-}
-
-// Sets a leaf at the given path (e.g. ['tile','barrel','A']).
-export function setLayerLeaf(path, on) {
-  let node = layerVis;
-  for (let i = 0; i < path.length - 1; i++) node = node[path[i]];
-  node[path[path.length - 1]] = !!on;
-}
-// Bulk-set every leaf under a sub-tree to `on`.
-export function setLayerSubtree(path, on) {
-  let node = layerVis;
-  for (const k of path) node = node[k];
-  if (typeof node === 'object') {
-    for (const k of Object.keys(node)) {
-      if (typeof node[k] === 'object') setLayerSubtree([...path, k], on);
-      else node[k] = !!on;
-    }
-  }
-}
-// True if any leaf under the sub-tree is on.
-export function anyLayerLeafOn(path) {
-  let node = layerVis;
-  for (const k of path) node = node[k];
-  if (typeof node !== 'object') return !!node;
-  for (const k of Object.keys(node)) {
-    if (typeof node[k] === 'object') {
-      if (anyLayerLeafOn([...path, k])) return true;
-    } else if (node[k]) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // Picks the visibility flag for a given cell handle, based on its sub-detector
