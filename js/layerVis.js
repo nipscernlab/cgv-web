@@ -83,3 +83,26 @@ export function anyLayerLeafOn(path) {
 export function replaceMuonState(state) {
   layerVis.muon = state;
 }
+
+// Resolves a cell handle's panel-flag — given the {det, subDet, sampling}
+// tags written onto each handle in loader.js, returns whether the layers
+// panel currently allows that cell to be visible. Used by both the
+// active-cell threshold loop and the show-all sweep in visibility.js. FCAL
+// has no static cell handles (its meshes are rebuilt per event), so it is
+// filtered separately in _applyFcalDraw.
+//
+//   det === 'HEC'   → layerVis.hec[sampling]                (0..3 → HEC1..HEC4)
+//   det === 'LAR'   → layerVis.lar[subDet][sampling]        (subDet 'barrel'/'ec', sampling 0..3)
+//   det === 'TILE'  → layerVis.mbts[sampling]               when subDet === 'mbts'
+//                     layerVis.tile[subDet][sampling]       otherwise
+//   anything else   → false (defensive — handle didn't get tagged)
+export function isLayerOn(h) {
+  if (!h) return false;
+  if (h.det === 'HEC') return !!layerVis.hec[h.sampling];
+  if (h.det === 'LAR') return !!layerVis.lar[h.subDet]?.[h.sampling];
+  if (h.det === 'TILE') {
+    if (h.subDet === 'mbts') return !!layerVis.mbts[h.sampling];
+    return !!layerVis.tile[h.subDet]?.[h.sampling];
+  }
+  return false;
+}

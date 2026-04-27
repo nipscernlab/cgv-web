@@ -27,11 +27,12 @@ import {
   setLayerSubtree,
   anyLayerLeafOn,
   replaceMuonState,
+  isLayerOn,
 } from './layerVis.js';
 
 // Re-exported for the layers panel + any other consumer that imported them
 // from visibility.js historically. Live-binding semantics preserved.
-export { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn };
+export { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn, isLayerOn };
 
 // ── Late-injected dependencies (set via initVisibility after slicer is ready) ─
 let _slicer = null;
@@ -257,18 +258,10 @@ export function applyMuonVisibility() {
   markDirty();
 }
 
-// Picks the visibility flag for a given cell handle, based on its sub-detector
-// and sampling tags. Used by both the active-cell threshold loop and the
-// show-all sweep. FCAL is filtered separately in _applyFcalDraw.
-function _detOnFor(h) {
-  if (h.det === 'HEC') return !!layerVis.hec[h.sampling];
-  if (h.det === 'LAR') return !!layerVis.lar[h.subDet]?.[h.sampling];
-  if (h.det === 'TILE') {
-    if (h.subDet === 'mbts') return !!layerVis.mbts[h.sampling];
-    return !!layerVis.tile[h.subDet]?.[h.sampling];
-  }
-  return false;
-}
+// Local alias — the dispatcher itself lives in ./layerVis.js so it can be
+// unit-tested without pulling Three.js / scene. The threshold loops below
+// reference _detOnFor for backwards-compatible naming inside this module.
+const _detOnFor = isLayerOn;
 
 // ── Track threshold state ─────────────────────────────────────────────────────
 export let thrTrackGev = 2;
