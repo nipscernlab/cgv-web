@@ -1,13 +1,15 @@
+// @ts-check
 // Loading screen progress bar and request counter.
 
-const _loadBar = document.getElementById('loading-bar');
-const _loadMsg = document.getElementById('loading-msg');
+const _loadBar = /** @type {HTMLElement | null} */ (document.getElementById('loading-bar'));
+const _loadMsg = /** @type {HTMLElement | null} */ (document.getElementById('loading-msg'));
 
 // RAF loop: eases _barCurrent toward _barTarget with an asymptotic creep so
 // the bar never freezes during the GLB parse phase (ceiling 79%; the success
 // callback jumps directly to 100%).
 let _barTarget = 0;
 let _barCurrent = 0;
+/** @type {number | null} */
 let _barRafId = null;
 
 function _barTick() {
@@ -19,6 +21,10 @@ function _barTick() {
 }
 _barRafId = requestAnimationFrame(_barTick);
 
+/**
+ * @param {number} pct
+ * @param {string} [msg]
+ */
 export function setLoadProgress(pct, msg) {
   _barTarget = Math.max(_barTarget, Math.min(100, pct));
   if (_loadMsg && msg) _loadMsg.textContent = msg;
@@ -27,7 +33,7 @@ export function setLoadProgress(pct, msg) {
 export function dismissLoadingScreen() {
   const overlay = document.getElementById('loading-overlay');
   if (!overlay) return;
-  cancelAnimationFrame(_barRafId);
+  if (_barRafId !== null) cancelAnimationFrame(_barRafId);
   _barRafId = null;
   if (_loadBar) _loadBar.style.width = '100%';
   overlay.classList.add('done');

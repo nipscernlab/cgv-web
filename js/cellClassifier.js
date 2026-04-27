@@ -1,3 +1,4 @@
+// @ts-check
 // Pure cell-handle classifier — given the GLB mesh `name` (a "→"-joined
 // path through the geometry tree), returns { det, subDet, sampling } so the
 // layers panel can route per-cell visibility to the right leaf in layerVis.
@@ -17,6 +18,14 @@
 //   x=14  → mbts/outer   x=15 → mbts/inner
 import { HEC_NAMES } from './coords.js';
 
+/**
+ * @typedef {{ det: string, subDet: string, sampling: string | number }} CellClass
+ */
+
+/**
+ * @param {string} name  Mesh path joined by "→" (the GLB tree separator).
+ * @returns {CellClass | null}
+ */
 export function classifyCellName(name) {
   if (typeof name !== 'string') return null;
   const parts = name.split('→');
@@ -46,8 +55,12 @@ export function classifyCellName(name) {
   return null;
 }
 
-// Tile layer x → (subDet, sampling). Exported separately for tests that want
-// to assert the full layer table without parsing mesh names.
+/**
+ * Tile layer x → (subDet, sampling). Exported separately for tests that want
+ * to assert the full layer table without parsing mesh names.
+ * @param {number} x
+ * @returns {CellClass}
+ */
 export function _classifyTile(x) {
   let subDet, sampling;
   if (x === 1) {
