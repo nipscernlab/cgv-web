@@ -13,6 +13,7 @@ import {
 } from './visibility.js';
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
 import { showTrackHits, hideTrackHits } from './hitsOverlay.js';
+import { buildExtrasHtml } from './tooltipRows.js';
 
 export const tooltip = document.getElementById('tip');
 export const tipCellEl = document.getElementById('tip-cell');
@@ -21,21 +22,11 @@ export const tipEEl = document.getElementById('tip-e');
 const tipEKeyEl = document.querySelector('#tip .tkey');
 const tipExtraEl = document.getElementById('tip-extra');
 
-// Builds the extra-rows HTML for one tooltip. Each row is a key/value pair in
-// the same `.trow / .tkey / .tval` style as the energy row. innerHTML so the
-// caller can use sub/sup/HTML entities for physics labels (e.g., η, p_T).
+// Renders the extra-rows block. Builder is in tooltipRows.js so the
+// escaping contract (key=raw, value=escaped) can be tested in pure Node.
 function _setExtras(rows) {
   if (!tipExtraEl) return;
-  if (!rows || !rows.length) {
-    tipExtraEl.innerHTML = '';
-    return;
-  }
-  tipExtraEl.innerHTML = rows
-    .map(
-      ([k, v]) =>
-        `<div class="trow"><span class="tkey">${k}</span><span class="tval">${v}</span></div>`,
-    )
-    .join('');
+  tipExtraEl.innerHTML = buildExtrasHtml(rows);
 }
 
 function _fmtEta(eta) {
