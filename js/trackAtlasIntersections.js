@@ -229,9 +229,14 @@ export function updateTrackAtlasIntersections() {
     }
   }
 
+  // A muon chamber shows only when a track passes through it AND the user
+  // hasn't turned that station off in the layers panel
+  // (mesh.userData.muonForceVisible). Defaults to AND-true so the prior
+  // hit-driven behaviour is preserved out of the box; flipping a panel toggle
+  // off vetoes the chamber even when a track hits it.
   let changed = false;
   for (const mesh of meshes) {
-    const next = hitMeshes.has(mesh);
+    const next = hitMeshes.has(mesh) && !!mesh.userData.muonForceVisible;
     if (mesh.visible !== next) {
       mesh.visible = next;
       changed = true;

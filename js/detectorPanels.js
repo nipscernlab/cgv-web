@@ -401,6 +401,10 @@ export function setupDetectorPanels({
     hecSlider.updateUI(state.getThrHecMev());
     clusterEtSlider.updateUI();
     sidebarControls.setPinnedR(true);
+    // Preserve whichever tab the user is on across new XML loads. Only auto-pick
+    // a tab when nothing is currently selected (e.g. a fresh session).
+    const hasActive = !!document.querySelector('#rpanel .det-tab.on');
+    if (hasActive) return;
     if (hasTile) switchTab('tile');
     else if (hasLAr) switchTab('lar');
     else if (hasFcal) switchTab('fcal');

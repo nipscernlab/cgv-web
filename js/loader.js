@@ -14,6 +14,7 @@ import { scene, markDirty } from './renderer.js';
 import { ghostVisible, ghostMeshByName } from './ghost.js';
 import { HEC_NAMES } from './coords.js';
 import { setLoadProgress } from './loading.js';
+import { setMuonTrees } from './visibility.js';
 import { esc } from './utils.js';
 
 // ── Mesh name → integer key ───────────────────────────────────────────────────
@@ -174,6 +175,19 @@ function classifyCellDet(name) {
       }
       return { det: 'TILE', subDet, sampling };
     }
+  }
+  return null;
+}
+
+// Depth-first search for the first atlas-tree node with `name`. Returns null
+// when not found. Used by the muon visibility hook to grab the MUCH_1 / MUC1_2
+// subtrees regardless of where they sit in the hierarchy.
+function _findAtlasNode(root, name) {
+  if (!root) return null;
+  if (root.name === name) return root;
+  for (const child of root.children.values()) {
+    const hit = _findAtlasNode(child, name);
+    if (hit) return hit;
   }
   return null;
 }
@@ -427,6 +441,10 @@ export async function initScene({ setStatus, atlasMat, onSceneReady, onAtlasRead
         const atlasContainer = new THREE.Group();
         atlasContainer.name = 'atlas-geo';
         atlasContainer.scale.setScalar(10);
+        // The GLB has the ATLAS A/C convention swapped vs the naming: MUCH_1
+        // sits at negative z (C side) and MUC1_2 at positive z (A side). All
+        // atlas meshes start hidden; visibility.js owns the per-node toggles
+        // and writes mesh.userData.muonForceVisible directly.
         for (const o of atlasMeshes) {
           o.material = atlasMat;
           o.frustumCulled = false;
@@ -434,7 +452,12 @@ export async function initScene({ setStatus, atlasMat, onSceneReady, onAtlasRead
           atlasContainer.add(o);
         }
         scene.add(atlasContainer);
-        onAtlasReady(_buildAtlasTree(atlasMeshes));
+        const atlasTree = _buildAtlasTree(atlasMeshes);
+        // MUCH_1 / MUC1_2 may not sit at the top level — search recursively.
+        const aSideTree = _findAtlasNode(atlasTree, 'MUC1_2');
+        const cSideTree = _findAtlasNode(atlasTree, 'MUCH_1');
+        setMuonTrees({ aSide: aSideTree, cSide: cSideTree });
+        onAtlasReady(atlasTree);
       }
 
       markDirty();

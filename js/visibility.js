@@ -185,6 +185,13 @@ export function setThrFcalMev(v) {
 //   lar.ec         — 0, 1, 2, 3               (EMEC samplings)
 //   hec            — 0, 1, 2, 3               (HEC1-HEC4)
 //   fcal           — 1, 2, 3                  (FCAL1 EM, FCAL2 Had1, FCAL3 Had2)
+//   muon           — aSide, cSide             (atlas-tree subtrees MUC1_2 / MUCH_1,
+//                                              default ON: a chamber shows only when
+//                                              a track also intersects it, so leaving
+//                                              every leaf true preserves the prior
+//                                              hit-driven behaviour. Turning a leaf
+//                                              off blocks visibility for that
+//                                              subtree even if a track hits it.)
 export const layerVis = {
   tile: {
     barrel: { A: true, BC: true, D: true },
@@ -198,7 +205,80 @@ export const layerVis = {
   },
   hec: { 0: true, 1: true, 2: true, 3: true },
   fcal: { 1: true, 2: true, 3: true },
+  muon: { aSide: true, cSide: true },
 };
+
+// Muon spectrometer atlas-tree subtrees, registered by the loader once the
+// GLB has been parsed. The shape of `layerVis.muon` is built to mirror these
+// subtrees so the layers panel can recurse all the way down for inspection.
+let _muonAtlasTrees = { aSide: null, cSide: null };
+const _muonChangeListeners = [];
+
+export function setMuonTrees({ aSide = null, cSide = null }) {
+  _muonAtlasTrees = { aSide, cSide };
+  layerVis.muon = {
+    aSide: _muonStateFromTree(aSide),
+    cSide: _muonStateFromTree(cSide),
+  };
+  applyMuonVisibility();
+  for (const cb of _muonChangeListeners) cb(_muonAtlasTrees);
+}
+export function getMuonAtlasTrees() {
+  return _muonAtlasTrees;
+}
+export function onMuonTreesChange(cb) {
+  _muonChangeListeners.push(cb);
+}
+
+// Mirror an atlas-tree subtree as a layerVis state object. Atlas nodes with
+// no children become a single boolean leaf; intermediate nodes become objects
+// keyed by child name and recurse. Direct meshes attached to intermediate
+// nodes are not exposed individually — they follow the parent's aggregate
+// state via _applyMuonNode. Leaves default to true so the muon visibility AND
+// (panel allowed × track hit) keeps showing the same hit-driven chambers it
+// always did until the user explicitly disables a station.
+function _muonStateFromTree(node) {
+  if (!node) return true;
+  if (node.children.size === 0) return true;
+  const obj = {};
+  for (const [name, child] of node.children) obj[name] = _muonStateFromTree(child);
+  return obj;
+}
+
+function _muonStateAnyOn(state) {
+  if (typeof state === 'boolean') return state;
+  if (state && typeof state === 'object') {
+    for (const k of Object.keys(state)) if (_muonStateAnyOn(state[k])) return true;
+  }
+  return false;
+}
+
+function _applyMuonNode(atlasNode, visState) {
+  if (!atlasNode) return;
+  if (typeof visState === 'boolean') {
+    for (const m of atlasNode.allMeshes) m.userData.muonForceVisible = visState;
+    return;
+  }
+  // Object: recurse into named children and aggregate for any direct meshes
+  // hanging off this intermediate node (so they don't get orphaned).
+  let any = false;
+  for (const [name, child] of atlasNode.children) {
+    const childState = visState[name];
+    _applyMuonNode(child, childState);
+    if (_muonStateAnyOn(childState)) any = true;
+  }
+  for (const m of atlasNode.meshes) m.userData.muonForceVisible = any;
+}
+
+export function applyMuonVisibility() {
+  // Walks both subtrees, writing userData.muonForceVisible on every leaf
+  // mesh. Then triggers the track-hit pass which ORs that flag with its own
+  // hit set so hit-chamber outlines stay consistent.
+  _applyMuonNode(_muonAtlasTrees.aSide, layerVis.muon.aSide);
+  _applyMuonNode(_muonAtlasTrees.cSide, layerVis.muon.cSide);
+  _updateTrackAtlasIntersections?.();
+  markDirty();
+}
 
 // Sets a leaf at the given path (e.g. ['tile','barrel','A']).
 export function setLayerLeaf(path, on) {
