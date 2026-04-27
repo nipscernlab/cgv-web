@@ -37,7 +37,8 @@ Atualizado manualmente à medida que o trabalho evolui.
 - [ ] 🟡 Adicionar legenda visual das partículas, explicando cada símbolo: γ (gama), e⁻, e⁺, μ, etc.
 - [ ] 🟡 Definir se o feixe (*beam*) deve ser exibido por padrão — documentar a decisão
 - [ ] 🟡 Adicionar separador de data/tempo entre eventos nas listas de XMLs (modos Web, Server e Samples)
-- [ ] 🟡 Gerar novo bake da geometria do detector com rótulos para elétrons, fótons, múons e pósitrons
+- [x] 🟡 Gerar novo bake da geometria do detector com rótulos para elétrons, fótons, múons e pósitrons
+- [ ] 🟡 Adicionar geometria do detector de múons (espectrômetro) ao bake do nipscern
 - [ ] 🟡 Revisar a representação de partículas no diagrama de Feynman
 - [ ] 🟡 Substituir a biblioteca de ícones atual — avaliar alternativas mais leves e mantidas
 - [ ] 🟢 Melhorar a animação de entrada em telas pequenas (mobile)
