@@ -7,9 +7,9 @@
 // stay readable for both very low and very high MET events.
 
 import * as THREE from 'three';
-import { scene, markDirty } from './renderer.js';
-import { getMetGroup, setMetGroup } from './visibility.js';
-import { makeLabelSprite } from './labelSprite.js';
+import { scene, markDirty } from '../renderer.js';
+import { getMetGroup, setMetGroup } from '../visibility.js';
+import { makeLabelSprite } from '../labelSprite.js';
 
 // Hot pink — distinct from every other rendered colour (track yellow, jet
 // orange, cluster red-orange, electron red/green, photon yellow, muon blue).

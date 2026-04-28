@@ -17,7 +17,7 @@
 // InstancedMesh.
 
 import * as THREE from 'three';
-import { scene, markDirty } from './renderer.js';
+import { scene, markDirty } from '../renderer.js';
 
 // Solid white sphere — bright enough to read against any palette colour the
 // underlying track might be painted with (yellow / orange / red / green).

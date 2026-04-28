@@ -72,11 +72,11 @@ import {
   getActiveJetCollection,
   onJetStateChange,
 } from './jets.js';
-import { setHitPositions, clearHitsState } from './hitsOverlay.js';
+import { setHitPositions, clearHitsState } from './overlays/hitsOverlay.js';
 import { parseMet, pickPreferredMet } from './parsers/metParser.js';
-import { drawMet, clearMet } from './metOverlay.js';
+import { drawMet, clearMet } from './overlays/metOverlay.js';
 import { parseVertices } from './parsers/vertexParser.js';
-import { drawVertices, clearVertices } from './vertexOverlay.js';
+import { drawVertices, clearVertices } from './overlays/vertexOverlay.js';
 import { parseTaus } from './parsers/tauParser.js';
 import { parseMuons } from './parsers/muonParser.js';
 import { clearOutline, clearAllOutlines } from './outlines.js';

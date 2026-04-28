@@ -13,7 +13,7 @@ import {
   getVertexGroup,
 } from './visibility.js';
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
-import { showTrackHits, hideTrackHits } from './hitsOverlay.js';
+import { showTrackHits, hideTrackHits } from './overlays/hitsOverlay.js';
 import { buildExtrasHtml } from './tooltipRows.js';
 
 export const tooltip = document.getElementById('tip');

@@ -6,8 +6,8 @@
 // otherwise be invisible from any reasonable camera distance.
 
 import * as THREE from 'three';
-import { scene, markDirty } from './renderer.js';
-import { getVertexGroup, setVertexGroup } from './visibility.js';
+import { scene, markDirty } from '../renderer.js';
+import { getVertexGroup, setVertexGroup } from '../visibility.js';
 
 // Three vertex flavours, three styles. Sizes in target screen pixels.
 const VERTEX_STYLES = {
