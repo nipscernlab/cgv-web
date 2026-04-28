@@ -29,10 +29,66 @@ import {
   replaceMuonState,
   isLayerOn,
 } from './layerVis.js';
+import {
+  thrTileMev,
+  thrLArMev,
+  thrHecMev,
+  thrFcalMev,
+  thrTrackGev,
+  trackPtMinGev,
+  trackPtMaxGev,
+  thrClusterEtGev,
+  clusterEtMinGev,
+  clusterEtMaxGev,
+  thrJetEtGev,
+  jetEtMinGev,
+  jetEtMaxGev,
+  setThrTileMev,
+  setThrLArMev,
+  setThrHecMev,
+  setThrFcalMev,
+  setThrTrackGev,
+  setTrackPtMinGev,
+  setTrackPtMaxGev,
+  setThrClusterEtGev,
+  setClusterEtMinGev,
+  setClusterEtMaxGev,
+  setThrJetEtGev,
+  setJetEtMinGev,
+  setJetEtMaxGev,
+} from './thresholds.js';
 
 // Re-exported for the layers panel + any other consumer that imported them
 // from visibility.js historically. Live-binding semantics preserved.
 export { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn, isLayerOn };
+export {
+  thrTileMev,
+  thrLArMev,
+  thrHecMev,
+  thrFcalMev,
+  thrTrackGev,
+  trackPtMinGev,
+  trackPtMaxGev,
+  thrClusterEtGev,
+  clusterEtMinGev,
+  clusterEtMaxGev,
+  thrJetEtGev,
+  jetEtMinGev,
+  jetEtMaxGev,
+  setThrTileMev,
+  setThrLArMev,
+  setThrHecMev,
+  setThrFcalMev,
+  setThrTrackGev,
+  setTrackPtMinGev,
+  setTrackPtMaxGev,
+  setThrClusterEtGev,
+  setClusterEtMinGev,
+  setClusterEtMaxGev,
+  setThrJetEtGev,
+  setJetEtMinGev,
+  setJetEtMaxGev,
+};
 
 // ── Late-injected dependencies (set via initVisibility after slicer is ready) ─
 let _slicer = null;
@@ -165,25 +221,6 @@ function _applyViewLevelGate() {
 }
 onViewLevelChange(_applyViewLevelGate);
 
-// ── Energy threshold state ────────────────────────────────────────────────────
-export let thrTileMev = 50;
-export let thrLArMev = 0;
-export let thrHecMev = 600;
-export let thrFcalMev = 0;
-
-export function setThrTileMev(v) {
-  thrTileMev = v;
-}
-export function setThrLArMev(v) {
-  thrLArMev = v;
-}
-export function setThrHecMev(v) {
-  thrHecMev = v;
-}
-export function setThrFcalMev(v) {
-  thrFcalMev = v;
-}
-
 // ── Detector toggle state ─────────────────────────────────────────────────────
 // The mutable `layerVis` tree + its set/any helpers live in ./layerVis.js so
 // they can be unit-tested without pulling Three.js / scene / canvas. See that
@@ -262,53 +299,6 @@ export function applyMuonVisibility() {
 // unit-tested without pulling Three.js / scene. The threshold loops below
 // reference _detOnFor for backwards-compatible naming inside this module.
 const _detOnFor = isLayerOn;
-
-// ── Track threshold state ─────────────────────────────────────────────────────
-export let thrTrackGev = 2;
-export let trackPtMinGev = 0;
-export let trackPtMaxGev = 5;
-
-export function setThrTrackGev(v) {
-  thrTrackGev = v;
-}
-export function setTrackPtMinGev(v) {
-  trackPtMinGev = v;
-}
-export function setTrackPtMaxGev(v) {
-  trackPtMaxGev = v;
-}
-
-// ── Cluster threshold state ───────────────────────────────────────────────────
-export let thrClusterEtGev = 3;
-export let clusterEtMinGev = 0;
-export let clusterEtMaxGev = 1;
-
-export function setThrClusterEtGev(v) {
-  thrClusterEtGev = v;
-}
-export function setClusterEtMinGev(v) {
-  clusterEtMinGev = v;
-}
-export function setClusterEtMaxGev(v) {
-  clusterEtMaxGev = v;
-}
-
-// ── Jet threshold state ───────────────────────────────────────────────────────
-// Independent from cluster — the slider in #rpanel2 reads/writes one or the
-// other based on the current view level (level 2 = cluster, level 3 = jet).
-export let thrJetEtGev = 20;
-export let jetEtMinGev = 0;
-export let jetEtMaxGev = 1;
-
-export function setThrJetEtGev(v) {
-  thrJetEtGev = v;
-}
-export function setJetEtMinGev(v) {
-  jetEtMinGev = v;
-}
-export function setJetEtMaxGev(v) {
-  jetEtMaxGev = v;
-}
 
 // ── Cluster filter sets (computed from cluster data) ─────────────────────────
 let lastClusterData = null;
