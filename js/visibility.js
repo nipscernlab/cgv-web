@@ -257,6 +257,10 @@ function _applyViewLevelGate() {
   syncTauTrackMatch(lvl === 3 ? getLastTaus() : null);
   // μ→track sprite labels — same L3-only gate.
   syncMuonTrackMatch(lvl === 3 ? getLastMuons() : null);
+  // Re-run the track pipeline so the K-popover filters (in particular the
+  // L3-only unmatched filter) get re-evaluated against the new level. Without
+  // this, leaving L3 with unmatched=off leaves the tracks hidden at L1/L2.
+  applyTrackThreshold();
   markDirty();
 }
 onViewLevelChange(_applyViewLevelGate);
@@ -329,38 +333,61 @@ export function hideNonActiveCells() {
 }
 
 // ── Track threshold ───────────────────────────────────────────────────────────
+// Single pipeline that re-derives all track-related visibility from the
+// current pT slider, the K-popover flags, and the cached particle lists. The
+// stages are ordered by data dependency — every stage reads what the previous
+// stage just wrote — so the function is idempotent and order-stable when
+// called from any of: pT slider, K-popover toggle, applyClusterThreshold,
+// applyJetThreshold, the view-level gate.
+//
+// Stages:
+//   1. pT pass        — c.visible = ptGev >= thr (tracks + photons)
+//   2. ΔR rematch     — recompute electron/muon matches against the now
+//                       pT-visible tracks (a soft track that just dropped
+//                       below thr can no longer steal a match from a real
+//                       lepton above thr; conversely lowering the slider
+//                       can reassign matches). Tau/jet matches are by
+//                       index, independent of visibility, and are owned by
+//                       drawTaus / applyJetThreshold instead.
+//   3. K-popover filter — applyParticleTrackFilters reads the FRESH match
+//                       flags from stage 2 and hides matched tracks that
+//                       the user has untoggled (Electrons, Muons, Taus,
+//                       Unmatched).
+//   4. Derived state  — per-sprite label .visible follows its anchor track,
+//                       muon-chamber outlines follow the visible tracks
+//                       passing through them.
+//
+// Callers must ensure tau/jet match flags are already set when this runs
+// (they don't depend on pT visibility, so they're recomputed elsewhere).
+// The processXml deferral pattern — drawTracks/drawPhotons skip calling
+// this, the tail of processXml runs it once via applyJetThreshold — exists
+// because at draw-tracks time _lastElectrons/_lastMuons are still empty.
 export function applyTrackThreshold() {
   const trackGroup = getTrackGroup();
   const photonGroup = getPhotonGroup();
+  // 1. pT pass. Photon spring lines share the slider; the electron / muon
+  // label sprite groups are NOT iterated here — their children carry no
+  // ptGev field, so `undefined >= thr === false` would silently hide every
+  // label. Their group-level visibility is gated by setElectronGroup /
+  // setMuonGroup (level + J button + K-popover flag).
   if (trackGroup)
     for (const child of trackGroup.children ?? [])
       child.visible = child.userData.ptGev >= thrTrackGev;
-  // Photon group's children are spring Lines that DO carry userData.ptGev,
-  // so they share the track |pT| threshold. The electron / muon label groups
-  // are NOT iterated here — their children are sprites without ptGev, and
-  // `undefined >= thr === false` would silently hide every label. Their
-  // visibility is gated entirely by the group-level setter (setElectronGroup
-  // / setMuonGroup) using level + the K-popover flag.
   if (photonGroup)
     for (const child of photonGroup.children ?? [])
       child.visible = child.userData.ptGev >= thrTrackGev;
-  // Per-particle-type track filters from the level-3 K popover (electron /
-  // muon / tau matched subsets) run AFTER the pT pass so they only ever hide,
-  // never show. Trivially no-op when all three flags are true (default).
-  applyParticleTrackFilters();
-  // e±/μ± labels are anchored to specific tracks — keep their per-sprite
-  // visibility in sync with their anchor line so a label doesn't float in
-  // empty space when the slider hides its track.
-  syncParticleLabelVisibility();
-  updateTrackAtlasIntersections();
-  // Track visibility just changed — soft tracks getting hidden could free up
-  // the closest-track slot for an electron, or vice-versa. Re-run the ΔR match
-  // and rebuild "e±" labels (gated to L3 — at other levels it's a no-op).
-  // Same goes for "μ±" labels.
+  // 2. ΔR rematch (electron / muon only). Skipped outside L3 — the L3 view
+  // level is the only one that surfaces lepton colours, and the level gate
+  // already cleared the matches when the user left L3.
   if (getViewLevel() === 3) {
     syncElectronTrackMatch(getLastElectrons());
     syncMuonTrackMatch(getLastMuons());
   }
+  // 3. K-popover filters (electron / muon / tau / unmatched).
+  applyParticleTrackFilters();
+  // 4. Derived state.
+  syncParticleLabelVisibility();
+  updateTrackAtlasIntersections();
   markDirty();
 }
 
@@ -395,11 +422,10 @@ export function applyJetThreshold() {
   rebuildActiveClusterCellIds();
   applyThreshold();
   applyFcalThreshold();
-  // Recompute jet→track matches BEFORE the track-threshold pass so the
-  // unmatched-tracks K-popover filter sees up-to-date isJetMatched flags
-  // (otherwise jet-matched tracks would be wrongly classified as unmatched
-  // on the initial load, where this is the last applyJetThreshold call after
-  // every other recompute has already run).
+  // Jet matches must be set BEFORE applyTrackThreshold's filter pass —
+  // applyTrackThreshold recomputes electron/muon (visibility-dependent) but
+  // not jet/tau (index-dependent), so jet ownership of this stage stays
+  // here. See the pipeline doc above applyTrackThreshold.
   const lvl = getViewLevel();
   recomputeJetTrackMatch(lvl === 3 ? getActiveJetCollection() : null, thrJetEtGev);
   applyTrackThreshold();

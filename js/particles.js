@@ -160,15 +160,11 @@ export function drawTracks(tracks) {
   }
   scene.add(g);
   setTrackGroup(g); // stores ref + applies _tracksVisible
-  // applyTrackThreshold is intentionally NOT called here: the K-popover
-  // unmatched-tracks filter inside applyParticleTrackFilters needs the
-  // matchedXxx flags set by drawElectrons / drawMuons / drawTaus / the jet
-  // recompute, none of which have run yet at this point. Calling it now
-  // would hide every track as "unmatched" and the subsequent recomputes
-  // would skip them (they bail on !line.visible) — labels never get built.
-  // setJetCollections at the tail of processXml triggers drawJets →
-  // applyJetThreshold, which now runs the full applyTrackThreshold pipeline
-  // once every match flag is in place.
+  // No applyTrackThreshold here — its filter stage needs every matchedXxx
+  // flag set, and electrons/muons/taus/jets haven't been drawn yet. The
+  // tail of processXml runs the full pipeline via applyJetThreshold once
+  // every match flag is in place. See the pipeline doc above
+  // applyTrackThreshold in visibility.js.
   updateTrackAtlasIntersections();
 }
 
@@ -232,9 +228,7 @@ export function drawPhotons(photons) {
   }
   scene.add(g);
   setPhotonGroup(g);
-  // Same deferral as drawTracks above — applyTrackThreshold's filter pass
-  // depends on match flags that aren't set yet at this point in processXml.
-  // The applyJetThreshold call at the tail runs the full pipeline.
+  // Same deferral as drawTracks — see comment there.
 }
 
 // ── Electrons / Positrons ─────────────────────────────────────────────────────

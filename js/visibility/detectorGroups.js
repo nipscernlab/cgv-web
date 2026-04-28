@@ -252,6 +252,11 @@ export function applyDetectorGroupViewLevel() {
  */
 export function applyParticleTrackFilters() {
   if (!_trackGroup) return;
+  // Unmatched-tracks filter only kicks in at level 3 — at L1 (Hits) and L2
+  // (Clusters) the user is looking at raw / cluster context, where stripping
+  // the soft-track background would be confusing. Match flags only mean
+  // anything alongside the L3 lepton/jet colouring anyway.
+  const filterUnmatched = !_unmatchedTracksVisible && getViewLevel() === 3;
   for (const child of _trackGroup.children ?? []) {
     if (child.visible === false) continue; // pT threshold already hid it
     const u = child.userData;
@@ -268,10 +273,9 @@ export function applyParticleTrackFilters() {
       continue;
     }
     // Unmatched / yellow tracks: nothing in the priority chain claimed them.
-    // _applyTrackMaterials would render these in TRACK_MAT — hide them when
-    // the user untoggles the unmatched switch.
+    // _applyTrackMaterials would render these in TRACK_MAT.
     if (
-      !_unmatchedTracksVisible &&
+      filterUnmatched &&
       u.matchedElectronPdgId == null &&
       !u.isMuonMatched &&
       !u.isJetMatched &&
