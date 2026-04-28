@@ -21,14 +21,13 @@ import {
   getLastMuons,
   syncMuonTrackMatch,
 } from './particles.js';
+import { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn, isLayerOn } from './layerVis.js';
 import {
-  layerVis,
-  setLayerLeaf,
-  setLayerSubtree,
-  anyLayerLeafOn,
-  replaceMuonState,
-  isLayerOn,
-} from './layerVis.js';
+  setMuonTrees,
+  getMuonAtlasTrees,
+  onMuonTreesChange,
+  applyMuonVisibility,
+} from './muonVisibility.js';
 import {
   getTrackGroup,
   getPhotonGroup,
@@ -88,6 +87,7 @@ import {
 // Re-exported for the layers panel + any other consumer that imported them
 // from visibility.js historically. Live-binding semantics preserved.
 export { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn, isLayerOn };
+export { setMuonTrees, getMuonAtlasTrees, onMuonTreesChange, applyMuonVisibility };
 export {
   getTrackGroup,
   getPhotonGroup,
@@ -180,80 +180,6 @@ function _applyViewLevelGate() {
   markDirty();
 }
 onViewLevelChange(_applyViewLevelGate);
-
-// ── Detector toggle state ─────────────────────────────────────────────────────
-// The mutable `layerVis` tree + its set/any helpers live in ./layerVis.js so
-// they can be unit-tested without pulling Three.js / scene / canvas. See that
-// module for the schema. Muon spectrometer atlas-tree subtrees are registered
-// by the loader via setMuonTrees once the GLB has been parsed.
-let _muonAtlasTrees = { aSide: null, cSide: null };
-const _muonChangeListeners = [];
-
-export function setMuonTrees({ aSide = null, cSide = null }) {
-  _muonAtlasTrees = { aSide, cSide };
-  replaceMuonState({
-    aSide: _muonStateFromTree(aSide),
-    cSide: _muonStateFromTree(cSide),
-  });
-  applyMuonVisibility();
-  for (const cb of _muonChangeListeners) cb(_muonAtlasTrees);
-}
-export function getMuonAtlasTrees() {
-  return _muonAtlasTrees;
-}
-export function onMuonTreesChange(cb) {
-  _muonChangeListeners.push(cb);
-}
-
-// Mirror an atlas-tree subtree as a layerVis state object. Atlas nodes with
-// no children become a single boolean leaf; intermediate nodes become objects
-// keyed by child name and recurse. Direct meshes attached to intermediate
-// nodes are not exposed individually — they follow the parent's aggregate
-// state via _applyMuonNode. Leaves default to true so the muon visibility AND
-// (panel allowed × track hit) keeps showing the same hit-driven chambers it
-// always did until the user explicitly disables a station.
-function _muonStateFromTree(node) {
-  if (!node) return true;
-  if (node.children.size === 0) return true;
-  const obj = {};
-  for (const [name, child] of node.children) obj[name] = _muonStateFromTree(child);
-  return obj;
-}
-
-function _muonStateAnyOn(state) {
-  if (typeof state === 'boolean') return state;
-  if (state && typeof state === 'object') {
-    for (const k of Object.keys(state)) if (_muonStateAnyOn(state[k])) return true;
-  }
-  return false;
-}
-
-function _applyMuonNode(atlasNode, visState) {
-  if (!atlasNode) return;
-  if (typeof visState === 'boolean') {
-    for (const m of atlasNode.allMeshes) m.userData.muonForceVisible = visState;
-    return;
-  }
-  // Object: recurse into named children and aggregate for any direct meshes
-  // hanging off this intermediate node (so they don't get orphaned).
-  let any = false;
-  for (const [name, child] of atlasNode.children) {
-    const childState = visState[name];
-    _applyMuonNode(child, childState);
-    if (_muonStateAnyOn(childState)) any = true;
-  }
-  for (const m of atlasNode.meshes) m.userData.muonForceVisible = any;
-}
-
-export function applyMuonVisibility() {
-  // Walks both subtrees, writing userData.muonForceVisible on every leaf
-  // mesh. Then triggers the track-hit pass which ORs that flag with its own
-  // hit set so hit-chamber outlines stay consistent.
-  _applyMuonNode(_muonAtlasTrees.aSide, layerVis.muon.aSide);
-  _applyMuonNode(_muonAtlasTrees.cSide, layerVis.muon.cSide);
-  _updateTrackAtlasIntersections?.();
-  markDirty();
-}
 
 // Local alias — the dispatcher itself lives in ./layerVis.js so it can be
 // unit-tested without pulling Three.js / scene. The threshold loops below
