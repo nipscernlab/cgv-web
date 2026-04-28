@@ -235,7 +235,7 @@ export function initVisibility({ slicer }) {
 // gated only by setTracksVisible).
 function _applyViewLevelGate() {
   const lvl = getViewLevel();
-  applyDetectorGroupViewLevel(lvl);
+  applyDetectorGroupViewLevel();
   // Refresh cell visibility: rebuildActiveClusterCellIds reads getViewLevel()
   // and disables the cluster-membership filter outside level 2; applyThreshold
   // then re-evaluates per-cell visibility.
