@@ -38,6 +38,13 @@ import {
   applyFcalThreshold,
 } from './fcalRenderer.js';
 import {
+  setLastClusterData,
+  getActiveClusterCellIds,
+  getActiveMbtsLabels,
+  clearClusterFilter,
+  rebuildActiveClusterCellIds,
+} from './clusterFilter.js';
+import {
   getTrackGroup,
   getPhotonGroup,
   getElectronGroup,
@@ -106,6 +113,7 @@ export {
   drawFcal,
   applyFcalThreshold,
 };
+export { setLastClusterData, rebuildActiveClusterCellIds };
 export {
   getTrackGroup,
   getPhotonGroup,
@@ -204,29 +212,18 @@ onViewLevelChange(_applyViewLevelGate);
 // reference _detOnFor for backwards-compatible naming inside this module.
 const _detOnFor = isLayerOn;
 
-// ── Cluster filter sets (computed from cluster data) ─────────────────────────
-let lastClusterData = null;
-let activeClusterCellIds = null;
-let activeMbtsLabels = null;
-
-export function setLastClusterData(v) {
-  lastClusterData = v;
-}
-
-// Read accessors used by extracted modules (fcalRenderer) so they can read
-// late-injected state without a circular value-import. Functions are safe to
-// import in a cycle because their body runs after both modules finish loading.
+// Read accessor for the late-injected slicer — used by fcalRenderer.js to
+// avoid a circular value-import. The cluster-filter accessors live in
+// ./clusterFilter.js (re-exported through getActiveClusterCellIds).
 export const getSlicer = () => _slicer;
-export const getActiveClusterCellIds = () => activeClusterCellIds;
+export { getActiveClusterCellIds };
 
 // ── Visibility bookkeeping ────────────────────────────────────────────────────
 export let visHandles = [];
 
 export function clearVisibilityState() {
   visHandles = [];
-  lastClusterData = null;
-  activeClusterCellIds = null;
-  activeMbtsLabels = null;
+  clearClusterFilter();
 }
 
 // ── Core cell handle visibility primitive ─────────────────────────────────────
@@ -267,58 +264,6 @@ export function hideNonActiveCells() {
     }
   }
   _flushIMDirty();
-}
-
-// ── Cell-membership filter (cluster at L2, jet at L3) ─────────────────────────
-// Builds the set of cell IDs that pass the current overlay's filter.
-//   Level 1: filter off (null = pass all).
-//   Level 2: cells belonging to any cluster passing thrClusterEtGev.
-//   Level 3: cells belonging to any jet (in the active collection) passing
-//            thrJetEtGev. Collections without a <cells> field (EMPFlow,
-//            UFOCSSK) yield an empty set, which hides every cell — matches
-//            the strict cluster behaviour the user asked for.
-// activeMbtsLabels is only populated for clusters; jets don't expose MBTS.
-export function rebuildActiveClusterCellIds() {
-  const lvl = getViewLevel();
-  if (lvl === 2 && lastClusterData) {
-    const ids = new Set();
-    const mbts = new Set();
-    for (const { clusters } of lastClusterData.collections) {
-      for (const { eta, phi: rawPhi, etGev, cells } of clusters) {
-        if (etGev < thrClusterEtGev) continue;
-        for (const k of ['TILE', 'LAR_EM', 'HEC', 'FCAL', 'TRACK', 'OTHER'])
-          for (const id of cells[k]) ids.add(id);
-        const absEta = Math.abs(eta);
-        let ch;
-        if (absEta >= 2.78 && absEta <= 3.86) ch = 1;
-        else if (absEta >= 2.08 && absEta < 2.78) ch = 0;
-        else continue;
-        const type = eta >= 0 ? 1 : -1;
-        const phiPos = rawPhi < 0 ? rawPhi + 2 * Math.PI : rawPhi;
-        const mod = Math.floor(phiPos / ((2 * Math.PI) / 8)) % 8;
-        mbts.add(`type_${type}_ch_${ch}_mod_${mod}`);
-      }
-    }
-    activeClusterCellIds = ids;
-    activeMbtsLabels = mbts;
-    return;
-  }
-  if (lvl === 3) {
-    const c = getActiveJetCollection();
-    const ids = new Set();
-    if (c) {
-      for (const j of c.jets) {
-        if (j.etGev < thrJetEtGev) continue;
-        for (const id of j.cells) ids.add(id);
-      }
-    }
-    activeClusterCellIds = ids;
-    activeMbtsLabels = null;
-    return;
-  }
-  // Level 1 (or no data): filter off entirely.
-  activeClusterCellIds = null;
-  activeMbtsLabels = null;
 }
 
 // ── Track threshold ───────────────────────────────────────────────────────────
@@ -433,16 +378,18 @@ export function applyThreshold() {
     return;
   }
   visHandles = [];
+  const acIds = getActiveClusterCellIds();
+  const amLabels = getActiveMbtsLabels();
   for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
     const thr = det === 'LAR' ? thrLArMev : det === 'HEC' ? thrHecMev : thrTileMev;
     const detOn = _detOnFor(h);
     let inCluster;
-    if (activeClusterCellIds === null) {
+    if (acIds === null) {
       inCluster = true;
     } else if (mbtsLabel != null) {
-      inCluster = activeMbtsLabels !== null && activeMbtsLabels.has(mbtsLabel);
+      inCluster = amLabels !== null && amLabels.has(mbtsLabel);
     } else if (cellId != null) {
-      inCluster = activeClusterCellIds.has(cellId);
+      inCluster = acIds.has(cellId);
     } else {
       inCluster = true;
     }
@@ -463,16 +410,18 @@ export function applyThreshold() {
 function _applySlicerMask() {
   visHandles = [];
   const slicerMask = _slicer.getMaskState();
+  const acIds = getActiveClusterCellIds();
+  const amLabels = getActiveMbtsLabels();
   for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
     const thr = det === 'LAR' ? thrLArMev : det === 'HEC' ? thrHecMev : thrTileMev;
     const detOn = _detOnFor(h);
     let inCluster;
-    if (activeClusterCellIds === null) {
+    if (acIds === null) {
       inCluster = true;
     } else if (mbtsLabel != null) {
-      inCluster = activeMbtsLabels !== null && activeMbtsLabels.has(mbtsLabel);
+      inCluster = amLabels !== null && amLabels.has(mbtsLabel);
     } else if (cellId != null) {
-      inCluster = activeClusterCellIds.has(cellId);
+      inCluster = acIds.has(cellId);
     } else {
       inCluster = true;
     }
