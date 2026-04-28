@@ -2,8 +2,15 @@
 """
 serve.py -- Static file server + XML folder API for CGV Web.
 
-Replaces `python3 -m http.server` in run.sh. Serves the project root and
-exposes a small JSON API used by the SERVER sub-mode of the sidebar:
+This is the implementation file. Two entry points use it:
+  - `npm run dev` / `npm run start` -> `python serve.py` (developer path)
+  - `server.py`                      -> production wrapper invoked by the
+                                        cgv-web.service systemd unit at
+                                        ATLAS P1; it sets a couple of env
+                                        vars and calls serve.main().
+
+Replaces `python3 -m http.server`. Serves the project root and exposes a
+small JSON API used by the SERVER sub-mode of the sidebar:
 
   GET  /api/xml/list           list of .xml files in the watched folder
                                (top 100 by mtime, newest first)
