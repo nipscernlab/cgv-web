@@ -38,7 +38,7 @@ let _clustersVisible = true;
 let _jetsVisible = true;
 // τs follow the same level-3 gate as jets but have no toolbar toggle of
 // their own — they are silently on whenever jets are.
-let _tausVisible = true;
+const _tausVisible = true;
 
 // ── Read accessors ───────────────────────────────────────────────────────────
 export const getTrackGroup = () => _trackGroup;

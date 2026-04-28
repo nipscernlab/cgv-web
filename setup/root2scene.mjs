@@ -27,7 +27,7 @@
 import './lib/polyfill.mjs';
 
 // ─── Node built-ins ───────────────────────────────────────────────────────────
-import { mkdirSync, unlinkSync } from 'node:fs';
+import { mkdirSync, unlinkSync, createReadStream, createWriteStream } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { resolve, basename, extname, dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -35,7 +35,6 @@ import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createGzip } from 'node:zlib';
-import { createReadStream, createWriteStream } from 'node:fs';
 
 // ─── JSROOT ───────────────────────────────────────────────────────────────────
 import { openFile } from 'jsroot/io';

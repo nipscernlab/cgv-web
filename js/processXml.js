@@ -104,7 +104,7 @@ _wasmPool.onHits((rid, hits) => {
 
 // Sliders + detector-panel init are assigned by setupDetectorPanels(), which
 // runs after this module loads. Main wires them via setProcessXmlDeps().
-let _deps = {
+const _deps = {
   getWasmOk: () => false,
   tileSlider: null,
   larSlider: null,

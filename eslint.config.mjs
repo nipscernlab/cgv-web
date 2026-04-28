@@ -1,6 +1,13 @@
 // ESLint flat config (ESLint 9+).
-// Intentionally lenient: this codebase pre-dates the linter, so most stylistic
-// concerns are warnings, not errors. CI only fails on the "error" tier below.
+//
+// Tiering:
+//   - js.configs.recommended provides the baseline (no-undef, no-unreachable,
+//     no-self-assign, etc.).
+//   - The project-specific rules below are tuned to fail CI on real bug
+//     classes (eqeqeq, no-var, prefer-const, no-duplicate-imports, the
+//     three pre-existing `warn` rules promoted to `error`) while staying
+//     out of the way for legitimate idioms (`!= null`, allowEmptyCatch,
+//     while(true) loops in event pumps).
 
 import js from '@eslint/js';
 import globals from 'globals';
@@ -45,9 +52,17 @@ export default [
       },
     },
     rules: {
-      'no-unused-vars': ['warn', unusedVarOpts],
-      'no-empty': ['warn', { allowEmptyCatch: true }],
-      'no-constant-condition': ['warn', { checkLoops: false }],
+      // Promoted from warn to error: codebase is currently clean, so any
+      // new offence fails CI immediately.
+      'no-unused-vars': ['error', unusedVarOpts],
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-constant-condition': ['error', { checkLoops: false }],
+      // Bug-class rules. eqeqeq keeps the `== null` idiom for null+undefined.
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
+      'prefer-const': 'error',
+      'no-var': 'error',
+      'no-duplicate-imports': 'error',
+      // Off-by-design.
       'no-inner-declarations': 'off',
       'no-prototype-builtins': 'off',
       'no-console': 'off',
@@ -63,7 +78,11 @@ export default [
       globals: { ...globals.node },
     },
     rules: {
-      'no-unused-vars': ['warn', unusedVarOpts],
+      'no-unused-vars': ['error', unusedVarOpts],
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
+      'prefer-const': 'error',
+      'no-var': 'error',
+      'no-duplicate-imports': 'error',
     },
   },
 
@@ -77,7 +96,11 @@ export default [
       globals: { ...globals.node },
     },
     rules: {
-      'no-unused-vars': ['warn', unusedVarOpts],
+      'no-unused-vars': ['error', unusedVarOpts],
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
+      'prefer-const': 'error',
+      'no-var': 'error',
+      'no-duplicate-imports': 'error',
     },
   },
 

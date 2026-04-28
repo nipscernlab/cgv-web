@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { canvas, camera, controls, markDirty } from './renderer.js';
 import { active, rayTargets } from './state.js';
-import { fcalGroup, fcalVisibleMap } from './visibility.js';
 import {
+  fcalGroup,
+  fcalVisibleMap,
   getTrackGroup,
   getPhotonGroup,
   getClusterGroup,
@@ -54,7 +55,7 @@ const _DEFAULT_TRACK_THRESHOLD_MM = 40;
 const mxy = new THREE.Vector2();
 
 let lastRay = 0;
-let mousePos = { x: 0, y: 0 };
+const mousePos = { x: 0, y: 0 };
 
 let _getShowInfo = () => true;
 let _getCinemaMode = () => false;
