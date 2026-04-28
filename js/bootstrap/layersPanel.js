@@ -479,6 +479,9 @@ export function setupLayersPanel() {
   let layersPanelOpen = false;
 
   function openLayersPanel() {
+    // Mutually exclusive with the Particles popover — only one panel anchored
+    // to the toolbar at a time.
+    if (particlesPanelOpen) closeParticlesPanel();
     layersPanelOpen = true;
     layersPanel.classList.add('open');
     document.getElementById('btn-layers').classList.add('on');
@@ -623,6 +626,9 @@ export function setupLayersPanel() {
 
   function openParticlesPanel() {
     if (!particlesPanel) return;
+    // Mutually exclusive with the Detector Layers panel — only one popover
+    // anchored to the toolbar at a time.
+    if (layersPanelOpen) closeLayersPanel();
     particlesPanelOpen = true;
     particlesPanel.classList.add('open');
     syncParticlesPanel();
