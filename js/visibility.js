@@ -26,13 +26,19 @@ import {
   getLastMuons,
   syncMuonTrackMatch,
 } from './particles.js';
-import { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn, isLayerOn } from './layerVis.js';
+import {
+  layerVis,
+  setLayerLeaf,
+  setLayerSubtree,
+  anyLayerLeafOn,
+  isLayerOn,
+} from './visibility/layerVis.js';
 import {
   setMuonTrees,
   getMuonAtlasTrees,
   onMuonTreesChange,
   applyMuonVisibility,
-} from './muonVisibility.js';
+} from './visibility/muonVisibility.js';
 import {
   fcalGroup,
   fcalVisibleMap,
@@ -41,14 +47,14 @@ import {
   clearFcal,
   drawFcal,
   applyFcalThreshold,
-} from './fcalRenderer.js';
+} from './visibility/fcalRenderer.js';
 import {
   setLastClusterData,
   getActiveClusterCellIds,
   getActiveMbtsLabels,
   clearClusterFilter,
   rebuildActiveClusterCellIds,
-} from './clusterFilter.js';
+} from './visibility/clusterFilter.js';
 import {
   getTrackGroup,
   getPhotonGroup,
@@ -75,7 +81,7 @@ import {
   setClustersVisible,
   setJetsVisible,
   applyDetectorGroupViewLevel,
-} from './detectorGroups.js';
+} from './visibility/detectorGroups.js';
 import {
   thrTileMev,
   thrLArMev,
@@ -103,7 +109,7 @@ import {
   setThrJetEtGev,
   setJetEtMinGev,
   setJetEtMaxGev,
-} from './thresholds.js';
+} from './visibility/thresholds.js';
 
 // Re-exported for the layers panel + any other consumer that imported them
 // from visibility.js historically. Live-binding semantics preserved.

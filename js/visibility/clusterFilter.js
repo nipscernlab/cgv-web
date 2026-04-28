@@ -16,8 +16,8 @@
 //            thrJetEtGev. Collections without a <cells> field (EMPFlow,
 //            UFOCSSK) yield an empty set — every cell is hidden, matching
 //            the strict-cluster behaviour requested for the user view.
-import { getViewLevel } from './viewLevel.js';
-import { getActiveJetCollection } from './jets.js';
+import { getViewLevel } from '../viewLevel.js';
+import { getActiveJetCollection } from '../jets.js';
 import { thrClusterEtGev, thrJetEtGev } from './thresholds.js';
 
 /** @type {{ collections: Array<{ clusters: Array<any> }> } | null} */

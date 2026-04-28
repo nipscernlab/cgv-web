@@ -11,7 +11,7 @@
 // No Three.js is imported directly here — the groups arrive from outside,
 // already constructed; we only flip mesh.visible / group.visible. That keeps
 // this module pure-ish so it can be tested in node with a stub group object.
-import { getViewLevel } from './viewLevel.js';
+import { getViewLevel } from '../viewLevel.js';
 
 /**
  * Structural type that fits THREE.Group / THREE.Object3D without importing

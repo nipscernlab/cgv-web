@@ -14,11 +14,11 @@
 // getters exported from there. The circular import is safe — functions
 // defined here only run after both modules finish loading.
 import * as THREE from 'three';
-import { scene, markDirty } from './renderer.js';
-import { palColorFcal } from './palette.js';
+import { scene, markDirty } from '../renderer.js';
+import { palColorFcal } from '../palette.js';
 import { thrFcalMev } from './thresholds.js';
 import { layerVis } from './layerVis.js';
-import { getSlicer, getActiveClusterCellIds } from './visibility.js';
+import { getSlicer, getActiveClusterCellIds } from '../visibility.js';
 
 /**
  * One FCAL cell as decoded by the WASM XML parser. `module` is 1=EM, 2=Had1,

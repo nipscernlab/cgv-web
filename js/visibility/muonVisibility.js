@@ -11,8 +11,8 @@
 // because trackAtlasIntersections never imports back from this module
 // (so there's no circular-evaluation risk).
 import { layerVis, replaceMuonState } from './layerVis.js';
-import { updateTrackAtlasIntersections } from './trackAtlasIntersections.js';
-import { markDirty } from './renderer.js';
+import { updateTrackAtlasIntersections } from '../trackAtlasIntersections.js';
+import { markDirty } from '../renderer.js';
 
 /**
  * @typedef {{
