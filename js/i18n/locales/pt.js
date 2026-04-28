@@ -162,6 +162,8 @@ export default {
   'particles-muons-sub': 'Linhas μ± pareadas',
   'particles-taus': 'Tracks de taus',
   'particles-taus-sub': 'Linhas τ pareadas',
+  'particles-unmatched': 'Tracks não pareados',
+  'particles-unmatched-sub': 'Sem associação a partícula',
   'layers-title': 'Camadas do Detector',
   'layers-all': 'Todas',
   'layers-none': 'Nenhuma',

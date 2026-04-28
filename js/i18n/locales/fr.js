@@ -162,6 +162,8 @@ export default {
   'particles-muons-sub': 'Lignes appariées μ±',
   'particles-taus': 'Traces de taus',
   'particles-taus-sub': 'Lignes appariées τ',
+  'particles-unmatched': 'Traces non appariées',
+  'particles-unmatched-sub': 'Sans association à une particule',
   'layers-title': 'Couches du détecteur',
   'layers-all': 'Tout',
   'layers-none': 'Aucun',

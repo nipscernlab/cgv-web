@@ -74,6 +74,7 @@ import {
   getElectronTracksVisible,
   getMuonTracksVisible,
   getTauTracksVisible,
+  getUnmatchedTracksVisible,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
@@ -91,6 +92,7 @@ import {
   setElectronTracksVisible,
   setMuonTracksVisible,
   setTauTracksVisible,
+  setUnmatchedTracksVisible,
   applyDetectorGroupViewLevel,
   applyParticleTrackFilters,
 } from './visibility/detectorGroups.js';
@@ -155,6 +157,7 @@ export {
   getElectronTracksVisible,
   getMuonTracksVisible,
   getTauTracksVisible,
+  getUnmatchedTracksVisible,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
@@ -172,6 +175,7 @@ export {
   setElectronTracksVisible,
   setMuonTracksVisible,
   setTauTracksVisible,
+  setUnmatchedTracksVisible,
   applyParticleTrackFilters,
 };
 export {
@@ -391,10 +395,14 @@ export function applyJetThreshold() {
   rebuildActiveClusterCellIds();
   applyThreshold();
   applyFcalThreshold();
-  applyTrackThreshold();
-  // Highlight tracks of passing jets (orange) — only meaningful on level 3.
+  // Recompute jet→track matches BEFORE the track-threshold pass so the
+  // unmatched-tracks K-popover filter sees up-to-date isJetMatched flags
+  // (otherwise jet-matched tracks would be wrongly classified as unmatched
+  // on the initial load, where this is the last applyJetThreshold call after
+  // every other recompute has already run).
   const lvl = getViewLevel();
   recomputeJetTrackMatch(lvl === 3 ? getActiveJetCollection() : null, thrJetEtGev);
+  applyTrackThreshold();
 }
 
 // Hides τ lines whose pT falls below the L3 ET slider. Called from

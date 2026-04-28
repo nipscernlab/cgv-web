@@ -162,6 +162,8 @@ export default {
   'particles-muons-sub': 'μ± parede linjer',
   'particles-taus': 'Tau-spor',
   'particles-taus-sub': 'τ parede linjer',
+  'particles-unmatched': 'Uparede spor',
+  'particles-unmatched-sub': 'Ingen partikkeltilknytning',
   'layers-title': 'Detektorlag',
   'layers-all': 'Alle',
   'layers-none': 'Ingen',

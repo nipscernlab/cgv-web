@@ -60,6 +60,12 @@ const _tausVisible = true;
 let _electronTracksVisible = true;
 let _muonTracksVisible = true;
 let _tauTracksVisible = true;
+// Tracks with no electron / muon / jet / τ match and no muon-chamber hit —
+// these render in the default yellow TRACK_MAT (see trackAtlasIntersections's
+// _applyTrackMaterials priority chain). Off by default so the user lands on
+// a clean view that only shows the labelled physics; flip on via the K
+// popover when the soft-track background context is wanted.
+let _unmatchedTracksVisible = false;
 
 // ── Read accessors ───────────────────────────────────────────────────────────
 export const getTrackGroup = () => _trackGroup;
@@ -80,6 +86,7 @@ export const getMetVisible = () => _metVisible;
 export const getElectronTracksVisible = () => _electronTracksVisible;
 export const getMuonTracksVisible = () => _muonTracksVisible;
 export const getTauTracksVisible = () => _tauTracksVisible;
+export const getUnmatchedTracksVisible = () => _unmatchedTracksVisible;
 
 // ── Visibility predicates (single source of truth for each group's gate) ─────
 // Every setter and the level gate route through these — so a change to (say)
@@ -213,6 +220,10 @@ export function setMuonTracksVisible(v) {
 export function setTauTracksVisible(v) {
   _tauTracksVisible = v;
 }
+/** @param {boolean} v */
+export function setUnmatchedTracksVisible(v) {
+  _unmatchedTracksVisible = v;
+}
 
 /**
  * Re-applies the per-group level gate. Called from visibility.js's
@@ -253,6 +264,20 @@ export function applyParticleTrackFilters() {
       continue;
     }
     if (!_tauTracksVisible && u.isTauMatched) {
+      child.visible = false;
+      continue;
+    }
+    // Unmatched / yellow tracks: nothing in the priority chain claimed them.
+    // _applyTrackMaterials would render these in TRACK_MAT — hide them when
+    // the user untoggles the unmatched switch.
+    if (
+      !_unmatchedTracksVisible &&
+      u.matchedElectronPdgId == null &&
+      !u.isMuonMatched &&
+      !u.isJetMatched &&
+      !u.isTauMatched &&
+      !u.isHitTrack
+    ) {
       child.visible = false;
       continue;
     }

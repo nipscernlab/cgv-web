@@ -162,6 +162,8 @@ export default {
   'particles-muons-sub': 'μ± matched lines',
   'particles-taus': 'Tau tracks',
   'particles-taus-sub': 'τ matched lines',
+  'particles-unmatched': 'Unmatched tracks',
+  'particles-unmatched-sub': 'No particle association',
   'layers-title': 'Detector Layers',
   'layers-all': 'All',
   'layers-none': 'None',

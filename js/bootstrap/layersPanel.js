@@ -29,6 +29,7 @@ import {
   getElectronTracksVisible,
   getMuonTracksVisible,
   getTauTracksVisible,
+  getUnmatchedTracksVisible,
   setTracksVisible,
   setClustersVisible,
   setJetsVisible,
@@ -37,6 +38,7 @@ import {
   setElectronTracksVisible,
   setMuonTracksVisible,
   setTauTracksVisible,
+  setUnmatchedTracksVisible,
 } from '../visibility.js';
 import { updateTrackAtlasIntersections } from '../trackAtlasIntersections.js';
 import { getHitsEnabled, setHitsEnabled, hideTrackHits } from '../overlays/hitsOverlay.js';
@@ -57,7 +59,22 @@ const C_MUON = '#4a90d9';
 //   sub:     subtitle (optional)
 //   color:   dot / switch accent
 //   children: nested nodes (leaf if absent)
+// Display order is outside-in (Muon spectrometer first, MBTS last) so the
+// panel mirrors the user's mental walk through ATLAS layers from the muon
+// chambers down toward the beam pipe. The Inner overlay group lives outside
+// PANEL_TREE — it's appended after #layers-tree in index.html.
 const PANEL_TREE = [
+  // The muon node is rebuilt dynamically once the atlas tree is available —
+  // see _rebuildMuonNode below. Initial placeholder has no children so the
+  // toggle ON state stays meaningful (false until atlas loads).
+  {
+    path: ['muon'],
+    label: 'Muon',
+    sub: 'Muon spectrometer (loading…)',
+    subKey: 'layer-sub-muon',
+    color: C_MUON,
+    children: [],
+  },
   {
     path: ['tile'],
     label: 'TILE',
@@ -102,29 +119,6 @@ const PANEL_TREE = [
         children: [
           { path: ['tile', 'itc', 'E'], label: 'E1-E4', sub: 'Gap scintillators', color: C_TILE },
         ],
-      },
-    ],
-  },
-  {
-    path: ['mbts'],
-    label: 'MBTS',
-    sub: 'Minimum-bias trigger scintillators',
-    subKey: 'layer-sub-mbts',
-    color: C_MBTS,
-    children: [
-      {
-        path: ['mbts', 'inner'],
-        label: 'Inner',
-        labelKey: 'layer-name-mbts-inner',
-        sub: '|η| ≈ 3.84',
-        color: C_MBTS,
-      },
-      {
-        path: ['mbts', 'outer'],
-        label: 'Outer',
-        labelKey: 'layer-name-mbts-outer',
-        sub: '|η| ≈ 2.76',
-        color: C_MBTS,
       },
     ],
   },
@@ -190,16 +184,28 @@ const PANEL_TREE = [
       { path: ['fcal', 3], label: 'FCAL3', sub: 'Hadronic (tungsten)', color: C_FCAL },
     ],
   },
-  // The muon node is rebuilt dynamically once the atlas tree is available —
-  // see _rebuildMuonNode below. Initial placeholder has no children so the
-  // toggle ON state stays meaningful (false until atlas loads).
   {
-    path: ['muon'],
-    label: 'Muon',
-    sub: 'Muon spectrometer (loading…)',
-    subKey: 'layer-sub-muon',
-    color: C_MUON,
-    children: [],
+    path: ['mbts'],
+    label: 'MBTS',
+    sub: 'Minimum-bias trigger scintillators',
+    subKey: 'layer-sub-mbts',
+    color: C_MBTS,
+    children: [
+      {
+        path: ['mbts', 'inner'],
+        label: 'Inner',
+        labelKey: 'layer-name-mbts-inner',
+        sub: '|η| ≈ 3.84',
+        color: C_MBTS,
+      },
+      {
+        path: ['mbts', 'outer'],
+        label: 'Outer',
+        labelKey: 'layer-name-mbts-outer',
+        sub: '|η| ≈ 2.76',
+        color: C_MBTS,
+      },
+    ],
   },
 ];
 
@@ -593,7 +599,8 @@ export function setupLayersPanel() {
       getMetVisible() ||
       getElectronTracksVisible() ||
       getMuonTracksVisible() ||
-      getTauTracksVisible()
+      getTauTracksVisible() ||
+      getUnmatchedTracksVisible()
     );
   }
 
@@ -610,6 +617,7 @@ export function setupLayersPanel() {
     set('ptog-electrons', getElectronTracksVisible());
     set('ptog-muons', getMuonTracksVisible());
     set('ptog-taus', getTauTracksVisible());
+    set('ptog-unmatched', getUnmatchedTracksVisible());
   }
 
   function syncClustersBtn() {
@@ -697,6 +705,9 @@ export function setupLayersPanel() {
     applyTrackThreshold(),
   );
   bindParticleToggle('ptog-taus', getTauTracksVisible, setTauTracksVisible, () =>
+    applyTrackThreshold(),
+  );
+  bindParticleToggle('ptog-unmatched', getUnmatchedTracksVisible, setUnmatchedTracksVisible, () =>
     applyTrackThreshold(),
   );
 
