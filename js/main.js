@@ -48,7 +48,7 @@ import {
   refreshSceneVisibility,
   getTrackGroup,
 } from './visibility.js';
-import { createDownloadProgressController } from './progress.js';
+import { createDownloadProgressController } from './downloadProgress.js';
 import { initTrackAtlasIntersections } from './trackAtlasIntersections.js';
 import { clearOutline } from './outlines.js';
 import { initHoverTooltip, hideTooltip, tooltip, tipCellEl, tipEEl } from './hoverTooltip.js';

@@ -13,7 +13,7 @@ import { matTile, matHec, matLAr, PAL_TILE_COLOR } from './palette.js';
 import { scene, markDirty } from './renderer.js';
 import { ghostVisible, ghostMeshByName } from './ghost.js';
 import { HEC_NAMES } from './coords.js';
-import { setLoadProgress } from './loading.js';
+import { setLoadProgress } from './loadingScreen.js';
 import { setMuonTrees } from './visibility.js';
 import { classifyCellName } from './cellClassifier.js';
 import { esc } from './utils.js';

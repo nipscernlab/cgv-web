@@ -113,8 +113,8 @@ now the orchestrator that wires the rest together.
 |---|---|
 | `cinema.js` | Cinema-mode auto-camera tour. |
 | `screenshot.js` | Screenshot capture (with optional collision-info overlay). |
-| `loading.js` | Initial loading-screen progress bar. |
-| `progress.js` | Download-progress UI for the live feed. |
+| `loadingScreen.js` | Initial loading-screen progress bar + request counter. |
+| `downloadProgress.js` | Per-download progress UI for the live feed. |
 
 ## i18n
 

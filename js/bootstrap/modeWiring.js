@@ -9,7 +9,7 @@
 import { setupLiveMode } from '../modes/liveMode.js';
 import { setupServerMode } from '../modes/serverMode.js';
 import { setupSampleMode } from '../modes/sampleMode.js';
-import { bumpReq } from '../loading.js';
+import { bumpReq } from '../loadingScreen.js';
 import { esc, makeRelTime } from '../utils.js';
 
 const TAB_KEY = 'cgv-tab';
