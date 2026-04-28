@@ -68,6 +68,11 @@ import {
   getTracksVisible,
   getClustersVisible,
   getJetsVisible,
+  getPhotonsVisible,
+  getMetVisible,
+  getElectronTracksVisible,
+  getMuonTracksVisible,
+  getTauTracksVisible,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
@@ -80,7 +85,13 @@ import {
   setTracksVisible,
   setClustersVisible,
   setJetsVisible,
+  setPhotonsVisible,
+  setMetVisible,
+  setElectronTracksVisible,
+  setMuonTracksVisible,
+  setTauTracksVisible,
   applyDetectorGroupViewLevel,
+  applyParticleTrackFilters,
 } from './visibility/detectorGroups.js';
 import {
   thrTileMev,
@@ -138,6 +149,11 @@ export {
   getTracksVisible,
   getClustersVisible,
   getJetsVisible,
+  getPhotonsVisible,
+  getMetVisible,
+  getElectronTracksVisible,
+  getMuonTracksVisible,
+  getTauTracksVisible,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
@@ -150,6 +166,12 @@ export {
   setTracksVisible,
   setClustersVisible,
   setJetsVisible,
+  setPhotonsVisible,
+  setMetVisible,
+  setElectronTracksVisible,
+  setMuonTracksVisible,
+  setTauTracksVisible,
+  applyParticleTrackFilters,
 };
 export {
   thrTileMev,
@@ -315,6 +337,10 @@ export function applyTrackThreshold() {
   if (electronGroup)
     for (const child of electronGroup.children ?? [])
       child.visible = child.userData.ptGev >= thrTrackGev;
+  // Per-particle-type track filters from the level-3 K popover (electron /
+  // muon / tau matched subsets) run AFTER the pT pass so they only ever hide,
+  // never show. Trivially no-op when all three flags are true (default).
+  applyParticleTrackFilters();
   updateTrackAtlasIntersections();
   // Track visibility just changed — soft tracks getting hidden could free up
   // the closest-track slot for an electron, or vice-versa. Re-run the ΔR match

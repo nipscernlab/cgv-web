@@ -43,11 +43,21 @@ let _tracksVisible = true;
 // User intent for the cluster toggle (K button at level 2). The cluster group
 // is only actually shown when level === 2 AND the user has clusters enabled.
 let _clustersVisible = true;
-// User intent for the jet toggle (K button at level 3).
-let _jetsVisible = true;
+// Per-particle-type toggles (level-3 only, controlled from the K-button
+// popover). Each AND-s with `level === 3` in applyDetectorGroupViewLevel.
+let _jetsVisible = true; // jet η/φ centerlines
+let _photonsVisible = true; // photon "spring" lines
+let _metVisible = true; // MET arrow
 // τs follow the same level-3 gate as jets but have no toolbar toggle of
 // their own — they are silently on whenever jets are.
 const _tausVisible = true;
+// Track-line subset filters (level-3 popover): hide only the matched subset
+// of trackGroup.children. The J button still gates the whole trackGroup,
+// these add a second pass on top. Filters live in applyParticleTrackFilters
+// below.
+let _electronTracksVisible = true;
+let _muonTracksVisible = true;
+let _tauTracksVisible = true;
 
 // ── Read accessors ───────────────────────────────────────────────────────────
 export const getTrackGroup = () => _trackGroup;
@@ -63,6 +73,11 @@ export const getVertexGroup = () => _vertexGroup;
 export const getTracksVisible = () => _tracksVisible;
 export const getClustersVisible = () => _clustersVisible;
 export const getJetsVisible = () => _jetsVisible;
+export const getPhotonsVisible = () => _photonsVisible;
+export const getMetVisible = () => _metVisible;
+export const getElectronTracksVisible = () => _electronTracksVisible;
+export const getMuonTracksVisible = () => _muonTracksVisible;
+export const getTauTracksVisible = () => _tauTracksVisible;
 
 // ── Group registration (called once per group at event load) ─────────────────
 /** @param {VisibleObject | null} g */
@@ -128,6 +143,31 @@ export function setJetsVisible(v) {
   _jetsVisible = v;
   if (_jetGroup) _jetGroup.visible = v && getViewLevel() === 3;
 }
+/** @param {boolean} v */
+export function setPhotonsVisible(v) {
+  _photonsVisible = v;
+  if (_photonGroup) _photonGroup.visible = v && getViewLevel() === 3;
+}
+/** @param {boolean} v */
+export function setMetVisible(v) {
+  _metVisible = v;
+  if (_metGroup) _metGroup.visible = v && getViewLevel() === 3;
+}
+// Track-subset setters do not touch any group themselves — they just record
+// intent. applyParticleTrackFilters() walks trackGroup.children and applies
+// the three flags by inspecting userData.
+/** @param {boolean} v */
+export function setElectronTracksVisible(v) {
+  _electronTracksVisible = v;
+}
+/** @param {boolean} v */
+export function setMuonTracksVisible(v) {
+  _muonTracksVisible = v;
+}
+/** @param {boolean} v */
+export function setTauTracksVisible(v) {
+  _tauTracksVisible = v;
+}
 
 /**
  * Re-applies the per-group level gate. Called from visibility.js's
@@ -137,10 +177,38 @@ export function setJetsVisible(v) {
  */
 export function applyDetectorGroupViewLevel(level) {
   if (_clusterGroup) _clusterGroup.visible = _clustersVisible && level === 2;
-  if (_photonGroup) _photonGroup.visible = level === 3;
+  if (_photonGroup) _photonGroup.visible = _photonsVisible && level === 3;
   if (_electronGroup) _electronGroup.visible = level === 3;
   if (_muonGroup) _muonGroup.visible = level === 3;
   if (_jetGroup) _jetGroup.visible = _jetsVisible && level === 3;
   if (_tauGroup) _tauGroup.visible = _tausVisible && level === 3;
-  if (_metGroup) _metGroup.visible = level === 3;
+  if (_metGroup) _metGroup.visible = _metVisible && level === 3;
+}
+
+/**
+ * Filters the track-line group by the three matched-particle flags. A line
+ * stays visible when none of the three "Off" rules applies; the function
+ * does NOT override visibility set by applyTrackThreshold (per-track |pT|
+ * threshold) — both gates AND together via direct .visible writes.
+ *
+ * Called from applyTrackThreshold and from the K-popover handlers.
+ */
+export function applyParticleTrackFilters() {
+  if (!_trackGroup) return;
+  for (const child of _trackGroup.children ?? []) {
+    if (child.visible === false) continue; // pT threshold already hid it
+    const u = child.userData;
+    if (!_electronTracksVisible && u.matchedElectronPdgId != null) {
+      child.visible = false;
+      continue;
+    }
+    if (!_muonTracksVisible && (u.isMuonMatched || u.storeGateKey === 'CombinedMuonTracks')) {
+      child.visible = false;
+      continue;
+    }
+    if (!_tauTracksVisible && u.isTauMatched) {
+      child.visible = false;
+      continue;
+    }
+  }
 }

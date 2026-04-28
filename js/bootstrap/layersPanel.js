@@ -17,15 +17,26 @@ import {
   applyThreshold,
   applyFcalThreshold,
   applyMuonVisibility,
+  applyTrackThreshold,
   refreshSceneVisibility,
   getMuonAtlasTrees,
   onMuonTreesChange,
   getTracksVisible,
   getClustersVisible,
   getJetsVisible,
+  getPhotonsVisible,
+  getMetVisible,
+  getElectronTracksVisible,
+  getMuonTracksVisible,
+  getTauTracksVisible,
   setTracksVisible,
   setClustersVisible,
   setJetsVisible,
+  setPhotonsVisible,
+  setMetVisible,
+  setElectronTracksVisible,
+  setMuonTracksVisible,
+  setTauTracksVisible,
 } from '../visibility.js';
 import { updateTrackAtlasIntersections } from '../trackAtlasIntersections.js';
 import { markDirty } from '../renderer.js';
@@ -517,9 +528,45 @@ export function setupLayersPanel() {
     markDirty();
   });
 
-  // K button is level-aware: at L2 it toggles cluster lines, at L3 it toggles
-  // jet lines, and at L1 it's disabled (no cluster/jet to show).
+  // ── K button + Particles popover ────────────────────────────────────────
+  // Level-aware:
+  //   L1 — disabled (no clusters / particles to show).
+  //   L2 — simple toggle of cluster lines (clusterGroup).
+  //   L3 — opens the Particles popover with per-particle-type checkboxes
+  //        (jet lines / photon springs / MET arrow / electron-, muon-,
+  //        tau-matched tracks). The button's "on" indicator reflects whether
+  //        any particle type is enabled.
   const btnCluster = document.getElementById('btn-cluster');
+  const particlesPanel = document.getElementById('particles-panel');
+  let particlesPanelOpen = false;
+
+  /** @returns {boolean} true if at least one particle type is enabled at L3 */
+  function anyParticleOn() {
+    return (
+      getJetsVisible() ||
+      getPhotonsVisible() ||
+      getMetVisible() ||
+      getElectronTracksVisible() ||
+      getMuonTracksVisible() ||
+      getTauTracksVisible()
+    );
+  }
+
+  function syncParticlesPanel() {
+    const set = (id, on) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('on', on);
+      el.setAttribute('aria-checked', String(on));
+    };
+    set('ptog-jets', getJetsVisible());
+    set('ptog-photons', getPhotonsVisible());
+    set('ptog-met', getMetVisible());
+    set('ptog-electrons', getElectronTracksVisible());
+    set('ptog-muons', getMuonTracksVisible());
+    set('ptog-taus', getTauTracksVisible());
+  }
+
   function syncClustersBtn() {
     const lvl = getViewLevel();
     if (lvl === 1) {
@@ -527,19 +574,88 @@ export function setupLayersPanel() {
       btnCluster.classList.remove('on');
     } else {
       btnCluster.classList.remove('disabled');
-      const flag = lvl === 3 ? getJetsVisible() : getClustersVisible();
+      const flag = lvl === 3 ? anyParticleOn() : getClustersVisible();
       btnCluster.classList.toggle('on', flag);
     }
   }
-  btnCluster.addEventListener('click', () => {
+
+  function openParticlesPanel() {
+    if (!particlesPanel) return;
+    particlesPanelOpen = true;
+    particlesPanel.classList.add('open');
+    syncParticlesPanel();
+    const br = btnCluster.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      const pw = particlesPanel.offsetWidth || 220;
+      let left = br.left + br.width / 2 - pw / 2;
+      left = Math.max(6, Math.min(left, window.innerWidth - pw - 6));
+      particlesPanel.style.left = `${left}px`;
+      particlesPanel.style.top = '';
+      particlesPanel.style.bottom = `${window.innerHeight - br.top + 10}px`;
+      particlesPanel.style.maxHeight = `${Math.max(120, br.top - 16)}px`;
+    });
+  }
+
+  function closeParticlesPanel() {
+    if (!particlesPanel) return;
+    particlesPanelOpen = false;
+    particlesPanel.classList.remove('open');
+    syncClustersBtn();
+  }
+
+  btnCluster.addEventListener('click', (e) => {
+    e.stopPropagation();
     const lvl = getViewLevel();
     if (lvl === 1) return;
-    if (lvl === 3) setJetsVisible(!getJetsVisible());
-    else setClustersVisible(!getClustersVisible());
+    if (lvl === 3) {
+      particlesPanelOpen ? closeParticlesPanel() : openParticlesPanel();
+      return;
+    }
+    setClustersVisible(!getClustersVisible());
     syncClustersBtn();
     markDirty();
   });
-  onViewLevelChange(syncClustersBtn);
+
+  document.addEventListener('click', () => {
+    if (particlesPanelOpen) closeParticlesPanel();
+  });
+  if (particlesPanel) particlesPanel.addEventListener('click', (e) => e.stopPropagation());
+
+  // Each toggle in the particles popover calls its setter, then re-runs the
+  // matching apply: jets/photons/MET only need a markDirty (group.visible
+  // already flipped in the setter); track filters need applyParticleTrackFilters.
+  function bindParticleToggle(id, getter, setter, onApply) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setter(!getter());
+      syncParticlesPanel();
+      syncClustersBtn();
+      onApply();
+    });
+  }
+  bindParticleToggle('ptog-jets', getJetsVisible, setJetsVisible, markDirty);
+  bindParticleToggle('ptog-photons', getPhotonsVisible, setPhotonsVisible, markDirty);
+  bindParticleToggle('ptog-met', getMetVisible, setMetVisible, markDirty);
+  // Track-filter toggles: applyParticleTrackFilters only ever HIDES; once a
+  // track is hidden, calling it again can't bring it back. Re-run the full
+  // applyTrackThreshold so the pT pass resets every line's visibility from
+  // scratch, and the (now-updated) filter applies on top.
+  bindParticleToggle('ptog-electrons', getElectronTracksVisible, setElectronTracksVisible, () =>
+    applyTrackThreshold(),
+  );
+  bindParticleToggle('ptog-muons', getMuonTracksVisible, setMuonTracksVisible, () =>
+    applyTrackThreshold(),
+  );
+  bindParticleToggle('ptog-taus', getTauTracksVisible, setTauTracksVisible, () =>
+    applyTrackThreshold(),
+  );
+
+  onViewLevelChange((lvl) => {
+    syncClustersBtn();
+    if (lvl !== 3 && particlesPanelOpen) closeParticlesPanel();
+  });
   syncClustersBtn();
 
   return {

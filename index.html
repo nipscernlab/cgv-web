@@ -858,6 +858,97 @@
       <div id="layers-tree"></div>
     </div>
 
+    <!-- ── Particles panel (level-3 K-button popover) ───────────── -->
+    <div id="particles-panel">
+      <div class="layers-head">
+        <span class="layers-title" data-i18n="particles-title">Particles</span>
+      </div>
+      <div class="layer-row">
+        <span class="layer-dot" style="background: #ff8800"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="particles-jets">Jet lines</div>
+          <div class="layer-sub" data-i18n="particles-jets-sub">η/φ centerlines</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="ptog-jets"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #ff8800"
+        ></button>
+      </div>
+      <div class="layer-row">
+        <span class="layer-dot" style="background: #ffea00"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="particles-photons">Photons</div>
+          <div class="layer-sub" data-i18n="particles-photons-sub">Spring lines (γ)</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="ptog-photons"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #ffea00"
+        ></button>
+      </div>
+      <div class="layer-row">
+        <span class="layer-dot" style="background: #ff66cc"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="particles-met">MET</div>
+          <div class="layer-sub" data-i18n="particles-met-sub">Missing-Eᴛ neutrino arrow</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="ptog-met"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #ff66cc"
+        ></button>
+      </div>
+      <div class="layer-row">
+        <span class="layer-dot" style="background: #ff3030"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="particles-electrons">Electron tracks</div>
+          <div class="layer-sub" data-i18n="particles-electrons-sub">e± matched lines</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="ptog-electrons"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #ff3030"
+        ></button>
+      </div>
+      <div class="layer-row">
+        <span class="layer-dot" style="background: #4a90d9"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="particles-muons">Muon tracks</div>
+          <div class="layer-sub" data-i18n="particles-muons-sub">μ± matched lines</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="ptog-muons"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #4a90d9"
+        ></button>
+      </div>
+      <div class="layer-row">
+        <span class="layer-dot" style="background: #b366ff"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="particles-taus">Tau tracks</div>
+          <div class="layer-sub" data-i18n="particles-taus-sub">τ matched lines</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="ptog-taus"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #b366ff"
+        ></button>
+      </div>
+    </div>
+
     <!-- ── Atlas geometry panel ────────────────────────────────── -->
 
     <!-- ── Settings panel ─────────────────────────────────────── -->
