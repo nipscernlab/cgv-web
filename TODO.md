@@ -36,6 +36,7 @@ Atualizado manualmente à medida que o trabalho evolui.
 - [ ] 🟡 Adicionar histograma das energias das células no painel lateral
 - [ ] 🟡 Adicionar legenda visual das partículas, explicando cada símbolo: γ (gama), e⁻, e⁺, μ, etc.
 - [ ] 🟡 Definir se o feixe (*beam*) deve ser exibido por padrão — documentar a decisão
+- [ ] 🟡 Não permitir selecionar textos da interface
 - [ ] 🟡 Adicionar separador de data/tempo entre eventos nas listas de XMLs (modos Web, Server e Samples)
 - [x] 🟡 Gerar novo bake da geometria do detector com rótulos para elétrons, fótons, múons e pósitrons
 - [ ] 🟡 Adicionar geometria do detector de múons (espectrômetro) ao bake do nipscern
