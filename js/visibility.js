@@ -25,6 +25,7 @@ import {
   syncTauTrackMatch,
   getLastMuons,
   syncMuonTrackMatch,
+  syncParticleLabelVisibility,
 } from './particles.js';
 import {
   layerVis,
@@ -327,20 +328,26 @@ export function hideNonActiveCells() {
 export function applyTrackThreshold() {
   const trackGroup = getTrackGroup();
   const photonGroup = getPhotonGroup();
-  const electronGroup = getElectronGroup();
   if (trackGroup)
     for (const child of trackGroup.children ?? [])
       child.visible = child.userData.ptGev >= thrTrackGev;
+  // Photon group's children are spring Lines that DO carry userData.ptGev,
+  // so they share the track |pT| threshold. The electron / muon label groups
+  // are NOT iterated here — their children are sprites without ptGev, and
+  // `undefined >= thr === false` would silently hide every label. Their
+  // visibility is gated entirely by the group-level setter (setElectronGroup
+  // / setMuonGroup) using level + the K-popover flag.
   if (photonGroup)
     for (const child of photonGroup.children ?? [])
-      child.visible = child.userData.ptGev >= thrTrackGev;
-  if (electronGroup)
-    for (const child of electronGroup.children ?? [])
       child.visible = child.userData.ptGev >= thrTrackGev;
   // Per-particle-type track filters from the level-3 K popover (electron /
   // muon / tau matched subsets) run AFTER the pT pass so they only ever hide,
   // never show. Trivially no-op when all three flags are true (default).
   applyParticleTrackFilters();
+  // e±/μ± labels are anchored to specific tracks — keep their per-sprite
+  // visibility in sync with their anchor line so a label doesn't float in
+  // empty space when the slider hides its track.
+  syncParticleLabelVisibility();
   updateTrackAtlasIntersections();
   // Track visibility just changed — soft tracks getting hidden could free up
   // the closest-track slot for an electron, or vice-versa. Re-run the ΔR match

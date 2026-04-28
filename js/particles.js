@@ -257,19 +257,33 @@ function _clearElectronGroupOnly() {
 }
 
 // drawElectrons no longer renders a 3D arrow — the matched track itself stands
-// in for that. We just stash the electron list (so the level-gate hook can
-// re-run the ΔR match later) and trigger a sync that colours tracks and adds
-// floating "e-" / "e+" labels at each matched track's outermost point.
+// in for that. We stash the electron list (level-gate hook re-runs the ΔR
+// colour match later), run the match once to colour tracks, then build the
+// floating "e±" label sprites a SINGLE time. Subsequent visibility flips
+// (level gate, K-popover toggle) only flip electronGroup.visible — the
+// sprites themselves live until the next event load. Mirrors metOverlay's
+// ν label: a freshly-created sprite skips the very next frame after
+// scene.add (texture upload / shader-program timing), but a long-lived
+// sprite that just toggles .visible always renders.
 export function drawElectrons(electrons) {
   clearElectrons();
   _lastElectrons = Array.isArray(electrons) ? electrons : [];
-  syncElectronTrackMatch(getViewLevel() === 3 ? electrons : null);
+  if (!_lastElectrons.length) return;
+  // Always run the ΔR match — _buildElectronLabels needs the resulting
+  // line.userData.matchedElectronPdgId to position each sprite on the right
+  // track. If the user is not currently at L3, we then clear the match so
+  // tracks aren't painted red/green at L1/L2 (the level gate handles future
+  // transitions). The labels themselves stay in their group with .visible
+  // gated by setElectronGroup → flipped on by the L3 entry / K-popover.
+  recomputeElectronTrackMatch(_lastElectrons);
+  _buildElectronLabels();
+  if (getViewLevel() !== 3) recomputeElectronTrackMatch(null);
 }
 
 // Walks the rendered tracks and creates one "e-" / "e+" sprite per match.
 // Sprite is anchored partway along the polyline (not at the calo face) so it
 // reads as "labelled track segment" rather than a marker at the end.
-function _rebuildElectronLabels() {
+function _buildElectronLabels() {
   const trackGroup = getTrackGroup();
   const g = new THREE.Group();
   g.renderOrder = 7;
@@ -300,6 +314,11 @@ function _rebuildElectronLabels() {
         z,
       );
       label.userData.pdgId = pdg;
+      // Stash a reference to the matched track so syncParticleLabelVisibility
+      // can hide individual labels when their anchor line is dropped by the
+      // pT slider — the group-level visibility (level + K-popover flag) still
+      // controls the whole batch.
+      label.userData.anchorLine = line;
       g.add(label);
       added = true;
     }
@@ -309,14 +328,36 @@ function _rebuildElectronLabels() {
   setElectronGroup(g);
 }
 
-// Single entry point used both by drawElectrons (fresh XML) and by the level
-// gate / track-threshold hook (visibility.js): runs the ΔR match against the
-// current track set and rebuilds the label sprites accordingly. Uses
-// _clearElectronGroupOnly so the cached _lastElectrons survives.
+// Walk the e±/μ± label sprites and align each one's .visible with its
+// anchor track's .visible. Called from applyTrackThreshold after the pT
+// pass + filter pass have updated track visibility — keeps a label from
+// floating in empty space when its track gets hidden by the slider.
+// The group-level gate (level + tracks/K-popover flags) is independent
+// and still controls the whole batch.
+export function syncParticleLabelVisibility() {
+  const eg = getElectronGroup();
+  if (eg) {
+    for (const sprite of eg.children) {
+      const anchor = sprite.userData.anchorLine;
+      sprite.visible = anchor ? anchor.visible : true;
+    }
+  }
+  const mg = getMuonGroup();
+  if (mg) {
+    for (const sprite of mg.children) {
+      const anchor = sprite.userData.anchorLine;
+      sprite.visible = anchor ? anchor.visible : true;
+    }
+  }
+}
+
+// Called by the level gate and applyTrackThreshold (visibility.js) when the
+// visible track set changes. Re-runs the ΔR match so the red/green track
+// colours stay accurate, but does NOT touch the label sprites — those were
+// built once in drawElectrons and live until the next event load. K-popover
+// and level-gate toggles flip electronGroup.visible directly via the setter.
 export function syncElectronTrackMatch(electrons) {
   recomputeElectronTrackMatch(electrons);
-  _clearElectronGroupOnly();
-  if (electrons && electrons.length) _rebuildElectronLabels();
 }
 
 // ── Muons / Anti-muons ────────────────────────────────────────────────────────
@@ -349,10 +390,15 @@ function _clearMuonGroupOnly() {
 export function drawMuons(muons) {
   clearMuons();
   _lastMuons = Array.isArray(muons) ? muons : [];
-  syncMuonTrackMatch(getViewLevel() === 3 ? muons : null);
+  if (!_lastMuons.length) return;
+  // Same MET-style one-shot build as drawElectrons — see that function for
+  // why we don't go through syncMuonTrackMatch.
+  recomputeMuonTrackMatch(_lastMuons);
+  _buildMuonLabels();
+  if (getViewLevel() !== 3) recomputeMuonTrackMatch(null);
 }
 
-function _rebuildMuonLabels() {
+function _buildMuonLabels() {
   const trackGroup = getTrackGroup();
   const g = new THREE.Group();
   g.renderOrder = 7;
@@ -386,6 +432,7 @@ function _rebuildMuonLabels() {
         z,
       );
       label.userData.pdgId = pdg;
+      label.userData.anchorLine = line;
       g.add(label);
       added = true;
     }
@@ -395,10 +442,13 @@ function _rebuildMuonLabels() {
   setMuonGroup(g);
 }
 
+// Mirrors syncElectronTrackMatch — only re-runs the ΔR colour match. The μ±
+// label sprites are built once in drawMuons and live until the next event
+// load; visibility is gated by setMuonGroup (level + tracks/K-popover flags)
+// at the group level, and by syncParticleLabelVisibility per sprite (anchor
+// track .visible).
 export function syncMuonTrackMatch(muons) {
   recomputeMuonTrackMatch(muons);
-  _clearMuonGroupOnly();
-  if (muons && muons.length) _rebuildMuonLabels();
 }
 
 // ── Clusters (η/φ lines between inner and outer cylinders) ───────────────────

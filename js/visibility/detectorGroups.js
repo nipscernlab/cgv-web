@@ -93,12 +93,12 @@ export function setPhotonGroup(g) {
 /** @param {VisibleObject | null} g */
 export function setElectronGroup(g) {
   _electronGroup = g;
-  if (g) g.visible = getViewLevel() === 3;
+  if (g) g.visible = _tracksVisible && _electronTracksVisible && getViewLevel() === 3;
 }
 /** @param {VisibleObject | null} g */
 export function setMuonGroup(g) {
   _muonGroup = g;
-  if (g) g.visible = getViewLevel() === 3;
+  if (g) g.visible = _tracksVisible && _muonTracksVisible && getViewLevel() === 3;
 }
 /** @param {VisibleObject | null} g */
 export function setClusterGroup(g) {
@@ -132,6 +132,11 @@ export function setVertexGroup(g) {
 export function setTracksVisible(v) {
   _tracksVisible = v;
   if (_trackGroup) _trackGroup.visible = v;
+  // e±/μ± labels are anchored to track polylines — hide them with the J
+  // button, restore them on toggle back (subject to L3 gate + K-popover flag).
+  if (_electronGroup)
+    _electronGroup.visible = v && _electronTracksVisible && getViewLevel() === 3;
+  if (_muonGroup) _muonGroup.visible = v && _muonTracksVisible && getViewLevel() === 3;
 }
 /** @param {boolean} v */
 export function setClustersVisible(v) {
@@ -159,10 +164,12 @@ export function setMetVisible(v) {
 /** @param {boolean} v */
 export function setElectronTracksVisible(v) {
   _electronTracksVisible = v;
+  if (_electronGroup) _electronGroup.visible = _tracksVisible && v && getViewLevel() === 3;
 }
 /** @param {boolean} v */
 export function setMuonTracksVisible(v) {
   _muonTracksVisible = v;
+  if (_muonGroup) _muonGroup.visible = _tracksVisible && v && getViewLevel() === 3;
 }
 /** @param {boolean} v */
 export function setTauTracksVisible(v) {
@@ -178,8 +185,9 @@ export function setTauTracksVisible(v) {
 export function applyDetectorGroupViewLevel(level) {
   if (_clusterGroup) _clusterGroup.visible = _clustersVisible && level === 2;
   if (_photonGroup) _photonGroup.visible = _photonsVisible && level === 3;
-  if (_electronGroup) _electronGroup.visible = level === 3;
-  if (_muonGroup) _muonGroup.visible = level === 3;
+  if (_electronGroup)
+    _electronGroup.visible = _tracksVisible && _electronTracksVisible && level === 3;
+  if (_muonGroup) _muonGroup.visible = _tracksVisible && _muonTracksVisible && level === 3;
   if (_jetGroup) _jetGroup.visible = _jetsVisible && level === 3;
   if (_tauGroup) _tauGroup.visible = _tausVisible && level === 3;
   if (_metGroup) _metGroup.visible = _metVisible && level === 3;
