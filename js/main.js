@@ -49,11 +49,8 @@ import {
   getTrackGroup,
 } from './visibility.js';
 import { createDownloadProgressController } from './progress.js';
-import {
-  initTrackAtlasIntersections,
-  updateTrackAtlasIntersections,
-} from './trackAtlasIntersections.js';
-import { clearOutline, rebuildAllOutlines } from './outlines.js';
+import { initTrackAtlasIntersections } from './trackAtlasIntersections.js';
+import { clearOutline } from './outlines.js';
 import { initHoverTooltip, hideTooltip, tooltip, tipCellEl, tipEEl } from './hoverTooltip.js';
 import { initRenderLoop } from './renderLoop.js';
 import { setupPanelResize } from './panelResize.js';
@@ -272,7 +269,7 @@ const slicer = createSlicerController({
 // inactive or fewer than 2 usable jets are present.
 onJetStateChange(() => slicer.refreshFromActiveJets());
 
-initVisibility({ slicer, rebuildAllOutlines, updateTrackAtlasIntersections });
+initVisibility({ slicer });
 
 setupScreenshotControls({
   camera,

@@ -12,7 +12,11 @@ import { PAL_TILE_COLOR, PAL_LAR_COLOR, PAL_HEC_COLOR } from './palette.js';
 import { markDirty } from './renderer.js';
 import { getViewLevel, onViewLevelChange } from './viewLevel.js';
 import { getActiveJetCollection } from './jets.js';
-import { recomputeJetTrackMatch } from './trackAtlasIntersections.js';
+import {
+  recomputeJetTrackMatch,
+  updateTrackAtlasIntersections,
+} from './trackAtlasIntersections.js';
+import { rebuildAllOutlines } from './outlines.js';
 import {
   getLastElectrons,
   syncElectronTrackMatch,
@@ -169,15 +173,16 @@ export {
   setJetEtMaxGev,
 };
 
-// ── Late-injected dependencies (set via initVisibility after slicer is ready) ─
+// ── Late-injected slicer controller ──────────────────────────────────────────
+// Slicer is a per-app controller instance built in main.js — not a stable
+// module export — so it stays late-injected via initVisibility. The other
+// previously-late-injected helpers (rebuildAllOutlines / updateTrackAtlas-
+// Intersections) are now imported directly above; both ES module cycles are
+// safe because the function bodies only run after both modules finish loading.
 let _slicer = null;
-let _rebuildAllOutlines = null;
-let _updateTrackAtlasIntersections = null;
 
-export function initVisibility({ slicer, rebuildAllOutlines, updateTrackAtlasIntersections }) {
+export function initVisibility({ slicer }) {
   _slicer = slicer;
-  _rebuildAllOutlines = rebuildAllOutlines;
-  _updateTrackAtlasIntersections = updateTrackAtlasIntersections;
 }
 
 // Re-applies cluster / photon / electron visibility AND the cell cluster-filter
@@ -277,7 +282,7 @@ export function applyTrackThreshold() {
     for (const child of photonGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
   if (electronGroup)
     for (const child of electronGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
-  _updateTrackAtlasIntersections?.();
+  updateTrackAtlasIntersections();
   // Track visibility just changed — soft tracks getting hidden could free up
   // the closest-track slot for an electron, or vice-versa. Re-run the ΔR match
   // and rebuild "e±" labels (gated to L3 — at other levels it's a no-op).
@@ -402,7 +407,7 @@ export function applyThreshold() {
   _syncNonActiveShowAll();
   _flushIMDirty();
   _rebuildRayIMeshes();
-  _rebuildAllOutlines?.();
+  rebuildAllOutlines();
   markDirty();
 }
 
@@ -439,7 +444,7 @@ function _applySlicerMask() {
   _syncNonActiveShowAll();
   _flushIMDirty();
   _rebuildRayIMeshes();
-  _rebuildAllOutlines?.();
+  rebuildAllOutlines();
   applyFcalThreshold();
   markDirty();
 }
