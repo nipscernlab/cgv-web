@@ -13,7 +13,16 @@
 // this module pure-ish so it can be tested in node with a stub group object.
 import { getViewLevel } from './viewLevel.js';
 
-/** @typedef {{ visible: boolean, children?: Array<{ visible: boolean }> }} VisibleObject */
+/**
+ * Structural type that fits THREE.Group / THREE.Object3D without importing
+ * Three.js. Visibility consumers (visibility.applyTrackThreshold, etc.) read
+ * `children[i].userData.<thing>`, so the children's userData is part of the
+ * shape.
+ * @typedef {{
+ *   visible: boolean,
+ *   children?: ReadonlyArray<{ visible: boolean, userData: Record<string, any> }>,
+ * }} VisibleObject
+ */
 
 // ── Group references ─────────────────────────────────────────────────────────
 /** @type {VisibleObject | null} */ let _trackGroup = null;

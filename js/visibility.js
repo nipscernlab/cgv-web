@@ -1,3 +1,4 @@
+// @ts-check
 import * as THREE from 'three';
 import {
   active,
@@ -179,8 +180,23 @@ export {
 // previously-late-injected helpers (rebuildAllOutlines / updateTrackAtlas-
 // Intersections) are now imported directly above; both ES module cycles are
 // safe because the function bodies only run after both modules finish loading.
+
+/**
+ * Subset of slicer.createSlicerController()'s return shape that this module
+ * actually reads. Kept structural (not an import('./slicer.js')) so a future
+ * slicer rewrite only has to honour these four methods.
+ * @typedef {{
+ *   isActive: () => boolean,
+ *   isShowAllCells: () => boolean,
+ *   getMaskState: () => { active: boolean, [key: string]: any },
+ *   isPointInsideWedge: (x: number, y: number, z: number, mask?: any) => boolean,
+ * }} SlicerController
+ */
+
+/** @type {SlicerController | null} */
 let _slicer = null;
 
+/** @param {{ slicer: SlicerController }} deps */
 export function initVisibility({ slicer }) {
   _slicer = slicer;
 }
@@ -224,6 +240,7 @@ export const getSlicer = () => _slicer;
 export { getActiveClusterCellIds };
 
 // ── Visibility bookkeeping ────────────────────────────────────────────────────
+/** @type {import('./state.js').CellHandle[]} */
 export let visHandles = [];
 
 export function clearVisibilityState() {
@@ -232,6 +249,10 @@ export function clearVisibilityState() {
 }
 
 // ── Core cell handle visibility primitive ─────────────────────────────────────
+/**
+ * @param {import('./state.js').CellHandle} h
+ * @param {boolean} vis
+ */
 function _setHandleVisible(h, vis) {
   if (h.visible === vis) return;
   h.visible = vis;
@@ -247,6 +268,7 @@ function _rebuildRayIMeshes() {
 }
 
 // Cached world-space centre of a cell handle (derived from origMatrix).
+/** @param {import('./state.js').CellHandle} h  @returns {THREE.Vector3} */
 function _cellCenter(h) {
   if (h._center) return h._center;
   const m = h.origMatrix.elements;
@@ -263,7 +285,9 @@ function _cellCenter(h) {
 
 // Called by the slicer's onHideNonActiveShowAll callback: hide all non-active cells.
 export function hideNonActiveCells() {
-  for (const det of ['TILE', 'LAR', 'HEC']) {
+  /** @type {Array<keyof typeof cellMeshesByDet>} */
+  const dets = ['TILE', 'LAR', 'HEC'];
+  for (const det of dets) {
     for (const h of cellMeshesByDet[det]) {
       if (!active.has(h)) _setHandleVisible(h, false);
     }
@@ -277,11 +301,14 @@ export function applyTrackThreshold() {
   const photonGroup = getPhotonGroup();
   const electronGroup = getElectronGroup();
   if (trackGroup)
-    for (const child of trackGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
+    for (const child of trackGroup.children ?? [])
+      child.visible = child.userData.ptGev >= thrTrackGev;
   if (photonGroup)
-    for (const child of photonGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
+    for (const child of photonGroup.children ?? [])
+      child.visible = child.userData.ptGev >= thrTrackGev;
   if (electronGroup)
-    for (const child of electronGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
+    for (const child of electronGroup.children ?? [])
+      child.visible = child.userData.ptGev >= thrTrackGev;
   updateTrackAtlasIntersections();
   // Track visibility just changed — soft tracks getting hidden could free up
   // the closest-track slot for an electron, or vice-versa. Re-run the ΔR match
@@ -298,7 +325,7 @@ export function applyTrackThreshold() {
 export function applyClusterThreshold() {
   const clusterGroup = getClusterGroup();
   if (clusterGroup)
-    for (const child of clusterGroup.children)
+    for (const child of clusterGroup.children ?? [])
       child.visible = child.userData.etGev >= thrClusterEtGev;
   rebuildActiveClusterCellIds();
   applyThreshold();
@@ -314,7 +341,8 @@ export function applyClusterThreshold() {
 export function applyJetThreshold() {
   const jetGroup = getJetGroup();
   if (jetGroup)
-    for (const child of jetGroup.children) child.visible = child.userData.etGev >= thrJetEtGev;
+    for (const child of jetGroup.children ?? [])
+      child.visible = child.userData.etGev >= thrJetEtGev;
   // τ lines share the same L3 ET slider — hadronic τs *are* narrow jets, so
   // letting them pass while real jets are cut would visually dominate the
   // L3 view. <TauJet> publishes pT (not ET); for the cone of objects we're
@@ -337,7 +365,7 @@ export function applyJetThreshold() {
 export function applyTauPtThreshold() {
   const tauGroup = getTauGroup();
   if (!tauGroup) return;
-  for (const child of tauGroup.children) child.visible = child.userData.ptGev >= thrJetEtGev;
+  for (const child of tauGroup.children ?? []) child.visible = child.userData.ptGev >= thrJetEtGev;
 }
 
 // ── Non-active cells in show-all mode ────────────────────────────────────────
@@ -346,10 +374,17 @@ export function applyTauPtThreshold() {
 // Appends newly-visible handles to visHandles so outlines and raycasting include them.
 function _syncNonActiveShowAll() {
   if (!_slicer?.isShowAllCells()) return;
-  const slicerMask = _slicer.getMaskState();
+  // Pin a non-null reference for the closure below — TS can't narrow `_slicer`
+  // through the lambda boundary even though we just guarded above.
+  const slicer = _slicer;
+  const slicerMask = slicer.getMaskState();
   // Each handle resolves its own visibility flag via h.subDet, so the sweep
   // doesn't need to be split per sub-region — just per top-level detector for
   // the minimum-palette colour.
+  /**
+   * @param {import('./state.js').CellHandle[]} list
+   * @param {THREE.Color} minColor
+   */
   const sweep = (list, minColor) => {
     for (let i = 0; i < list.length; i++) {
       const h = list[i];
@@ -361,7 +396,7 @@ function _syncNonActiveShowAll() {
       let vis = true;
       if (slicerMask.active) {
         const c = _cellCenter(h);
-        if (_slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
+        if (slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
       }
       if (vis) {
         h.iMesh.setColorAt(h.instId, minColor);
@@ -413,8 +448,12 @@ export function applyThreshold() {
 
 // ── Slicer-masked threshold (called by applyThreshold when slicer is active) ──
 function _applySlicerMask() {
+  // Caller (applyThreshold) already gated on `_slicer?.isActive()`, so a null
+  // _slicer here would be a bug — assert and pin a non-null local for TS.
+  if (!_slicer) return;
+  const slicer = _slicer;
   visHandles = [];
-  const slicerMask = _slicer.getMaskState();
+  const slicerMask = slicer.getMaskState();
   const acIds = getActiveClusterCellIds();
   const amLabels = getActiveMbtsLabels();
   for (const [h, { energyMev, det, cellId, mbtsLabel }] of active) {
@@ -430,13 +469,13 @@ function _applySlicerMask() {
     } else {
       inCluster = true;
     }
-    const passThr = _slicer.isShowAllCells() || !isFinite(thr) || energyMev >= thr;
-    const passCl = _slicer.isShowAllCells() || inCluster;
+    const passThr = slicer.isShowAllCells() || !isFinite(thr) || energyMev >= thr;
+    const passCl = slicer.isShowAllCells() || inCluster;
     const passFilter = detOn && passThr && passCl;
     let vis = passFilter;
     if (vis) {
       const c = _cellCenter(h);
-      if (_slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
+      if (slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
     }
     _setHandleVisible(h, vis);
     if (vis) visHandles.push(h);
