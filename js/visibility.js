@@ -30,6 +30,33 @@ import {
   isLayerOn,
 } from './layerVis.js';
 import {
+  getTrackGroup,
+  getPhotonGroup,
+  getElectronGroup,
+  getMuonGroup,
+  getClusterGroup,
+  getJetGroup,
+  getTauGroup,
+  getMetGroup,
+  getVertexGroup,
+  getTracksVisible,
+  getClustersVisible,
+  getJetsVisible,
+  setTrackGroup,
+  setPhotonGroup,
+  setElectronGroup,
+  setMuonGroup,
+  setClusterGroup,
+  setJetGroup,
+  setTauGroup,
+  setMetGroup,
+  setVertexGroup,
+  setTracksVisible,
+  setClustersVisible,
+  setJetsVisible,
+  applyDetectorGroupViewLevel,
+} from './detectorGroups.js';
+import {
   thrTileMev,
   thrLArMev,
   thrHecMev,
@@ -61,6 +88,32 @@ import {
 // Re-exported for the layers panel + any other consumer that imported them
 // from visibility.js historically. Live-binding semantics preserved.
 export { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn, isLayerOn };
+export {
+  getTrackGroup,
+  getPhotonGroup,
+  getElectronGroup,
+  getMuonGroup,
+  getClusterGroup,
+  getJetGroup,
+  getTauGroup,
+  getMetGroup,
+  getVertexGroup,
+  getTracksVisible,
+  getClustersVisible,
+  getJetsVisible,
+  setTrackGroup,
+  setPhotonGroup,
+  setElectronGroup,
+  setMuonGroup,
+  setClusterGroup,
+  setJetGroup,
+  setTauGroup,
+  setMetGroup,
+  setVertexGroup,
+  setTracksVisible,
+  setClustersVisible,
+  setJetsVisible,
+};
 export {
   thrTileMev,
   thrLArMev,
@@ -101,105 +154,12 @@ export function initVisibility({ slicer, rebuildAllOutlines, updateTrackAtlasInt
   _updateTrackAtlasIntersections = updateTrackAtlasIntersections;
 }
 
-// ── Track / Photon / Electron / Muon / Cluster / Jet / Tau / MET / Vertex groups ──
-let _trackGroup = null;
-let _photonGroup = null;
-let _electronGroup = null;
-let _muonGroup = null;
-let _clusterGroup = null;
-let _jetGroup = null;
-let _tauGroup = null;
-let _metGroup = null;
-let _vertexGroup = null;
-
-let _tracksVisible = true;
-let _clustersVisible = true;
-let _jetsVisible = true;
-let _tausVisible = true;
-
-export const getTrackGroup = () => _trackGroup;
-export const getPhotonGroup = () => _photonGroup;
-export const getElectronGroup = () => _electronGroup;
-export const getMuonGroup = () => _muonGroup;
-export const getClusterGroup = () => _clusterGroup;
-export const getJetGroup = () => _jetGroup;
-export const getTauGroup = () => _tauGroup;
-export const getMetGroup = () => _metGroup;
-export const getVertexGroup = () => _vertexGroup;
-
-export const getTracksVisible = () => _tracksVisible;
-export const getClustersVisible = () => _clustersVisible;
-export const getJetsVisible = () => _jetsVisible;
-
-export function setTrackGroup(g) {
-  _trackGroup = g;
-  if (g) g.visible = _tracksVisible;
-}
-export function setPhotonGroup(g) {
-  _photonGroup = g;
-  if (g) g.visible = getViewLevel() === 3;
-}
-export function setElectronGroup(g) {
-  _electronGroup = g;
-  if (g) g.visible = getViewLevel() === 3;
-}
-export function setMuonGroup(g) {
-  _muonGroup = g;
-  if (g) g.visible = getViewLevel() === 3;
-}
-export function setClusterGroup(g) {
-  _clusterGroup = g;
-  if (g) g.visible = _clustersVisible && getViewLevel() === 2;
-}
-export function setJetGroup(g) {
-  _jetGroup = g;
-  if (g) g.visible = _jetsVisible && getViewLevel() === 3;
-}
-export function setTauGroup(g) {
-  _tauGroup = g;
-  if (g) g.visible = _tausVisible && getViewLevel() === 3;
-}
-export function setMetGroup(g) {
-  _metGroup = g;
-  if (g) g.visible = getViewLevel() === 3;
-}
-// Vertices are event-level summary info — relevant at every view level, so
-// no gate. Always visible while the marker group exists.
-export function setVertexGroup(g) {
-  _vertexGroup = g;
-}
-
-// Tracks toggle (J button): controls only the track lines now. Photons and
-// electrons are no longer linked to this flag — their visibility comes from
-// the view level (level 3 shows them).
-export function setTracksVisible(v) {
-  _tracksVisible = v;
-  if (_trackGroup) _trackGroup.visible = v;
-}
-// User intent for the cluster toggle (K button at level 2). The cluster group
-// is only actually shown when level === 2 AND the user has clusters enabled.
-export function setClustersVisible(v) {
-  _clustersVisible = v;
-  if (_clusterGroup) _clusterGroup.visible = v && getViewLevel() === 2;
-}
-// User intent for the jet toggle (K button at level 3). Same idea, gated to L3.
-export function setJetsVisible(v) {
-  _jetsVisible = v;
-  if (_jetGroup) _jetGroup.visible = v && getViewLevel() === 3;
-}
-
 // Re-applies cluster / photon / electron visibility AND the cell cluster-filter
 // when the view level changes. Tracks are unaffected (they show at every level,
 // gated only by setTracksVisible).
 function _applyViewLevelGate() {
   const lvl = getViewLevel();
-  if (_clusterGroup) _clusterGroup.visible = _clustersVisible && lvl === 2;
-  if (_photonGroup) _photonGroup.visible = lvl === 3;
-  if (_electronGroup) _electronGroup.visible = lvl === 3;
-  if (_muonGroup) _muonGroup.visible = lvl === 3;
-  if (_jetGroup) _jetGroup.visible = _jetsVisible && lvl === 3;
-  if (_tauGroup) _tauGroup.visible = _tausVisible && lvl === 3;
-  if (_metGroup) _metGroup.visible = lvl === 3;
+  applyDetectorGroupViewLevel(lvl);
   // Refresh cell visibility: rebuildActiveClusterCellIds reads getViewLevel()
   // and disables the cluster-membership filter outside level 2; applyThreshold
   // then re-evaluates per-cell visibility.
@@ -563,13 +523,15 @@ export function rebuildActiveClusterCellIds() {
 
 // ── Track threshold ───────────────────────────────────────────────────────────
 export function applyTrackThreshold() {
-  if (_trackGroup)
-    for (const child of _trackGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
-  if (_photonGroup)
-    for (const child of _photonGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
-  if (_electronGroup)
-    for (const child of _electronGroup.children)
-      child.visible = child.userData.ptGev >= thrTrackGev;
+  const trackGroup = getTrackGroup();
+  const photonGroup = getPhotonGroup();
+  const electronGroup = getElectronGroup();
+  if (trackGroup)
+    for (const child of trackGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
+  if (photonGroup)
+    for (const child of photonGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
+  if (electronGroup)
+    for (const child of electronGroup.children) child.visible = child.userData.ptGev >= thrTrackGev;
   _updateTrackAtlasIntersections?.();
   // Track visibility just changed — soft tracks getting hidden could free up
   // the closest-track slot for an electron, or vice-versa. Re-run the ΔR match
@@ -584,8 +546,9 @@ export function applyTrackThreshold() {
 
 // ── Cluster threshold ─────────────────────────────────────────────────────────
 export function applyClusterThreshold() {
-  if (_clusterGroup)
-    for (const child of _clusterGroup.children)
+  const clusterGroup = getClusterGroup();
+  if (clusterGroup)
+    for (const child of clusterGroup.children)
       child.visible = child.userData.etGev >= thrClusterEtGev;
   rebuildActiveClusterCellIds();
   applyThreshold();
@@ -599,8 +562,9 @@ export function applyClusterThreshold() {
 // level 3 (same behaviour as the cluster view at level 2). Also refreshes the
 // jet→track highlight (orange) for tracks belonging to passing jets.
 export function applyJetThreshold() {
-  if (_jetGroup)
-    for (const child of _jetGroup.children) child.visible = child.userData.etGev >= thrJetEtGev;
+  const jetGroup = getJetGroup();
+  if (jetGroup)
+    for (const child of jetGroup.children) child.visible = child.userData.etGev >= thrJetEtGev;
   // τ lines share the same L3 ET slider — hadronic τs *are* narrow jets, so
   // letting them pass while real jets are cut would visually dominate the
   // L3 view. <TauJet> publishes pT (not ET); for the cone of objects we're
@@ -621,8 +585,9 @@ export function applyJetThreshold() {
 // Standalone (not folded into applyJetThreshold) so drawTaus can reuse it
 // without dragging the cell-filter / track-recolour passes along.
 export function applyTauPtThreshold() {
-  if (!_tauGroup) return;
-  for (const child of _tauGroup.children) child.visible = child.userData.ptGev >= thrJetEtGev;
+  const tauGroup = getTauGroup();
+  if (!tauGroup) return;
+  for (const child of tauGroup.children) child.visible = child.userData.ptGev >= thrJetEtGev;
 }
 
 // ── Non-active cells in show-all mode ────────────────────────────────────────
