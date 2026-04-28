@@ -32,7 +32,6 @@ export default [
       'live_atlas/**',
       'tmp_atlas_*/**',
       '.chrome-headless/**',
-      'js/atlas_id_parser.js',
       'setup/lib/**',
     ],
   },
