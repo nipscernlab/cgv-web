@@ -1,9 +1,21 @@
 # `js/` module map
 
-Navigation aid for the frontend codebase. Imports are explicit ES modules; the
-groups below reflect responsibility, not folder structure (most files still
-sit at the top level). Largest god-modules have been split during refactors —
-see `visibility.js`'s neighbours, for example.
+Navigation aid for the frontend codebase. Imports are explicit ES modules.
+Folder structure mirrors the responsibility groups below:
+
+```
+js/
+├── bootstrap/    — entry wiring (mode toolbar, scene init, layers panel, top toolbar)
+├── i18n/         — translations (en / fr / no / pt) + language picker
+├── modes/        — data-source modes (live / sample / server)
+├── overlays/     — per-event extras drawn on top of the cells
+├── parsers/      — JiveXML element parsers (one file per object type)
+├── visibility/   — visibility-pipeline helpers; visibility.js orchestrates them
+└── *.js          — core scene, UI, utils
+```
+
+The largest god-modules have been split into focused files; see `visibility.js`
+and the modules under `visibility/` for an example.
 
 ## Entry & wiring
 
@@ -37,13 +49,13 @@ now the orchestrator that wires the rest together.
 
 | Module | Role | `@ts-check` |
 |---|---|---|
-| `visibility.js` | `apply*Threshold` loops, slicer mask, show-all sweep, view-level gate. | ✅ |
-| `layerVis.js` | Panel state tree + `isLayerOn(handle)` dispatcher. | ✅ |
-| `thresholds.js` | Mutable threshold scalars (cell MeV, track/cluster/jet GeV) + slider ranges. | ✅ |
-| `detectorGroups.js` | Per-event Three.js group registry (track / photon / electron / muon / cluster / jet / τ / MET / vertex). | ✅ |
-| `clusterFilter.js` | Level-2/3 cell-membership filter (which cells belong to a passing cluster/jet). | ✅ |
-| `muonVisibility.js` | Atlas-tree A/C-side mirror; writes `userData.muonForceVisible`. | ✅ |
-| `fcalRenderer.js` | FCAL per-event InstancedMesh + outline rebuild (FCAL has no static handles). | ✅ |
+| `visibility.js` | `apply*Threshold` loops, slicer mask, show-all sweep, view-level gate. Top-level orchestrator that re-exports the helpers below. | ✅ |
+| `visibility/layerVis.js` | Panel state tree + `isLayerOn(handle)` dispatcher. | ✅ |
+| `visibility/thresholds.js` | Mutable threshold scalars (cell MeV, track/cluster/jet GeV) + slider ranges. | ✅ |
+| `visibility/detectorGroups.js` | Per-event Three.js group registry (track / photon / electron / muon / cluster / jet / τ / MET / vertex). | ✅ |
+| `visibility/clusterFilter.js` | Level-2/3 cell-membership filter (which cells belong to a passing cluster/jet). | ✅ |
+| `visibility/muonVisibility.js` | Atlas-tree A/C-side mirror; writes `userData.muonForceVisible`. | ✅ |
+| `visibility/fcalRenderer.js` | FCAL per-event InstancedMesh + outline rebuild (FCAL has no static handles). | ✅ |
 | `cellClassifier.js` | Mesh-name → `{det, subDet, sampling}` routing tags. | ✅ |
 | `coords.js` | η/φ formulas (mirror of `parser/src/lib.rs`). | ✅ |
 | `palette.js` | Energy → RGB colour tables per detector. | ✅ |
@@ -54,12 +66,12 @@ now the orchestrator that wires the rest together.
 |---|---|
 | `processXml.js` | Top-level XML pipeline orchestrator (called from each mode). |
 | `wasm_worker.js` | Web Worker that runs the Rust/WASM ATLAS-ID decoder. |
-| `jetParser.js` | `<Jet>` parser. |
-| `metParser.js` | `<ETMis>` parser. |
-| `muonParser.js` | `<Muon>` parser. |
-| `tauParser.js` | `<TauJet>` parser. |
-| `vertexParser.js` | `<RVx>` (reconstructed vertex) parser. |
-| `hitsParser.js` | Inner-detector + muon-chamber hit positions. |
+| `parsers/jetParser.js` | `<Jet>` parser. |
+| `parsers/metParser.js` | `<ETMis>` parser. |
+| `parsers/muonParser.js` | `<Muon>` parser. |
+| `parsers/tauParser.js` | `<TauJet>` parser. |
+| `parsers/vertexParser.js` | `<RVx>` (reconstructed vertex) parser. |
+| `parsers/hitsParser.js` | Inner-detector + muon-chamber hit positions. |
 | `particles.js` | Photon / electron / muon / τ / MET data + label sprites. |
 | `jets.js` | Active jet-collection state + change listeners. |
 | `trackAtlasIntersections.js` | Track ↔ muon-chamber raycast (ANDs with `userData.muonForceVisible`). |
@@ -68,9 +80,9 @@ now the orchestrator that wires the rest together.
 
 | Module | Role |
 |---|---|
-| `hitsOverlay.js` | Pixel / SCT / TRT / muon-chamber hit markers on hover. |
-| `metOverlay.js` | MET arrow + label. |
-| `vertexOverlay.js` | Reconstructed-vertex markers. |
+| `overlays/hitsOverlay.js` | Pixel / SCT / TRT / muon-chamber hit markers on hover. |
+| `overlays/metOverlay.js` | MET arrow + label. |
+| `overlays/vertexOverlay.js` | Reconstructed-vertex markers. |
 
 ## UI (panels, controls, popups)
 
@@ -91,9 +103,9 @@ now the orchestrator that wires the rest together.
 
 | Module | Role |
 |---|---|
-| `liveMode.js` | Polls ATLAS Live (ATLANTIS) feed via Cloudflare Worker proxy. |
-| `sampleMode.js` | Built-in JiveXML samples + user-uploaded XML. |
-| `serverMode.js` | Local folder via File System Access API or remote `/api/xml/*`. |
+| `modes/liveMode.js` | Polls ATLAS Live (ATLANTIS) feed via Cloudflare Worker proxy. |
+| `modes/sampleMode.js` | Built-in JiveXML samples + user-uploaded XML. |
+| `modes/serverMode.js` | Local folder via File System Access API or remote `/api/xml/*`. |
 
 ## Effects / chrome
 
