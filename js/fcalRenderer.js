@@ -1,3 +1,4 @@
+// @ts-check
 // Forward calorimeter (FCAL) per-event rendering. Unlike the other detectors
 // FCAL has no static GLB cell handles — each event's cells are rebuilt as a
 // fresh InstancedMesh + outline LineSegments under fcalGroup.
@@ -19,8 +20,25 @@ import { thrFcalMev } from './thresholds.js';
 import { layerVis } from './layerVis.js';
 import { getSlicer, getActiveClusterCellIds } from './visibility.js';
 
+/**
+ * One FCAL cell as decoded by the WASM XML parser. `module` is 1=EM, 2=Had1,
+ * 3=Had2 (parser/src/lib.rs:694). x/y/z + dx/dy/dz are in the JiveXML
+ * coordinate frame (cm); the renderer multiplies by 10 and flips x/y to
+ * scene-space mm.
+ * @typedef {{
+ *   id?: string|number,
+ *   module: number,
+ *   energy: number,
+ *   x: number, y: number, z: number,
+ *   dx: number, dy: number, dz: number,
+ * }} FcalCell
+ */
+
+/** @type {FcalCell[]} */
 let fcalCellsData = [];
+/** @type {THREE.Group | null} */
 export let fcalGroup = null;
+/** @type {FcalCell[]} */
 export let fcalVisibleMap = [];
 
 // Reusable temporaries allocated once, reused across FCAL rebuilds.
@@ -33,13 +51,15 @@ const _fcalTwist = new THREE.Quaternion();
 const _fcalTwistAxis = new THREE.Vector3(0, 1, 0);
 const _FCAL_TWIST_RAD = (2 * Math.PI) / 16;
 
+/** @type {Float32Array | null} — base unit-cylinder edge geometry, lazily built and cached */
 let _fcalEdgeBase = null;
+/** @returns {Float32Array} */
 export function getFcalEdgeBase() {
   if (_fcalEdgeBase) return _fcalEdgeBase;
   const tmpGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
   const edgeGeo = new THREE.EdgesGeometry(tmpGeo, 30);
   tmpGeo.dispose();
-  _fcalEdgeBase = edgeGeo.getAttribute('position').array.slice();
+  _fcalEdgeBase = /** @type {Float32Array} */ (edgeGeo.getAttribute('position').array.slice());
   edgeGeo.dispose();
   return _fcalEdgeBase;
 }
@@ -47,13 +67,17 @@ export function getFcalEdgeBase() {
 export function clearFcal() {
   if (!fcalGroup) return;
   fcalGroup.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-    if (o.material) o.material.dispose();
+    // Mesh / LineSegments / etc. carry geometry+material; structural cast
+    // because Object3D's base type doesn't expose them.
+    const m = /** @type {any} */ (o);
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
   });
   scene.remove(fcalGroup);
   fcalGroup = null;
 }
 
+/** @param {FcalCell[]} cells */
 export function drawFcal(cells) {
   clearFcal();
   fcalCellsData = cells;
@@ -65,8 +89,9 @@ export function applyFcalThreshold() {
   if (!fcalCellsData.length) return;
   if (fcalGroup) {
     for (const child of [...fcalGroup.children]) {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
+      const m = /** @type {any} */ (child);
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) m.material.dispose();
       fcalGroup.remove(child);
     }
   }
@@ -77,11 +102,15 @@ function _applyFcalDraw() {
   const slicer = getSlicer();
   const slicerMask = slicer?.getMaskState() ?? { active: false };
   const activeClusterCellIds = getActiveClusterCellIds();
+  // layerVis is a recursive bool/object tree; the dispatch here narrows by
+  // hand to layerVis.fcal[1|2|3], but the typedef can't express that without
+  // an index signature, so we read through `any`.
+  const lv = /** @type {any} */ (layerVis);
 
   const visible = fcalCellsData.filter((c) => {
     // FCAL is filtered per-module instead of a single showFcal flag — module
     // 1=EM, 2=Had1, 3=Had2 (parser/src/lib.rs:694).
-    if (!layerVis.fcal[c.module]) return false;
+    if (!lv.fcal[c.module]) return false;
     if (!slicer?.isShowAllCells() && c.energy * 1000 < thrFcalMev) return false;
     if (
       !slicer?.isShowAllCells() &&
@@ -90,7 +119,9 @@ function _applyFcalDraw() {
       !activeClusterCellIds.has(c.id)
     )
       return false;
-    if (slicerMask.active) {
+    // slicerMask.active implies slicer was non-null (default literal has
+    // active:false); guard explicitly for the type-checker.
+    if (slicerMask.active && slicer) {
       const cx = -c.x * 10,
         cy = -c.y * 10,
         cz = c.z * 10;
