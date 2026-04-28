@@ -87,8 +87,7 @@ export const getTauTracksVisible = () => _tauTracksVisible;
 const _isPhotonGroupVisible = () => _photonsVisible && getViewLevel() === 3;
 const _isElectronGroupVisible = () =>
   _tracksVisible && _electronTracksVisible && getViewLevel() === 3;
-const _isMuonGroupVisible = () =>
-  _tracksVisible && _muonTracksVisible && getViewLevel() === 3;
+const _isMuonGroupVisible = () => _tracksVisible && _muonTracksVisible && getViewLevel() === 3;
 const _isClusterGroupVisible = () => _clustersVisible && getViewLevel() === 2;
 const _isJetGroupVisible = () => _jetsVisible && getViewLevel() === 3;
 const _isTauGroupVisible = () => _tausVisible && getViewLevel() === 3;

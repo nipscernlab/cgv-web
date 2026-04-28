@@ -68,6 +68,18 @@ let _chamberById = new Map();
 let _hitsGroup = null;
 let _currentTrackLine = null;
 
+// User intent for the "Hits" toggle inside the Detector Layers panel. When
+// off, showTrackHits() is a no-op and any visible hits are dropped. Decoupled
+// from the tooltip toggle (showInfo) so the user can read tooltips without
+// the noisy hit spheres, or vice-versa.
+let _hitsEnabled = true;
+export const getHitsEnabled = () => _hitsEnabled;
+/** @param {boolean} v */
+export function setHitsEnabled(v) {
+  _hitsEnabled = v;
+  if (!v) hideTrackHits();
+}
+
 // Called once per event by processXml after parseHits().
 export function setHitPositions(parsed) {
   _positionsById = parsed && parsed.positions instanceof Map ? parsed.positions : new Map();
@@ -175,7 +187,7 @@ export function hideTrackHits() {
 // Re-uses the existing group when the same line is hovered again (no churn
 // during raycast-driven re-fires).
 export function showTrackHits(trackLine) {
-  if (!trackLine) return;
+  if (!_hitsEnabled || !trackLine) return;
   if (trackLine === _currentTrackLine) return;
   hideTrackHits();
   const ids = trackLine.userData?.hitIds;

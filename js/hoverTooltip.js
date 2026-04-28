@@ -13,7 +13,7 @@ import {
   getVertexGroup,
 } from './visibility.js';
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
-import { showTrackHits, hideTrackHits } from './overlays/hitsOverlay.js';
+import { showTrackHits, hideTrackHits, getHitsEnabled } from './overlays/hitsOverlay.js';
 import { buildExtrasHtml } from './tooltipRows.js';
 
 export const tooltip = document.getElementById('tip');
@@ -93,6 +93,14 @@ export function initHoverTooltip({ getShowInfo, getCinemaMode, getDragging, t })
 }
 
 function doRaycast(clientX, clientY) {
+  // Tooltip ("show info") and Hits ("Detector Layers > Inner Detector > Hits")
+  // are independent toggles — see js/overlays/hitsOverlay.js for the hits
+  // state. We can short-circuit when both are off (or cinema mode is on, which
+  // overrides everything), or when there's literally nothing in the scene to
+  // hover over. Otherwise we keep going so the track raycast can still drive
+  // hits even when the tooltip is silenced.
+  const wantTooltip = _getShowInfo() && !_getCinemaMode();
+  const wantHits = getHitsEnabled() && !_getCinemaMode();
   // Electron group only carries sprite labels (not raycastable), so it doesn't
   // participate in the early-return "anything to hover" check below.
   const trackGroup = getTrackGroup();
@@ -102,7 +110,12 @@ function doRaycast(clientX, clientY) {
   const tauGroup = getTauGroup();
   const metGroup = getMetGroup();
   const vertexGroup = getVertexGroup();
-  const hasTrackLines = trackGroup && trackGroup.visible && trackGroup.children.length > 0;
+  // Tracks are raycastable even when the J button is off, so the user can
+  // hover invisible tracks and still see the hit spheres (Hits toggle ON,
+  // Tracks toggle OFF). Per-line .visible (pT slider) is still respected
+  // inside the actual raycast filter below.
+  const hasTrackLines =
+    trackGroup && trackGroup.children.length > 0 && (trackGroup.visible || wantHits);
   const hasPhotonLines = photonGroup && photonGroup.visible && photonGroup.children.length > 0;
   const hasClusterLines = clusterGroup && clusterGroup.visible && clusterGroup.children.length > 0;
   const hasJetLines = jetGroup && jetGroup.visible && jetGroup.children.length > 0;
@@ -112,8 +125,7 @@ function doRaycast(clientX, clientY) {
   const hasFcalTubes =
     fcalGroup && fcalGroup.children.some((c) => c.isInstancedMesh) && fcalVisibleMap.length > 0;
   if (
-    !_getShowInfo() ||
-    _getCinemaMode() ||
+    (!wantTooltip && !wantHits) ||
     (!active.size &&
       !hasTrackLines &&
       !hasPhotonLines &&
@@ -183,7 +195,8 @@ function doRaycast(clientX, clientY) {
     }
     if (cellHit && cellDist <= fcalDist) {
       const data = active.get(cellHandle);
-      showOutline(cellHandle);
+      if (wantTooltip) showOutline(cellHandle);
+      else clearOutline();
       hideTrackHits();
       tipCellEl.textContent = data.cellName;
       tipCoordEl.textContent = data.coords ?? '';
@@ -192,14 +205,15 @@ function doRaycast(clientX, clientY) {
       _setExtras(null);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = false;
+      tooltip.hidden = !wantTooltip;
       markDirty();
       return;
     }
     if (fcalHit) {
       const iid = fcalHit.instanceId;
       const cell = fcalVisibleMap[iid];
-      showFcalOutline(iid);
+      if (wantTooltip) showFcalOutline(iid);
+      else clearOutline();
       hideTrackHits();
       const side = cell.eta >= 0 ? 'A' : 'C';
       tipCellEl.textContent = `FCAL${cell.module} (${side}-side)`;
@@ -209,7 +223,7 @@ function doRaycast(clientX, clientY) {
       _setExtras(null);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = false;
+      tooltip.hidden = !wantTooltip;
       markDirty();
       return;
     }
@@ -242,7 +256,7 @@ function doRaycast(clientX, clientY) {
       _setExtras([['x, y, z', xyzMm]]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = false;
+      tooltip.hidden = !wantTooltip;
       markDirty();
       return;
     }
@@ -285,6 +299,18 @@ function doRaycast(clientX, clientY) {
       const ptGev = line.userData.ptGev ?? 0;
       const storeGateKey = line.userData.storeGateKey ?? '';
       const isPhoton = line.parent === photonGroup;
+      // Tracks-invisible mode (J off + Hits on): we found a track via raycast
+      // only because the parent .visible gate was relaxed up top. Show the
+      // hit spheres and stop — no tooltip / outline, since the user can't
+      // see the track itself and a "Track → Electron" tooltip floating above
+      // empty space is misleading.
+      if (!isPhoton && trackGroup && !trackGroup.visible) {
+        showTrackHits(line);
+        clearOutline();
+        hideTooltip();
+        markDirty();
+        return;
+      }
       let label;
       if (isPhoton) label = 'Photon';
       else {
@@ -316,7 +342,7 @@ function doRaycast(clientX, clientY) {
       _setExtras([[_ETA_LABEL, _fmtEta(line.userData.eta)]]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = false;
+      tooltip.hidden = !wantTooltip;
       markDirty();
       return;
     }
@@ -338,7 +364,7 @@ function doRaycast(clientX, clientY) {
       _setExtras([[_ETA_LABEL, _fmtEta(line.userData.eta)]]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = false;
+      tooltip.hidden = !wantTooltip;
       markDirty();
       return;
     }
@@ -367,7 +393,7 @@ function doRaycast(clientX, clientY) {
       ]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = false;
+      tooltip.hidden = !wantTooltip;
       markDirty();
       return;
     }
@@ -399,7 +425,7 @@ function doRaycast(clientX, clientY) {
       _setExtras(extras);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = false;
+      tooltip.hidden = !wantTooltip;
       markDirty();
       return;
     }
@@ -425,7 +451,7 @@ function doRaycast(clientX, clientY) {
       _setExtras([['Sum E', `${sumEt.toFixed(1)} GeV`]]);
       tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
       tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = false;
+      tooltip.hidden = !wantTooltip;
       markDirty();
       return;
     }
