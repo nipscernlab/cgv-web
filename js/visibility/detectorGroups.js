@@ -50,9 +50,10 @@ let _clustersVisible = true;
 let _jetsVisible = true; // jet η/φ centerlines
 let _photonsVisible = true; // photon "spring" lines
 let _metVisible = true; // MET arrow
-// τs follow the same level-3 gate as jets but have no toolbar toggle of
-// their own — they are silently on whenever jets are.
-const _tausVisible = true;
+// τ jet lines (purple) share the K-popover "Jet lines" toggle with the
+// orange jets — physically a hadronic τ IS a narrow jet, so toggling jets
+// off and leaving τ lines hovering would visually misrepresent the event.
+// No standalone tau toggle.
 // Track-line subset filters (level-3 popover): hide only the matched subset
 // of trackGroup.children. The J button still gates the whole trackGroup,
 // these add a second pass on top. Filters live in applyParticleTrackFilters
@@ -97,7 +98,7 @@ const _isElectronGroupVisible = () =>
 const _isMuonGroupVisible = () => _tracksVisible && _muonTracksVisible && getViewLevel() === 3;
 const _isClusterGroupVisible = () => _clustersVisible && getViewLevel() === 2;
 const _isJetGroupVisible = () => _jetsVisible && getViewLevel() === 3;
-const _isTauGroupVisible = () => _tausVisible && getViewLevel() === 3;
+const _isTauGroupVisible = () => _jetsVisible && getViewLevel() === 3;
 const _isMetGroupVisible = () => _metVisible && getViewLevel() === 3;
 
 // Push the predicate onto the actual group ref. No-op when the group hasn't
@@ -191,6 +192,9 @@ export function setClustersVisible(v) {
 export function setJetsVisible(v) {
   _jetsVisible = v;
   _refreshJet();
+  // τ jet lines share this toggle (see _isTauGroupVisible — they're a kind
+  // of narrow jet).
+  _refreshTau();
 }
 /** @param {boolean} v */
 export function setPhotonsVisible(v) {
