@@ -57,6 +57,33 @@ async function fileExists(path) {
   }
 }
 
+// GitHub Releases occasionally returns 5xx for a single shard while the rest
+// of the download succeeds; retry transient errors with exponential backoff
+// before giving up so a one-off CDN hiccup doesn't break the whole deploy.
+const MAX_ATTEMPTS = 4;
+const BASE_BACKOFF_MS = 500;
+
+async function fetchWithRetry(url) {
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(url, { redirect: 'follow' });
+      if (res.ok) return res;
+      // 5xx + 408 (timeout) + 429 (rate limit) — retry; 4xx else — fail fast.
+      const transient = res.status >= 500 || res.status === 408 || res.status === 429;
+      lastErr = new Error(`HTTP ${res.status} for ${url}`);
+      if (!transient || attempt === MAX_ATTEMPTS) throw lastErr;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === MAX_ATTEMPTS) throw err;
+    }
+    const delay = BASE_BACKOFF_MS * 2 ** (attempt - 1);
+    process.stdout.write(`${C.yellow}retrying in ${delay}ms…${C.reset} `);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  throw lastErr;
+}
+
 async function fetchOne(entry) {
   const dest = join(OUT_DIR, entry.name);
   const label = entry.name.padEnd(36);
@@ -73,8 +100,7 @@ async function fetchOne(entry) {
 
   process.stdout.write(`${C.dim}↓${C.reset} ${label} `);
   const url = `${BASE_URL}/${entry.name}`;
-  const res = await fetch(url, { redirect: 'follow' });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  const res = await fetchWithRetry(url);
   await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
 
   const got = await sha256OfFile(dest);
