@@ -1,4 +1,4 @@
-import { dateGroup } from './utils.js';
+import { dateGroup } from '../utils.js';
 
 const MAX_ENTRIES = 100;
 const REFRESH_MS = 5000;
