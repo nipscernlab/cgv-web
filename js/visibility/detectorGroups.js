@@ -291,3 +291,70 @@ export function applyParticleTrackFilters() {
     }
   }
 }
+
+// Returns the cone radius for a jet line — AntiKt10 collections (R = 1.0,
+// boosted W/Z/top tagging) vs AntiKt4 / everything else (R = 0.4, the default
+// hadronic-jet size). Read off the storeGateKey stamped by drawJets.
+/** @param {{ userData: Record<string, any> }} line */
+function _jetConeR(line) {
+  return String(line.userData.storeGateKey ?? '').includes('AntiKt10') ? 1.0 : 0.4;
+}
+// τ jets are narrow by construction (R ≈ 0.2-0.4 in the algorithm); use 0.4
+// to be permissive — the user's intent is "this photon is part of a τ jet".
+const _TAU_CONE_R = 0.4;
+
+/**
+ * @param {number} eta1
+ * @param {number} phi1
+ * @param {number} eta2
+ * @param {number} phi2
+ */
+function _deltaR(eta1, phi1, eta2, phi2) {
+  const dEta = eta1 - eta2;
+  let dPhi = phi1 - phi2;
+  if (dPhi > Math.PI) dPhi -= 2 * Math.PI;
+  else if (dPhi < -Math.PI) dPhi += 2 * Math.PI;
+  return Math.sqrt(dEta * dEta + dPhi * dPhi);
+}
+
+/**
+ * @param {number} eta
+ * @param {number} phi
+ */
+function _isInsideAnyVisibleJetOrTau(eta, phi) {
+  if (_jetGroup) {
+    for (const line of _jetGroup.children ?? []) {
+      if (!line.visible) continue;
+      const r = _jetConeR(line);
+      if (_deltaR(eta, phi, line.userData.eta, line.userData.phi) < r) return true;
+    }
+  }
+  if (_tauGroup) {
+    for (const line of _tauGroup.children ?? []) {
+      if (!line.visible) continue;
+      if (_deltaR(eta, phi, line.userData.eta, line.userData.phi) < _TAU_CONE_R) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Hides photon springs whose (η, φ) falls outside every visible jet / τ-jet
+ * cone. Runs after the track-threshold pT pass set per-line .visible — this
+ * filter only ever HIDES on top of that, never re-shows. Always on (no user
+ * toggle); the user's intent is "only show photons that are part of a jet".
+ *
+ * Called from applyTrackThreshold; the implicit caller order means jet/τ
+ * line visibility is already up to date by the time we read it (jets are
+ * applied via applyJetThreshold's own pT pass + recomputeJetTrackMatch
+ * BEFORE this runs).
+ */
+export function applyPhotonFilters() {
+  if (!_photonGroup) return;
+  for (const child of _photonGroup.children ?? []) {
+    if (child.visible === false) continue;
+    const u = child.userData;
+    if (!Number.isFinite(u.eta) || !Number.isFinite(u.phi)) continue;
+    if (!_isInsideAnyVisibleJetOrTau(u.eta, u.phi)) child.visible = false;
+  }
+}

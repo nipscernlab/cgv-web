@@ -95,6 +95,7 @@ import {
   setUnmatchedTracksVisible,
   applyDetectorGroupViewLevel,
   applyParticleTrackFilters,
+  applyPhotonFilters,
 } from './visibility/detectorGroups.js';
 import {
   thrTileMev,
@@ -177,6 +178,7 @@ export {
   setTauTracksVisible,
   setUnmatchedTracksVisible,
   applyParticleTrackFilters,
+  applyPhotonFilters,
 };
 export {
   thrTileMev,
@@ -383,8 +385,11 @@ export function applyTrackThreshold() {
     syncElectronTrackMatch(getLastElectrons());
     syncMuonTrackMatch(getLastMuons());
   }
-  // 3. K-popover filters (electron / muon / tau / unmatched).
+  // 3. K-popover filters (electron / muon / tau / unmatched on tracks; the
+  // "photons-in-jets" filter on photons reads jet/τ visibility set earlier
+  // by applyJetThreshold's pT pass).
   applyParticleTrackFilters();
+  applyPhotonFilters();
   // 4. Derived state.
   syncParticleLabelVisibility();
   updateTrackAtlasIntersections();
