@@ -284,33 +284,43 @@ export function applyParticleTrackFilters() {
   // anything alongside the L3 lepton/jet colouring anyway.
   const filterUnmatched = !_unmatchedTracksVisible && getViewLevel() === 3;
   for (const child of _trackGroup.children ?? []) {
-    if (child.visible === false) continue; // pT threshold already hid it
     const u = child.userData;
-    if (!_electronTracksVisible && u.matchedElectronPdgId != null) {
-      child.visible = false;
-      continue;
+    // pT threshold already vetoed this line — there's nothing for the panel
+    // toggles to do, but reset the flag so a stale `particleHidden` from a
+    // previous toggle state can't sneak this line back into the chamber
+    // lighting filter (updateTrackAtlasIntersections ORs particleHidden in).
+    const ptVisible = child.visible !== false;
+    let hide = false;
+    if (ptVisible) {
+      if (!_electronTracksVisible && u.matchedElectronPdgId != null) {
+        hide = true;
+      } else if (
+        !_muonTracksVisible &&
+        (u.isMuonMatched || u.storeGateKey === 'CombinedMuonTracks')
+      ) {
+        hide = true;
+      } else if (!_tauTracksVisible && u.isTauMatched) {
+        hide = true;
+        // Unmatched / yellow tracks: nothing in the priority chain claimed them.
+        // _applyTrackMaterials would render these in TRACK_MAT.
+      } else if (
+        filterUnmatched &&
+        u.matchedElectronPdgId == null &&
+        !u.isMuonMatched &&
+        !u.isJetMatched &&
+        !u.isTauMatched &&
+        !u.isHitTrack
+      ) {
+        hide = true;
+      }
     }
-    if (!_muonTracksVisible && (u.isMuonMatched || u.storeGateKey === 'CombinedMuonTracks')) {
-      child.visible = false;
-      continue;
-    }
-    if (!_tauTracksVisible && u.isTauMatched) {
-      child.visible = false;
-      continue;
-    }
-    // Unmatched / yellow tracks: nothing in the priority chain claimed them.
-    // _applyTrackMaterials would render these in TRACK_MAT.
-    if (
-      filterUnmatched &&
-      u.matchedElectronPdgId == null &&
-      !u.isMuonMatched &&
-      !u.isJetMatched &&
-      !u.isTauMatched &&
-      !u.isHitTrack
-    ) {
-      child.visible = false;
-      continue;
-    }
+    if (hide) child.visible = false;
+    // particleHidden = "the panel hid this line, but it's still real". The
+    // chamber-lighting pass treats those tracks as geometrically present so a
+    // muon chamber stays lit when the user only wanted to hide the muon LINE,
+    // not delete the underlying physics. Cleared whenever the line is allowed
+    // through (or pT-killed) so the flag can't go stale across toggle flips.
+    u.particleHidden = hide;
   }
 }
 

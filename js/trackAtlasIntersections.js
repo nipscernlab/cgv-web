@@ -229,11 +229,15 @@ export function updateTrackAtlasIntersections() {
   const trackGroup = _getTrackGroup();
   // Chamber visibility is driven by track presence, not track rendering — when
   // the J button hides the track group, the underlying tracks are still in the
-  // scene (and still raycastable, see hoverTooltip.js). Keeping this filter on
-  // per-line .visible only (pT slider) lets the muon chambers stay lit even
-  // when the user has the track lines turned off, mirroring how the Hits
-  // toggle now exposes the invisible tracks for hover.
-  const visibleTracks = trackGroup ? trackGroup.children.filter((c) => c.visible) : [];
+  // scene (and still raycastable, see hoverTooltip.js). Per-line .visible only
+  // counts the pT-slider as a real "drop this noise" filter; the Particles
+  // panel toggles (Muons / Electrons / Taus / Unmatched) write `.visible=false`
+  // too but stamp `userData.particleHidden=true` to mean "hide the line, keep
+  // the physics" — OR'd in here so a muon chamber stays lit when the user
+  // toggles muon lines off without also wanting the chamber to vanish.
+  const visibleTracks = trackGroup
+    ? trackGroup.children.filter((c) => c.visible || c.userData.particleHidden)
+    : [];
   const hitMeshes = new Set();
   const hitTracks = new Set();
 
