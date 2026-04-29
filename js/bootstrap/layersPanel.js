@@ -43,6 +43,11 @@ import { getHitsEnabled, setHitsEnabled, hideTrackHits } from '../overlays/hitsO
 import { markDirty } from '../renderer.js';
 import { getViewLevel, onViewLevelChange } from '../viewLevel.js';
 import { setupAnchoredPopover } from './anchoredPopover.js';
+import {
+  MUON_STATION_RENAMES,
+  MUON_MERGED_GROUPS,
+  MUON_HIDDEN_NODES,
+} from '../visibility/muonAliases.js';
 
 // Hex colours match the current palette family per top-level detector.
 const C_TILE = '#c87c18';
@@ -208,66 +213,10 @@ const PANEL_TREE = [
   },
 ];
 
-// Friendly names for the inner / middle / outer muon-station subtrees. Once
-// the panel reaches one of these nodes it shows their direct children as
-// leaves and stops recursing — chamber-level toggles below would be too noisy
-// for the deploy panel.
-const MUON_STATION_RENAMES = {
-  // C side (MUCH_1)
-  BARh_1: 'BIS',
-  BARi_2: 'BIL',
-  BARj_3: 'BML',
-  BARk_4: 'BMS',
-  BARl_5: 'BOL',
-  BARm_6: 'BOS',
-  BARn_7: 'BIR',
-  BARo_8: 'BEE',
-  BARr_11: 'EES',
-  BARs_12: 'EEL',
-  BARt_13: 'EMS',
-  BARu_14: 'EML',
-  BARv_15: 'EOL',
-  BARw_16: 'EOS',
-  // A side (MUC1_2) — same sequence, different node-name pattern
-  BARI_1: 'BIS',
-  BAR1_2: 'BIL',
-  BAR2_3: 'BML',
-  BAR3_4: 'BMS',
-  BAR4_5: 'BOL',
-  BAR5_6: 'BOS',
-  BAR6_7: 'BIR',
-  BAR7_8: 'BEE',
-  BAR0_11: 'EES',
-  BARa_12: 'EEL',
-  BARb_13: 'EMS',
-  BARc_14: 'EML',
-  BARd_15: 'EOL',
-  BARe_16: 'EOS',
-};
-
-// Atlas nodes that are merged into a single panel entry: clicking the entry
-// toggles every leaf mesh under both atlas subtrees at once.
-const MUON_MERGED_GROUPS = [
-  {
-    label: 'NSW',
-    members: [
-      // C side (MUCH_1)
-      'BARp_9',
-      'BARq_10',
-      'BARy_18',
-      // A side (MUC1_2)
-      'BAR8_9',
-      'BAR9_10',
-      'BARg_18',
-    ],
-  },
-];
+// Naming tables (MUON_STATION_RENAMES, MUON_MERGED_GROUPS, MUON_HIDDEN_NODES)
+// imported from ../visibility/muonAliases.js — same source of truth used by
+// hoverTooltip to resolve a chamber mesh back to its panel alias.
 const _muonMergedMembers = new Set(MUON_MERGED_GROUPS.flatMap((g) => g.members));
-
-// Atlas nodes that are hidden from the panel entirely. Their meshes still
-// follow the layerVis default (true), so any track-hit visibility keeps
-// working — they just don't get a switch.
-const MUON_HIDDEN_NODES = new Set(['BARx_17', 'BARf_17']);
 
 // Builds the muon panel sub-tree from the atlas A/C subtrees. Recursion stops
 // at renamed station nodes (BIS/BIL/...) — they become leaves whose toggle

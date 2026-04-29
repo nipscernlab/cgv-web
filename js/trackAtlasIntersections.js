@@ -68,6 +68,18 @@ export function setAtlasRoot(tree) {
   _trackAtlasMeshBoxes = null;
 }
 
+/**
+ * Returns the muon-chamber meshes that the track-vs-chamber intersection
+ * test runs against — the same set hover-raycast wants for tooltip lookup.
+ * Lazily resolves on the first call after setAtlasRoot. Returns an empty
+ * array when atlas isn't loaded yet.
+ * @returns {ReadonlyArray<any>}
+ */
+export function getMuonChamberMeshes() {
+  if (!atlasRoot) return [];
+  return _resolveTrackAtlasTargets().meshes;
+}
+
 function _findAtlasNodesByName(root, name, out = []) {
   if (!root) return out;
   if (root.name === name) out.push(root);

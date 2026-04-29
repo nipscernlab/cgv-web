@@ -13,6 +13,7 @@
 import { layerVis, replaceMuonState } from './layerVis.js';
 import { updateTrackAtlasIntersections } from '../trackAtlasIntersections.js';
 import { markDirty } from '../renderer.js';
+import { setupMuonAliasMap } from './muonAliases.js';
 
 /**
  * @typedef {{
@@ -43,6 +44,10 @@ export function setMuonTrees({ aSide = null, cSide = null }) {
     aSide: _muonStateFromTree(aSide),
     cSide: _muonStateFromTree(cSide),
   });
+  // Build the chamber-mesh → friendly-station-alias map (BIS / BIL / NSW / …)
+  // — same naming the Detector Layers panel surfaces, used by the hover
+  // tooltip when raycasting a muon chamber.
+  setupMuonAliasMap(_muonAtlasTrees);
   applyMuonVisibility();
   for (const cb of _muonChangeListeners) cb(_muonAtlasTrees);
 }

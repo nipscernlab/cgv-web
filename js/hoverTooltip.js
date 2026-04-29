@@ -15,6 +15,8 @@ import {
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
 import { showTrackHits, hideTrackHits, getHitsEnabled } from './overlays/hitsOverlay.js';
 import { buildExtrasHtml } from './tooltipRows.js';
+import { getMuonChamberMeshes } from './trackAtlasIntersections.js';
+import { getMuonAliasForMesh } from './visibility/muonAliases.js';
 
 export const tooltip = document.getElementById('tip');
 export const tipCellEl = document.getElementById('tip-cell');
@@ -133,6 +135,13 @@ function doRaycast(clientX, clientY) {
   const hasVertexMarkers = vertexGroup && vertexGroup.visible && vertexGroup.children.length > 0;
   const hasFcalTubes =
     fcalGroup && fcalGroup.children.some((c) => c.isInstancedMesh) && fcalVisibleMap.length > 0;
+  // Muon chambers: only the meshes currently lit by tracks (or force-shown
+  // via the panel) are .visible — see updateTrackAtlasIntersections. We
+  // raycast against just those so hover doesn't pierce phantom invisible
+  // chambers nearby.
+  const muonChamberMeshes = getMuonChamberMeshes();
+  const visibleChambers = muonChamberMeshes.filter((m) => m.visible);
+  const hasMuonChambers = visibleChambers.length > 0;
   if (
     (!wantTooltip && !wantHits) ||
     (!active.size &&
@@ -143,7 +152,8 @@ function doRaycast(clientX, clientY) {
       !hasTauLines &&
       !hasMetArrow &&
       !hasVertexMarkers &&
-      !hasFcalTubes)
+      !hasFcalTubes &&
+      !hasMuonChambers)
   ) {
     _dismissAll();
     return;
@@ -462,6 +472,30 @@ function doRaycast(clientX, clientY) {
         valueText: `${magnitude.toFixed(2)} GeV`,
         keyHtml: 'E<sub>T</sub><sup>miss</sup>',
         extras: [['Sum E', `${sumEt.toFixed(1)} GeV`]],
+      });
+      return;
+    }
+  }
+  // ── Muon chamber hit ────────────────────────────────────────────────────
+  // Lowest priority — only checked after every event-overlay branch missed.
+  // Chamber alias (BIS / BIL / NSW / …) + full station name + readout
+  // technology come from getMuonAliasForMesh, which mirrors the renaming
+  // the Detector Layers panel applies plus the MUON_STATION_TECH table.
+  if (hasMuonChambers) {
+    const chamberHits = raycast.intersectObjects(visibleChambers, false);
+    if (chamberHits.length) {
+      const mesh = chamberHits[0].object;
+      const info = getMuonAliasForMesh(mesh);
+      const alias = info?.alias ?? mesh.name ?? 'Muon chamber';
+      const sideLabel = info?.side ? ` (${info.side} side)` : '';
+      const coord = info?.full ? `${info.full}${sideLabel}` : sideLabel.trim() || '—';
+      clearOutline();
+      hideTrackHits();
+      showHit({
+        label: `Muon chamber — ${alias}`,
+        coord,
+        valueText: info?.tech ?? '—',
+        keyText: 'tech',
       });
       return;
     }
