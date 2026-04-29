@@ -88,13 +88,7 @@ function _cylIntersect(dx, dy, dz, r, halfH) {
 
 // ── Tracks ────────────────────────────────────────────────────────────────────
 export function clearTracks() {
-  const g = getTrackGroup();
-  if (!g) return;
-  g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-  });
-  scene.remove(g);
-  setTrackGroup(null);
+  _disposeGroup(getTrackGroup, setTrackGroup);
   updateTrackAtlasIntersections();
 }
 
@@ -196,13 +190,7 @@ function _makeSpringPoints(dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
 }
 
 export function clearPhotons() {
-  const g = getPhotonGroup();
-  if (!g) return;
-  g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-  });
-  scene.remove(g);
-  setPhotonGroup(null);
+  _disposeGroup(getPhotonGroup, setPhotonGroup);
 }
 
 export function drawPhotons(photons) {
@@ -245,26 +233,35 @@ export function drawPhotons(photons) {
 // group. Called by resetScene before a new XML loads.
 export function clearElectrons() {
   _lastElectrons = [];
-  _disposeLabelGroup(getElectronGroup, setElectronGroup);
+  _disposeGroup(getElectronGroup, setElectronGroup);
 }
 
-// ── Anchored-label helpers (shared by e±/μ±) ────────────────────────────────
-// Lifecycle is the same as MET ν: built once in drawX, lives until the next
-// event clears it via _disposeLabelGroup. Per-sprite visibility tracks the
-// anchor line through syncParticleLabelVisibility; group-level visibility is
-// gated by setXGroup in detectorGroups.js (level + J button + K-popover flag).
+// ── Per-event group lifecycle helpers ─────────────────────────────────────────
+// All draws follow the same shape: clear → build → setter → (optional apply
+// pipeline). The two helpers below capture the per-event resource ownership:
+// _disposeGroup releases what the previous event's group owns, and the build
+// helpers (_buildAnchoredLabelGroup for sprites, _buildEtaPhiLineGroup for
+// η/φ lines) construct the new group + register it via setter.
 
-// Removes the label group from the scene and disposes its sprite textures.
-// Caller-supplied accessors so the same code serves electron and muon groups.
+// Removes a per-event group from the scene and frees its owned GPU resources:
+//   - Line geometries (per-event BufferGeometry) → dispose.
+//   - Sprite textures (per-sprite CanvasTexture) → dispose. The sprite's
+//     geometry is Three.js's shared built-in plane and must NOT be disposed.
+//   - Materials are typically shared singletons (TRACK_MAT, JET_MAT, …) and
+//     are also left alone.
 /**
  * @param {() => { traverse: (cb: (o: any) => void) => void } | null} getter
  * @param {(g: any) => void} setter
  */
-function _disposeLabelGroup(getter, setter) {
+function _disposeGroup(getter, setter) {
   const g = getter();
   if (!g) return;
   g.traverse((o) => {
-    if (o.isSprite && o.material?.map) o.material.map.dispose();
+    if (o.isSprite) {
+      if (o.material?.map) o.material.map.dispose();
+    } else if (o.geometry) {
+      o.geometry.dispose();
+    }
   });
   scene.remove(g);
   setter(null);
@@ -285,6 +282,49 @@ function _disposeLabelGroup(getter, setter) {
  *   setter: (g: any) => void,
  * }} cfg
  */
+// Builds a Group of η/φ lines stretching from the inner-detector cylinder
+// (r ≈ 1.42 m) to the outer cylinder (r ≈ 3.82 m) — the visual band where
+// clusters / jets / τ candidates live. Each line gets the supplied material
+// (typically a LineDashedMaterial — computeLineDistances is called for you so
+// the dashes show up), its endpoints derived from the item's (eta, phi), and
+// its userData stamped via mapToUserData(item). On non-empty input attaches
+// the group via setter; empty input is a no-op (caller is responsible for
+// any pre-clear via _disposeGroup before calling).
+/**
+ * @param {{
+ *   items: ReadonlyArray<{ eta: number, phi: number, [k: string]: any }>,
+ *   mat: any,
+ *   mapToUserData: (item: any) => Record<string, any>,
+ *   setter: (g: any) => void,
+ *   renderOrder?: number,
+ * }} cfg
+ */
+function _buildEtaPhiLineGroup({ items, mat, mapToUserData, setter, renderOrder = 6 }) {
+  if (!items.length) return;
+  const g = new THREE.Group();
+  g.renderOrder = renderOrder;
+  for (const item of items) {
+    const { eta, phi } = item;
+    const theta = 2 * Math.atan(Math.exp(-eta));
+    const sinT = Math.sin(theta);
+    const dx = -sinT * Math.cos(phi);
+    const dy = -sinT * Math.sin(phi);
+    const dz = Math.cos(theta);
+    const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
+    const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
+    const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
+    const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);
+    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
+    const line = new THREE.Line(geo, mat);
+    // Required by LineDashedMaterial — without it, the line renders solid.
+    line.computeLineDistances();
+    Object.assign(line.userData, mapToUserData(item));
+    g.add(line);
+  }
+  scene.add(g);
+  setter(g);
+}
+
 function _buildAnchoredLabelGroup({ predicate, anchorIdx, makeSprite, setter }) {
   const trackGroup = getTrackGroup();
   if (!trackGroup) return;
@@ -392,7 +432,7 @@ export function getLastMuons() {
 
 export function clearMuons() {
   _lastMuons = [];
-  _disposeLabelGroup(getMuonGroup, setMuonGroup);
+  _disposeGroup(getMuonGroup, setMuonGroup);
 }
 
 export function drawMuons(muons) {
@@ -428,41 +468,22 @@ export function syncMuonTrackMatch(muons) {
 
 // ── Clusters (η/φ lines between inner and outer cylinders) ───────────────────
 export function clearClusters() {
-  const g = getClusterGroup();
-  if (!g) return;
-  g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-  });
-  scene.remove(g);
-  setClusterGroup(null);
+  _disposeGroup(getClusterGroup, setClusterGroup);
 }
 
 export function drawClusters(clusters) {
   clearClusters();
-  if (!clusters.length) return;
-  const g = new THREE.Group();
-  g.renderOrder = 6;
-  for (const { eta, phi, etGev, storeGateKey } of clusters) {
-    const theta = 2 * Math.atan(Math.exp(-eta));
-    const sinT = Math.sin(theta);
-    const dx = -sinT * Math.cos(phi);
-    const dy = -sinT * Math.sin(phi);
-    const dz = Math.cos(theta);
-    const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
-    const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
-    const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
-    const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);
-    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const line = new THREE.Line(geo, CLUSTER_MAT);
-    line.computeLineDistances();
-    line.userData.etGev = etGev;
-    line.userData.eta = eta;
-    line.userData.phi = phi;
-    line.userData.storeGateKey = storeGateKey ?? '';
-    g.add(line);
-  }
-  scene.add(g);
-  setClusterGroup(g);
+  _buildEtaPhiLineGroup({
+    items: clusters,
+    mat: CLUSTER_MAT,
+    mapToUserData: (c) => ({
+      etGev: c.etGev,
+      eta: c.eta,
+      phi: c.phi,
+      storeGateKey: c.storeGateKey ?? '',
+    }),
+    setter: setClusterGroup,
+  });
   applyClusterThreshold();
 }
 
@@ -479,55 +500,34 @@ const JET_MAT = new THREE.LineDashedMaterial({
 });
 
 export function clearJets() {
-  const g = getJetGroup();
-  if (!g) return;
-  g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-  });
-  scene.remove(g);
-  setJetGroup(null);
+  _disposeGroup(getJetGroup, setJetGroup);
 }
 
 // Draws one line per jet in the given collection. `collection` is
-// { key, jets: [...] } from jets.js (or null/empty). The collection's
-// storeGateKey is stamped on each line so the hover tooltip can show it.
+// { key, jets: [...] } from jets.js (or null/empty). The collection key
+// is stamped on each line so the hover tooltip can show it.
 export function drawJets(collection) {
   clearJets();
-  if (!collection || !collection.jets || !collection.jets.length) {
-    // Still flush downstream effects (cell filter, jet→track highlight) so
-    // stale state from a previous collection doesn't linger.
-    applyJetThreshold();
-    return;
+  const jets = collection?.jets ?? [];
+  // Always run applyJetThreshold so downstream effects (cell filter,
+  // jet→track highlight) flush even when the collection is empty.
+  if (jets.length) {
+    const sgk = collection.key;
+    _buildEtaPhiLineGroup({
+      items: jets,
+      mat: JET_MAT,
+      mapToUserData: (j) => ({
+        etGev: j.etGev,
+        ptGev: j.ptGev,
+        energyGev: j.energyGev,
+        massGev: j.massGev,
+        eta: j.eta,
+        phi: j.phi,
+        storeGateKey: sgk,
+      }),
+      setter: setJetGroup,
+    });
   }
-  const g = new THREE.Group();
-  g.renderOrder = 6;
-  const sgk = collection.key;
-  for (const j of collection.jets) {
-    const { eta, phi } = j;
-    const theta = 2 * Math.atan(Math.exp(-eta));
-    const sinT = Math.sin(theta);
-    const dx = -sinT * Math.cos(phi);
-    const dy = -sinT * Math.sin(phi);
-    const dz = Math.cos(theta);
-    const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
-    const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
-    const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
-    const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);
-    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const line = new THREE.Line(geo, JET_MAT);
-    // Required by LineDashedMaterial — without it the line renders as solid.
-    line.computeLineDistances();
-    line.userData.etGev = j.etGev;
-    line.userData.ptGev = j.ptGev;
-    line.userData.energyGev = j.energyGev;
-    line.userData.massGev = j.massGev;
-    line.userData.eta = eta;
-    line.userData.phi = phi;
-    line.userData.storeGateKey = sgk;
-    g.add(line);
-  }
-  scene.add(g);
-  setJetGroup(g);
   applyJetThreshold();
 }
 
@@ -552,17 +552,7 @@ export function getLastTaus() {
 
 export function clearTaus() {
   _lastTaus = [];
-  _clearTauGroupOnly();
-}
-
-function _clearTauGroupOnly() {
-  const g = getTauGroup();
-  if (!g) return;
-  g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-  });
-  scene.remove(g);
-  setTauGroup(null);
+  _disposeGroup(getTauGroup, setTauGroup);
 }
 
 // Draws one line per tau candidate. `taus` is the flat array out of
@@ -571,41 +561,23 @@ function _clearTauGroupOnly() {
 export function drawTaus(taus) {
   clearTaus();
   _lastTaus = Array.isArray(taus) ? taus : [];
-  if (!_lastTaus.length) {
-    syncTauTrackMatch(null);
-    return;
-  }
-  const g = new THREE.Group();
-  g.renderOrder = 6;
-  for (const t of _lastTaus) {
-    const { eta, phi } = t;
-    const theta = 2 * Math.atan(Math.exp(-eta));
-    const sinT = Math.sin(theta);
-    const dx = -sinT * Math.cos(phi);
-    const dy = -sinT * Math.sin(phi);
-    const dz = Math.cos(theta);
-    const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
-    const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
-    const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
-    const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);
-    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const line = new THREE.Line(geo, TAU_MAT);
-    // LineDashedMaterial requirement.
-    line.computeLineDistances();
-    line.userData.ptGev = t.ptGev;
-    line.userData.eta = eta;
-    line.userData.phi = phi;
-    line.userData.isTau = t.isTau;
-    line.userData.numTracks = t.numTracks;
-    line.userData.storeGateKey = t.key;
-    g.add(line);
-  }
-  scene.add(g);
-  setTauGroup(g);
-  // Honour the L3 ET slider on first draw — without this, every τ would
+  _buildEtaPhiLineGroup({
+    items: _lastTaus,
+    mat: TAU_MAT,
+    mapToUserData: (t) => ({
+      ptGev: t.ptGev,
+      eta: t.eta,
+      phi: t.phi,
+      isTau: t.isTau,
+      numTracks: t.numTracks,
+      storeGateKey: t.key,
+    }),
+    setter: setTauGroup,
+  });
+  // Honour the L3 ET slider on first draw — without this every τ would
   // render until the user nudges the slider.
   applyTauPtThreshold();
-  syncTauTrackMatch(getViewLevel() === 3 ? _lastTaus : null);
+  syncTauTrackMatch(getViewLevel() === 3 && _lastTaus.length ? _lastTaus : null);
 }
 
 // Single entry point for the τ→track colour update. Called by drawTaus on
