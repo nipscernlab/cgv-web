@@ -67,6 +67,11 @@ let _tauTracksVisible = true;
 // a clean view that only shows the labelled physics; flip on via the K
 // popover when the soft-track background context is wanted.
 let _unmatchedTracksVisible = false;
+// Vertex markers (primary, pile-up, b-tag dots). Event-level summary info —
+// applies at every view level, so no level gate. Default on; the user can
+// hide them via the Helpers popover when they get in the way of close-zooms
+// inside the inner detector.
+let _verticesVisible = true;
 
 // ── Read accessors ───────────────────────────────────────────────────────────
 export const getTrackGroup = () => _trackGroup;
@@ -88,6 +93,7 @@ export const getElectronTracksVisible = () => _electronTracksVisible;
 export const getMuonTracksVisible = () => _muonTracksVisible;
 export const getTauTracksVisible = () => _tauTracksVisible;
 export const getUnmatchedTracksVisible = () => _unmatchedTracksVisible;
+export const getVerticesVisible = () => _verticesVisible;
 
 // ── Visibility predicates (single source of truth for each group's gate) ─────
 // Every setter and the level gate route through these — so a change to (say)
@@ -166,11 +172,12 @@ export function setMetGroup(g) {
   _metGroup = g;
   _refreshMet();
 }
-// Vertices are event-level summary info — relevant at every view level, so
-// no gate. Always visible while the marker group exists.
+// Vertices are event-level summary info — relevant at every view level. The
+// only gate is the user's Helpers-popover toggle (_verticesVisible).
 /** @param {VisibleObject | null} g */
 export function setVertexGroup(g) {
   _vertexGroup = g;
+  if (g) g.visible = _verticesVisible;
 }
 
 // ── Toolbar toggles ──────────────────────────────────────────────────────────
@@ -227,6 +234,11 @@ export function setTauTracksVisible(v) {
 /** @param {boolean} v */
 export function setUnmatchedTracksVisible(v) {
   _unmatchedTracksVisible = v;
+}
+/** @param {boolean} v */
+export function setVerticesVisible(v) {
+  _verticesVisible = v;
+  if (_vertexGroup) _vertexGroup.visible = v;
 }
 
 /**

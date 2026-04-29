@@ -692,23 +692,13 @@
         <svg class="ic" style="width: 14px; height: 14px"><use href="#i-film" /></svg>
       </button>
       <div class="tbtn-sep"></div>
-      <!-- Tabler ghost icon (proper library icon) -->
       <button
-        class="tbtn on"
-        id="btn-ghost"
-        data-tip="ATLAS ghost — toggle sub-detector outlines (G)"
-        data-i18n-tip="tip-ghost"
+        class="tbtn"
+        id="btn-helpers"
+        data-tip="Helpers — Ghost, Cell Info, Unmatched tracks, Jet/Cluster lines"
+        data-i18n-tip="tip-helpers"
       >
-        <i class="ti ti-ghost"></i>
-      </button>
-      <div class="tbtn-sep"></div>
-      <button
-        class="tbtn on"
-        id="btn-info"
-        data-tip="Cell info — show tooltip and outline on hover (I)"
-        data-i18n-tip="tip-info"
-      >
-        <svg class="ic" style="width: 14px; height: 14px"><use href="#i-eye" /></svg>
+        <i class="ti ti-adjustments-horizontal" style="font-size: 15px"></i>
       </button>
       <div class="tbtn-sep"></div>
       <button
@@ -985,32 +975,82 @@
           style="--gswitch-col: #b366ff"
         ></button>
       </div>
-      <div class="layer-row">
+    </div>
+
+    <!-- ── Helpers popover (Ghost / Cell Info / Unmatched / Jet-Cluster Lines) ─ -->
+    <div id="helpers-panel">
+      <div class="layers-head">
+        <span class="layers-title" data-i18n="helpers-title">Helpers</span>
+      </div>
+      <div class="layer-row" id="hrow-ghost">
+        <span class="layer-dot" style="background: #4a90d9"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="helpers-ghost">Ghost</div>
+          <div class="layer-sub" data-i18n="helpers-ghost-sub">Sub-detector outlines (G)</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="hbtn-ghost"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #4a90d9"
+        ></button>
+      </div>
+      <div class="layer-row" id="hrow-info">
+        <span class="layer-dot" style="background: #66ccff"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="helpers-info">Cell Info</div>
+          <div class="layer-sub" data-i18n="helpers-info-sub">Hover tooltip + outline (I)</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="hbtn-info"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #66ccff"
+        ></button>
+      </div>
+      <div class="layer-row" id="hrow-vertices">
+        <span class="layer-dot" style="background: #ffffff"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="helpers-vertices">Vertices</div>
+          <div class="layer-sub" data-i18n="helpers-vertices-sub">
+            Primary / pile-up / b-tag dots
+          </div>
+        </div>
+        <button
+          class="gswitch on"
+          id="hbtn-vertices"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #ffffff"
+        ></button>
+      </div>
+      <div class="layer-row" id="hrow-unmatched">
         <span class="layer-dot" style="background: #ffea00"></span>
         <div class="layer-info">
-          <div class="layer-name" data-i18n="particles-unmatched">Unmatched tracks</div>
-          <div class="layer-sub" data-i18n="particles-unmatched-sub">No particle association</div>
+          <div class="layer-name" data-i18n="helpers-unmatched">Unmatched Tracks</div>
+          <div class="layer-sub" data-i18n="helpers-unmatched-sub">No particle association</div>
         </div>
         <button
           class="gswitch"
-          id="ptog-unmatched"
+          id="hbtn-unmatched"
           role="switch"
           aria-checked="false"
           style="--gswitch-col: #ffea00"
         ></button>
       </div>
-      <!-- Jet lines (orange + purple τ-jets — they share this toggle, see
-       _isTauGroupVisible in detectorGroups.js) sit at the bottom because
-       they're the most "noisy" / pile-up-style overlay. -->
-      <div class="layer-row">
+      <!-- Lines row is level-aware: hidden at L1, "Cluster Lines" at L2,
+       "Jet Lines" at L3. Label/sub swapped from JS in helpersPanel.js. -->
+      <div class="layer-row" id="hrow-lines">
         <span class="layer-dot" style="background: #ff8800"></span>
         <div class="layer-info">
-          <div class="layer-name" data-i18n="particles-jets">Jet lines</div>
-          <div class="layer-sub" data-i18n="particles-jets-sub">η/φ centerlines</div>
+          <div class="layer-name" data-i18n="helpers-jet-lines">Jet Lines</div>
+          <div class="layer-sub" data-i18n="helpers-jet-lines-sub">η/φ centerlines (jets + τ)</div>
         </div>
         <button
           class="gswitch on"
-          id="ptog-jets"
+          id="hbtn-lines"
           role="switch"
           aria-checked="true"
           style="--gswitch-col: #ff8800"

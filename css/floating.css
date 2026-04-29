@@ -1,6 +1,7 @@
-/* ── Layers / Particles floating panels ─── */
+/* ── Layers / Particles / Helpers floating panels ─── */
 #layers-panel,
-#particles-panel {
+#particles-panel,
+#helpers-panel {
   position: fixed;
   z-index: 50;
   padding: 10px 12px 12px;
@@ -21,7 +22,8 @@
     transform 0.17s ease;
 }
 #layers-panel.open,
-#particles-panel.open {
+#particles-panel.open,
+#helpers-panel.open {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
