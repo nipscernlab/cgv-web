@@ -43,6 +43,15 @@ export function hideTooltip() {
   tooltip.hidden = true;
 }
 
+// Hides every hover-driven visual: tooltip, cell / FCAL outline, track hit
+// spheres. Used by the doRaycast early-return paths (cinema mode, cursor
+// over UI, no scene to hover) and the function tail (no branch matched).
+function _dismissAll() {
+  hideTooltip();
+  clearOutline();
+  hideTrackHits();
+}
+
 const raycast = new THREE.Raycaster();
 raycast.firstHitOnly = true; // stop after first intersection (much faster)
 raycast.params.Line = { threshold: 40 }; // 40 mm hit zone for ID tracks / photons
@@ -136,24 +145,18 @@ function doRaycast(clientX, clientY) {
       !hasVertexMarkers &&
       !hasFcalTubes)
   ) {
-    hideTooltip();
-    clearOutline();
-    hideTrackHits();
+    _dismissAll();
     return;
   }
   // Don't show cell info when the pointer is over any UI element (panels, toolbar, overlays)
   const topEl = document.elementFromPoint(clientX, clientY);
   if (topEl && topEl !== canvas) {
-    hideTooltip();
-    clearOutline();
-    hideTrackHits();
+    _dismissAll();
     return;
   }
   const rect = canvas.getBoundingClientRect();
   if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
-    hideTooltip();
-    clearOutline();
-    hideTrackHits();
+    _dismissAll();
     return;
   }
   mxy.set(
@@ -162,6 +165,36 @@ function doRaycast(clientX, clientY) {
   );
   camera.updateMatrixWorld();
   raycast.setFromCamera(mxy, camera);
+
+  // Per-hit display helper (closes over rect, clientX, clientY, wantTooltip).
+  // The pT / energy unit-key field accepts EITHER a plain text key (i18n
+  // string) OR pre-formatted HTML (e.g. 'p<sub>T</sub>'). Visual setup
+  // (showOutline / showTrackHits / clearOutline) stays in each branch since
+  // the choice is hit-type-specific and reads clearer inline.
+  /**
+   * @param {{
+   *   label: string,
+   *   coord?: string,
+   *   valueText: string,
+   *   keyText?: string,
+   *   keyHtml?: string,
+   *   extras?: Array<[string, string]> | null,
+   * }} params
+   */
+  function showHit({ label, coord, valueText, keyText, keyHtml, extras }) {
+    tipCellEl.textContent = label;
+    tipCoordEl.textContent = coord ?? '';
+    tipEEl.textContent = valueText;
+    if (tipEKeyEl) {
+      if (keyHtml != null) tipEKeyEl.innerHTML = keyHtml;
+      else tipEKeyEl.textContent = keyText ?? '';
+    }
+    _setExtras(extras ?? null);
+    tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
+    tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
+    tooltip.hidden = !wantTooltip;
+    markDirty();
+  }
   // ── Cell + FCAL hit (same priority — pick closest) ────────────────────────
   {
     let cellHit = null,
@@ -198,15 +231,12 @@ function doRaycast(clientX, clientY) {
       if (wantTooltip) showOutline(cellHandle);
       else clearOutline();
       hideTrackHits();
-      tipCellEl.textContent = data.cellName;
-      tipCoordEl.textContent = data.coords ?? '';
-      tipEEl.textContent = `${data.energyGev.toFixed(4)} GeV`;
-      if (tipEKeyEl) tipEKeyEl.textContent = _t('tip-energy-key');
-      _setExtras(null);
-      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
-      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = !wantTooltip;
-      markDirty();
+      showHit({
+        label: data.cellName,
+        coord: data.coords,
+        valueText: `${data.energyGev.toFixed(4)} GeV`,
+        keyText: _t('tip-energy-key'),
+      });
       return;
     }
     if (fcalHit) {
@@ -216,15 +246,12 @@ function doRaycast(clientX, clientY) {
       else clearOutline();
       hideTrackHits();
       const side = cell.eta >= 0 ? 'A' : 'C';
-      tipCellEl.textContent = `FCAL${cell.module} (${side}-side)`;
-      tipCoordEl.textContent = `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`;
-      tipEEl.textContent = `${cell.energy.toFixed(4)} GeV`;
-      if (tipEKeyEl) tipEKeyEl.textContent = _t('tip-energy-key');
-      _setExtras(null);
-      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
-      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = !wantTooltip;
-      markDirty();
+      showHit({
+        label: `FCAL${cell.module} (${side}-side)`,
+        coord: `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`,
+        valueText: `${cell.energy.toFixed(4)} GeV`,
+        keyText: _t('tip-energy-key'),
+      });
       return;
     }
   }
@@ -249,15 +276,13 @@ function doRaycast(clientX, clientY) {
       const xyzMm = p ? `(${(-p.x).toFixed(2)}, ${(-p.y).toFixed(2)}, ${p.z.toFixed(2)}) mm` : '';
       clearOutline();
       hideTrackHits();
-      tipCellEl.textContent = label;
-      tipCoordEl.textContent = v.userData.vertexKey ?? '';
-      tipEEl.textContent = `${v.userData.numTracks ?? 0}`;
-      if (tipEKeyEl) tipEKeyEl.textContent = 'tracks';
-      _setExtras([['x, y, z', xyzMm]]);
-      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
-      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = !wantTooltip;
-      markDirty();
+      showHit({
+        label,
+        coord: v.userData.vertexKey,
+        valueText: `${v.userData.numTracks ?? 0}`,
+        keyText: 'tracks',
+        extras: [['x, y, z', xyzMm]],
+      });
       return;
     }
   }
@@ -335,15 +360,13 @@ function doRaycast(clientX, clientY) {
       if (isPhoton) hideTrackHits();
       else showTrackHits(line);
       clearOutline();
-      tipCellEl.textContent = label;
-      tipCoordEl.textContent = storeGateKey;
-      tipEEl.textContent = `${ptGev.toFixed(3)} GeV`;
-      if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
-      _setExtras([[_ETA_LABEL, _fmtEta(line.userData.eta)]]);
-      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
-      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = !wantTooltip;
-      markDirty();
+      showHit({
+        label,
+        coord: storeGateKey,
+        valueText: `${ptGev.toFixed(3)} GeV`,
+        keyHtml: 'p<sub>T</sub>',
+        extras: [[_ETA_LABEL, _fmtEta(line.userData.eta)]],
+      });
       return;
     }
   }
@@ -354,18 +377,15 @@ function doRaycast(clientX, clientY) {
     if (clusterHits.length) {
       const line = clusterHits[0].object;
       const etGev = line.userData.etGev ?? 0;
-      const storeGateKey = line.userData.storeGateKey ?? '';
       clearOutline();
       hideTrackHits();
-      tipCellEl.textContent = 'Cluster';
-      tipCoordEl.textContent = storeGateKey;
-      tipEEl.textContent = `${etGev.toFixed(3)} GeV`;
-      if (tipEKeyEl) tipEKeyEl.innerHTML = 'E<sub>T</sub>';
-      _setExtras([[_ETA_LABEL, _fmtEta(line.userData.eta)]]);
-      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
-      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = !wantTooltip;
-      markDirty();
+      showHit({
+        label: 'Cluster',
+        coord: line.userData.storeGateKey ?? '',
+        valueText: `${etGev.toFixed(3)} GeV`,
+        keyHtml: 'E<sub>T</sub>',
+        extras: [[_ETA_LABEL, _fmtEta(line.userData.eta)]],
+      });
       return;
     }
   }
@@ -379,22 +399,18 @@ function doRaycast(clientX, clientY) {
     if (tauHits.length) {
       const line = tauHits[0].object;
       const ptGev = line.userData.ptGev ?? 0;
-      const storeGateKey = line.userData.storeGateKey ?? '';
-      const numTracks = line.userData.numTracks ?? 0;
       clearOutline();
       hideTrackHits();
-      tipCellEl.textContent = 'Tau';
-      tipCoordEl.textContent = storeGateKey;
-      tipEEl.textContent = `${ptGev.toFixed(3)} GeV`;
-      if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
-      _setExtras([
-        [_ETA_LABEL, _fmtEta(line.userData.eta)],
-        ['tracks', `${numTracks}`],
-      ]);
-      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
-      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = !wantTooltip;
-      markDirty();
+      showHit({
+        label: 'Tau',
+        coord: line.userData.storeGateKey ?? '',
+        valueText: `${ptGev.toFixed(3)} GeV`,
+        keyHtml: 'p<sub>T</sub>',
+        extras: [
+          [_ETA_LABEL, _fmtEta(line.userData.eta)],
+          ['tracks', `${line.userData.numTracks ?? 0}`],
+        ],
+      });
       return;
     }
   }
@@ -407,26 +423,23 @@ function doRaycast(clientX, clientY) {
       const ptGev = line.userData.ptGev ?? line.userData.etGev ?? 0;
       const storeGateKey = line.userData.storeGateKey ?? '';
       const massGev = line.userData.massGev ?? 0;
-      clearOutline();
-      hideTrackHits();
-      tipCellEl.textContent = 'Jet';
-      tipCoordEl.textContent = storeGateKey;
-      tipEEl.textContent = `${ptGev.toFixed(3)} GeV`;
-      if (tipEKeyEl) tipEKeyEl.innerHTML = 'p<sub>T</sub>';
       // η is the canonical companion to pT. Mass is only meaningful for
       // large-R (R = 1.0) collections — boosted W/Z/top/H tagging — so we
-      // include it for AntiKt10* and skip it otherwise.
+      // include it for AntiKt10* and skip it otherwise. (The "mass" label is
+      // Latin-only so the default uppercase styling is fine.)
       const extras = [[_ETA_LABEL, _fmtEta(line.userData.eta)]];
-      // (mass label below uses Latin chars, so the default uppercase styling
-      // is fine.)
       if (storeGateKey.includes('AntiKt10')) {
         extras.push(['mass', `${massGev.toFixed(3)} GeV`]);
       }
-      _setExtras(extras);
-      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
-      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = !wantTooltip;
-      markDirty();
+      clearOutline();
+      hideTrackHits();
+      showHit({
+        label: 'Jet',
+        coord: storeGateKey,
+        valueText: `${ptGev.toFixed(3)} GeV`,
+        keyHtml: 'p<sub>T</sub>',
+        extras,
+      });
       return;
     }
   }
@@ -441,22 +454,17 @@ function doRaycast(clientX, clientY) {
       while (arrow && arrow.userData.magnitude == null && arrow.parent) arrow = arrow.parent;
       const magnitude = arrow?.userData.magnitude ?? 0;
       const sumEt = arrow?.userData.sumEt ?? 0;
-      const key = arrow?.userData.metKey ?? '';
       clearOutline();
       hideTrackHits();
-      tipCellEl.textContent = 'MET';
-      tipCoordEl.textContent = key;
-      tipEEl.textContent = `${magnitude.toFixed(2)} GeV`;
-      if (tipEKeyEl) tipEKeyEl.innerHTML = 'E<sub>T</sub><sup>miss</sup>';
-      _setExtras([['Sum E', `${sumEt.toFixed(1)} GeV`]]);
-      tooltip.style.left = Math.min(clientX + 18, rect.right - 210) + 'px';
-      tooltip.style.top = Math.min(clientY + 18, rect.bottom - 90) + 'px';
-      tooltip.hidden = !wantTooltip;
-      markDirty();
+      showHit({
+        label: 'MET',
+        coord: arrow?.userData.metKey ?? '',
+        valueText: `${magnitude.toFixed(2)} GeV`,
+        keyHtml: 'E<sub>T</sub><sup>miss</sup>',
+        extras: [['Sum E', `${sumEt.toFixed(1)} GeV`]],
+      });
       return;
     }
   }
-  clearOutline();
-  hideTooltip();
-  hideTrackHits();
+  _dismissAll();
 }
