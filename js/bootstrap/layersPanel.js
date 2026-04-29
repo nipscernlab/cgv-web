@@ -401,25 +401,16 @@ function _renderNode(node, depth) {
   );
 }
 
-export function setupLayersPanel() {
-  // ── Render the layer tree ────────────────────────────────────────────────
+// ── Detector-layer tree (the static geometry side of the panel) ─────────────
+// Owns the tree DOM (#layers-tree), the gswitch click handlers, the All / None
+// quick buttons, and the muon sub-tree rebuild on atlas load. Returns the
+// `syncLayerToggles` helper so other widgets can refresh the layer-button
+// "on" indicator after they manipulate layer state.
+function _setupLayerTree() {
   const tree = document.getElementById('layers-tree');
   function renderTree() {
     tree.innerHTML = PANEL_TREE.map((n) => _renderNode(n, 0)).join('');
   }
-  renderTree();
-
-  // Atlas may already be loaded, or arrive later. Either way, regenerate the
-  // muon sub-tree once it's available so every chamber gets a toggle.
-  function refreshMuonTree() {
-    _rebuildMuonNode();
-    _reindexTree();
-    renderTree();
-    syncLayerToggles();
-  }
-  if (getMuonAtlasTrees().aSide || getMuonAtlasTrees().cSide) refreshMuonTree();
-  onMuonTreesChange(refreshMuonTree);
-
   function syncLayerToggles() {
     for (const btn of tree.querySelectorAll('.gswitch')) {
       const node = _nodeByPath.get(btn.dataset.path);
@@ -433,12 +424,23 @@ export function setupLayersPanel() {
       PANEL_TREE.some((n) => _nodeOn(n)),
     );
   }
-
   function applyForPath(path) {
     if (path[0] === 'muon') applyMuonVisibility();
     else if (path[0] === 'fcal') applyFcalThreshold();
     else applyThreshold();
   }
+  // Atlas may already be loaded, or arrive later. Either way, regenerate the
+  // muon sub-tree once it's available so every chamber gets a toggle.
+  function refreshMuonTree() {
+    _rebuildMuonNode();
+    _reindexTree();
+    renderTree();
+    syncLayerToggles();
+  }
+
+  renderTree();
+  if (getMuonAtlasTrees().aSide || getMuonAtlasTrees().cSide) refreshMuonTree();
+  onMuonTreesChange(refreshMuonTree);
 
   // Switch click: leaf toggles its boolean; parent flips the whole sub-tree
   // to the inverse of its aggregate ON state.
@@ -480,58 +482,74 @@ export function setupLayersPanel() {
     applyMuonVisibility();
   });
 
-  // ── Layers panel popover ───────────────────────────────────────────────────
-  const layersPanel = document.getElementById('layers-panel');
-  let layersPanelOpen = false;
+  syncLayerToggles();
+  return { syncLayerToggles };
+}
 
-  function openLayersPanel() {
-    // Mutually exclusive with the Particles popover — only one panel anchored
-    // to the toolbar at a time.
-    if (particlesPanelOpen) closeParticlesPanel();
-    layersPanelOpen = true;
-    layersPanel.classList.add('open');
-    document.getElementById('btn-layers').classList.add('on');
-    const br = document.getElementById('btn-layers').getBoundingClientRect();
+// ── Anchored toolbar popover ────────────────────────────────────────────────
+// Shared open/close + position logic for the two toolbar popovers (#layers-
+// panel anchored to #btn-layers, #particles-panel anchored to #btn-cluster).
+// Both popovers are mutually exclusive — opening one closes the other — so
+// each setup call gets a `closeOther` callback to invoke first.
+/**
+ * @param {{
+ *   panelId: string,
+ *   anchorId: string,
+ *   defaultWidth: number,
+ *   onOpen?: () => void,
+ *   onClose?: () => void,
+ *   closeOther: () => void,
+ * }} cfg
+ */
+function _setupAnchoredPopover({ panelId, anchorId, defaultWidth, onOpen, onClose, closeOther }) {
+  const panel = document.getElementById(panelId);
+  let isOpen = false;
+
+  function open() {
+    if (!panel) return;
+    closeOther();
+    isOpen = true;
+    panel.classList.add('open');
+    if (onOpen) onOpen();
+    const br = document.getElementById(anchorId).getBoundingClientRect();
     requestAnimationFrame(() => {
-      const pw = layersPanel.offsetWidth || 210;
+      const pw = panel.offsetWidth || defaultWidth;
       let left = br.left + br.width / 2 - pw / 2;
       left = Math.max(6, Math.min(left, window.innerWidth - pw - 6));
       // Anchor the panel's bottom 10px above the button's top so expanding a
       // sub-tree grows the panel upward instead of pushing it past the
       // toolbar. Cap max-height to the available space so internal scrolling
       // kicks in when content overflows the viewport.
-      layersPanel.style.left = left + 'px';
-      layersPanel.style.top = '';
-      layersPanel.style.bottom = window.innerHeight - br.top + 10 + 'px';
-      layersPanel.style.maxHeight = Math.max(120, br.top - 16) + 'px';
+      panel.style.left = `${left}px`;
+      panel.style.top = '';
+      panel.style.bottom = `${window.innerHeight - br.top + 10}px`;
+      panel.style.maxHeight = `${Math.max(120, br.top - 16)}px`;
     });
   }
 
-  function closeLayersPanel() {
-    layersPanelOpen = false;
-    layersPanel.classList.remove('open');
-    document.getElementById('btn-layers').classList.toggle(
-      'on',
-      PANEL_TREE.some((n) => _nodeOn(n)),
-    );
+  function close() {
+    if (!panel) return;
+    isOpen = false;
+    panel.classList.remove('open');
+    if (onClose) onClose();
   }
 
-  document.getElementById('btn-layers').addEventListener('click', (e) => {
-    e.stopPropagation();
-    layersPanelOpen ? closeLayersPanel() : openLayersPanel();
-  });
+  // Click outside the popover closes it; clicks INSIDE are stopped from
+  // bubbling so they don't trigger the document-level close.
   document.addEventListener('click', () => {
-    if (layersPanelOpen) closeLayersPanel();
+    if (isOpen) close();
   });
-  layersPanel.addEventListener('click', (e) => e.stopPropagation());
+  if (panel) panel.addEventListener('click', (e) => e.stopPropagation());
 
-  syncLayerToggles();
+  return { open, close, isOpen: () => isOpen };
+}
 
-  // ── Inner Detector overlays (Tracks + Hits) ────────────────────────────────
-  // Both are per-event toggles wired through the gswitches inside the
-  // #overlay-inner-detector-group block in index.html. The parent gswitch
-  // bulk-flips both children to the inverse of their aggregate ON state,
-  // mirroring the .layer-row-parent pattern used inside #layers-tree.
+// ── Inner Detector overlays (Tracks + Hits) ────────────────────────────────
+// Self-contained: per-event toggles wired through the gswitches inside the
+// #overlay-inner-detector-group block in index.html. The parent gswitch
+// bulk-flips both children to the inverse of their aggregate ON state,
+// mirroring the .layer-row-parent pattern used inside #layers-tree.
+function _setupInnerOverlay() {
   const btnTracks = document.getElementById('btn-tracks');
   const btnHits = document.getElementById('btn-hits');
   const btnInnerDetector = document.getElementById('btn-inner-detector');
@@ -578,18 +596,17 @@ export function setupLayersPanel() {
     innerDetectorGroup.classList.toggle('expanded');
   });
   syncOverlayBtns();
+}
 
-  // ── K button + Particles popover ────────────────────────────────────────
-  // Level-aware:
-  //   L1 — disabled (no clusters / particles to show).
-  //   L2 — simple toggle of cluster lines (clusterGroup).
-  //   L3 — opens the Particles popover with per-particle-type checkboxes
-  //        (jet lines / photon springs / MET arrow / electron-, muon-,
-  //        tau-matched tracks). The button's "on" indicator reflects whether
-  //        any particle type is enabled.
+// ── Particles popover (#btn-cluster, level-aware) ───────────────────────────
+//   L1 — disabled (no clusters / particles to show).
+//   L2 — simple toggle of cluster lines (clusterGroup).
+//   L3 — opens the Particles popover with per-particle-type checkboxes
+//        (jet lines / photon springs / MET arrow / electron / muon / tau /
+//        unmatched track filters). The button's "on" indicator reflects
+//        whether any particle type is enabled.
+function _setupParticlesPopover({ closeOther }) {
   const btnCluster = document.getElementById('btn-cluster');
-  const particlesPanel = document.getElementById('particles-panel');
-  let particlesPanelOpen = false;
 
   /** @returns {boolean} true if at least one particle type is enabled at L3 */
   function anyParticleOn() {
@@ -603,7 +620,6 @@ export function setupLayersPanel() {
       getUnmatchedTracksVisible()
     );
   }
-
   function syncParticlesPanel() {
     const set = (id, on) => {
       const el = document.getElementById(id);
@@ -619,7 +635,6 @@ export function setupLayersPanel() {
     set('ptog-taus', getTauTracksVisible());
     set('ptog-unmatched', getUnmatchedTracksVisible());
   }
-
   function syncClustersBtn() {
     const lvl = getViewLevel();
     if (lvl === 1) {
@@ -632,39 +647,21 @@ export function setupLayersPanel() {
     }
   }
 
-  function openParticlesPanel() {
-    if (!particlesPanel) return;
-    // Mutually exclusive with the Detector Layers panel — only one popover
-    // anchored to the toolbar at a time.
-    if (layersPanelOpen) closeLayersPanel();
-    particlesPanelOpen = true;
-    particlesPanel.classList.add('open');
-    syncParticlesPanel();
-    const br = btnCluster.getBoundingClientRect();
-    requestAnimationFrame(() => {
-      const pw = particlesPanel.offsetWidth || 220;
-      let left = br.left + br.width / 2 - pw / 2;
-      left = Math.max(6, Math.min(left, window.innerWidth - pw - 6));
-      particlesPanel.style.left = `${left}px`;
-      particlesPanel.style.top = '';
-      particlesPanel.style.bottom = `${window.innerHeight - br.top + 10}px`;
-      particlesPanel.style.maxHeight = `${Math.max(120, br.top - 16)}px`;
-    });
-  }
-
-  function closeParticlesPanel() {
-    if (!particlesPanel) return;
-    particlesPanelOpen = false;
-    particlesPanel.classList.remove('open');
-    syncClustersBtn();
-  }
+  const popover = _setupAnchoredPopover({
+    panelId: 'particles-panel',
+    anchorId: 'btn-cluster',
+    defaultWidth: 220,
+    onOpen: syncParticlesPanel,
+    onClose: syncClustersBtn,
+    closeOther,
+  });
 
   btnCluster.addEventListener('click', (e) => {
     e.stopPropagation();
     const lvl = getViewLevel();
     if (lvl === 1) return;
     if (lvl === 3) {
-      particlesPanelOpen ? closeParticlesPanel() : openParticlesPanel();
+      popover.isOpen() ? popover.close() : popover.open();
       return;
     }
     setClustersVisible(!getClustersVisible());
@@ -672,14 +669,11 @@ export function setupLayersPanel() {
     markDirty();
   });
 
-  document.addEventListener('click', () => {
-    if (particlesPanelOpen) closeParticlesPanel();
-  });
-  if (particlesPanel) particlesPanel.addEventListener('click', (e) => e.stopPropagation());
-
-  // Each toggle in the particles popover calls its setter, then re-runs the
-  // matching apply: jets/photons/MET only need a markDirty (group.visible
-  // already flipped in the setter); track filters need applyParticleTrackFilters.
+  // Each toggle in the popover flips its setter, then re-runs the matching
+  // apply: jets/photons/MET only need markDirty (group.visible flipped by the
+  // setter); track filters need applyTrackThreshold (its filter-stage HIDES
+  // only — to bring tracks back the pT pass at the head must reset visibility
+  // first, then the now-updated filter applies on top).
   function bindParticleToggle(id, getter, setter, onApply) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -694,10 +688,6 @@ export function setupLayersPanel() {
   bindParticleToggle('ptog-jets', getJetsVisible, setJetsVisible, markDirty);
   bindParticleToggle('ptog-photons', getPhotonsVisible, setPhotonsVisible, markDirty);
   bindParticleToggle('ptog-met', getMetVisible, setMetVisible, markDirty);
-  // Track-filter toggles: applyParticleTrackFilters only ever HIDES; once a
-  // track is hidden, calling it again can't bring it back. Re-run the full
-  // applyTrackThreshold so the pT pass resets every line's visibility from
-  // scratch, and the (now-updated) filter applies on top.
   bindParticleToggle('ptog-electrons', getElectronTracksVisible, setElectronTracksVisible, () =>
     applyTrackThreshold(),
   );
@@ -713,12 +703,54 @@ export function setupLayersPanel() {
 
   onViewLevelChange((lvl) => {
     syncClustersBtn();
-    if (lvl !== 3 && particlesPanelOpen) closeParticlesPanel();
+    if (lvl !== 3 && popover.isOpen()) popover.close();
   });
   syncClustersBtn();
 
+  return popover;
+}
+
+// ── Layers popover (#btn-layers) ────────────────────────────────────────────
+function _setupLayersPopover({ syncLayerToggles, closeOther }) {
+  const popover = _setupAnchoredPopover({
+    panelId: 'layers-panel',
+    anchorId: 'btn-layers',
+    defaultWidth: 210,
+    onOpen: () => document.getElementById('btn-layers').classList.add('on'),
+    // Close: btn-layers stays "on" iff at least one layer is on. syncLayerToggles
+    // already encodes this rule; piggy-back on it instead of duplicating.
+    onClose: syncLayerToggles,
+    closeOther,
+  });
+  document.getElementById('btn-layers').addEventListener('click', (e) => {
+    e.stopPropagation();
+    popover.isOpen() ? popover.close() : popover.open();
+  });
+  return popover;
+}
+
+export function setupLayersPanel() {
+  const { syncLayerToggles } = _setupLayerTree();
+  _setupInnerOverlay();
+
+  // Mutual exclusivity between the two toolbar popovers: each open() closes
+  // the other if it's open. Both APIs are needed before either close handle
+  // exists, so wire them in via closures that read the let-bindings — by
+  // the time a click fires both are populated.
+  /** @type {{ open: () => void, close: () => void, isOpen: () => boolean }} */
+  let particles = /** @type {any} */ (null);
+  /** @type {{ open: () => void, close: () => void, isOpen: () => boolean }} */
+  let layers = /** @type {any} */ (null);
+  layers = _setupLayersPopover({
+    syncLayerToggles,
+    closeOther: () => particles?.isOpen() && particles.close(),
+  });
+  particles = _setupParticlesPopover({
+    closeOther: () => layers.isOpen() && layers.close(),
+  });
+
   return {
-    closeLayersPanel,
-    isOpen: () => layersPanelOpen,
+    closeLayersPanel: layers.close,
+    isOpen: layers.isOpen,
   };
 }
