@@ -15,8 +15,8 @@ import {
 import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
 import { showTrackHits, hideTrackHits, getHitsEnabled } from './overlays/hitsOverlay.js';
 import { buildExtrasHtml } from './tooltipRows.js';
-import { getMuonChamberMeshes } from './trackAtlasIntersections.js';
-import { getMuonAliasForMesh } from './visibility/muonAliases.js';
+import { getMuonChamberMeshes, showChamberHoverOutline } from './trackAtlasIntersections.js';
+import { getMuonAliasForMesh, getStationMeshes } from './visibility/muonAliases.js';
 
 export const tooltip = document.getElementById('tip');
 export const tipCellEl = document.getElementById('tip-cell');
@@ -489,8 +489,15 @@ function doRaycast(clientX, clientY) {
       const alias = info?.alias ?? mesh.name ?? 'Muon chamber';
       const sideLabel = info?.side ? ` (${info.side} side)` : '';
       const coord = info?.full ? `${info.full}${sideLabel}` : sideLabel.trim() || '—';
+      // Outline every chamber of the same station — getStationMeshes returns
+      // every mesh sharing the (side, alias) of the hovered one, so the user
+      // sees the full BIS / NSW / … ring, not just the single chamber under
+      // the cursor. clearOutline first to drop any stale outline state, then
+      // re-apply on the same call.
       clearOutline();
       hideTrackHits();
+      const stationMeshes = info ? getStationMeshes(mesh) : [mesh];
+      showChamberHoverOutline(stationMeshes.length ? stationMeshes : [mesh]);
       showHit({
         label: `Muon chamber — ${alias}`,
         coord,

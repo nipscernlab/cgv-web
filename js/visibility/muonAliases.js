@@ -118,6 +118,16 @@ const _NODE_TO_ALIAS = (() => {
 
 /** @type {WeakMap<object, MuonAliasInfo>} */
 const _meshToAlias = new WeakMap();
+// Inverse lookup: every mesh belonging to a station, keyed by `${side}:${alias}`.
+// Used by the hover overlay to outline every chamber of the station the
+// cursor is on, not just the single mesh under the ray.
+/** @type {Map<string, object[]>} */
+const _stationMeshes = new Map();
+/**
+ * @param {'A' | 'C'} side
+ * @param {string} alias
+ */
+const _stationKey = (side, alias) => `${side}:${alias}`;
 
 /**
  * Walks an atlas node subtree and stamps every mesh under any aliased
@@ -134,6 +144,8 @@ function _stampSubtree(root, side) {
     const alias = _NODE_TO_ALIAS[name];
     if (alias) {
       const techInfo = MUON_STATION_TECH[/** @type {keyof typeof MUON_STATION_TECH} */ (alias)];
+      const key = _stationKey(side, alias);
+      if (!_stationMeshes.has(key)) _stationMeshes.set(key, []);
       _stampAllMeshes(child, { side, alias, full: techInfo?.full, tech: techInfo?.tech });
     } else if (!MUON_HIDDEN_NODES.has(name)) {
       _stampSubtree(child, side);
@@ -147,17 +159,24 @@ function _stampSubtree(root, side) {
  */
 function _stampAllMeshes(node, info) {
   if (!node) return;
-  for (const m of node.meshes ?? []) _meshToAlias.set(m, info);
+  const bucket = _stationMeshes.get(_stationKey(info.side, info.alias));
+  if (!bucket) return; // _stampSubtree always primes the bucket; defensive only.
+  for (const m of node.meshes ?? []) {
+    _meshToAlias.set(m, info);
+    bucket.push(m);
+  }
   if (node.children) for (const child of node.children.values()) _stampAllMeshes(child, info);
 }
 
 /**
- * Builds the mesh → alias lookup. Idempotent — safe to call again on a
- * fresh atlas load (the WeakMap drops entries whose meshes are GC'd).
+ * Builds the mesh → alias lookup AND the inverse station → meshes lookup.
+ * Idempotent — safe to call again on a fresh atlas load. Old WeakMap entries
+ * drop with their meshes; the station-meshes Map is cleared explicitly.
  *
  * @param {{ aSide: any, cSide: any }} trees
  */
 export function setupMuonAliasMap({ aSide, cSide }) {
+  _stationMeshes.clear();
   _stampSubtree(aSide, 'A');
   _stampSubtree(cSide, 'C');
 }
@@ -168,4 +187,18 @@ export function setupMuonAliasMap({ aSide, cSide }) {
  */
 export function getMuonAliasForMesh(mesh) {
   return _meshToAlias.get(mesh);
+}
+
+/**
+ * Returns every chamber mesh that belongs to the same station as the given
+ * mesh — i.e. all meshes sharing this mesh's (side, alias) pair. Empty array
+ * when the mesh isn't a known muon chamber.
+ *
+ * @param {object} mesh
+ * @returns {ReadonlyArray<object>}
+ */
+export function getStationMeshes(mesh) {
+  const info = _meshToAlias.get(mesh);
+  if (!info) return [];
+  return _stationMeshes.get(_stationKey(info.side, info.alias)) ?? [];
 }

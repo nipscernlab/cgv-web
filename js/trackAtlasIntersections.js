@@ -80,6 +80,43 @@ export function getMuonChamberMeshes() {
   return _resolveTrackAtlasTargets().meshes;
 }
 
+// Hover outline for muon chambers — piggy-backs on the per-mesh
+// trackAtlasOutline LineSegments already created by _ensureTrackAtlasOutline.
+// Stores each forced mesh's prior outline.visible so we can restore it on
+// hover-out (the next updateTrackAtlasIntersections will recompute the
+// track-driven state authoritatively, but until then we leave it as we
+// found it).
+/** @type {Map<any, boolean>} */
+const _hoverOutlinePrev = new Map();
+
+/**
+ * Forces the per-mesh outline on every chamber in `meshes` to visible —
+ * typically every mesh of one station, fed in by the hover handler via
+ * getStationMeshes(). Replaces any previous hover set.
+ * @param {ReadonlyArray<any>} meshes
+ */
+export function showChamberHoverOutline(meshes) {
+  clearChamberHoverOutline();
+  for (const m of meshes) {
+    const out = m.userData?.trackAtlasOutline;
+    if (!out) continue;
+    _hoverOutlinePrev.set(m, out.visible);
+    out.visible = true;
+  }
+  if (_hoverOutlinePrev.size) markDirty();
+}
+
+/** Restores every outline forced visible by the last showChamberHoverOutline. */
+export function clearChamberHoverOutline() {
+  if (_hoverOutlinePrev.size === 0) return;
+  for (const [m, prev] of _hoverOutlinePrev) {
+    const out = m.userData?.trackAtlasOutline;
+    if (out) out.visible = prev;
+  }
+  _hoverOutlinePrev.clear();
+  markDirty();
+}
+
 function _findAtlasNodesByName(root, name, out = []) {
   if (!root) return out;
   if (root.name === name) out.push(root);
