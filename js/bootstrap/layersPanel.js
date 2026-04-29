@@ -27,12 +27,16 @@ import {
   getElectronTracksVisible,
   getMuonTracksVisible,
   getTauTracksVisible,
+  getUnmatchedTracksVisible,
+  getUnmatchedPhotonsVisible,
   setTracksVisible,
   setPhotonsVisible,
   setMetVisible,
   setElectronTracksVisible,
   setMuonTracksVisible,
   setTauTracksVisible,
+  setUnmatchedTracksVisible,
+  setUnmatchedPhotonsVisible,
 } from '../visibility.js';
 import { updateTrackAtlasIntersections } from '../trackAtlasIntersections.js';
 import { getHitsEnabled, setHitsEnabled, hideTrackHits } from '../overlays/hitsOverlay.js';
@@ -567,6 +571,8 @@ function _setupParticlesPopover() {
     set('ptog-electrons', getElectronTracksVisible());
     set('ptog-muons', getMuonTracksVisible());
     set('ptog-taus', getTauTracksVisible());
+    set('ptog-unmatched', getUnmatchedTracksVisible());
+    set('ptog-unmatched-photons', getUnmatchedPhotonsVisible());
   }
   // K button is the Particles popover trigger — only meaningful at L3 now
   // that "Cluster Lines" / "Jet Lines" moved to the Helpers popover.
@@ -621,6 +627,16 @@ function _setupParticlesPopover() {
   );
   bindParticleToggle('ptog-taus', getTauTracksVisible, setTauTracksVisible, () =>
     applyTrackThreshold(),
+  );
+  // Below the separator: "unmatched" filters that strip background.
+  bindParticleToggle('ptog-unmatched', getUnmatchedTracksVisible, setUnmatchedTracksVisible, () =>
+    applyTrackThreshold(),
+  );
+  bindParticleToggle(
+    'ptog-unmatched-photons',
+    getUnmatchedPhotonsVisible,
+    setUnmatchedPhotonsVisible,
+    () => applyTrackThreshold(),
   );
 
   onViewLevelChange((lvl) => {

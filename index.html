@@ -975,6 +975,40 @@
           style="--gswitch-col: #b366ff"
         ></button>
       </div>
+      <!-- Background "unmatched" filters: hide tracks / photons that didn't
+       get associated to any reconstructed object. Both off by default so
+       the user starts on a labelled-physics view. -->
+      <hr class="layer-sep" />
+      <div class="layer-row">
+        <span class="layer-dot" style="background: #ffea00"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="particles-unmatched">Unmatched Tracks</div>
+          <div class="layer-sub" data-i18n="particles-unmatched-sub">No particle association</div>
+        </div>
+        <button
+          class="gswitch"
+          id="ptog-unmatched"
+          role="switch"
+          aria-checked="false"
+          style="--gswitch-col: #ffea00"
+        ></button>
+      </div>
+      <div class="layer-row">
+        <span class="layer-dot" style="background: #ffcc00"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="particles-unmatched-photons">Unmatched Photons</div>
+          <div class="layer-sub" data-i18n="particles-unmatched-photons-sub">
+            γ outside any jet / τ cone
+          </div>
+        </div>
+        <button
+          class="gswitch"
+          id="ptog-unmatched-photons"
+          role="switch"
+          aria-checked="false"
+          style="--gswitch-col: #ffcc00"
+        ></button>
+      </div>
     </div>
 
     <!-- ── Helpers popover (Ghost / Cell Info / Unmatched / Jet-Cluster Lines) ─ -->
@@ -1024,20 +1058,6 @@
           role="switch"
           aria-checked="true"
           style="--gswitch-col: #ffffff"
-        ></button>
-      </div>
-      <div class="layer-row" id="hrow-unmatched">
-        <span class="layer-dot" style="background: #ffea00"></span>
-        <div class="layer-info">
-          <div class="layer-name" data-i18n="helpers-unmatched">Unmatched Tracks</div>
-          <div class="layer-sub" data-i18n="helpers-unmatched-sub">No particle association</div>
-        </div>
-        <button
-          class="gswitch"
-          id="hbtn-unmatched"
-          role="switch"
-          aria-checked="false"
-          style="--gswitch-col: #ffea00"
         ></button>
       </div>
       <!-- Lines row is level-aware: hidden at L1, "Cluster Lines" at L2,

@@ -67,6 +67,11 @@ let _tauTracksVisible = true;
 // a clean view that only shows the labelled physics; flip on via the K
 // popover when the soft-track background context is wanted.
 let _unmatchedTracksVisible = false;
+// Photons whose (η, φ) sits OUTSIDE every visible jet / τ-jet cone — i.e.
+// γ candidates not associated to a hadronic jet. Default off so the user
+// lands on the labelled-physics view; flip on via the K popover when the
+// raw photon background is wanted.
+let _unmatchedPhotonsVisible = false;
 // Vertex markers (primary, pile-up, b-tag dots). Event-level summary info —
 // applies at every view level, so no level gate. Default on; the user can
 // hide them via the Helpers popover when they get in the way of close-zooms
@@ -93,6 +98,7 @@ export const getElectronTracksVisible = () => _electronTracksVisible;
 export const getMuonTracksVisible = () => _muonTracksVisible;
 export const getTauTracksVisible = () => _tauTracksVisible;
 export const getUnmatchedTracksVisible = () => _unmatchedTracksVisible;
+export const getUnmatchedPhotonsVisible = () => _unmatchedPhotonsVisible;
 export const getVerticesVisible = () => _verticesVisible;
 
 // ── Visibility predicates (single source of truth for each group's gate) ─────
@@ -236,6 +242,10 @@ export function setUnmatchedTracksVisible(v) {
   _unmatchedTracksVisible = v;
 }
 /** @param {boolean} v */
+export function setUnmatchedPhotonsVisible(v) {
+  _unmatchedPhotonsVisible = v;
+}
+/** @param {boolean} v */
 export function setVerticesVisible(v) {
   _verticesVisible = v;
   if (_vertexGroup) _vertexGroup.visible = v;
@@ -352,9 +362,11 @@ function _isInsideAnyVisibleJetOrTau(eta, phi) {
 
 /**
  * Hides photon springs whose (η, φ) falls outside every visible jet / τ-jet
- * cone. Runs after the track-threshold pT pass set per-line .visible — this
- * filter only ever HIDES on top of that, never re-shows. Always on (no user
- * toggle); the user's intent is "only show photons that are part of a jet".
+ * cone — gated by the K-popover "Unmatched Photons" toggle (off by default).
+ * Runs after the track-threshold pT pass set per-line .visible; this filter
+ * only ever HIDES on top of that, never re-shows. L3-only for the same
+ * reason as the unmatched-tracks filter — jet/τ matches only mean anything
+ * alongside the L3 lepton/jet colouring.
  *
  * Called from applyTrackThreshold; the implicit caller order means jet/τ
  * line visibility is already up to date by the time we read it (jets are
@@ -363,6 +375,7 @@ function _isInsideAnyVisibleJetOrTau(eta, phi) {
  */
 export function applyPhotonFilters() {
   if (!_photonGroup) return;
+  if (_unmatchedPhotonsVisible || getViewLevel() !== 3) return;
   for (const child of _photonGroup.children ?? []) {
     if (child.visible === false) continue;
     const u = child.userData;

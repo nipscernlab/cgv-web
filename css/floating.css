@@ -61,6 +61,11 @@
   border-color: rgba(36, 103, 224, 0.45);
   background: rgba(26, 82, 192, 0.12);
 }
+.layer-sep {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 6px 0;
+}
 .layer-row {
   display: flex;
   align-items: center;

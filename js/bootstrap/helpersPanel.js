@@ -3,8 +3,10 @@
 // previously-scattered toggles that aren't tied to a specific particle type:
 //   - Ghost      (sub-detector envelopes)
 //   - Cell Info  (hover tooltip + outline)
-//   - Unmatched Tracks  (L3 only — hide yellow / no-match tracks)
+//   - Vertices   (primary / pile-up / b-tag dots)
 //   - Jet Lines / Cluster Lines  (L2: cluster, L3: jet — label adapts)
+// The unmatched-tracks / unmatched-photons filters live in the K-popover
+// (Particles panel) since they're per-particle filters, not generic helpers.
 //
 // Owns the `showInfo` state because the only consumer outside this module
 // is hoverTooltip, which we expose via getShowInfo().
@@ -14,11 +16,8 @@ import {
   setJetsVisible,
   getClustersVisible,
   setClustersVisible,
-  getUnmatchedTracksVisible,
-  setUnmatchedTracksVisible,
   getVerticesVisible,
   setVerticesVisible,
-  applyTrackThreshold,
 } from '../visibility.js';
 import { getViewLevel, onViewLevelChange } from '../viewLevel.js';
 import { markDirty } from '../renderer.js';
@@ -45,9 +44,7 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
   const hbtnGhost = document.getElementById('hbtn-ghost');
   const hbtnInfo = document.getElementById('hbtn-info');
   const hbtnVertices = document.getElementById('hbtn-vertices');
-  const hbtnUnmatched = document.getElementById('hbtn-unmatched');
   const hbtnLines = document.getElementById('hbtn-lines');
-  const hrowUnmatched = document.getElementById('hrow-unmatched');
   const hrowLines = document.getElementById('hrow-lines');
   const linesNameEl = hrowLines?.querySelector('.layer-name') ?? null;
   const linesSubEl = hrowLines?.querySelector('.layer-sub') ?? null;
@@ -91,19 +88,10 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     }
   }
 
-  // Unmatched Tracks only makes sense at L3 — the filter itself no-ops
-  // outside L3 (see applyParticleTrackFilters), so the row would do nothing.
-  function syncUnmatchedRow() {
-    if (!hrowUnmatched) return;
-    hrowUnmatched.style.display = getViewLevel() === 3 ? '' : 'none';
-    setSwitch(hbtnUnmatched, getUnmatchedTracksVisible());
-  }
-
   function syncAllRows() {
     setSwitch(hbtnGhost, anyGhostOn());
     setSwitch(hbtnInfo, showInfo);
     setSwitch(hbtnVertices, getVerticesVisible());
-    syncUnmatchedRow();
     syncLinesRow();
   }
 
@@ -127,12 +115,6 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     setVerticesVisible(!getVerticesVisible());
     setSwitch(hbtnVertices, getVerticesVisible());
     markDirty();
-  });
-  hbtnUnmatched?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    setUnmatchedTracksVisible(!getUnmatchedTracksVisible());
-    setSwitch(hbtnUnmatched, getUnmatchedTracksVisible());
-    applyTrackThreshold();
   });
   hbtnLines?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -160,10 +142,7 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
 
   onViewLevelChange(() => {
     if (popover.isOpen()) syncAllRows();
-    else {
-      syncLinesRow();
-      syncUnmatchedRow();
-    }
+    else syncLinesRow();
   });
   syncAllRows();
 
