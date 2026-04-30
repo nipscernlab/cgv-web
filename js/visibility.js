@@ -16,6 +16,9 @@ import { getActiveJetCollection } from './jets.js';
 import { recomputeJetTrackMatch } from './trackMatch.js';
 import { updateTrackAtlasIntersections } from './trackAtlasIntersections.js';
 import { rebuildAllOutlines } from './outlines.js';
+// Internal-use imports below — only the symbols this module's own pipeline
+// orchestration touches. The complete public surface of each sub-module is
+// re-exported via the `export * from` barrel further down.
 import {
   getLastElectrons,
   syncElectronTrackMatch,
@@ -25,28 +28,8 @@ import {
   syncMuonTrackMatch,
   syncParticleLabelVisibility,
 } from './particles.js';
-import {
-  layerVis,
-  setLayerLeaf,
-  setLayerSubtree,
-  anyLayerLeafOn,
-  isLayerOn,
-} from './visibility/layerVis.js';
-import {
-  setMuonTrees,
-  getMuonAtlasTrees,
-  onMuonTreesChange,
-  applyMuonVisibility,
-} from './visibility/muonVisibility.js';
-import {
-  fcalGroup,
-  fcalVisibleMap,
-  fcalEdgeMat4,
-  getFcalEdgeBase,
-  clearFcal,
-  drawFcal,
-  applyFcalThreshold,
-} from './visibility/fcalRenderer.js';
+import { isLayerOn } from './visibility/layerVis.js';
+import { applyFcalThreshold } from './visibility/fcalRenderer.js';
 import {
   setLastClusterData,
   getActiveClusterCellIds,
@@ -57,50 +40,10 @@ import {
 import {
   getTrackGroup,
   getPhotonGroup,
-  getElectronGroup,
-  getMuonGroup,
-  getTauLabelGroup,
   getClusterGroup,
   getJetGroup,
   getTauGroup,
-  getMetGroup,
-  getVertexGroup,
-  getTracksVisible,
-  getClustersVisible,
-  getJetsVisible,
-  getPhotonsVisible,
-  getMetVisible,
-  getElectronTracksVisible,
-  getMuonTracksVisible,
-  getTauTracksVisible,
-  getUnmatchedTracksVisible,
-  getUnmatchedPhotonsVisible,
   getUnmatchedTausVisible,
-  getParticleLabelsVisible,
-  getVerticesVisible,
-  setTrackGroup,
-  setPhotonGroup,
-  setElectronGroup,
-  setMuonGroup,
-  setTauLabelGroup,
-  setClusterGroup,
-  setJetGroup,
-  setTauGroup,
-  setMetGroup,
-  setVertexGroup,
-  setTracksVisible,
-  setClustersVisible,
-  setJetsVisible,
-  setPhotonsVisible,
-  setMetVisible,
-  setElectronTracksVisible,
-  setMuonTracksVisible,
-  setTauTracksVisible,
-  setUnmatchedTracksVisible,
-  setUnmatchedPhotonsVisible,
-  setUnmatchedTausVisible,
-  setParticleLabelsVisible,
-  setVerticesVisible,
   applyDetectorGroupViewLevel,
   applyParticleTrackFilters,
   applyPhotonFilters,
@@ -109,124 +52,29 @@ import {
   thrTileMev,
   thrLArMev,
   thrHecMev,
-  thrFcalMev,
   thrTrackGev,
-  trackPtMinGev,
-  trackPtMaxGev,
   thrClusterEtGev,
-  clusterEtMinGev,
-  clusterEtMaxGev,
   thrJetEtGev,
-  jetEtMinGev,
-  jetEtMaxGev,
-  setThrTileMev,
-  setThrLArMev,
-  setThrHecMev,
-  setThrFcalMev,
-  setThrTrackGev,
-  setTrackPtMinGev,
-  setTrackPtMaxGev,
-  setThrClusterEtGev,
-  setClusterEtMinGev,
-  setClusterEtMaxGev,
-  setThrJetEtGev,
-  setJetEtMinGev,
-  setJetEtMaxGev,
 } from './visibility/thresholds.js';
 
-// Re-exported for the layers panel + any other consumer that imported them
-// from visibility.js historically. Live-binding semantics preserved.
-export { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn, isLayerOn };
-export { setMuonTrees, getMuonAtlasTrees, onMuonTreesChange, applyMuonVisibility };
-export { syncParticleLabelVisibility };
-export {
-  fcalGroup,
-  fcalVisibleMap,
-  fcalEdgeMat4,
-  getFcalEdgeBase,
-  clearFcal,
-  drawFcal,
-  applyFcalThreshold,
-};
+// ── Public-API barrel ──────────────────────────────────────────────────────
+// Every symbol exported by these sub-modules is available via `from
+// './visibility.js'` — adding a new export to a sub-module automatically
+// flows through here, no explicit re-export edit needed. Each sub-module
+// follows the underscore-prefix convention for internals, so there's no
+// risk of leaking private helpers through the barrel.
+export * from './visibility/layerVis.js';
+export * from './visibility/muonVisibility.js';
+export * from './visibility/fcalRenderer.js';
+export * from './visibility/detectorGroups.js';
+export * from './visibility/thresholds.js';
+
+// Sub-set re-exports for modules whose surface is bigger than visibility.js's
+// public contract (they expose internals that other consumers shouldn't
+// import via this barrel — keep these explicit so the public list stays
+// minimal).
 export { setLastClusterData, rebuildActiveClusterCellIds };
-export {
-  getTrackGroup,
-  getPhotonGroup,
-  getElectronGroup,
-  getMuonGroup,
-  getTauLabelGroup,
-  getClusterGroup,
-  getJetGroup,
-  getTauGroup,
-  getMetGroup,
-  getVertexGroup,
-  getTracksVisible,
-  getClustersVisible,
-  getJetsVisible,
-  getPhotonsVisible,
-  getMetVisible,
-  getElectronTracksVisible,
-  getMuonTracksVisible,
-  getTauTracksVisible,
-  getUnmatchedTracksVisible,
-  getUnmatchedPhotonsVisible,
-  getUnmatchedTausVisible,
-  getParticleLabelsVisible,
-  getVerticesVisible,
-  setTrackGroup,
-  setPhotonGroup,
-  setElectronGroup,
-  setMuonGroup,
-  setTauLabelGroup,
-  setClusterGroup,
-  setJetGroup,
-  setTauGroup,
-  setMetGroup,
-  setVertexGroup,
-  setTracksVisible,
-  setClustersVisible,
-  setJetsVisible,
-  setPhotonsVisible,
-  setMetVisible,
-  setElectronTracksVisible,
-  setMuonTracksVisible,
-  setTauTracksVisible,
-  setUnmatchedTracksVisible,
-  setUnmatchedPhotonsVisible,
-  setUnmatchedTausVisible,
-  setParticleLabelsVisible,
-  setVerticesVisible,
-  applyParticleTrackFilters,
-  applyPhotonFilters,
-};
-export {
-  thrTileMev,
-  thrLArMev,
-  thrHecMev,
-  thrFcalMev,
-  thrTrackGev,
-  trackPtMinGev,
-  trackPtMaxGev,
-  thrClusterEtGev,
-  clusterEtMinGev,
-  clusterEtMaxGev,
-  thrJetEtGev,
-  jetEtMinGev,
-  jetEtMaxGev,
-  setThrTileMev,
-  setThrLArMev,
-  setThrHecMev,
-  setThrFcalMev,
-  setThrTrackGev,
-  setTrackPtMinGev,
-  setTrackPtMaxGev,
-  setThrClusterEtGev,
-  setClusterEtMinGev,
-  setClusterEtMaxGev,
-  setThrJetEtGev,
-  setJetEtMinGev,
-  setJetEtMaxGev,
-};
+export { syncParticleLabelVisibility };
 
 // ── Late-injected slicer controller ──────────────────────────────────────────
 // Slicer is a per-app controller instance built in main.js — not a stable
