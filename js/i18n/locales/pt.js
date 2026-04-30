@@ -176,6 +176,8 @@ export default {
   'particles-unmatched-sub': 'Sem associação a partícula',
   'particles-unmatched-photons': 'γ não pareados',
   'particles-unmatched-photons-sub': 'γ fora dos cones de jato / τ',
+  'particles-unmatched-muons': 'μ não pareado',
+  'particles-unmatched-muons-sub': 'Match sem câmara, ou câmara sem match',
   'particles-unmatched-taus': 'τ não pareado',
   'particles-unmatched-taus-sub': 'candidato τ com carga ≠ ±1',
   'layers-title': 'Camadas do Detector',

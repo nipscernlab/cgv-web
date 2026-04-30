@@ -21,6 +21,7 @@ import {
   getUnmatchedTracksVisible,
   getUnmatchedPhotonsVisible,
   getUnmatchedTausVisible,
+  getUnmatchedMuonsVisible,
   setPhotonsVisible,
   setMetVisible,
   setElectronTracksVisible,
@@ -29,6 +30,7 @@ import {
   setUnmatchedTracksVisible,
   setUnmatchedPhotonsVisible,
   setUnmatchedTausVisible,
+  setUnmatchedMuonsVisible,
   applyTrackThreshold,
   applyTauPtThreshold,
 } from '../../visibility.js';
@@ -107,6 +109,12 @@ export function setupParticlesPopover() {
       id: 'ptog-unmatched-photons',
       get: getUnmatchedPhotonsVisible,
       set: setUnmatchedPhotonsVisible,
+      apply: applyTrackThreshold,
+    },
+    {
+      id: 'ptog-unmatched-muons',
+      get: getUnmatchedMuonsVisible,
+      set: setUnmatchedMuonsVisible,
       apply: applyTrackThreshold,
     },
     {

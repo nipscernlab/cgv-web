@@ -38,7 +38,11 @@ export function drawMuons(muons) {
     // Last polyline point — out at the muon-chamber edge (~9-10 m radius),
     // outside every other detector envelope. Keeps the label readable at any
     // zoom and makes the "this blue line is a muon" mapping immediate.
-    predicate: (line) => !!line.userData.isMuonMatched,
+    //
+    // Real muon = <Muon> match AND geometric chamber reach. Tracks that have
+    // only one of those flags fall to the "unmatched μ" bucket (label-less,
+    // gated by the K-popover toggle); see _applyTrackMaterials.
+    predicate: (line) => !!line.userData.isMuonMatched && !!line.userData.isHitTrack,
     anchorIdx: (count) => count - 1,
     makeSprite: (line) => {
       // pdg null → plain "μ" (parser couldn't pin the charge — older XMLs

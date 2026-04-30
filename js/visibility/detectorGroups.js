@@ -79,6 +79,13 @@ let _unmatchedPhotonsVisible = false;
 // default so the user lands on a clean view of physically-plausible τ; flip
 // on to inspect the seed-level candidates.
 let _unmatchedTausVisible = false;
+// Tracks with exactly one of (matchedToMuon, reachesChambers) true — i.e.
+// either the heuristic ΔR matcher claimed the track but it doesn't reach
+// the spectrometer (likely wrong polyline), or the track does pass through
+// chambers but no <Muon> in the XML matched it (ΔR cap too tight after
+// toroid bending). Real muons require BOTH flags. Off by default; flip on
+// to inspect the half-evidence cases.
+let _unmatchedMuonsVisible = false;
 // e± / μ± / τ± lepton-label sprites (anchored to matched tracks). Single
 // gate over all three label groups — when the user just wants to see the
 // coloured tracks without the floating symbols on top. Default on so the
@@ -113,6 +120,7 @@ export const getTauTracksVisible = () => _tauTracksVisible;
 export const getUnmatchedTracksVisible = () => _unmatchedTracksVisible;
 export const getUnmatchedPhotonsVisible = () => _unmatchedPhotonsVisible;
 export const getUnmatchedTausVisible = () => _unmatchedTausVisible;
+export const getUnmatchedMuonsVisible = () => _unmatchedMuonsVisible;
 export const getParticleLabelsVisible = () => _particleLabelsVisible;
 export const getVerticesVisible = () => _verticesVisible;
 
@@ -284,6 +292,10 @@ export function setUnmatchedTausVisible(v) {
   _unmatchedTausVisible = v;
 }
 /** @param {boolean} v */
+export function setUnmatchedMuonsVisible(v) {
+  _unmatchedMuonsVisible = v;
+}
+/** @param {boolean} v */
 export function setParticleLabelsVisible(v) {
   _particleLabelsVisible = v;
   // No refresh hooks here — the gate is enforced per-sprite by
@@ -339,6 +351,16 @@ export function applyParticleTrackFilters() {
     // lighting filter (updateTrackAtlasIntersections ORs particleHidden in).
     const ptVisible = child.visible !== false;
     let hide = false;
+    // Two flavours of "hidden" — track is invisible either way, but they
+    // differ in whether updateTrackAtlasIntersections still treats the
+    // track as physics for chamber lighting:
+    //   physicsHide = true  ⇒ user said "hide the LINE but keep the muon"
+    //                          (Muon Tracks toggle off, etc) → particleHidden=true,
+    //                          chambers stay lit.
+    //   physicsHide = false ⇒ track has no real muon attached (Unmatched μ
+    //                          toggle off) → particleHidden stays false so
+    //                          the chamber-lighting pass drops it too.
+    let physicsHide = true;
     if (ptVisible) {
       if (!_electronTracksVisible && u.matchedElectronPdgId != null) {
         hide = true;
@@ -346,7 +368,19 @@ export function applyParticleTrackFilters() {
         !_muonTracksVisible &&
         (u.isMuonMatched || u.storeGateKey === 'CombinedMuonTracks')
       ) {
+        // Muon Tracks toggle hides every line in the muon-evidence pool —
+        // real μ and unmatched μ alike. The chamber-preservation rule then
+        // splits:
+        //   real μ           → keep chambers (physics preserved)
+        //   unmatched μ      → keep chambers iff Unmatched μ toggle is on
+        //                      (user opted in to seeing those candidates'
+        //                      physics; otherwise drop them with the line)
+        // The XOR check below `applyParticleTrackFilters` only fires when
+        // Muon Tracks is ON, so this branch is the single place that
+        // resolves both toggles' interaction.
         hide = true;
+        const isRealMuon = u.isMuonMatched && u.isHitTrack;
+        if (!isRealMuon && !_unmatchedMuonsVisible) physicsHide = false;
       } else if (!_tauTracksVisible && u.isTauMatched) {
         hide = true;
         // Unmatched τ daughter: track belongs to a τ candidate whose summed
@@ -365,6 +399,27 @@ export function applyParticleTrackFilters() {
         !u.isJetMatched
       ) {
         hide = true;
+        // Unmatched μ: track has exactly one of the two muon-evidence flags
+        // (a <Muon> match without chamber reach, or a chamber reach without
+        // a <Muon> match). A real muon needs both — anything else is a
+        // half-evidence track that may or may not be a muon. Hide unless
+        // the K-popover Unmatched μ toggle is on. Only hide when no higher-
+        // priority match (electron/jet/τ) claims the track — those keep
+        // their own colouring regardless of muon evidence.
+        //
+        // physicsHide=false: when the user opts out of these tracks, the
+        // chambers they'd otherwise light up must also stay dark — there's
+        // no <Muon> object behind them to justify the lit chamber. Only the
+        // "Muon Tracks" toggle (real muons) keeps the chamber.
+      } else if (
+        !_unmatchedMuonsVisible &&
+        ((u.isMuonMatched && !u.isHitTrack) || (!u.isMuonMatched && u.isHitTrack)) &&
+        u.matchedElectronPdgId == null &&
+        !u.isJetMatched &&
+        !u.isTauMatched
+      ) {
+        hide = true;
+        physicsHide = false;
         // Unmatched / yellow tracks: nothing in the priority chain claimed them.
         // _applyTrackMaterials would render these in TRACK_MAT.
       } else if (
@@ -384,7 +439,9 @@ export function applyParticleTrackFilters() {
     // muon chamber stays lit when the user only wanted to hide the muon LINE,
     // not delete the underlying physics. Cleared whenever the line is allowed
     // through (or pT-killed) so the flag can't go stale across toggle flips.
-    u.particleHidden = hide;
+    // Unmatched-μ hides clear it too — those tracks have no real <Muon>, so
+    // dropping them from chamber lighting is the right call.
+    u.particleHidden = hide && physicsHide;
   }
 }
 

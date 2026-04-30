@@ -232,21 +232,25 @@ export function updateTrackAtlasIntersections() {
   if (!meshes.length) return;
 
   const trackGroup = _getTrackGroup();
-  // Chamber visibility is driven by track presence, not track rendering — when
-  // the J button hides the track group, the underlying tracks are still in the
-  // scene (and still raycastable, see hoverTooltip.js). Per-line .visible only
-  // counts the pT-slider as a real "drop this noise" filter; the Particles
-  // panel toggles (Muons / Electrons / Taus / Unmatched) write `.visible=false`
-  // too but stamp `userData.particleHidden=true` to mean "hide the line, keep
-  // the physics" — OR'd in here so a muon chamber stays lit when the user
-  // toggles muon lines off without also wanting the chamber to vanish.
-  const visibleTracks = trackGroup
-    ? trackGroup.children.filter((c) => c.visible || c.userData.particleHidden)
-    : [];
+  // Two questions, two answers:
+  //   isHitTrack — purely geometric: does THIS track's polyline pass
+  //                through any chamber? Computed for every track in the
+  //                group, regardless of visibility. The Particles-panel
+  //                filters in detectorGroups.js use this flag to decide
+  //                whether a track is "muon-like" (real μ vs unmatched μ),
+  //                so resetting it on hidden tracks would break the cycle:
+  //                hide → reset isHitTrack → next filter pass can't fire →
+  //                track comes back visible.
+  //   hitMeshes  — actually-lit chambers: only tracks whose .visible=true
+  //                or particleHidden=true (the J-button / "Muon Tracks
+  //                off" / etc cases that hide the LINE but keep the
+  //                physics) contribute. Unmatched-μ tracks set
+  //                particleHidden=false so their chambers go dark too.
+  const allTracks = trackGroup ? trackGroup.children : [];
   const hitMeshes = new Set();
   const hitTracks = new Set();
 
-  if (visibleTracks.length) {
+  if (allTracks.length) {
     scene.updateMatrixWorld(true);
 
     // Cache world-space AABBs for all target meshes once (static geometry).
@@ -254,7 +258,7 @@ export function updateTrackAtlasIntersections() {
       _trackAtlasMeshBoxes = meshes.map((m) => new THREE.Box3().setFromObject(m));
     }
 
-    for (const line of visibleTracks) {
+    for (const line of allTracks) {
       const pos = line.geometry?.getAttribute('position');
       if (!pos || pos.count < 2) continue;
 
@@ -273,6 +277,10 @@ export function updateTrackAtlasIntersections() {
       }
       if (!nearMeshes.length) continue;
 
+      // Track contributes to chamber lighting iff its line is rendered
+      // (or in the "hide line, keep physics" mode). Geometric isHitTrack
+      // is recorded for every track regardless.
+      const lightsChambers = line.visible || line.userData.particleHidden;
       let lineHit = false;
       for (let i = 0; i < pos.count - 1; i++) {
         _trackAtlasSegA.fromBufferAttribute(pos, i).applyMatrix4(line.matrixWorld);
@@ -284,7 +292,7 @@ export function updateTrackAtlasIntersections() {
         _trackAtlasRay.set(_trackAtlasSegA, _trackAtlasDir);
         _trackAtlasRay.far = len;
         for (const hit of _trackAtlasRay.intersectObjects(nearMeshes, false)) {
-          hitMeshes.add(hit.object);
+          if (lightsChambers) hitMeshes.add(hit.object);
           lineHit = true;
         }
       }

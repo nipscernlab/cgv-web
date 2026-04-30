@@ -176,6 +176,8 @@ export default {
   'particles-unmatched-sub': 'No particle association',
   'particles-unmatched-photons': 'Unmatched γ',
   'particles-unmatched-photons-sub': 'γ outside any jet / τ cone',
+  'particles-unmatched-muons': 'Unmatched μ',
+  'particles-unmatched-muons-sub': 'Match w/o chamber, or chamber w/o match',
   'particles-unmatched-taus': 'Unmatched τ',
   'particles-unmatched-taus-sub': 'τ candidate w/ charge ≠ ±1',
   'layers-title': 'Detector Layers',

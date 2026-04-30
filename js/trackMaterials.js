@@ -45,25 +45,31 @@ export const XAOD_TO_AOD_TRACK_KEY = {
 
 /**
  * Applies the priority chain to every track line:
- *   electron / positron match (red / green) > muon match (blue) >
- *   jet-match (orange) > τ-match (purple) > muon-chamber hit (blue) >
+ *   electron / positron match (red / green) >
+ *   real muon = matched + reaches chambers (blue) >
+ *   jet-match (orange) > τ-match (purple) >
+ *   unmatched muon = isMuonMatched XOR isHitTrack (blue, no label) >
  *   default (yellow).
  *
  * Rationale (top-down):
- *   1. Electron and Muon win first — both are official lepton-ID matches
- *      (ΔR against the reconstructed <Electron> / <Muon> objects). Most
- *      specific identification a track can carry.
- *   2. Jet beats τ: in this JiveXML's data every <TauJet> carries
- *      isTauString = "xAOD_tauJet_withoutQuality", i.e. they are the τ
- *      algorithm's INPUT list, not τs that passed any ID. Jet is the more
- *      reliable established object; if both claim the same track, paint it
- *      as a jet's. (If a future XML exposes τ-with-quality we can promote
- *      τ above jet again.)
- *   3. Muon-chamber hit (geometric, the track passes through MUC1/MUCH)
- *      sits last because it doesn't claim ownership — it just notes that
- *      the track reaches the chambers. Painted blue, the same as a real
- *      muon match: muon-hit tracks are virtually always real muons that
- *      happen to lack an explicit <Muon> object reference.
+ *   1. Electron wins first — official lepton ID via ΔR against <Electron>.
+ *   2. Real muon: BOTH a Muon-object match (ΔR to <Muon>) AND geometric
+ *      chamber traversal. The track must actually reach the spectrometer
+ *      to qualify; a matched track that ends inside the calo is treated
+ *      as unmatched (likely the heuristic ΔR caught the wrong polyline).
+ *   3. Jet beats τ: every <TauJet> in current JiveXML carries
+ *      isTauString="xAOD_tauJet_withoutQuality" — they are the τ
+ *      algorithm's input list, not τs that passed any ID. Jet is the more
+ *      established object; both claiming the same track → paint as jet.
+ *      (If a future XML exposes τ-with-quality we can promote τ here.)
+ *   4. Unmatched muon: track has either a <Muon> match without chamber
+ *      reach OR a chamber reach without <Muon> match — but not both. Sits
+ *      below jet/τ because if the track is also a jet daughter, the jet
+ *      identification is stronger. Painted blue (still "muon-like") with
+ *      no label since the sign isn't reliable. Visibility gated by the
+ *      K-popover Unmatched μ toggle (handled in applyParticleTrackFilters
+ *      via .visible / particleHidden — this priority chain only chooses
+ *      the colour when the line is rendered).
  *
  * Each source flag lives on userData; this loop is the single place that
  * knows about the priority ordering.
@@ -72,16 +78,18 @@ export const XAOD_TO_AOD_TRACK_KEY = {
  */
 export function applyTrackMaterials(trackGroup) {
   for (const line of trackGroup.children) {
-    const ePdg = line.userData.matchedElectronPdgId;
-    if (ePdg != null) {
-      line.material = isLeptonNegative(ePdg) ? TRACK_ELECTRON_NEG_MAT : TRACK_ELECTRON_POS_MAT;
-    } else if (line.userData.isMuonMatched) {
+    const u = line.userData;
+    if (u.matchedElectronPdgId != null) {
+      line.material = isLeptonNegative(u.matchedElectronPdgId)
+        ? TRACK_ELECTRON_NEG_MAT
+        : TRACK_ELECTRON_POS_MAT;
+    } else if (u.isMuonMatched && u.isHitTrack) {
       line.material = TRACK_HIT_MAT;
-    } else if (line.userData.isJetMatched) {
+    } else if (u.isJetMatched) {
       line.material = TRACK_JET_MAT;
-    } else if (line.userData.isTauMatched) {
+    } else if (u.isTauMatched) {
       line.material = TRACK_TAU_MAT;
-    } else if (line.userData.isHitTrack) {
+    } else if (u.isMuonMatched || u.isHitTrack) {
       line.material = TRACK_HIT_MAT;
     } else {
       line.material = TRACK_MAT;

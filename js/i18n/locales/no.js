@@ -176,6 +176,8 @@ export default {
   'particles-unmatched-sub': 'Ingen partikkeltilknytning',
   'particles-unmatched-photons': 'Uparede γ',
   'particles-unmatched-photons-sub': 'γ utenfor jet/τ-kjegler',
+  'particles-unmatched-muons': 'Uparet μ',
+  'particles-unmatched-muons-sub': 'Match uten kammer, eller kammer uten match',
   'particles-unmatched-taus': 'Uparet τ',
   'particles-unmatched-taus-sub': 'τ-kandidat med ladning ≠ ±1',
   'layers-title': 'Detektorlag',
