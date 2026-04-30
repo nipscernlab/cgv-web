@@ -70,6 +70,8 @@ export default {
   'helpers-info-sub': 'Verktøytips + omriss ved peking (I)',
   'helpers-vertices': 'Vertekser',
   'helpers-vertices-sub': 'Primær- / pile-up- / b-tag-prikker',
+  'helpers-labels': 'Spor-etiketter',
+  'helpers-labels-sub': 'e± / μ± / τ± / ν flytende symboler',
   'helpers-jet-lines': 'Jet-linjer',
   'helpers-jet-lines-sub': 'η/φ-senterlinjer (jet + τ)',
   'helpers-cluster-lines': 'Cluster-linjer',

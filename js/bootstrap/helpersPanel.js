@@ -18,6 +18,8 @@ import {
   setClustersVisible,
   getVerticesVisible,
   setVerticesVisible,
+  getParticleLabelsVisible,
+  setParticleLabelsVisible,
 } from '../visibility.js';
 import { getViewLevel, onViewLevelChange } from '../viewLevel.js';
 import { markDirty } from '../renderer.js';
@@ -44,6 +46,7 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
   const hbtnGhost = document.getElementById('hbtn-ghost');
   const hbtnInfo = document.getElementById('hbtn-info');
   const hbtnVertices = document.getElementById('hbtn-vertices');
+  const hbtnLabels = document.getElementById('hbtn-labels');
   const hbtnLines = document.getElementById('hbtn-lines');
   const hrowLines = document.getElementById('hrow-lines');
   const linesNameEl = hrowLines?.querySelector('.layer-name') ?? null;
@@ -92,6 +95,7 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     setSwitch(hbtnGhost, anyGhostOn());
     setSwitch(hbtnInfo, showInfo);
     setSwitch(hbtnVertices, getVerticesVisible());
+    setSwitch(hbtnLabels, getParticleLabelsVisible());
     syncLinesRow();
   }
 
@@ -114,6 +118,12 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     e.stopPropagation();
     setVerticesVisible(!getVerticesVisible());
     setSwitch(hbtnVertices, getVerticesVisible());
+    markDirty();
+  });
+  hbtnLabels?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setParticleLabelsVisible(!getParticleLabelsVisible());
+    setSwitch(hbtnLabels, getParticleLabelsVisible());
     markDirty();
   });
   hbtnLines?.addEventListener('click', (e) => {

@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import { scene, markDirty } from '../renderer.js';
-import { getMetGroup, setMetGroup } from '../visibility.js';
+import { getMetGroup, setMetGroup, getParticleLabelsVisible } from '../visibility.js';
 import { makeLabelSprite } from '../labelSprite.js';
 
 // Hot pink — distinct from every other rendered colour (track yellow, jet
@@ -141,6 +141,12 @@ export function drawMet(metInfo) {
   const nuLabel = makeLabelSprite('ν', MET_LABEL_COLOR);
   nuLabel.position.set(dx * (len + MET_LABEL_OFFSET_MM), dy * (len + MET_LABEL_OFFSET_MM), 0);
   nuLabel.renderOrder = 9;
+  // Tagged so setParticleLabelsVisible can find and toggle just the ν
+  // sprite inside the metGroup (the shaft Line + cone Mesh stay independent
+  // of the Track Labels switch — they're driven by the MET visibility
+  // toggle in the Particles popover).
+  nuLabel.userData.isMetNuLabel = true;
+  nuLabel.visible = getParticleLabelsVisible();
 
   const g = new THREE.Group();
   g.renderOrder = 9;

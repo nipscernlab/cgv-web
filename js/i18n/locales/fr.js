@@ -70,6 +70,8 @@ export default {
   'helpers-info-sub': 'Infobulle + contour au survol (I)',
   'helpers-vertices': 'Vertex',
   'helpers-vertices-sub': 'Points primaire / pile-up / b-tag',
+  'helpers-labels': 'Étiquettes des traces',
+  'helpers-labels-sub': 'Symboles flottants e± / μ± / τ± / ν',
   'helpers-jet-lines': 'Lignes de jets',
   'helpers-jet-lines-sub': 'Centres η/φ (jets + τ)',
   'helpers-cluster-lines': 'Lignes de clusters',

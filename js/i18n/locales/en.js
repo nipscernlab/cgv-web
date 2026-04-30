@@ -70,6 +70,8 @@ export default {
   'helpers-info-sub': 'Hover tooltip + outline (I)',
   'helpers-vertices': 'Vertices',
   'helpers-vertices-sub': 'Primary / pile-up / b-tag dots',
+  'helpers-labels': 'Track Labels',
+  'helpers-labels-sub': 'e± / μ± / τ± / ν floating symbols',
   'helpers-jet-lines': 'Jet Lines',
   'helpers-jet-lines-sub': 'η/φ centerlines (jets + τ)',
   'helpers-cluster-lines': 'Cluster Lines',

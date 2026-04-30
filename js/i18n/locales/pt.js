@@ -70,6 +70,8 @@ export default {
   'helpers-info-sub': 'Tooltip + contorno no hover (I)',
   'helpers-vertices': 'Vértices',
   'helpers-vertices-sub': 'Pontos primário / pile-up / b-tag',
+  'helpers-labels': 'Labels dos tracks',
+  'helpers-labels-sub': 'Símbolos flutuantes e± / μ± / τ± / ν',
   'helpers-jet-lines': 'Jet Lines',
   'helpers-jet-lines-sub': 'Linhas centrais η/φ (jets + τ)',
   'helpers-cluster-lines': 'Cluster Lines',

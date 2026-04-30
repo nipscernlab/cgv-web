@@ -79,6 +79,11 @@ let _unmatchedPhotonsVisible = false;
 // default so the user lands on a clean view of physically-plausible τ; flip
 // on to inspect the seed-level candidates.
 let _unmatchedTausVisible = false;
+// e± / μ± / τ± lepton-label sprites (anchored to matched tracks). Single
+// gate over all three label groups — when the user just wants to see the
+// coloured tracks without the floating symbols on top. Default on so the
+// labelled-physics view stays the entry point.
+let _particleLabelsVisible = true;
 // Vertex markers (primary, pile-up, b-tag dots). Event-level summary info —
 // applies at every view level, so no level gate. Default on; the user can
 // hide them via the Helpers popover when they get in the way of close-zooms
@@ -108,6 +113,7 @@ export const getTauTracksVisible = () => _tauTracksVisible;
 export const getUnmatchedTracksVisible = () => _unmatchedTracksVisible;
 export const getUnmatchedPhotonsVisible = () => _unmatchedPhotonsVisible;
 export const getUnmatchedTausVisible = () => _unmatchedTausVisible;
+export const getParticleLabelsVisible = () => _particleLabelsVisible;
 export const getVerticesVisible = () => _verticesVisible;
 
 // ── Visibility predicates (single source of truth for each group's gate) ─────
@@ -115,12 +121,14 @@ export const getVerticesVisible = () => _verticesVisible;
 // the electron rule lands in one place instead of half a dozen.
 const _isPhotonGroupVisible = () => _photonsVisible && getViewLevel() === 3;
 const _isElectronGroupVisible = () =>
-  _tracksVisible && _electronTracksVisible && getViewLevel() === 3;
-const _isMuonGroupVisible = () => _tracksVisible && _muonTracksVisible && getViewLevel() === 3;
+  _tracksVisible && _electronTracksVisible && _particleLabelsVisible && getViewLevel() === 3;
+const _isMuonGroupVisible = () =>
+  _tracksVisible && _muonTracksVisible && _particleLabelsVisible && getViewLevel() === 3;
 // τ labels are sprites anchored on matched daughter tracks — gated by the
 // same J / K-popover / level rules as the lepton sprite groups, swapping in
 // the τ-track toggle. (The eta/φ τ LINES live in _tauGroup, gated by jets.)
-const _isTauLabelGroupVisible = () => _tracksVisible && _tauTracksVisible && getViewLevel() === 3;
+const _isTauLabelGroupVisible = () =>
+  _tracksVisible && _tauTracksVisible && _particleLabelsVisible && getViewLevel() === 3;
 const _isClusterGroupVisible = () => _clustersVisible && getViewLevel() === 2;
 const _isJetGroupVisible = () => _jetsVisible && getViewLevel() === 3;
 const _isTauGroupVisible = () => _jetsVisible && getViewLevel() === 3;
@@ -271,6 +279,23 @@ export function setUnmatchedPhotonsVisible(v) {
 /** @param {boolean} v */
 export function setUnmatchedTausVisible(v) {
   _unmatchedTausVisible = v;
+}
+/** @param {boolean} v */
+export function setParticleLabelsVisible(v) {
+  _particleLabelsVisible = v;
+  // Single switch over the three lepton-label sprite groups; each refresh
+  // re-evaluates its predicate (now AND'd with _particleLabelsVisible).
+  _refreshElectron();
+  _refreshMuon();
+  _refreshTauLabel();
+  // MET ν sprite: lives inside _metGroup alongside the shaft + cone, so
+  // we can't gate it via group .visible (that would also drop the arrow).
+  // metOverlay tags the sprite with userData.isMetNuLabel; flip just that.
+  if (_metGroup) {
+    for (const c of _metGroup.children ?? []) {
+      if (c.userData?.isMetNuLabel) c.visible = v;
+    }
+  }
 }
 /** @param {boolean} v */
 export function setVerticesVisible(v) {
