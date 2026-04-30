@@ -206,6 +206,28 @@ function doRaycast(clientX, clientY) {
     tooltip.hidden = !wantTooltip;
     markDirty();
   }
+  // Common end-of-branch resolver. Every hit branch below sets up its data
+  // and calls this with `showHitArgs` (passed through to showHit). Default
+  // `outlineAction` and `trackHitsAction` cover the 5 simple branches
+  // (vertex, cluster, tau, jet, MET); cell / FCAL / chamber / track-photon
+  // pass overrides because their outline / hit-spheres behaviour differs.
+  //
+  // Centralising the cleanup here means a future per-branch flush (the kind
+  // of "I'd need to remember 9 places" change that the SecVtx-highlight
+  // experiment ran into) only touches this one function — branches stay
+  // about *what* the hit is, not *what to clean up before showing it*.
+  /**
+   * @param {{
+   *   showHitArgs: Parameters<typeof showHit>[0],
+   *   outlineAction?: () => void,
+   *   trackHitsAction?: () => void,
+   * }} opts
+   */
+  function _finishHit({ showHitArgs, outlineAction, trackHitsAction }) {
+    (outlineAction ?? clearOutline)();
+    (trackHitsAction ?? hideTrackHits)();
+    showHit(showHitArgs);
+  }
   // ── Cell + FCAL hit (same priority — pick closest) ────────────────────────
   {
     let cellHit = null,
@@ -239,29 +261,29 @@ function doRaycast(clientX, clientY) {
     }
     if (cellHit && cellDist <= fcalDist) {
       const data = active.get(cellHandle);
-      if (wantTooltip) showOutline(cellHandle);
-      else clearOutline();
-      hideTrackHits();
-      showHit({
-        label: data.cellName,
-        coord: data.coords,
-        valueText: `${data.energyGev.toFixed(4)} GeV`,
-        keyText: _t('tip-energy-key'),
+      _finishHit({
+        outlineAction: () => (wantTooltip ? showOutline(cellHandle) : clearOutline()),
+        showHitArgs: {
+          label: data.cellName,
+          coord: data.coords,
+          valueText: `${data.energyGev.toFixed(4)} GeV`,
+          keyText: _t('tip-energy-key'),
+        },
       });
       return;
     }
     if (fcalHit) {
       const iid = fcalHit.instanceId;
       const cell = fcalVisibleMap[iid];
-      if (wantTooltip) showFcalOutline(iid);
-      else clearOutline();
-      hideTrackHits();
       const side = cell.eta >= 0 ? 'A' : 'C';
-      showHit({
-        label: `FCAL${cell.module} (${side}-side)`,
-        coord: `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`,
-        valueText: `${cell.energy.toFixed(4)} GeV`,
-        keyText: _t('tip-energy-key'),
+      _finishHit({
+        outlineAction: () => (wantTooltip ? showFcalOutline(iid) : clearOutline()),
+        showHitArgs: {
+          label: `FCAL${cell.module} (${side}-side)`,
+          coord: `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`,
+          valueText: `${cell.energy.toFixed(4)} GeV`,
+          keyText: _t('tip-energy-key'),
+        },
       });
       return;
     }
@@ -285,14 +307,14 @@ function doRaycast(clientX, clientY) {
             : 'B-tag Vertex';
       const p = v.userData.position;
       const xyzMm = p ? `(${(-p.x).toFixed(2)}, ${(-p.y).toFixed(2)}, ${p.z.toFixed(2)}) mm` : '';
-      clearOutline();
-      hideTrackHits();
-      showHit({
-        label,
-        coord: v.userData.vertexKey,
-        valueText: `${v.userData.numTracks ?? 0}`,
-        keyText: 'tracks',
-        extras: [['x, y, z', xyzMm]],
+      _finishHit({
+        showHitArgs: {
+          label,
+          coord: v.userData.vertexKey,
+          valueText: `${v.userData.numTracks ?? 0}`,
+          keyText: 'tracks',
+          extras: [['x, y, z', xyzMm]],
+        },
       });
       return;
     }
@@ -368,15 +390,15 @@ function doRaycast(clientX, clientY) {
         } else label = 'Track';
       }
       // Show pixel-hit markers for the hovered track; clear them for photons.
-      if (isPhoton) hideTrackHits();
-      else showTrackHits(line);
-      clearOutline();
-      showHit({
-        label,
-        coord: storeGateKey,
-        valueText: `${ptGev.toFixed(3)} GeV`,
-        keyHtml: 'p<sub>T</sub>',
-        extras: [[_ETA_LABEL, _fmtEta(line.userData.eta)]],
+      _finishHit({
+        trackHitsAction: () => (isPhoton ? hideTrackHits() : showTrackHits(line)),
+        showHitArgs: {
+          label,
+          coord: storeGateKey,
+          valueText: `${ptGev.toFixed(3)} GeV`,
+          keyHtml: 'p<sub>T</sub>',
+          extras: [[_ETA_LABEL, _fmtEta(line.userData.eta)]],
+        },
       });
       return;
     }
@@ -388,14 +410,14 @@ function doRaycast(clientX, clientY) {
     if (clusterHits.length) {
       const line = clusterHits[0].object;
       const etGev = line.userData.etGev ?? 0;
-      clearOutline();
-      hideTrackHits();
-      showHit({
-        label: 'Cluster',
-        coord: line.userData.storeGateKey ?? '',
-        valueText: `${etGev.toFixed(3)} GeV`,
-        keyHtml: 'E<sub>T</sub>',
-        extras: [[_ETA_LABEL, _fmtEta(line.userData.eta)]],
+      _finishHit({
+        showHitArgs: {
+          label: 'Cluster',
+          coord: line.userData.storeGateKey ?? '',
+          valueText: `${etGev.toFixed(3)} GeV`,
+          keyHtml: 'E<sub>T</sub>',
+          extras: [[_ETA_LABEL, _fmtEta(line.userData.eta)]],
+        },
       });
       return;
     }
@@ -410,18 +432,17 @@ function doRaycast(clientX, clientY) {
     if (tauHits.length) {
       const line = tauHits[0].object;
       const ptGev = line.userData.ptGev ?? 0;
-      const tauLabel = tauSymbolFromCharge(line.userData.charge);
-      clearOutline();
-      hideTrackHits();
-      showHit({
-        label: tauLabel,
-        coord: line.userData.storeGateKey ?? '',
-        valueText: `${ptGev.toFixed(3)} GeV`,
-        keyHtml: 'p<sub>T</sub>',
-        extras: [
-          [_ETA_LABEL, _fmtEta(line.userData.eta)],
-          ['tracks', `${line.userData.numTracks ?? 0}`],
-        ],
+      _finishHit({
+        showHitArgs: {
+          label: tauSymbolFromCharge(line.userData.charge),
+          coord: line.userData.storeGateKey ?? '',
+          valueText: `${ptGev.toFixed(3)} GeV`,
+          keyHtml: 'p<sub>T</sub>',
+          extras: [
+            [_ETA_LABEL, _fmtEta(line.userData.eta)],
+            ['tracks', `${line.userData.numTracks ?? 0}`],
+          ],
+        },
       });
       return;
     }
@@ -443,14 +464,14 @@ function doRaycast(clientX, clientY) {
       if (storeGateKey.includes('AntiKt10')) {
         extras.push(['mass', `${massGev.toFixed(3)} GeV`]);
       }
-      clearOutline();
-      hideTrackHits();
-      showHit({
-        label: 'Jet',
-        coord: storeGateKey,
-        valueText: `${ptGev.toFixed(3)} GeV`,
-        keyHtml: 'p<sub>T</sub>',
-        extras,
+      _finishHit({
+        showHitArgs: {
+          label: 'Jet',
+          coord: storeGateKey,
+          valueText: `${ptGev.toFixed(3)} GeV`,
+          keyHtml: 'p<sub>T</sub>',
+          extras,
+        },
       });
       return;
     }
@@ -466,14 +487,14 @@ function doRaycast(clientX, clientY) {
       while (arrow && arrow.userData.magnitude == null && arrow.parent) arrow = arrow.parent;
       const magnitude = arrow?.userData.magnitude ?? 0;
       const sumEt = arrow?.userData.sumEt ?? 0;
-      clearOutline();
-      hideTrackHits();
-      showHit({
-        label: 'MET',
-        coord: arrow?.userData.metKey ?? '',
-        valueText: `${magnitude.toFixed(2)} GeV`,
-        keyHtml: 'E<sub>T</sub><sup>miss</sup>',
-        extras: [['Sum E', `${sumEt.toFixed(1)} GeV`]],
+      _finishHit({
+        showHitArgs: {
+          label: 'MET',
+          coord: arrow?.userData.metKey ?? '',
+          valueText: `${magnitude.toFixed(2)} GeV`,
+          keyHtml: 'E<sub>T</sub><sup>miss</sup>',
+          extras: [['Sum E', `${sumEt.toFixed(1)} GeV`]],
+        },
       });
       return;
     }
@@ -496,15 +517,18 @@ function doRaycast(clientX, clientY) {
       // sees the full BIS / NSW / … ring, not just the single chamber under
       // the cursor. clearOutline first to drop any stale outline state, then
       // re-apply on the same call.
-      clearOutline();
-      hideTrackHits();
       const stationMeshes = info ? getStationMeshes(mesh) : [mesh];
-      showChamberHoverOutline(stationMeshes.length ? stationMeshes : [mesh]);
-      showHit({
-        label: `Muon chamber — ${alias}`,
-        coord,
-        valueText: info?.tech ?? '—',
-        keyText: 'tech',
+      _finishHit({
+        outlineAction: () => {
+          clearOutline();
+          showChamberHoverOutline(stationMeshes.length ? stationMeshes : [mesh]);
+        },
+        showHitArgs: {
+          label: `Muon chamber — ${alias}`,
+          coord,
+          valueText: info?.tech ?? '—',
+          keyText: 'tech',
+        },
       });
       return;
     }
