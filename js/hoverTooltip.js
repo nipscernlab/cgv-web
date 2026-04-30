@@ -489,7 +489,7 @@ function doRaycast(clientX, clientY) {
       const sumEt = arrow?.userData.sumEt ?? 0;
       _finishHit({
         showHitArgs: {
-          label: 'MET',
+          label: 'ν',
           coord: arrow?.userData.metKey ?? '',
           valueText: `${magnitude.toFixed(2)} GeV`,
           keyHtml: 'E<sub>T</sub><sup>miss</sup>',

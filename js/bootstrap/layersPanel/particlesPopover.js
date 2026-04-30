@@ -75,8 +75,8 @@ export function setupParticlesPopover() {
   //                          track + label cleanup that applyTrackThreshold
   //                          handles.
   const TOGGLES = [
+    // Order matches the panel: γ → e± → μ± → τ± → ν.
     { id: 'ptog-photons', get: getPhotonsVisible, set: setPhotonsVisible, apply: markDirty },
-    { id: 'ptog-met', get: getMetVisible, set: setMetVisible, apply: markDirty },
     {
       id: 'ptog-electrons',
       get: getElectronTracksVisible,
@@ -95,6 +95,7 @@ export function setupParticlesPopover() {
       set: setTauTracksVisible,
       apply: applyTrackThreshold,
     },
+    { id: 'ptog-met', get: getMetVisible, set: setMetVisible, apply: markDirty },
     // Below the separator: "unmatched" filters that strip background.
     {
       id: 'ptog-unmatched',
