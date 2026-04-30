@@ -18,6 +18,7 @@ import {
   applyFcalThreshold,
   applyMuonVisibility,
   applyTrackThreshold,
+  applyTauPtThreshold,
   refreshSceneVisibility,
   getMuonAtlasTrees,
   onMuonTreesChange,
@@ -29,6 +30,7 @@ import {
   getTauTracksVisible,
   getUnmatchedTracksVisible,
   getUnmatchedPhotonsVisible,
+  getUnmatchedTausVisible,
   setTracksVisible,
   setPhotonsVisible,
   setMetVisible,
@@ -37,6 +39,7 @@ import {
   setTauTracksVisible,
   setUnmatchedTracksVisible,
   setUnmatchedPhotonsVisible,
+  setUnmatchedTausVisible,
 } from '../visibility.js';
 import { updateTrackAtlasIntersections } from '../trackAtlasIntersections.js';
 import { getHitsEnabled, setHitsEnabled, hideTrackHits } from '../overlays/hitsOverlay.js';
@@ -522,6 +525,7 @@ function _setupParticlesPopover() {
     set('ptog-taus', getTauTracksVisible());
     set('ptog-unmatched', getUnmatchedTracksVisible());
     set('ptog-unmatched-photons', getUnmatchedPhotonsVisible());
+    set('ptog-unmatched-taus', getUnmatchedTausVisible());
   }
   // K button is the Particles popover trigger — only meaningful at L3 now
   // that "Cluster Lines" / "Jet Lines" moved to the Helpers popover.
@@ -586,6 +590,19 @@ function _setupParticlesPopover() {
     getUnmatchedPhotonsVisible,
     setUnmatchedPhotonsVisible,
     () => applyTrackThreshold(),
+  );
+  bindParticleToggle(
+    'ptog-unmatched-taus',
+    getUnmatchedTausVisible,
+    setUnmatchedTausVisible,
+    () => {
+      // Two visibility passes: applyTauPtThreshold gates the η/φ τ LINE,
+      // applyTrackThreshold gates the daughter TRACK + the τ label sprite
+      // (via syncParticleLabelVisibility) + drives the chamber-lighting
+      // re-evaluation if any tau-only track gets hidden.
+      applyTauPtThreshold();
+      applyTrackThreshold();
+    },
   );
 
   onViewLevelChange((lvl) => {

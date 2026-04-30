@@ -31,6 +31,7 @@ import { getViewLevel } from '../viewLevel.js';
 /** @type {VisibleObject | null} */ let _photonGroup = null;
 /** @type {VisibleObject | null} */ let _electronGroup = null;
 /** @type {VisibleObject | null} */ let _muonGroup = null;
+/** @type {VisibleObject | null} */ let _tauLabelGroup = null;
 /** @type {VisibleObject | null} */ let _clusterGroup = null;
 /** @type {VisibleObject | null} */ let _jetGroup = null;
 /** @type {VisibleObject | null} */ let _tauGroup = null;
@@ -72,6 +73,12 @@ let _unmatchedTracksVisible = false;
 // lands on the labelled-physics view; flip on via the K popover when the
 // raw photon background is wanted.
 let _unmatchedPhotonsVisible = false;
+// τ candidates whose summed daughter charge isn't ±1 — physically impossible
+// for a real τ (always charge=±1), so they're algorithm seeds that grouped
+// the wrong tracks (over-merged blobs, opposite-sign pairs, etc). Off by
+// default so the user lands on a clean view of physically-plausible τ; flip
+// on to inspect the seed-level candidates.
+let _unmatchedTausVisible = false;
 // Vertex markers (primary, pile-up, b-tag dots). Event-level summary info —
 // applies at every view level, so no level gate. Default on; the user can
 // hide them via the Helpers popover when they get in the way of close-zooms
@@ -83,6 +90,7 @@ export const getTrackGroup = () => _trackGroup;
 export const getPhotonGroup = () => _photonGroup;
 export const getElectronGroup = () => _electronGroup;
 export const getMuonGroup = () => _muonGroup;
+export const getTauLabelGroup = () => _tauLabelGroup;
 export const getClusterGroup = () => _clusterGroup;
 export const getJetGroup = () => _jetGroup;
 export const getTauGroup = () => _tauGroup;
@@ -99,6 +107,7 @@ export const getMuonTracksVisible = () => _muonTracksVisible;
 export const getTauTracksVisible = () => _tauTracksVisible;
 export const getUnmatchedTracksVisible = () => _unmatchedTracksVisible;
 export const getUnmatchedPhotonsVisible = () => _unmatchedPhotonsVisible;
+export const getUnmatchedTausVisible = () => _unmatchedTausVisible;
 export const getVerticesVisible = () => _verticesVisible;
 
 // ── Visibility predicates (single source of truth for each group's gate) ─────
@@ -108,6 +117,10 @@ const _isPhotonGroupVisible = () => _photonsVisible && getViewLevel() === 3;
 const _isElectronGroupVisible = () =>
   _tracksVisible && _electronTracksVisible && getViewLevel() === 3;
 const _isMuonGroupVisible = () => _tracksVisible && _muonTracksVisible && getViewLevel() === 3;
+// τ labels are sprites anchored on matched daughter tracks — gated by the
+// same J / K-popover / level rules as the lepton sprite groups, swapping in
+// the τ-track toggle. (The eta/φ τ LINES live in _tauGroup, gated by jets.)
+const _isTauLabelGroupVisible = () => _tracksVisible && _tauTracksVisible && getViewLevel() === 3;
 const _isClusterGroupVisible = () => _clustersVisible && getViewLevel() === 2;
 const _isJetGroupVisible = () => _jetsVisible && getViewLevel() === 3;
 const _isTauGroupVisible = () => _jetsVisible && getViewLevel() === 3;
@@ -123,6 +136,9 @@ const _refreshElectron = () => {
 };
 const _refreshMuon = () => {
   if (_muonGroup) _muonGroup.visible = _isMuonGroupVisible();
+};
+const _refreshTauLabel = () => {
+  if (_tauLabelGroup) _tauLabelGroup.visible = _isTauLabelGroupVisible();
 };
 const _refreshCluster = () => {
   if (_clusterGroup) _clusterGroup.visible = _isClusterGroupVisible();
@@ -159,6 +175,11 @@ export function setMuonGroup(g) {
   _refreshMuon();
 }
 /** @param {VisibleObject | null} g */
+export function setTauLabelGroup(g) {
+  _tauLabelGroup = g;
+  _refreshTauLabel();
+}
+/** @param {VisibleObject | null} g */
 export function setClusterGroup(g) {
   _clusterGroup = g;
   _refreshCluster();
@@ -191,10 +212,11 @@ export function setVertexGroup(g) {
 export function setTracksVisible(v) {
   _tracksVisible = v;
   if (_trackGroup) _trackGroup.visible = v;
-  // e±/μ± labels are anchored to track polylines — hide / restore them with
+  // e±/μ±/τ± labels are anchored to track polylines — hide / restore them with
   // the J button (subject to L3 + K-popover flag, applied by the predicates).
   _refreshElectron();
   _refreshMuon();
+  _refreshTauLabel();
 }
 /** @param {boolean} v */
 export function setClustersVisible(v) {
@@ -236,6 +258,7 @@ export function setMuonTracksVisible(v) {
 /** @param {boolean} v */
 export function setTauTracksVisible(v) {
   _tauTracksVisible = v;
+  _refreshTauLabel();
 }
 /** @param {boolean} v */
 export function setUnmatchedTracksVisible(v) {
@@ -244,6 +267,10 @@ export function setUnmatchedTracksVisible(v) {
 /** @param {boolean} v */
 export function setUnmatchedPhotonsVisible(v) {
   _unmatchedPhotonsVisible = v;
+}
+/** @param {boolean} v */
+export function setUnmatchedTausVisible(v) {
+  _unmatchedTausVisible = v;
 }
 /** @param {boolean} v */
 export function setVerticesVisible(v) {
@@ -263,6 +290,7 @@ export function applyDetectorGroupViewLevel() {
   _refreshPhoton();
   _refreshElectron();
   _refreshMuon();
+  _refreshTauLabel();
   _refreshJet();
   _refreshTau();
   _refreshMet();
@@ -300,6 +328,22 @@ export function applyParticleTrackFilters() {
       ) {
         hide = true;
       } else if (!_tauTracksVisible && u.isTauMatched) {
+        hide = true;
+        // Unmatched τ daughter: track belongs to a τ candidate whose summed
+        // daughter charge isn't ±1 (impossible for a real τ — algorithm seed
+        // junk). Only hide when the track has no other identification —
+        // tracks shared with a jet stay because the orange line represents
+        // the jet, not the τ. Mirrors the eta/φ-line gate in
+        // applyTauPtThreshold so the entire unmatched τ visual goes away.
+      } else if (
+        !_unmatchedTausVisible &&
+        u.isTauMatched &&
+        u.matchedTauCharge !== -1 &&
+        u.matchedTauCharge !== 1 &&
+        u.matchedElectronPdgId == null &&
+        !u.isMuonMatched &&
+        !u.isJetMatched
+      ) {
         hide = true;
         // Unmatched / yellow tracks: nothing in the priority chain claimed them.
         // _applyTrackMaterials would render these in TRACK_MAT.

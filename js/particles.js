@@ -5,13 +5,16 @@ import {
   getPhotonGroup,
   getElectronGroup,
   getMuonGroup,
+  getTauLabelGroup,
   getClusterGroup,
   getJetGroup,
   getTauGroup,
+  getUnmatchedTausVisible,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
   setMuonGroup,
+  setTauLabelGroup,
   setClusterGroup,
   setJetGroup,
   setTauGroup,
@@ -61,6 +64,10 @@ const PHOTON_SPRING_PTS = 22; // points sampled per coil (smoothness)
 const ELECTRON_NEG_COLOR = 0xff3030;
 const ELECTRON_POS_COLOR = 0x33dd55;
 const MUON_LABEL_COLOR = 0x4a90d9;
+// τ label colour matches TAU_MAT and TRACK_TAU_MAT — same purple the daughter
+// track is already painted in, so the eye links the floating label with the
+// line it labels.
+const TAU_LABEL_COLOR = 0xb366ff;
 // Push the sprite slightly outward (radially in xy) so it doesn't sit on
 // top of the line at the calorimeter face. Same for both species.
 const LEPTON_LABEL_RADIAL_OFFSET_MM = 120;
@@ -405,17 +412,43 @@ export function syncElectronTrackMatch(electrons) {
   recomputeElectronTrackMatch(electrons);
 }
 
-// Walk the e±/μ± label sprites and align each .visible with its anchor track.
-// Called from applyTrackThreshold after the pT pass + filter pass have updated
-// track visibility — keeps a label from floating in empty space when its track
-// gets hidden by the slider. The group-level gate (level + J button +
-// K-popover flag) is independent and still controls the whole batch via the
+// Walk the e±/μ±/τ± label sprites and align each .visible with its anchor
+// track. Called from applyTrackThreshold after the pT pass + filter pass have
+// updated track visibility — keeps a label from floating in empty space when
+// its track gets hidden by the slider. The group-level gate (level + J button
+// + K-popover flag) is independent and still controls the whole batch via the
 // setters in detectorGroups.js.
 export function syncParticleLabelVisibility() {
   for (const sprite of getElectronGroup()?.children ?? [])
     sprite.visible = sprite.userData.anchorLine?.visible ?? true;
   for (const sprite of getMuonGroup()?.children ?? [])
     sprite.visible = sprite.userData.anchorLine?.visible ?? true;
+  // τ labels also follow the material-priority chain: hide the sprite when a
+  // higher-priority match (electron / muon / jet) claimed the anchor track.
+  // Hadronic τ daughters live inside a reconstructed AntiKt4 jet (every
+  // hadronic τ IS a jet to the anti-kt algorithm), and our XML carries only
+  // `withoutQuality` τ candidates — so painting a τ symbol on top of an
+  // orange jet track would overstate the τ-ID confidence. This filter runs
+  // here (not in drawTaus) because recomputeJetTrackMatch only stamps
+  // isJetMatched after applyJetThreshold runs at the tail of processXml.
+  // Sprites with tauCharge==0 are "unmatched τ" — the daughter charges sum
+  // to 0, impossible for a real τ (always ±1). Gated behind the K-popover
+  // Unmatched Tau toggle so the default view stays clean.
+  const showUnmatchedTau = getUnmatchedTausVisible();
+  for (const sprite of getTauLabelGroup()?.children ?? []) {
+    const a = sprite.userData.anchorLine;
+    if (!a || !a.visible) {
+      sprite.visible = false;
+      continue;
+    }
+    const u = a.userData;
+    if (u.matchedElectronPdgId != null || u.isMuonMatched || u.isJetMatched) {
+      sprite.visible = false;
+      continue;
+    }
+    const c = sprite.userData.tauCharge;
+    sprite.visible = (c === -1 || c === 1) || showUnmatchedTau;
+  }
 }
 
 // ── Muons / Anti-muons ────────────────────────────────────────────────────────
@@ -553,6 +586,7 @@ export function getLastTaus() {
 export function clearTaus() {
   _lastTaus = [];
   _disposeGroup(getTauGroup, setTauGroup);
+  _disposeGroup(getTauLabelGroup, setTauLabelGroup);
 }
 
 // Draws one line per tau candidate. `taus` is the flat array out of
@@ -570,6 +604,10 @@ export function drawTaus(taus) {
       phi: t.phi,
       isTau: t.isTau,
       numTracks: t.numTracks,
+      // Daughter-charge sum from <TauJet><charge>; ±1 = physically possible
+      // τ, anything else = "unmatched" candidate that the K-popover gate can
+      // strip from the view (see applyTauPtThreshold's unmatched filter).
+      charge: t.charge,
       storeGateKey: t.key,
     }),
     setter: setTauGroup,
@@ -578,6 +616,27 @@ export function drawTaus(taus) {
   // render until the user nudges the slider.
   applyTauPtThreshold();
   syncTauTrackMatch(getViewLevel() === 3 && _lastTaus.length ? _lastTaus : null);
+  // τ labels: one sprite per matched daughter track, anchored at the calo
+  // face (last polyline point) — for 3-prong taus the daughters have
+  // separated by then, so 3 close-but-readable τ symbols. The build pass
+  // can't filter by priority — drawTaus runs before recomputeJetTrackMatch,
+  // so isJetMatched is still stale here. syncParticleLabelVisibility runs
+  // later (post applyJetThreshold) and hides τ sprites whose anchor was
+  // claimed by a higher-priority match.
+  _buildAnchoredLabelGroup({
+    predicate: (line) => !!line.userData.isTauMatched,
+    anchorIdx: (count) => count - 1,
+    makeSprite: (line) => {
+      const c = line.userData.matchedTauCharge;
+      // charge=0 (or null) is the seed-only τ candidate with no real sign —
+      // render plain "τ", same convention drawMuons uses for unknown pdg.
+      const text = c == null || c === 0 ? 'τ' : c < 0 ? 'τ-' : 'τ+';
+      const sprite = makeLabelSprite(text, TAU_LABEL_COLOR);
+      sprite.userData.tauCharge = c;
+      return sprite;
+    },
+    setter: setTauLabelGroup,
+  });
 }
 
 // Single entry point for the τ→track colour update. Called by drawTaus on

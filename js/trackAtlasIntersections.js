@@ -388,26 +388,41 @@ export function recomputeJetTrackMatch(activeJetCollection, thrJetEtGev) {
 }
 
 // Resolves each TauJet's <trackKey>/<trackIndex> pairs to the rendered track
-// lines and stamps `isTauMatched` accordingly. Direct (key, index) lookup —
-// no heuristic — because <TauJet> publishes the link explicitly. Same xAOD →
-// AOD key bridge as jet→track. `taus` may be null (clears all matches).
+// lines and stamps `isTauMatched` + `matchedTauCharge` accordingly. Direct
+// (key, index) lookup — no heuristic — because <TauJet> publishes the link
+// explicitly. Same xAOD → AOD key bridge as jet→track. `taus` may be null
+// (clears all matches). matchedTauCharge inherits from the parent τ (so all
+// daughter tracks of a τ⁻ get -1, even though individual π charges in a
+// 3-prong sum to but don't equal the τ charge — the label means "this track
+// belongs to a τ⁻", not "this single track has charge -1").
 export function recomputeTauTrackMatch(taus) {
   const trackGroup = _getTrackGroup();
   if (!trackGroup) return;
-  const matched = new Set();
+  /** @type {Map<string, number>} */
+  const matched = new Map();
   if (taus && taus.length) {
     for (const t of taus) {
       for (const trk of t.tracks) {
         const aod = _XAOD_TO_AOD_TRACK_KEY[trk.key];
         if (!aod) continue;
-        matched.add(`${aod}#${trk.index}`);
+        const k = `${aod}#${trk.index}`;
+        const existing = matched.get(k);
+        // Prefer a physically-valid τ (charge ±1) over a junk one (charge 0)
+        // when the same track is daughter of two τ candidates — keeps the
+        // "Unmatched Tau" gate from accidentally hiding a real-τ daughter
+        // just because some other junk candidate also claimed it.
+        if (existing === -1 || existing === 1) continue;
+        matched.set(k, t.charge ?? 0);
       }
     }
   }
   for (const line of trackGroup.children) {
     const k = line.userData.storeGateKey;
     const i = line.userData.indexInCollection;
-    line.userData.isTauMatched = k != null && i != null && matched.has(`${k}#${i}`);
+    const key = k != null && i != null ? `${k}#${i}` : null;
+    const has = key != null && matched.has(key);
+    line.userData.isTauMatched = has;
+    line.userData.matchedTauCharge = has ? matched.get(key) : null;
   }
   _applyTrackMaterials(trackGroup);
   markDirty();

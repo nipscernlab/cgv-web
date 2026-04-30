@@ -61,6 +61,7 @@ import {
   getPhotonGroup,
   getElectronGroup,
   getMuonGroup,
+  getTauLabelGroup,
   getClusterGroup,
   getJetGroup,
   getTauGroup,
@@ -76,11 +77,13 @@ import {
   getTauTracksVisible,
   getUnmatchedTracksVisible,
   getUnmatchedPhotonsVisible,
+  getUnmatchedTausVisible,
   getVerticesVisible,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
   setMuonGroup,
+  setTauLabelGroup,
   setClusterGroup,
   setJetGroup,
   setTauGroup,
@@ -96,6 +99,7 @@ import {
   setTauTracksVisible,
   setUnmatchedTracksVisible,
   setUnmatchedPhotonsVisible,
+  setUnmatchedTausVisible,
   setVerticesVisible,
   applyDetectorGroupViewLevel,
   applyParticleTrackFilters,
@@ -149,6 +153,7 @@ export {
   getPhotonGroup,
   getElectronGroup,
   getMuonGroup,
+  getTauLabelGroup,
   getClusterGroup,
   getJetGroup,
   getTauGroup,
@@ -164,11 +169,13 @@ export {
   getTauTracksVisible,
   getUnmatchedTracksVisible,
   getUnmatchedPhotonsVisible,
+  getUnmatchedTausVisible,
   getVerticesVisible,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
   setMuonGroup,
+  setTauLabelGroup,
   setClusterGroup,
   setJetGroup,
   setTauGroup,
@@ -184,6 +191,7 @@ export {
   setTauTracksVisible,
   setUnmatchedTracksVisible,
   setUnmatchedPhotonsVisible,
+  setUnmatchedTausVisible,
   setVerticesVisible,
   applyParticleTrackFilters,
   applyPhotonFilters,
@@ -444,14 +452,22 @@ export function applyJetThreshold() {
   applyTrackThreshold();
 }
 
-// Hides τ lines whose pT falls below the L3 ET slider. Called from
-// applyJetThreshold when the slider moves and from drawTaus on fresh load.
-// Standalone (not folded into applyJetThreshold) so drawTaus can reuse it
-// without dragging the cell-filter / track-recolour passes along.
+// Hides τ lines whose pT falls below the L3 ET slider OR whose daughter-
+// charge sum isn't ±1 (the "unmatched" τ candidates — algorithm seeds whose
+// charge doesn't match a real τ). Called from applyJetThreshold when the
+// slider moves, from drawTaus on fresh load, and from the K-popover binding
+// when the Unmatched Tau toggle flips. Standalone (not folded into
+// applyJetThreshold) so drawTaus can reuse it without dragging the cell-
+// filter / track-recolour passes along.
 export function applyTauPtThreshold() {
   const tauGroup = getTauGroup();
   if (!tauGroup) return;
-  for (const child of tauGroup.children ?? []) child.visible = child.userData.ptGev >= thrJetEtGev;
+  const showUnmatched = getUnmatchedTausVisible();
+  for (const child of tauGroup.children ?? []) {
+    const u = child.userData;
+    const passesCharge = u.charge === -1 || u.charge === 1 || showUnmatched;
+    child.visible = u.ptGev >= thrJetEtGev && passesCharge;
+  }
 }
 
 // ── Non-active cells in show-all mode ────────────────────────────────────────

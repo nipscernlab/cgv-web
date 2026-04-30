@@ -174,6 +174,8 @@ export default {
   'particles-unmatched-sub': 'Ingen partikkeltilknytning',
   'particles-unmatched-photons': 'Uparede fotoner',
   'particles-unmatched-photons-sub': 'γ utenfor jet/τ-kjegler',
+  'particles-unmatched-taus': 'Uparet tau',
+  'particles-unmatched-taus-sub': 'τ-kandidat med ladning ≠ ±1',
   'layers-title': 'Detektorlag',
   'layers-all': 'Alle',
   'layers-none': 'Ingen',

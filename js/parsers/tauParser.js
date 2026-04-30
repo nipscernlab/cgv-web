@@ -33,9 +33,11 @@ function _readStrings(body, tag) {
 }
 
 // Returns an array of taus (flattened across collections — usually only one).
-// Each entry: { eta, phi, ptGev, isTau, numTracks, tracks: [{key, index}], key }
-//   `isTau` is the isTauString token (used in tooltip).
-//   `key` is the storeGateKey (e.g. "TauJets_xAOD"), kept for the tooltip.
+// Each entry: { eta, phi, ptGev, isTau, numTracks, charge, tracks, key }
+//   `isTau`  is the isTauString token (used in tooltip).
+//   `charge` is the τ charge (-1 / 0 / +1); 0 marks the seed-only candidates
+//            with no associated tracks (and no physical sign).
+//   `key`    is the storeGateKey (e.g. "TauJets_xAOD"), kept for the tooltip.
 export function parseTaus(xmlText) {
   const out = [];
   if (!xmlText) return out;
@@ -53,6 +55,7 @@ export function parseTaus(xmlText) {
     if (etas.length !== count || phis.length !== count) continue;
 
     const isTauString = _readStrings(body, 'isTauString');
+    const charges = _readNums(body, 'charge');
     const trackIndex = _readNums(body, 'trackIndex');
     const trackKey = _readStrings(body, 'trackKey');
     const trackLinkCount = _readNums(body, 'trackLinkCount');
@@ -76,6 +79,7 @@ export function parseTaus(xmlText) {
         ptGev: Number.isFinite(pts[i]) ? pts[i] : 0,
         isTau: isTauString?.[i] ?? '',
         numTracks: Number.isFinite(numTracks?.[i]) ? numTracks[i] : tracks.length,
+        charge: Number.isFinite(charges?.[i]) ? charges[i] : 0,
         tracks,
         key,
       });

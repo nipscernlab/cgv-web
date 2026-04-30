@@ -174,6 +174,8 @@ export default {
   'particles-unmatched-sub': 'Sans association à une particule',
   'particles-unmatched-photons': 'Photons non appariés',
   'particles-unmatched-photons-sub': 'γ hors des cônes de jet / τ',
+  'particles-unmatched-taus': 'Tau non apparié',
+  'particles-unmatched-taus-sub': 'candidat τ de charge ≠ ±1',
   'layers-title': 'Couches du détecteur',
   'layers-all': 'Tout',
   'layers-none': 'Aucun',
