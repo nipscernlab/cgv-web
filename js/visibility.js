@@ -13,10 +13,8 @@ import { PAL_TILE_COLOR, PAL_LAR_COLOR, PAL_HEC_COLOR } from './palette.js';
 import { markDirty } from './renderer.js';
 import { getViewLevel, onViewLevelChange } from './viewLevel.js';
 import { getActiveJetCollection } from './jets.js';
-import {
-  recomputeJetTrackMatch,
-  updateTrackAtlasIntersections,
-} from './trackAtlasIntersections.js';
+import { recomputeJetTrackMatch } from './trackMatch.js';
+import { updateTrackAtlasIntersections } from './trackAtlasIntersections.js';
 import { rebuildAllOutlines } from './outlines.js';
 import {
   getLastElectrons,

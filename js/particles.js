@@ -24,13 +24,13 @@ import {
   applyJetThreshold,
   applyTauPtThreshold,
 } from './visibility.js';
+import { TRACK_MAT } from './trackMaterials.js';
+import { updateTrackAtlasIntersections } from './trackAtlasIntersections.js';
 import {
-  TRACK_MAT,
-  updateTrackAtlasIntersections,
   recomputeElectronTrackMatch,
   recomputeTauTrackMatch,
   recomputeMuonTrackMatch,
-} from './trackAtlasIntersections.js';
+} from './trackMatch.js';
 import { getViewLevel } from './viewLevel.js';
 import { makeLabelSprite } from './labelSprite.js';
 import { leptonSymbol, tauSymbolFromCharge, isLeptonNegative } from './particleSymbols.js';
