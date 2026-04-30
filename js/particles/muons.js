@@ -12,6 +12,7 @@
 
 import { getMuonGroup, setMuonGroup } from '../visibility.js';
 import { recomputeMuonTrackMatch } from '../trackMatch.js';
+import { isRealMuon } from '../trackMaterials.js';
 import { getViewLevel } from '../viewLevel.js';
 import { makeLabelSprite } from '../labelSprite.js';
 import { leptonSymbol } from '../particleSymbols.js';
@@ -35,14 +36,12 @@ export function drawMuons(muons) {
   if (!_lastMuons.length) return;
   recomputeMuonTrackMatch(_lastMuons);
   _buildAnchoredLabelGroup({
-    // Last polyline point — out at the muon-chamber edge (~9-10 m radius),
-    // outside every other detector envelope. Keeps the label readable at any
-    // zoom and makes the "this blue line is a muon" mapping immediate.
-    //
-    // Real muon = <Muon> match AND geometric chamber reach. Tracks that have
-    // only one of those flags fall to the "unmatched μ" bucket (label-less,
-    // gated by the K-popover toggle); see _applyTrackMaterials.
-    predicate: (line) => !!line.userData.isMuonMatched && !!line.userData.isHitTrack,
+    // Label only goes on real muons — unmatched μ candidates fall to the
+    // K-popover Unmatched μ toggle (handled in applyParticleTrackFilters /
+    // applyTrackMaterials) and stay label-less even when shown.
+    // Anchored at the last polyline point (muon-chamber edge ~9-10 m), outside
+    // every other detector envelope, so the label reads at any zoom.
+    predicate: isRealMuon,
     anchorIdx: (count) => count - 1,
     makeSprite: (line) => {
       // pdg null → plain "μ" (parser couldn't pin the charge — older XMLs

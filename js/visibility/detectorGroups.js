@@ -14,6 +14,7 @@
 // already constructed; we only flip mesh.visible / group.visible. That keeps
 // this module pure-ish so it can be tested in node with a stub group object.
 import { getViewLevel } from '../viewLevel.js';
+import { isRealMuon, isUnmatchedMuon } from '../trackMaterials.js';
 
 /**
  * Structural type that fits THREE.Group / THREE.Object3D without importing
@@ -368,19 +369,13 @@ export function applyParticleTrackFilters() {
         !_muonTracksVisible &&
         (u.isMuonMatched || u.storeGateKey === 'CombinedMuonTracks')
       ) {
-        // Muon Tracks toggle hides every line in the muon-evidence pool —
-        // real μ and unmatched μ alike. The chamber-preservation rule then
-        // splits:
-        //   real μ           → keep chambers (physics preserved)
-        //   unmatched μ      → keep chambers iff Unmatched μ toggle is on
-        //                      (user opted in to seeing those candidates'
-        //                      physics; otherwise drop them with the line)
-        // The XOR check below `applyParticleTrackFilters` only fires when
-        // Muon Tracks is ON, so this branch is the single place that
-        // resolves both toggles' interaction.
+        // Muon Tracks toggle hides the LINE for every track in the muon
+        // pool. Chambers stay lit for real μ (physics preserved); unmatched
+        // μ chambers stay only when the user separately opted in via
+        // Unmatched μ — otherwise they drop with the line. So the two
+        // toggles compose here in the single place where both apply.
         hide = true;
-        const isRealMuon = u.isMuonMatched && u.isHitTrack;
-        if (!isRealMuon && !_unmatchedMuonsVisible) physicsHide = false;
+        if (!isRealMuon(child) && !_unmatchedMuonsVisible) physicsHide = false;
       } else if (!_tauTracksVisible && u.isTauMatched) {
         hide = true;
         // Unmatched τ daughter: track belongs to a τ candidate whose summed
@@ -399,21 +394,15 @@ export function applyParticleTrackFilters() {
         !u.isJetMatched
       ) {
         hide = true;
-        // Unmatched μ: track has exactly one of the two muon-evidence flags
-        // (a <Muon> match without chamber reach, or a chamber reach without
-        // a <Muon> match). A real muon needs both — anything else is a
-        // half-evidence track that may or may not be a muon. Hide unless
-        // the K-popover Unmatched μ toggle is on. Only hide when no higher-
-        // priority match (electron/jet/τ) claims the track — those keep
-        // their own colouring regardless of muon evidence.
-        //
-        // physicsHide=false: when the user opts out of these tracks, the
-        // chambers they'd otherwise light up must also stay dark — there's
-        // no <Muon> object behind them to justify the lit chamber. Only the
-        // "Muon Tracks" toggle (real muons) keeps the chamber.
+        // Unmatched μ — Muon Tracks is ON (the previous branch didn't
+        // fire) but the user has Unmatched μ off. Hide the half-evidence
+        // track and drop its chamber lighting too: no <Muon> ↔ track pair
+        // means no real muon physics behind those chambers. Only fires
+        // when nothing higher-priority claimed the track — jet/τ-matched
+        // unmatched-μ candidates keep their own identity.
       } else if (
         !_unmatchedMuonsVisible &&
-        ((u.isMuonMatched && !u.isHitTrack) || (!u.isMuonMatched && u.isHitTrack)) &&
+        isUnmatchedMuon(child) &&
         u.matchedElectronPdgId == null &&
         !u.isJetMatched &&
         !u.isTauMatched

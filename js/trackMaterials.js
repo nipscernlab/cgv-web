@@ -43,6 +43,29 @@ export const XAOD_TO_AOD_TRACK_KEY = {
   CombinedMuonTrackParticles_xAOD: 'CombinedMuonTracks',
 };
 
+// ── Muon classification helpers ─────────────────────────────────────────────
+// A track carries up to two pieces of muon evidence on its userData:
+//   isMuonMatched — recomputeMuonTrackMatch paired this track to a <Muon>
+//                   object via ΔR (heuristic, since JiveXML doesn't link
+//                   them explicitly).
+//   isHitTrack    — updateTrackAtlasIntersections raycast the polyline
+//                   against the spectrometer chamber meshes and got a hit.
+// Real muon = both true (an identified <Muon> whose track also reaches the
+// chambers). Unmatched μ = exactly one true (the heuristic missed, or the
+// track stops in the calo before the spectrometer). Neither true = not a
+// muon candidate at all. Centralising the two predicates keeps the priority
+// chain, the label predicate, and the K-popover filter on the same page.
+
+/** @param {{ userData: any }} line */
+export function isRealMuon(line) {
+  return !!line.userData.isMuonMatched && !!line.userData.isHitTrack;
+}
+
+/** @param {{ userData: any }} line — true iff one (and only one) muon flag set. */
+export function isUnmatchedMuon(line) {
+  return !!line.userData.isMuonMatched !== !!line.userData.isHitTrack;
+}
+
 /**
  * Applies the priority chain to every track line:
  *   electron / positron match (red / green) >
@@ -83,13 +106,13 @@ export function applyTrackMaterials(trackGroup) {
       line.material = isLeptonNegative(u.matchedElectronPdgId)
         ? TRACK_ELECTRON_NEG_MAT
         : TRACK_ELECTRON_POS_MAT;
-    } else if (u.isMuonMatched && u.isHitTrack) {
+    } else if (isRealMuon(line)) {
       line.material = TRACK_HIT_MAT;
     } else if (u.isJetMatched) {
       line.material = TRACK_JET_MAT;
     } else if (u.isTauMatched) {
       line.material = TRACK_TAU_MAT;
-    } else if (u.isMuonMatched || u.isHitTrack) {
+    } else if (isUnmatchedMuon(line)) {
       line.material = TRACK_HIT_MAT;
     } else {
       line.material = TRACK_MAT;
