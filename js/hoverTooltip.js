@@ -17,6 +17,7 @@ import { showTrackHits, hideTrackHits, getHitsEnabled } from './overlays/hitsOve
 import { buildExtrasHtml } from './tooltipRows.js';
 import { getMuonChamberMeshes, showChamberHoverOutline } from './trackAtlasIntersections.js';
 import { getMuonAliasForMesh, getStationMeshes } from './visibility/muonAliases.js';
+import { leptonSymbol, tauSymbolFromCharge } from './particleSymbols.js';
 
 export const tooltip = document.getElementById('tip');
 export const tipCellEl = document.getElementById('tip-cell');
@@ -354,20 +355,16 @@ function doRaycast(clientX, clientY) {
         // default. Lepton IDs (electron / muon) are official ΔR matches to
         // <Electron> / <Muon> objects, so they win first. Jet beats τ
         // because every τ in this XML carries withoutQuality — they are τ
-        // algorithm INPUT, not τ-ID output. When the muon's pdgId is
-        // unknown we keep a charge-less "Track → μ". Sign comes from the
-        // standard PDG convention: +11/+13 = lepton (negative), -11/-13 =
-        // anti-lepton (positive); so pdg>0 picks the negative-particle label.
+        // algorithm INPUT, not τ-ID output. Sign helpers in particleSymbols.js
+        // keep the PDG convention captured in one place — see that module
+        // for the +pdg=lepton / -pdg=anti-lepton mapping.
         const ePdg = line.userData.matchedElectronPdgId;
-        if (ePdg != null) label = ePdg > 0 ? 'Track → e⁻' : 'Track → e⁺';
+        if (ePdg != null) label = `Track → ${leptonSymbol('e', ePdg)}`;
         else if (line.userData.isMuonMatched) {
-          const muPdg = line.userData.matchedMuonPdgId;
-          if (muPdg == null) label = 'Track → μ';
-          else label = muPdg > 0 ? 'Track → μ⁻' : 'Track → μ⁺';
+          label = `Track → ${leptonSymbol('μ', line.userData.matchedMuonPdgId)}`;
         } else if (line.userData.isJetMatched) label = 'Track → Jet';
         else if (line.userData.isTauMatched) {
-          const tauC = line.userData.matchedTauCharge;
-          label = tauC === -1 ? 'Track → τ⁻' : tauC === 1 ? 'Track → τ⁺' : 'Track → τ';
+          label = `Track → ${tauSymbolFromCharge(line.userData.matchedTauCharge)}`;
         } else label = 'Track';
       }
       // Show pixel-hit markers for the hovered track; clear them for photons.
@@ -413,8 +410,7 @@ function doRaycast(clientX, clientY) {
     if (tauHits.length) {
       const line = tauHits[0].object;
       const ptGev = line.userData.ptGev ?? 0;
-      const c = line.userData.charge;
-      const tauLabel = c === -1 ? 'τ⁻' : c === 1 ? 'τ⁺' : 'τ';
+      const tauLabel = tauSymbolFromCharge(line.userData.charge);
       clearOutline();
       hideTrackHits();
       showHit({

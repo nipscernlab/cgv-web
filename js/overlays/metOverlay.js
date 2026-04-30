@@ -141,11 +141,12 @@ export function drawMet(metInfo) {
   const nuLabel = makeLabelSprite('ν', MET_LABEL_COLOR);
   nuLabel.position.set(dx * (len + MET_LABEL_OFFSET_MM), dy * (len + MET_LABEL_OFFSET_MM), 0);
   nuLabel.renderOrder = 9;
-  // Tagged so setParticleLabelsVisible can find and toggle just the ν
-  // sprite inside the metGroup (the shaft Line + cone Mesh stay independent
-  // of the Track Labels switch — they're driven by the MET visibility
-  // toggle in the Particles popover).
-  nuLabel.userData.isMetNuLabel = true;
+  // Same tag every other lepton/MET label sprite carries — picked up by the
+  // central syncParticleLabelVisibility pass so the Track Labels toggle
+  // doesn't need a metGroup-walking special case. Initial visibility is set
+  // here so the sprite renders correctly before the first sync runs (sync
+  // is triggered by applyTrackThreshold at the tail of processXml).
+  nuLabel.userData.isParticleLabel = true;
   nuLabel.visible = getParticleLabelsVisible();
 
   const g = new THREE.Group();

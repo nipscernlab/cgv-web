@@ -6,10 +6,12 @@ import {
   getElectronGroup,
   getMuonGroup,
   getTauLabelGroup,
+  getMetGroup,
   getClusterGroup,
   getJetGroup,
   getTauGroup,
   getUnmatchedTausVisible,
+  getParticleLabelsVisible,
   setTrackGroup,
   setPhotonGroup,
   setElectronGroup,
@@ -31,6 +33,7 @@ import {
 } from './trackAtlasIntersections.js';
 import { getViewLevel } from './viewLevel.js';
 import { makeLabelSprite } from './labelSprite.js';
+import { leptonSymbol, tauSymbolFromCharge, isLeptonNegative } from './particleSymbols.js';
 
 // ── Cluster line rendering ────────────────────────────────────────────────────
 // Lines are drawn from the origin in the η/φ direction, 5 m = 5000 mm long.
@@ -357,6 +360,12 @@ function _buildAnchoredLabelGroup({ predicate, anchorIdx, makeSprite, setter }) 
       z,
     );
     sprite.userData.anchorLine = line;
+    // Initial visibility honours the Track Labels toggle so a freshly-created
+    // sprite doesn't flash for the frames between drawXxx and the
+    // syncParticleLabelVisibility that runs at the tail of the event-load
+    // pipeline. (Anchor-driven and τ-extras refinements are applied on the
+    // next sync — see syncParticleLabelVisibility below.)
+    sprite.visible = getParticleLabelsVisible();
     g.add(sprite);
     added = true;
   }
@@ -386,14 +395,12 @@ export function drawElectrons(electrons) {
     anchorIdx: (count) => Math.floor((count - 1) * 0.5),
     makeSprite: (line) => {
       const pdg = line.userData.matchedElectronPdgId;
-      // Standard PDG numbering: +11 = e⁻ (the lepton, negative charge),
-      // -11 = e⁺ (anti-electron, positive). pdg>0 → negative particle.
-      const isElectron = pdg > 0;
       const sprite = makeLabelSprite(
-        isElectron ? 'e⁻' : 'e⁺',
-        isElectron ? ELECTRON_NEG_COLOR : ELECTRON_POS_COLOR,
+        leptonSymbol('e', pdg),
+        isLeptonNegative(pdg) ? ELECTRON_NEG_COLOR : ELECTRON_POS_COLOR,
       );
       sprite.userData.pdgId = pdg;
+      sprite.userData.isParticleLabel = true;
       return sprite;
     },
     setter: setElectronGroup,
@@ -414,42 +421,52 @@ export function syncElectronTrackMatch(electrons) {
   recomputeElectronTrackMatch(electrons);
 }
 
-// Walk the e±/μ±/τ± label sprites and align each .visible with its anchor
-// track. Called from applyTrackThreshold after the pT pass + filter pass have
-// updated track visibility — keeps a label from floating in empty space when
-// its track gets hidden by the slider. The group-level gate (level + J button
-// + K-popover flag) is independent and still controls the whole batch via the
-// setters in detectorGroups.js.
+// Single pass over every group that holds particle-label sprites. Each label
+// is identified by `userData.isParticleLabel` (set at sprite-creation time —
+// see drawElectrons / drawMuons / drawTaus / metOverlay) so adding a new
+// label-bearing overlay only needs the tag, not a new branch here.
+//
+// Visibility = (Track Labels toggle) AND (anchor track visible) AND
+//              (sprite-specific extras — currently only τ has them).
+//
+// Anchor-driven hide keeps a label from floating in empty space when the
+// pT slider drops the track underneath. ν has no anchor (anchor is null),
+// so the optional-chain collapses to `true` and only the labels-toggle
+// gates it.
+//
+// τ extras: hide when the anchor's been claimed by a higher-priority match
+// (every hadronic τ IS a jet to anti-kt; the orange jet track shouldn't
+// also wear a τ symbol — see _applyTrackMaterials' priority chain). And
+// hide tauCharge=0 candidates unless the K-popover Unmatched Tau toggle
+// is on (sum=0 is impossible for a real τ — always ±1).
+//
+// Called from applyTrackThreshold after the pT pass + filter pass have
+// updated track visibility, and from setParticleLabelsVisible when the
+// Track Labels toggle flips.
 export function syncParticleLabelVisibility() {
-  for (const sprite of getElectronGroup()?.children ?? [])
-    sprite.visible = sprite.userData.anchorLine?.visible ?? true;
-  for (const sprite of getMuonGroup()?.children ?? [])
-    sprite.visible = sprite.userData.anchorLine?.visible ?? true;
-  // τ labels also follow the material-priority chain: hide the sprite when a
-  // higher-priority match (electron / muon / jet) claimed the anchor track.
-  // Hadronic τ daughters live inside a reconstructed AntiKt4 jet (every
-  // hadronic τ IS a jet to the anti-kt algorithm), and our XML carries only
-  // `withoutQuality` τ candidates — so painting a τ symbol on top of an
-  // orange jet track would overstate the τ-ID confidence. This filter runs
-  // here (not in drawTaus) because recomputeJetTrackMatch only stamps
-  // isJetMatched after applyJetThreshold runs at the tail of processXml.
-  // Sprites with tauCharge==0 are "unmatched τ" — the daughter charges sum
-  // to 0, impossible for a real τ (always ±1). Gated behind the K-popover
-  // Unmatched Tau toggle so the default view stays clean.
+  const labelsOn = getParticleLabelsVisible();
   const showUnmatchedTau = getUnmatchedTausVisible();
-  for (const sprite of getTauLabelGroup()?.children ?? []) {
-    const a = sprite.userData.anchorLine;
-    if (!a || !a.visible) {
-      sprite.visible = false;
-      continue;
+  const labelGroups = [getElectronGroup(), getMuonGroup(), getTauLabelGroup(), getMetGroup()];
+  for (const g of labelGroups) {
+    if (!g) continue;
+    for (const sprite of g.children ?? []) {
+      if (!sprite.userData?.isParticleLabel) continue;
+      const anchor = sprite.userData.anchorLine;
+      const anchorOk = !anchor || anchor.visible;
+      // τ-only extras: presence of tauCharge in userData identifies a τ
+      // sprite (other label sprites never set it).
+      let tauOk = true;
+      if (sprite.userData.tauCharge !== undefined && anchor) {
+        const u = anchor.userData;
+        if (u.matchedElectronPdgId != null || u.isMuonMatched || u.isJetMatched) {
+          tauOk = false;
+        } else {
+          const c = sprite.userData.tauCharge;
+          tauOk = c === -1 || c === 1 || showUnmatchedTau;
+        }
+      }
+      sprite.visible = labelsOn && anchorOk && tauOk;
     }
-    const u = a.userData;
-    if (u.matchedElectronPdgId != null || u.isMuonMatched || u.isJetMatched) {
-      sprite.visible = false;
-      continue;
-    }
-    const c = sprite.userData.tauCharge;
-    sprite.visible = (c === -1 || c === 1) || showUnmatchedTau;
   }
 }
 
@@ -482,13 +499,12 @@ export function drawMuons(muons) {
     predicate: (line) => !!line.userData.isMuonMatched,
     anchorIdx: (count) => count - 1,
     makeSprite: (line) => {
-      // pdg null means the parser couldn't pin the charge — render a plain
-      // "μ" rather than guess. Standard PDG numbering: +13 = μ⁻ (the lepton,
-      // negative charge), -13 = μ⁺ (anti-muon, positive). pdg>0 → negative.
+      // pdg null → plain "μ" (parser couldn't pin the charge — older XMLs
+      // may strip the field). leptonSymbol handles the null fallback.
       const pdg = line.userData.matchedMuonPdgId;
-      const text = pdg == null ? 'μ' : pdg > 0 ? 'μ⁻' : 'μ⁺';
-      const sprite = makeLabelSprite(text, MUON_LABEL_COLOR);
+      const sprite = makeLabelSprite(leptonSymbol('μ', pdg), MUON_LABEL_COLOR);
       sprite.userData.pdgId = pdg;
+      sprite.userData.isParticleLabel = true;
       return sprite;
     },
     setter: setMuonGroup,
@@ -630,11 +646,9 @@ export function drawTaus(taus) {
     anchorIdx: (count) => count - 1,
     makeSprite: (line) => {
       const c = line.userData.matchedTauCharge;
-      // charge=0 (or null) is the seed-only τ candidate with no real sign —
-      // render plain "τ", same convention drawMuons uses for unknown pdg.
-      const text = c == null || c === 0 ? 'τ' : c < 0 ? 'τ⁻' : 'τ⁺';
-      const sprite = makeLabelSprite(text, TAU_LABEL_COLOR);
+      const sprite = makeLabelSprite(tauSymbolFromCharge(c), TAU_LABEL_COLOR);
       sprite.userData.tauCharge = c;
+      sprite.userData.isParticleLabel = true;
       return sprite;
     },
     setter: setTauLabelGroup,

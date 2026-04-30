@@ -140,6 +140,7 @@ import {
 // from visibility.js historically. Live-binding semantics preserved.
 export { layerVis, setLayerLeaf, setLayerSubtree, anyLayerLeafOn, isLayerOn };
 export { setMuonTrees, getMuonAtlasTrees, onMuonTreesChange, applyMuonVisibility };
+export { syncParticleLabelVisibility };
 export {
   fcalGroup,
   fcalVisibleMap,

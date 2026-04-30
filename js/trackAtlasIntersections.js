@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
+import { isLeptonNegative } from './particleSymbols.js';
 
 // Track line materials — shared with drawTracks() so hit/miss restyling stays consistent.
 export const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, linewidth: 2 });
@@ -344,8 +345,7 @@ function _applyTrackMaterials(trackGroup) {
   for (const line of trackGroup.children) {
     const ePdg = line.userData.matchedElectronPdgId;
     if (ePdg != null) {
-      // PDG convention: ePdg>0 is the negative lepton (e⁻).
-      line.material = ePdg > 0 ? TRACK_ELECTRON_NEG_MAT : TRACK_ELECTRON_POS_MAT;
+      line.material = isLeptonNegative(ePdg) ? TRACK_ELECTRON_NEG_MAT : TRACK_ELECTRON_POS_MAT;
     } else if (line.userData.isMuonMatched) {
       line.material = TRACK_HIT_MAT;
     } else if (line.userData.isJetMatched) {

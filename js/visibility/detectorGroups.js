@@ -121,14 +121,17 @@ export const getVerticesVisible = () => _verticesVisible;
 // the electron rule lands in one place instead of half a dozen.
 const _isPhotonGroupVisible = () => _photonsVisible && getViewLevel() === 3;
 const _isElectronGroupVisible = () =>
-  _tracksVisible && _electronTracksVisible && _particleLabelsVisible && getViewLevel() === 3;
-const _isMuonGroupVisible = () =>
-  _tracksVisible && _muonTracksVisible && _particleLabelsVisible && getViewLevel() === 3;
+  _tracksVisible && _electronTracksVisible && getViewLevel() === 3;
+const _isMuonGroupVisible = () => _tracksVisible && _muonTracksVisible && getViewLevel() === 3;
 // τ labels are sprites anchored on matched daughter tracks — gated by the
 // same J / K-popover / level rules as the lepton sprite groups, swapping in
 // the τ-track toggle. (The eta/φ τ LINES live in _tauGroup, gated by jets.)
+// The Track Labels toggle (`_particleLabelsVisible`) is NOT in any of these
+// predicates — it's enforced per-sprite by syncParticleLabelVisibility so
+// the same code path can also gate the ν sprite that lives inside _metGroup
+// alongside the always-on shaft + cone (no group-level switch can do that).
 const _isTauLabelGroupVisible = () =>
-  _tracksVisible && _tauTracksVisible && _particleLabelsVisible && getViewLevel() === 3;
+  _tracksVisible && _tauTracksVisible && getViewLevel() === 3;
 const _isClusterGroupVisible = () => _clustersVisible && getViewLevel() === 2;
 const _isJetGroupVisible = () => _jetsVisible && getViewLevel() === 3;
 const _isTauGroupVisible = () => _jetsVisible && getViewLevel() === 3;
@@ -283,19 +286,11 @@ export function setUnmatchedTausVisible(v) {
 /** @param {boolean} v */
 export function setParticleLabelsVisible(v) {
   _particleLabelsVisible = v;
-  // Single switch over the three lepton-label sprite groups; each refresh
-  // re-evaluates its predicate (now AND'd with _particleLabelsVisible).
-  _refreshElectron();
-  _refreshMuon();
-  _refreshTauLabel();
-  // MET ν sprite: lives inside _metGroup alongside the shaft + cone, so
-  // we can't gate it via group .visible (that would also drop the arrow).
-  // metOverlay tags the sprite with userData.isMetNuLabel; flip just that.
-  if (_metGroup) {
-    for (const c of _metGroup.children ?? []) {
-      if (c.userData?.isMetNuLabel) c.visible = v;
-    }
-  }
+  // No refresh hooks here — the gate is enforced per-sprite by
+  // syncParticleLabelVisibility (in particles.js), which the toggle handler
+  // calls right after this. That central pass walks every group containing
+  // sprites tagged userData.isParticleLabel (electron, muon, tau-label,
+  // met) and applies the labels-on / anchor-visible / τ-extras combination.
 }
 /** @param {boolean} v */
 export function setVerticesVisible(v) {

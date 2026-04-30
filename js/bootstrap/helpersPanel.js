@@ -20,6 +20,7 @@ import {
   setVerticesVisible,
   getParticleLabelsVisible,
   setParticleLabelsVisible,
+  syncParticleLabelVisibility,
 } from '../visibility.js';
 import { getViewLevel, onViewLevelChange } from '../viewLevel.js';
 import { markDirty } from '../renderer.js';
@@ -124,6 +125,11 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     e.stopPropagation();
     setParticleLabelsVisible(!getParticleLabelsVisible());
     setSwitch(hbtnLabels, getParticleLabelsVisible());
+    // The setter is state-only — drive the actual sprite-visibility flip
+    // through the central sync, which handles all four label-bearing groups
+    // (electron / muon / tau-label / met) uniformly via the isParticleLabel
+    // tag rather than per-group special cases.
+    syncParticleLabelVisibility();
     markDirty();
   });
   hbtnLines?.addEventListener('click', (e) => {
