@@ -347,7 +347,7 @@ function doRaycast(clientX, clientY) {
         return;
       }
       let label;
-      if (isPhoton) label = 'Photon';
+      if (isPhoton) label = 'γ';
       else {
         // Track label mirrors the colour priority chain in
         // _applyTrackMaterials: electron > muon > jet > τ > muon-hit >
@@ -355,16 +355,20 @@ function doRaycast(clientX, clientY) {
         // <Electron> / <Muon> objects, so they win first. Jet beats τ
         // because every τ in this XML carries withoutQuality — they are τ
         // algorithm INPUT, not τ-ID output. When the muon's pdgId is
-        // unknown we keep a charge-less "Track → Muon".
+        // unknown we keep a charge-less "Track → μ". Sign comes from the
+        // standard PDG convention: +11/+13 = lepton (negative), -11/-13 =
+        // anti-lepton (positive); so pdg>0 picks the negative-particle label.
         const ePdg = line.userData.matchedElectronPdgId;
-        if (ePdg != null) label = ePdg < 0 ? 'Track → Electron' : 'Track → Positron';
+        if (ePdg != null) label = ePdg > 0 ? 'Track → e⁻' : 'Track → e⁺';
         else if (line.userData.isMuonMatched) {
           const muPdg = line.userData.matchedMuonPdgId;
-          if (muPdg == null) label = 'Track → Muon';
-          else label = muPdg < 0 ? 'Track → Muon' : 'Track → Anti-muon';
+          if (muPdg == null) label = 'Track → μ';
+          else label = muPdg > 0 ? 'Track → μ⁻' : 'Track → μ⁺';
         } else if (line.userData.isJetMatched) label = 'Track → Jet';
-        else if (line.userData.isTauMatched) label = 'Track → Tau';
-        else label = 'Track';
+        else if (line.userData.isTauMatched) {
+          const tauC = line.userData.matchedTauCharge;
+          label = tauC === -1 ? 'Track → τ⁻' : tauC === 1 ? 'Track → τ⁺' : 'Track → τ';
+        } else label = 'Track';
       }
       // Show pixel-hit markers for the hovered track; clear them for photons.
       if (isPhoton) hideTrackHits();
@@ -409,10 +413,12 @@ function doRaycast(clientX, clientY) {
     if (tauHits.length) {
       const line = tauHits[0].object;
       const ptGev = line.userData.ptGev ?? 0;
+      const c = line.userData.charge;
+      const tauLabel = c === -1 ? 'τ⁻' : c === 1 ? 'τ⁺' : 'τ';
       clearOutline();
       hideTrackHits();
       showHit({
-        label: 'Tau',
+        label: tauLabel,
         coord: line.userData.storeGateKey ?? '',
         valueText: `${ptGev.toFixed(3)} GeV`,
         keyHtml: 'p<sub>T</sub>',

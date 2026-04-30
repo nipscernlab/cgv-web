@@ -386,9 +386,11 @@ export function drawElectrons(electrons) {
     anchorIdx: (count) => Math.floor((count - 1) * 0.5),
     makeSprite: (line) => {
       const pdg = line.userData.matchedElectronPdgId;
-      const isElectron = pdg < 0;
+      // Standard PDG numbering: +11 = e⁻ (the lepton, negative charge),
+      // -11 = e⁺ (anti-electron, positive). pdg>0 → negative particle.
+      const isElectron = pdg > 0;
       const sprite = makeLabelSprite(
-        isElectron ? 'e-' : 'e+',
+        isElectron ? 'e⁻' : 'e⁺',
         isElectron ? ELECTRON_NEG_COLOR : ELECTRON_POS_COLOR,
       );
       sprite.userData.pdgId = pdg;
@@ -481,10 +483,10 @@ export function drawMuons(muons) {
     anchorIdx: (count) => count - 1,
     makeSprite: (line) => {
       // pdg null means the parser couldn't pin the charge — render a plain
-      // "μ" rather than guess. Sign convention matches electrons: pdg < 0
-      // is the negative lepton.
+      // "μ" rather than guess. Standard PDG numbering: +13 = μ⁻ (the lepton,
+      // negative charge), -13 = μ⁺ (anti-muon, positive). pdg>0 → negative.
       const pdg = line.userData.matchedMuonPdgId;
-      const text = pdg == null ? 'μ' : pdg < 0 ? 'μ-' : 'μ+';
+      const text = pdg == null ? 'μ' : pdg > 0 ? 'μ⁻' : 'μ⁺';
       const sprite = makeLabelSprite(text, MUON_LABEL_COLOR);
       sprite.userData.pdgId = pdg;
       return sprite;
@@ -630,7 +632,7 @@ export function drawTaus(taus) {
       const c = line.userData.matchedTauCharge;
       // charge=0 (or null) is the seed-only τ candidate with no real sign —
       // render plain "τ", same convention drawMuons uses for unknown pdg.
-      const text = c == null || c === 0 ? 'τ' : c < 0 ? 'τ-' : 'τ+';
+      const text = c == null || c === 0 ? 'τ' : c < 0 ? 'τ⁻' : 'τ⁺';
       const sprite = makeLabelSprite(text, TAU_LABEL_COLOR);
       sprite.userData.tauCharge = c;
       return sprite;

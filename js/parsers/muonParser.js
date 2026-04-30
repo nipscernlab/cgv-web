@@ -1,9 +1,10 @@
 // JS-side parser for <Muon> blocks (reconstructed muon objects).
 //
 // The XML lists each muon with eta, phi, pt, energy, mass, pdgId, chi2.
-// pdgId is ±13. The existing electron pipeline treats pdgId < 0 as the
-// negatively-charged lepton (e-); we mirror that interpretation here so
-// μ- / μ+ labels stay consistent with e- / e+ across the viewer.
+// pdgId is ±13 by standard PDG numbering: +13 = μ⁻ (the lepton, negative
+// charge), -13 = μ⁺ (anti-muon, positive). Downstream renderers read
+// pdgId>0 as the negative particle — same mapping the electron pipeline
+// applies to ±11.
 //
 // Output shape mirrors parseElectrons: a flat array of
 //   { eta, phi, ptGev, pdgId, energyGev, key }

@@ -344,7 +344,8 @@ function _applyTrackMaterials(trackGroup) {
   for (const line of trackGroup.children) {
     const ePdg = line.userData.matchedElectronPdgId;
     if (ePdg != null) {
-      line.material = ePdg < 0 ? TRACK_ELECTRON_NEG_MAT : TRACK_ELECTRON_POS_MAT;
+      // PDG convention: ePdg>0 is the negative lepton (e⁻).
+      line.material = ePdg > 0 ? TRACK_ELECTRON_NEG_MAT : TRACK_ELECTRON_POS_MAT;
     } else if (line.userData.isMuonMatched) {
       line.material = TRACK_HIT_MAT;
     } else if (line.userData.isJetMatched) {
