@@ -1,4 +1,3 @@
-// @ts-check
 // Jet η/φ lines, same cylinder span as clusters but orange + dashed.
 // Orange is reserved for jets so it doesn't collide with the muon-track blue;
 // dashes mirror the cluster style and visually distinguish jets from tracks.

@@ -164,15 +164,20 @@ export function setupDetectorPanels({
     track.addEventListener('dblclick', () => {
       const cur = getThr();
       const display = isFinite(cur) && cur > minMev ? fmtMev(cur) : '';
-      openThrPopup(track, display, (raw) => {
-        const value = parseMevInput(raw);
-        if (value !== null) {
-          const clamped = value === -Infinity ? value : Math.max(minMev, Math.min(maxMev, value));
-          setThr(clamped);
-          onApply();
-          updateUI(getThr());
-        }
-      }, t('thr-placeholder'));
+      openThrPopup(
+        track,
+        display,
+        (raw) => {
+          const value = parseMevInput(raw);
+          if (value !== null) {
+            const clamped = value === -Infinity ? value : Math.max(minMev, Math.min(maxMev, value));
+            setThr(clamped);
+            onApply();
+            updateUI(getThr());
+          }
+        },
+        t('thr-placeholder'),
+      );
     });
 
     function update(newMinMev, newMaxMev) {
@@ -229,22 +234,27 @@ export function setupDetectorPanels({
     trackEl.addEventListener('dblclick', () => {
       const cur = state.getThrTrackGev();
       const display = cur > state.getTrackPtMinGev() + 1e-9 ? fmtGev(cur) : '';
-      openThrPopup(trackEl, display, (raw) => {
-        const value = raw.trim().toLowerCase();
-        if (!value || value === 'all') {
-          state.setThrTrackGev(state.getTrackPtMinGev());
-        } else {
-          const gev = value.match(/^([\d.]+)\s*gev$/i);
-          const parsed = gev ? parseFloat(gev[1]) : parseFloat(value);
-          if (isFinite(parsed)) {
-            state.setThrTrackGev(
-              Math.max(state.getTrackPtMinGev(), Math.min(state.getTrackPtMaxGev(), parsed)),
-            );
+      openThrPopup(
+        trackEl,
+        display,
+        (raw) => {
+          const value = raw.trim().toLowerCase();
+          if (!value || value === 'all') {
+            state.setThrTrackGev(state.getTrackPtMinGev());
+          } else {
+            const gev = value.match(/^([\d.]+)\s*gev$/i);
+            const parsed = gev ? parseFloat(gev[1]) : parseFloat(value);
+            if (isFinite(parsed)) {
+              state.setThrTrackGev(
+                Math.max(state.getTrackPtMinGev(), Math.min(state.getTrackPtMaxGev(), parsed)),
+              );
+            }
           }
-        }
-        updateUI();
-        applyTrackThreshold();
-      }, t('thr-placeholder-gev'));
+          updateUI();
+          applyTrackThreshold();
+        },
+        t('thr-placeholder-gev'),
+      );
     });
 
     function update(minGev, maxGev) {
@@ -325,21 +335,26 @@ export function setupDetectorPanels({
       const ops = currentOps();
       const cur = ops.getThr();
       const display = cur > ops.getMin() + 1e-9 ? fmtGev(cur) : '';
-      openThrPopup(trackEl, display, (raw) => {
-        const opsLive = currentOps();
-        const value = raw.trim().toLowerCase();
-        if (!value || value === 'all') {
-          opsLive.setThr(opsLive.getMin());
-        } else {
-          const gev = value.match(/^([\d.]+)\s*gev$/i);
-          const parsed = gev ? parseFloat(gev[1]) : parseFloat(value);
-          if (isFinite(parsed)) {
-            opsLive.setThr(Math.max(opsLive.getMin(), Math.min(opsLive.getMax(), parsed)));
+      openThrPopup(
+        trackEl,
+        display,
+        (raw) => {
+          const opsLive = currentOps();
+          const value = raw.trim().toLowerCase();
+          if (!value || value === 'all') {
+            opsLive.setThr(opsLive.getMin());
+          } else {
+            const gev = value.match(/^([\d.]+)\s*gev$/i);
+            const parsed = gev ? parseFloat(gev[1]) : parseFloat(value);
+            if (isFinite(parsed)) {
+              opsLive.setThr(Math.max(opsLive.getMin(), Math.min(opsLive.getMax(), parsed)));
+            }
           }
-        }
-        updateUI();
-        opsLive.apply();
-      }, t('thr-placeholder-gev'));
+          updateUI();
+          opsLive.apply();
+        },
+        t('thr-placeholder-gev'),
+      );
     });
 
     // Level switch: redraw the slider against the new mode's bounds + value.

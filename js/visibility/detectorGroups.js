@@ -139,8 +139,7 @@ const _isMuonGroupVisible = () => _tracksVisible && _muonTracksVisible && getVie
 // predicates — it's enforced per-sprite by syncParticleLabelVisibility so
 // the same code path can also gate the ν sprite that lives inside _metGroup
 // alongside the always-on shaft + cone (no group-level switch can do that).
-const _isTauLabelGroupVisible = () =>
-  _tracksVisible && _tauTracksVisible && getViewLevel() === 3;
+const _isTauLabelGroupVisible = () => _tracksVisible && _tauTracksVisible && getViewLevel() === 3;
 const _isClusterGroupVisible = () => _clustersVisible && getViewLevel() === 2;
 const _isJetGroupVisible = () => _jetsVisible && getViewLevel() === 3;
 const _isTauGroupVisible = () => _jetsVisible && getViewLevel() === 3;

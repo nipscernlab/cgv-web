@@ -1,4 +1,3 @@
-// @ts-check
 // Track-vs-muon-chamber geometric intersection pass.
 //
 // Walks every visible (or particle-hidden — see below) track polyline and

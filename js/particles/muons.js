@@ -1,4 +1,3 @@
-// @ts-check
 // Muon / anti-muon labels.
 //
 // Mirrors the electron pipeline: the matched track is already coloured blue

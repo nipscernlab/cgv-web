@@ -1,4 +1,3 @@
-// @ts-check
 // Inner Detector overlays (Tracks + Hits) — the per-event toggle pair that
 // lives inside the #overlay-inner-detector-group block in index.html, just
 // below the static-geometry tree.

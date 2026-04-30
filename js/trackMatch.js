@@ -1,4 +1,3 @@
-// @ts-check
 // Per-particle "which track is which" passes.
 //
 // Four functions, one per particle class, each stamps a userData flag (and

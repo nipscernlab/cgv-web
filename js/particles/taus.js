@@ -1,4 +1,3 @@
-// @ts-check
 // Hadronic τ candidates: η/φ purple-dashed lines + per-daughter-track τ
 // labels. Two render groups owned by this module:
 //   - tauGroup       : the η/φ lines (one per τ candidate)

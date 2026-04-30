@@ -1,4 +1,3 @@
-// @ts-check
 // Particles popover (#btn-cluster, level-aware).
 //
 //   L1 — disabled (no clusters / particles to show).

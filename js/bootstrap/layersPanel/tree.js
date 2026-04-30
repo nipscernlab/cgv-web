@@ -1,4 +1,3 @@
-// @ts-check
 // Detector-layer tree — the static-geometry side of the Layers popover.
 //
 // Owns:

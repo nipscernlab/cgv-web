@@ -1,4 +1,3 @@
-// @ts-check
 // Calorimeter clusters drawn as η/φ-direction dashed lines spanning the band
 // between the inner-detector cylinder (r ≈ 1.42 m) and the outer cylinder
 // (r ≈ 3.82 m) — the visual zone occupied by the calo.

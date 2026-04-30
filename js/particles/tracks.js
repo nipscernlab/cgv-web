@@ -1,4 +1,3 @@
-// @ts-check
 // Per-event track polylines.
 //
 // JiveXML emits multiple track collections that are alternative fits of the

@@ -1,4 +1,3 @@
-// @ts-check
 // Shared infrastructure used by every per-particle file in this directory.
 //
 // Three reusable group-builders:

@@ -1,4 +1,3 @@
-// @ts-check
 // Electron / positron labels.
 //
 // The matched track itself (red for e⁻, green for e⁺, set by

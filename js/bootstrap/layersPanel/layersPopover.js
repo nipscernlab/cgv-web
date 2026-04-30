@@ -1,4 +1,3 @@
-// @ts-check
 // Layers popover (#btn-layers) — the open/close glue + button click handler.
 // The actual layer-tree DOM and click handling live in tree.js; this module
 // just opens/closes the panel and keeps the button's "on" indicator wired

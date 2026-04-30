@@ -1,4 +1,3 @@
-// @ts-check
 // Photons drawn as Feynman-diagram wavy-line helices from the origin.
 //
 // The "spring" only spans the last 40 cm before the photon hits the inner
@@ -9,7 +8,12 @@
 import * as THREE from 'three';
 import { scene } from '../renderer.js';
 import { getPhotonGroup, setPhotonGroup } from '../visibility.js';
-import { _disposeGroup, _cylIntersect, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H } from './_internal.js';
+import {
+  _disposeGroup,
+  _cylIntersect,
+  CLUSTER_CYL_IN_R,
+  CLUSTER_CYL_IN_HALF_H,
+} from './_internal.js';
 
 const PHOTON_MAT = new THREE.LineBasicMaterial({
   color: 0xffcc00,
