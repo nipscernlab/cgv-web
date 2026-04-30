@@ -168,21 +168,58 @@ export function recomputeElectronTrackMatch(electrons) {
   markDirty();
 }
 
-// ── Muon → track (heuristic ΔR) ──────────────────────────────────────────────
-// Analogous to electron matching but tuned for muons:
-//   • Match against CombinedMuonTracks only: those polylines run all the way
-//     through the toroid to the muon chambers (~10 m), which is the trajectory
-//     that physically belongs to a Muon object. ID-only tracks would also be
-//     close in η/φ for a high-pT muon, but anchoring the μ± sprite there
-//     would put the label inside the inner detector instead of out on the
-//     blue line that uniquely identifies the muon.
-//   • Wider ΔR cap (0.10) than electrons (0.05): the toroid bends the muon
-//     significantly between the IP and the chambers, so the track endpoint
-//     direction can drift from the muon's IP-pointing (eta, phi) by ~0.05.
-//   • No pT pre-cut: the Muon collection is small (typically 0-3 per event)
-//     and already curated; even a few-GeV muon is interesting to label.
+// ── Muon → track ──────────────────────────────────────────────────────────────
+// Two-phase ΔR matching against CombinedMuonTracks.
+//
+//   Phase 1 — count-match shortcut. If the number of <Muon> objects equals
+//             the number of CombinedMuonTracks that geometrically reach the
+//             muon spectrometer (isHitTrack=true), each muon must own one
+//             of those tracks. Greedy matching with NO ΔR cap pairs every
+//             muon to its closest unclaimed chamber-track; nothing is left
+//             over. This is the common path — hadronic event with N muons
+//             reconstructed = N CombinedMuonTracks extrapolated through the
+//             toroid.
+//   Phase 2 — fallback, only when counts disagree. ΔR-capped greedy across
+//             all CombinedMuonTracks (the original heuristic), so the rare
+//             case where the algorithm produced more tracks than muons (or
+//             fewer) doesn't force a wrong 1:1 pairing.
+//
+// Why phase 1 matters: when two muons start close at the IP (low-mass μ⁺μ⁻
+// pair, say a J/ψ), the toroid bends them in opposite directions and their
+// endpoint η/φ at the chambers are 0.2-0.3 rad apart. The original ΔR cap
+// of 0.1 was too tight to catch the second muon — its target track had
+// drifted past the cap, and greedy iteration order let the first muon
+// claim the wrong one. The count-match shortcut sidesteps the cap entirely
+// when we know each muon owns a track.
+//
+// Anchor / collection rules apply to both phases:
+//   • Match against CombinedMuonTracks only: those polylines run all the
+//     way through the toroid to the muon chambers (~10 m). ID-only tracks
+//     would also be close in η/φ but anchor the μ± label inside the ID.
+//   • No pT pre-cut on the muon side — the collection is curated, even
+//     low-pT muons are worth labelling.
 const _MUON_TRACK_DR_MAX = 0.1;
 const _MUON_TRACK_COLLECTION = 'CombinedMuonTracks';
+
+function _muonTrackEligible(line) {
+  if (line.userData.storeGateKey !== _MUON_TRACK_COLLECTION) return false;
+  const u = line.userData;
+  if (!Number.isFinite(u.eta) || !Number.isFinite(u.phi)) return false;
+  return true;
+}
+
+/**
+ * @param {{ eta: number, phi: number }} mu
+ * @param {{ userData: { eta: number, phi: number } }} line
+ */
+function _dRMuonToTrack(mu, line) {
+  const dEta = mu.eta - line.userData.eta;
+  let dPhi = mu.phi - line.userData.phi;
+  if (dPhi > Math.PI) dPhi -= 2 * Math.PI;
+  else if (dPhi < -Math.PI) dPhi += 2 * Math.PI;
+  return Math.sqrt(dEta * dEta + dPhi * dPhi);
+}
+
 /**
  * @param {Array<{ eta: number, phi: number, pdgId: number | null }> | null} muons
  */
@@ -198,23 +235,34 @@ export function recomputeMuonTrackMatch(muons) {
     line.userData.matchedMuonPdgId = null;
   }
 
-  if (muons && muons.length) {
-    for (const mu of muons) {
-      if (!Number.isFinite(mu.eta) || !Number.isFinite(mu.phi)) continue;
+  if (!muons || !muons.length) {
+    applyTrackMaterials(trackGroup);
+    markDirty();
+    return;
+  }
+
+  const validMuons = muons.filter((m) => Number.isFinite(m.eta) && Number.isFinite(m.phi));
+  if (!validMuons.length) {
+    applyTrackMaterials(trackGroup);
+    markDirty();
+    return;
+  }
+
+  // Phase 1 candidates: chamber-passing CombinedMuonTracks.
+  const chamberTracks = trackGroup.children.filter(
+    (line) => _muonTrackEligible(line) && line.userData.isHitTrack,
+  );
+
+  // The matching loop, parametrised by candidate set + ΔR cap. Greedy
+  // first-Muon-wins: each muon claims the closest unclaimed candidate; ties
+  // are rare enough not to warrant Hungarian-style optimisation.
+  const matchAgainst = (candidates, maxDR) => {
+    for (const mu of validMuons) {
       let best = null;
-      let bestDR = _MUON_TRACK_DR_MAX;
-      for (const line of trackGroup.children) {
-        if (line.userData.storeGateKey !== _MUON_TRACK_COLLECTION) continue;
-        if (!line.visible) continue;
-        const tEta = line.userData.eta;
-        const tPhi = line.userData.phi;
-        if (!Number.isFinite(tEta) || !Number.isFinite(tPhi)) continue;
+      let bestDR = maxDR;
+      for (const line of candidates) {
         if (line.userData.isMuonMatched) continue;
-        const dEta = mu.eta - tEta;
-        let dPhi = mu.phi - tPhi;
-        if (dPhi > Math.PI) dPhi -= 2 * Math.PI;
-        else if (dPhi < -Math.PI) dPhi += 2 * Math.PI;
-        const dR = Math.sqrt(dEta * dEta + dPhi * dPhi);
+        const dR = _dRMuonToTrack(mu, line);
         if (dR < bestDR) {
           bestDR = dR;
           best = line;
@@ -225,7 +273,21 @@ export function recomputeMuonTrackMatch(muons) {
         best.userData.matchedMuonPdgId = mu.pdgId;
       }
     }
+  };
+
+  if (chamberTracks.length === validMuons.length) {
+    // Counts agree → trust the count, drop the cap. Each muon WILL pair
+    // with one chamber-track (Infinity guarantees a match per iteration
+    // until the candidate pool is exhausted).
+    matchAgainst(chamberTracks, Infinity);
+  } else {
+    // Counts disagree → standard ΔR-capped greedy across every eligible
+    // CombinedMuonTrack (chamber-passing or not — preserves old behaviour
+    // for the malformed-XML case).
+    const allMuonTracks = trackGroup.children.filter(_muonTrackEligible);
+    matchAgainst(allMuonTracks, _MUON_TRACK_DR_MAX);
   }
+
   // Re-apply materials: muon match now sits in the priority chain *above*
   // jet and τ (a track that's both a muon and in a jet should read as a
   // muon, not a jet). The colour is still the same blue as TRACK_HIT_MAT —
