@@ -366,11 +366,20 @@ export function applyParticleTrackFilters() {
         hide = true;
       } else if (
         !_muonTracksVisible &&
-        (u.isMuonMatched || u.storeGateKey === 'CombinedMuonTracks')
+        (u.isMuonMatched || u.storeGateKey === 'CombinedMuonTracks') &&
+        u.matchedElectronPdgId == null
       ) {
-        // Muon Tracks toggle hides the LINE for every track in the muon
-        // pool. Chambers stay lit for real μ (physics preserved); unmatched
-        // μ chambers stay only when the user separately opted in via
+        // Muon Tracks toggle hides every track in the muon pool whose ID
+        // is not also electron — electron is the higher-priority match in
+        // the chain (e > μ > jet > τ), so a track that's ALSO matched to
+        // an electron stays under the Electron Tracks toggle, not the
+        // muon one. Same priority rule the Unmatched-μ branch below and
+        // the τ branch above already enforce; without this guard the
+        // Muon Tracks toggle silently hides the rare e+μ dual-matched
+        // tracks even when Electron Tracks is on.
+        //
+        // Chambers stay lit for real μ (physics preserved); unmatched μ
+        // chambers stay only when the user separately opted in via
         // Unmatched μ — otherwise they drop with the line. So the two
         // toggles compose here in the single place where both apply.
         hide = true;
