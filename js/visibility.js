@@ -27,8 +27,7 @@ import {
   getLastMuons,
   syncMuonTrackMatch,
   syncParticleLabelVisibility,
-  refreshCaloBoundParticles,
-  withSuppressedCaloBoundRefresh,
+  withCoalescedCaloBoundRefresh,
 } from './particles.js';
 import { isLayerOn } from './visibility/layerVis.js';
 import { applyFcalThreshold } from './visibility/fcalRenderer.js';
@@ -122,7 +121,7 @@ export function initVisibility({ slicer }) {
 function _applyViewLevelGate() {
   const lvl = getViewLevel();
   applyDetectorGroupViewLevel();
-  withSuppressedCaloBoundRefresh(() => {
+  withCoalescedCaloBoundRefresh(() => {
     // Refresh cell visibility: rebuildActiveClusterCellIds reads getViewLevel()
     // and disables the cluster-membership filter outside level 2; applyThreshold
     // then re-evaluates per-cell visibility.
@@ -146,7 +145,6 @@ function _applyViewLevelGate() {
     // L3, so we don't pre-call them above.
     applyTrackThreshold();
   });
-  refreshCaloBoundParticles();
 }
 onViewLevelChange(_applyViewLevelGate);
 
@@ -298,7 +296,7 @@ export function applyTrackThreshold() {
 // refresh after all sub-stages have updated cell visibility (otherwise the
 // refresh between applyThreshold and applyFcalThreshold sees a stale FCAL).
 export function applyClusterThreshold() {
-  withSuppressedCaloBoundRefresh(() => {
+  withCoalescedCaloBoundRefresh(() => {
     const clusterGroup = getClusterGroup();
     if (clusterGroup)
       for (const child of clusterGroup.children ?? [])
@@ -307,7 +305,6 @@ export function applyClusterThreshold() {
     applyThreshold();
     applyFcalThreshold();
   });
-  refreshCaloBoundParticles();
 }
 
 // ── Jet threshold ─────────────────────────────────────────────────────────────
@@ -318,7 +315,7 @@ export function applyClusterThreshold() {
 export function applyJetThreshold() {
   // Single particle-endpoint refresh after the full sub-stage chain — see
   // applyClusterThreshold for the rationale.
-  withSuppressedCaloBoundRefresh(() => {
+  withCoalescedCaloBoundRefresh(() => {
     const jetGroup = getJetGroup();
     if (jetGroup)
       for (const child of jetGroup.children ?? [])
@@ -340,7 +337,6 @@ export function applyJetThreshold() {
     recomputeJetTrackMatch(lvl === 3 ? getActiveJetCollection() : null, thrJetEtGev);
     applyTrackThreshold();
   });
-  refreshCaloBoundParticles();
 }
 
 // Hides τ lines whose pT falls below the L3 ET slider OR whose daughter-
@@ -410,7 +406,7 @@ function _syncNonActiveShowAll() {
 // applyFcalThreshold call inside _applySlicerMask has its own hook — the
 // suppress wrapper around the body silences it so we only refresh once.
 export function applyThreshold() {
-  withSuppressedCaloBoundRefresh(() => {
+  withCoalescedCaloBoundRefresh(() => {
     if (_slicer?.isActive()) {
       _applySlicerMask();
       return;
@@ -443,12 +439,6 @@ export function applyThreshold() {
     rebuildAllOutlines();
     markDirty();
   });
-  // Calo-bound particle endpoints (γ spring / cluster / jet / τ lines) raycast
-  // against the now-rebuilt rayTargets — re-run with cached lists so they
-  // don't drift to hidden cells. Single refresh at the end covers both the
-  // slicer-active and regular branches; the suppress wrapper above silences
-  // applyFcalThreshold's own hook (called from _applySlicerMask).
-  refreshCaloBoundParticles();
 }
 
 // ── Slicer-masked threshold (called by applyThreshold when slicer is active) ──
@@ -501,9 +491,8 @@ function _applySlicerMask() {
 // calls applyFcalThreshold internally). Single particle-endpoint refresh at
 // the end — see applyClusterThreshold for the rationale.
 export function refreshSceneVisibility() {
-  withSuppressedCaloBoundRefresh(() => {
+  withCoalescedCaloBoundRefresh(() => {
     applyThreshold();
     if (!_slicer?.isActive()) applyFcalThreshold();
   });
-  refreshCaloBoundParticles();
 }

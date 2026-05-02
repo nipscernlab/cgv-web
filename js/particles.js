@@ -128,3 +128,17 @@ export function withSuppressedCaloBoundRefresh(fn) {
     _refreshSuppressed = false;
   }
 }
+
+// Composite-pattern shorthand: run `fn` with the per-stage refresh hooks
+// suppressed, then fire ONE refresh after fn returns. Replaces the
+// 5-place repetition of `withSuppressedCaloBoundRefresh(fn);
+// refreshCaloBoundParticles();` in visibility.js (applyThreshold,
+// applyClusterThreshold, applyJetThreshold, refreshSceneVisibility,
+// _applyViewLevelGate). Re-entrant: when called inside an existing
+// suppressed block (initial event-load draws, refresh's own _drawAll)
+// the inner refresh is skipped by the suppress flag — so nesting
+// doesn't multiply the refresh count.
+export function withCoalescedCaloBoundRefresh(fn) {
+  withSuppressedCaloBoundRefresh(fn);
+  refreshCaloBoundParticles();
+}
