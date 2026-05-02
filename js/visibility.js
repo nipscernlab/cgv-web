@@ -280,11 +280,24 @@ export function applyTrackThreshold() {
 }
 
 // ── Cluster threshold ─────────────────────────────────────────────────────────
+//
+// applyTrackThreshold is intentionally NOT called from here, unlike
+// applyJetThreshold which does need it (jet visibility feeds the
+// "photons-in-jets" filter inside applyPhotonFilters, AND jet matches must
+// be re-set via recomputeJetTrackMatch before the track filter pass). The
+// cluster ET threshold's effect is fully contained in (a) the cluster line
+// .visible flags above and (b) the cluster-cell membership filter rebuilt
+// via rebuildActiveClusterCellIds, both of which only feed cell visibility
+// (applyThreshold + applyFcalThreshold). Tracks are pT-driven, lepton
+// matches are ΔR-driven against a static track set, and the K-popover
+// filters depend on jet/τ visibility — none of which the cluster slider
+// touches.
+//
+// applyThreshold + applyFcalThreshold each have their own particle-endpoint
+// refresh hook; suppress them inside this composite so we run a single
+// refresh after all sub-stages have updated cell visibility (otherwise the
+// refresh between applyThreshold and applyFcalThreshold sees a stale FCAL).
 export function applyClusterThreshold() {
-  // applyThreshold + applyFcalThreshold each have their own particle-endpoint
-  // refresh hook; suppress them inside this composite so we run a single
-  // refresh after all sub-stages have updated cell visibility (otherwise the
-  // refresh between applyThreshold and applyFcalThreshold sees a stale FCAL).
   withSuppressedCaloBoundRefresh(() => {
     const clusterGroup = getClusterGroup();
     if (clusterGroup)
@@ -293,7 +306,6 @@ export function applyClusterThreshold() {
     rebuildActiveClusterCellIds();
     applyThreshold();
     applyFcalThreshold();
-    applyTrackThreshold();
   });
   refreshCaloBoundParticles();
 }
