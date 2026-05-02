@@ -43,6 +43,11 @@ export function drawClusters(clusters) {
       storeGateKey: c.storeGateKey ?? '',
     }),
     setter: setClusterGroup,
+    // Cluster events routinely carry thousands of lines (most then hidden
+    // by the ET threshold); per-cluster raycasting freezes slider drags.
+    // Use the surface-based inner-face intersect — accurate to tens of mm,
+    // invisible at the band scale (1.4–3.8 m radial).
+    useCellRaycast: false,
   });
   applyClusterThreshold();
 }

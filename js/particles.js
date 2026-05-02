@@ -54,28 +54,34 @@ export function isRefreshingCaloBoundParticles() {
   return _refreshSuppressed;
 }
 function _hasAnyCachedCaloParticle() {
+  // Mirrors _drawAll — clusters intentionally excluded (they use surface-
+  // based intersection and don't refresh on visibility change).
   return (
     getLastPhotons().length > 0 ||
-    getLastClusters().length > 0 ||
     getLastTaus().length > 0 ||
     getActiveJetCollection() != null
   );
 }
 function _drawAll() {
+  // Only the particles whose endpoints depend on per-cell visibility are
+  // re-drawn on visibility change. Clusters use surface-based intersection
+  // (useCellRaycast=false in clusters.js) so their (η, φ)-derived endpoints
+  // are deterministic and need no refresh — re-running drawClusters across
+  // ~10 k lines on every slider tick would freeze the UI.
   const ph = getLastPhotons();
   if (ph.length) drawPhotons(ph);
-  const cl = getLastClusters();
-  if (cl.length) drawClusters(cl);
   const tau = getLastTaus();
   if (tau.length) drawTaus(tau);
   const jet = getActiveJetCollection();
   if (jet) drawJets(jet);
 }
-export function refreshCaloBoundParticles() {
+// rAF-debounced so a slider drag firing applyXxxThreshold many times per
+// frame coalesces into a single _drawAll on the next frame. Without this the
+// drag freezes — each tick re-runs all four drawXxx + raycaster end-to-end.
+let _refreshScheduled = false;
+function _runRefreshNow() {
+  _refreshScheduled = false;
   if (_refreshSuppressed) return;
-  // Cheap guard for the early-event-load path (caches not yet populated by
-  // processXml's explicit draws): skip the whole drawXxx → applyXxxThreshold
-  // chain rather than firing it just to draw nothing.
   if (!_hasAnyCachedCaloParticle()) return;
   _refreshSuppressed = true;
   try {
@@ -83,6 +89,13 @@ export function refreshCaloBoundParticles() {
   } finally {
     _refreshSuppressed = false;
   }
+}
+export function refreshCaloBoundParticles() {
+  if (_refreshSuppressed) return;
+  if (!_hasAnyCachedCaloParticle()) return;
+  if (_refreshScheduled) return;
+  _refreshScheduled = true;
+  requestAnimationFrame(_runRefreshNow);
 }
 export function withSuppressedCaloBoundRefresh(fn) {
   if (_refreshSuppressed) {

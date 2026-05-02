@@ -14,10 +14,10 @@
 
 import * as THREE from 'three';
 import { scene } from '../renderer.js';
-import { rayTargets, active } from '../state.js';
 import {
   fcalGroup,
   fcalVisibleMap,
+  visHandles,
   getTrackGroup,
   getElectronGroup,
   getMuonGroup,
@@ -84,53 +84,89 @@ export function _innerCaloFaceIntersect(dx, dy, dz) {
   return CALO_ECSTRIP_Z / dzAbs;                                  // EC Strip
 }
 
-// Reusable raycaster + scratch vectors for per-particle cell-hit queries.
-const _ray = new THREE.Raycaster();
-_ray.near = 1;     // skip the origin itself (the hit-at-zero degeneracy)
-_ray.far = 1e7;    // larger than any conceivable detector extent
-const _rayOrigin = new THREE.Vector3(0, 0, 0);
-const _rayDir = new THREE.Vector3();
+// World-space bounding sphere cached on each cell handle (lazy, on first
+// raycast hit). Computed from the geometry's local bsphere transformed by
+// origMatrix. The sphere is invariant under cell visibility — we only need
+// to recompute if origMatrix changes (it never does for static geometry).
+function _handleWorldSphere(h) {
+  if (h._wsphere) return h._wsphere;
+  const geo = h.iMesh.geometry;
+  if (!geo.boundingSphere) geo.computeBoundingSphere();
+  const s = new THREE.Sphere().copy(geo.boundingSphere);
+  s.applyMatrix4(h.origMatrix);
+  h._wsphere = s;
+  return s;
+}
 
 /**
  * Returns t at which the unit ray (dx,dy,dz) from the origin first hits a
  * VISIBLE calorimeter cell — Tile / LAr / HEC instances currently in `active`,
  * OR an FCAL tube currently flagged in fcalVisibleMap. Falls back to the
- * surface-based `_innerCaloFaceIntersect` when no such cell lies on the ray
- * (e.g. early in event load before applyThreshold has populated rayTargets,
- * or when the ray simply misses every lit cell).
+ * surface-based `_innerCaloFaceIntersect` when no such cell lies on the ray.
+ *
+ * Implementation: manual ray-vs-bounding-sphere iteration over the visible
+ * cell maps. Three.js's Raycaster.intersectObjects is O(total instances) per
+ * ray — including the zero-matrix hidden ones it can't short-circuit, which
+ * on this detector is ~150 k per InstancedMesh. The manual pass is O(visible
+ * cells), typically a few hundred, and skips the per-instance triangle
+ * iteration entirely.
+ *
+ * Bounding-sphere approximation means the reported t lands on the cell's
+ * front bsphere, not on the exact triangle hit — accurate to cell-half-size
+ * (~tens of mm), which is invisible at the visualization scale.
  */
 export function _firstVisibleCellHit(dx, dy, dz) {
-  _rayDir.set(dx, dy, dz).normalize();
-  _ray.set(_rayOrigin, _rayDir);
+  // dx, dy, dz are unit (caller normalises). Origin at (0,0,0).
   let bestT = Infinity;
 
-  // Tile / LAr / HEC: shared rayTargets, filtered by `active`
-  if (rayTargets.length && active.size) {
-    const hits = _ray.intersectObjects(rayTargets, false);
-    for (let i = 0; i < hits.length; i++) {
-      const hit = hits[i];
-      const iid = hit.instanceId;
-      if (iid == null) continue;
-      const handle = hit.object.userData.handles?.[iid];
-      if (handle && active.has(handle)) {
-        if (hit.distance < bestT) bestT = hit.distance;
-        break; // hits are sorted; first active match is the closest in this iMesh group
-      }
-    }
+  // Tile / LAr / HEC: iterate visHandles (cells whose iMesh matrix is
+  // currently set to origMatrix, i.e. actually displayed). visHandles is
+  // rebuilt by applyThreshold / _applySlicerMask whenever cell visibility
+  // changes, so the spring tip follows the slider.
+  for (let i = 0; i < visHandles.length; i++) {
+    const h = visHandles[i];
+    const s = _handleWorldSphere(h);
+    const cx = s.center.x, cy = s.center.y, cz = s.center.z;
+    const r = s.radius;
+    const tCenter = dx * cx + dy * cy + dz * cz; // closest-approach t along ray
+    if (tCenter <= 0) continue; // sphere behind origin
+    const distSq = cx * cx + cy * cy + cz * cz - tCenter * tCenter;
+    const r2 = r * r;
+    if (distSq > r2) continue; // ray misses sphere
+    const tHit = tCenter - Math.sqrt(r2 - distSq); // front-of-sphere t
+    if (tHit > 0 && tHit < bestT) bestT = tHit;
   }
 
-  // FCAL: separate InstancedMesh under fcalGroup with its own visibility map.
+  // FCAL: separate InstancedMesh whose instance i is visible iff
+  // fcalVisibleMap[i] is truthy. We pull the per-instance world-space matrix
+  // out of the InstancedMesh and apply it to the geometry's bsphere.
   if (fcalGroup && fcalVisibleMap && fcalVisibleMap.length) {
     const fcalIMesh = fcalGroup.children.find((c) => c.isInstancedMesh);
     if (fcalIMesh) {
-      const hits = _ray.intersectObject(fcalIMesh, false);
-      for (let i = 0; i < hits.length; i++) {
-        const hit = hits[i];
-        const iid = hit.instanceId;
-        if (iid != null && fcalVisibleMap[iid]) {
-          if (hit.distance < bestT) bestT = hit.distance;
-          break;
-        }
+      const fcalGeo = fcalIMesh.geometry;
+      if (!fcalGeo.boundingSphere) fcalGeo.computeBoundingSphere();
+      const localR = fcalGeo.boundingSphere.radius;
+      for (let i = 0; i < fcalVisibleMap.length; i++) {
+        if (!fcalVisibleMap[i]) continue;
+        fcalIMesh.getMatrixAt(i, _scratchMat4);
+        // Translation column carries the world-space cell centre (the FCAL
+        // builder pre-bakes scale/orientation into the local geometry).
+        const e = _scratchMat4.elements;
+        const cx = e[12], cy = e[13], cz = e[14];
+        // Approx radius: max scale × local bsphere radius. The FCAL builder
+        // applies non-uniform scales (rx, ry, len/2) to a unit-cylinder; pick
+        // the largest axis so we don't false-negative.
+        const sx = Math.hypot(e[0], e[1], e[2]);
+        const sy = Math.hypot(e[4], e[5], e[6]);
+        const sz = Math.hypot(e[8], e[9], e[10]);
+        const r = localR * Math.max(sx, sy, sz);
+        const tCenter = dx * cx + dy * cy + dz * cz;
+        if (tCenter <= 0) continue;
+        const distSq = cx * cx + cy * cy + cz * cz - tCenter * tCenter;
+        const r2 = r * r;
+        if (distSq > r2) continue;
+        const tHit = tCenter - Math.sqrt(r2 - distSq);
+        if (tHit > 0 && tHit < bestT) bestT = tHit;
       }
     }
   }
@@ -138,6 +174,8 @@ export function _firstVisibleCellHit(dx, dy, dz) {
   if (bestT < Infinity) return bestT;
   return _innerCaloFaceIntersect(dx, dy, dz);
 }
+
+const _scratchMat4 = new THREE.Matrix4();
 
 /**
  * Removes a per-event group from the scene and frees its owned GPU resources:
@@ -174,18 +212,36 @@ export function _disposeGroup(getter, setter) {
  * the group via setter; empty input is a no-op (caller is responsible for
  * any pre-clear via _disposeGroup before calling).
  *
+ * `useCellRaycast` controls the inner-endpoint computation:
+ *   - true  (default — jets, τ): _firstVisibleCellHit, lands on a real cell.
+ *   - false (clusters): _innerCaloFaceIntersect, surface only. Cluster events
+ *                       routinely have thousands of cluster lines (most cut
+ *                       by the ET threshold), and per-cluster raycasting
+ *                       freezes slider drags. Surface approximation puts the
+ *                       cluster line start within tens of mm of the real
+ *                       first-cell hit, invisible at the visualization scale.
+ *
  * @param {{
  *   items: ReadonlyArray<{ eta: number, phi: number, [k: string]: any }>,
  *   mat: any,
  *   mapToUserData: (item: any) => Record<string, any>,
  *   setter: (g: any) => void,
  *   renderOrder?: number,
+ *   useCellRaycast?: boolean,
  * }} cfg
  */
-export function _buildEtaPhiLineGroup({ items, mat, mapToUserData, setter, renderOrder = 6 }) {
+export function _buildEtaPhiLineGroup({
+  items,
+  mat,
+  mapToUserData,
+  setter,
+  renderOrder = 6,
+  useCellRaycast = true,
+}) {
   if (!items.length) return;
   const g = new THREE.Group();
   g.renderOrder = renderOrder;
+  const innerHit = useCellRaycast ? _firstVisibleCellHit : _innerCaloFaceIntersect;
   for (const item of items) {
     const { eta, phi } = item;
     const theta = 2 * Math.atan(Math.exp(-eta));
@@ -193,7 +249,7 @@ export function _buildEtaPhiLineGroup({ items, mat, mapToUserData, setter, rende
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz = Math.cos(theta);
-    const t0 = _firstVisibleCellHit(dx, dy, dz);
+    const t0 = innerHit(dx, dy, dz);
     const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
     const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
     const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);
