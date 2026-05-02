@@ -24,21 +24,20 @@ import {
   getParticleLabelsVisible,
 } from '../visibility.js';
 
-// Inner calo face — composite surface extracted from CaloGeometry.glb. Particles
-// terminate at the first LAr EM volume they enter, which depends on |η|:
-//   |η| ≤ 1.5346       → Barrel PS  (cylinder, r = 1423.445)
-//   1.5346 < |η| ≤ 1.8071 → EC PS    (disc at |z| = 3680.75, r ∈ [1241.6, 1730.6])
-//   1.8071 < |η|       → EC Strip   (disc at |z| = 3754.24, r ∈ [304.4, 2011.5])
-// Beyond |η| ≈ 3.207 the ray passes through the strip's inner hole — we fall
-// back to the strip face plane so the visible spring still terminates cleanly.
+// Inner calo face — composite surface for first-volume entry, with transitions
+// snapped to ATLAS-standard |η|. Surface positions come from CaloGeometry.glb;
+// the dispatch is by |η| so the boundary always lands on the right surface,
+// without the floating-point ULP issues that arise from comparing derived
+// limits like R·sinh(1.5):
+//   |η| ≤ 1.5         → Barrel PS  (r = 1423.445)
+//   1.5 < |η| ≤ 1.8   → EC PS      (|z| = 3680.75)
+//   1.8 < |η|         → EC Strip   (|z| = 3754.24, also the fallback when the
+//                                   ray would pass through the strip's inner hole)
 const CALO_BPS_R       = 1423.445;
-const CALO_BPS_ZMAX    = 3148.708;
 const CALO_ECPS_Z      = 3680.75;
-const CALO_ECPS_RMIN   = 1241.636;
-const CALO_ECPS_RMAX   = 1730.580;
 const CALO_ECSTRIP_Z   = 3754.240;
-const CALO_ECSTRIP_RMIN = 304.401;
-const CALO_ECSTRIP_RMAX = 2011.535;
+const ETA_BPS_TO_ECPS    = 1.5;
+const ETA_ECPS_TO_STRIP  = 1.8;
 
 // Outer cylinder (calo exit): r = 3.82 m, half-h = 6.0 m
 export const CLUSTER_CYL_OUT_R = 3820;
@@ -66,30 +65,20 @@ export function _cylIntersect(dx, dy, dz, r, halfH) {
 
 /**
  * Returns t at which the unit-direction ray (dx,dy,dz) from the origin first
- * enters a LAr EM calorimeter volume — Barrel PS, EC PS, or EC Strip — using
- * surface dimensions extracted from CaloGeometry.glb. See the CALO_* constants
- * above for the geometry. Used for the inner endpoint of cluster/jet/τ lines
- * and the spring termination of γ/e helices.
+ * enters a LAr EM calorimeter volume — Barrel PS, EC PS, or EC Strip — based
+ * on |η| computed from the ray itself (|η| = asinh(|dz|/rT) for a unit ray).
+ * Used for the inner endpoint of cluster/jet/τ lines and the spring termination
+ * of γ/e helices.
  */
 export function _innerCaloFaceIntersect(dx, dy, dz) {
   const rT = Math.sqrt(dx * dx + dy * dy);
   const dzAbs = Math.abs(dz);
-  // Barrel PS (cylinder)
-  if (rT > 1e-9) {
-    const t = CALO_BPS_R / rT;
-    if (dzAbs * t <= CALO_BPS_ZMAX) return t;
-  }
-  if (dzAbs > 1e-9) {
-    // EC PS (disc)
-    const tPS = CALO_ECPS_Z / dzAbs;
-    const rPS = rT * tPS;
-    if (rPS >= CALO_ECPS_RMIN && rPS <= CALO_ECPS_RMAX) return tPS;
-    // EC Strip (disc) — also the fallback for very high |η| where the ray
-    // passes through the strip's inner hole.
-    return CALO_ECSTRIP_Z / dzAbs;
-  }
-  // Pure-transverse ray (dz=0): always hits the barrel
-  return rT > 1e-9 ? CALO_BPS_R / rT : 1e9;
+  // Pure-z ray (no transverse component): far forward, send to strip face.
+  if (rT < 1e-9) return CALO_ECSTRIP_Z / dzAbs;
+  const absEta = Math.asinh(dzAbs / rT);
+  if (absEta <= ETA_BPS_TO_ECPS)   return CALO_BPS_R / rT;        // Barrel PS
+  if (absEta <= ETA_ECPS_TO_STRIP) return CALO_ECPS_Z / dzAbs;    // EC PS
+  return CALO_ECSTRIP_Z / dzAbs;                                  // EC Strip
 }
 
 /**

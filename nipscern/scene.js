@@ -69,29 +69,23 @@ function _cylIntersect(dx, dy, dz, r, halfH){
   return halfH / Math.abs(dz);
 }
 
-// Inner calo face — composite from CaloGeometry.glb (kept in sync with bake.js
-// and js/particles/_internal.js). Used for γ/e/μ label anchor positions.
+// Inner calo face — composite from CaloGeometry.glb with ATLAS-standard |η|
+// transitions (1.5 / 1.8). Dispatch is by |η|, kept in sync with bake.js and
+// js/particles/_internal.js. Used for γ/e label anchor positions.
 const CALO_BPS_R       = 1423.445;
-const CALO_BPS_ZMAX    = 3148.708;
 const CALO_ECPS_Z      = 3680.75;
-const CALO_ECPS_RMIN   = 1241.636;
-const CALO_ECPS_RMAX   = 1730.580;
 const CALO_ECSTRIP_Z   = 3754.240;
+const ETA_BPS_TO_ECPS    = 1.5;
+const ETA_ECPS_TO_STRIP  = 1.8;
 
 function _innerCaloFaceIntersect(dx, dy, dz){
   const rT = Math.sqrt(dx*dx + dy*dy);
   const dzAbs = Math.abs(dz);
-  if(rT > 1e-9){
-    const t = CALO_BPS_R / rT;
-    if(dzAbs * t <= CALO_BPS_ZMAX) return t;
-  }
-  if(dzAbs > 1e-9){
-    const tPS = CALO_ECPS_Z / dzAbs;
-    const rPS = rT * tPS;
-    if(rPS >= CALO_ECPS_RMIN && rPS <= CALO_ECPS_RMAX) return tPS;
-    return CALO_ECSTRIP_Z / dzAbs;
-  }
-  return rT > 1e-9 ? CALO_BPS_R / rT : 1e9;
+  if(rT < 1e-9) return CALO_ECSTRIP_Z / dzAbs;
+  const absEta = Math.asinh(dzAbs / rT);
+  if(absEta <= ETA_BPS_TO_ECPS)   return CALO_BPS_R / rT;
+  if(absEta <= ETA_ECPS_TO_STRIP) return CALO_ECPS_Z / dzAbs;
+  return CALO_ECSTRIP_Z / dzAbs;
 }
 
 // ── Billboard label sprite ────────────────────────────────────────────────────
