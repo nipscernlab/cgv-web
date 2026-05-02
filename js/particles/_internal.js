@@ -14,7 +14,10 @@
 
 import * as THREE from 'three';
 import { scene } from '../renderer.js';
+import { rayTargets, active } from '../state.js';
 import {
+  fcalGroup,
+  fcalVisibleMap,
   getTrackGroup,
   getElectronGroup,
   getMuonGroup,
@@ -81,6 +84,61 @@ export function _innerCaloFaceIntersect(dx, dy, dz) {
   return CALO_ECSTRIP_Z / dzAbs;                                  // EC Strip
 }
 
+// Reusable raycaster + scratch vectors for per-particle cell-hit queries.
+const _ray = new THREE.Raycaster();
+_ray.near = 1;     // skip the origin itself (the hit-at-zero degeneracy)
+_ray.far = 1e7;    // larger than any conceivable detector extent
+const _rayOrigin = new THREE.Vector3(0, 0, 0);
+const _rayDir = new THREE.Vector3();
+
+/**
+ * Returns t at which the unit ray (dx,dy,dz) from the origin first hits a
+ * VISIBLE calorimeter cell — Tile / LAr / HEC instances currently in `active`,
+ * OR an FCAL tube currently flagged in fcalVisibleMap. Falls back to the
+ * surface-based `_innerCaloFaceIntersect` when no such cell lies on the ray
+ * (e.g. early in event load before applyThreshold has populated rayTargets,
+ * or when the ray simply misses every lit cell).
+ */
+export function _firstVisibleCellHit(dx, dy, dz) {
+  _rayDir.set(dx, dy, dz).normalize();
+  _ray.set(_rayOrigin, _rayDir);
+  let bestT = Infinity;
+
+  // Tile / LAr / HEC: shared rayTargets, filtered by `active`
+  if (rayTargets.length && active.size) {
+    const hits = _ray.intersectObjects(rayTargets, false);
+    for (let i = 0; i < hits.length; i++) {
+      const hit = hits[i];
+      const iid = hit.instanceId;
+      if (iid == null) continue;
+      const handle = hit.object.userData.handles?.[iid];
+      if (handle && active.has(handle)) {
+        if (hit.distance < bestT) bestT = hit.distance;
+        break; // hits are sorted; first active match is the closest in this iMesh group
+      }
+    }
+  }
+
+  // FCAL: separate InstancedMesh under fcalGroup with its own visibility map.
+  if (fcalGroup && fcalVisibleMap && fcalVisibleMap.length) {
+    const fcalIMesh = fcalGroup.children.find((c) => c.isInstancedMesh);
+    if (fcalIMesh) {
+      const hits = _ray.intersectObject(fcalIMesh, false);
+      for (let i = 0; i < hits.length; i++) {
+        const hit = hits[i];
+        const iid = hit.instanceId;
+        if (iid != null && fcalVisibleMap[iid]) {
+          if (hit.distance < bestT) bestT = hit.distance;
+          break;
+        }
+      }
+    }
+  }
+
+  if (bestT < Infinity) return bestT;
+  return _innerCaloFaceIntersect(dx, dy, dz);
+}
+
 /**
  * Removes a per-event group from the scene and frees its owned GPU resources:
  *   - Line geometries (per-event BufferGeometry) → dispose.
@@ -135,7 +193,7 @@ export function _buildEtaPhiLineGroup({ items, mat, mapToUserData, setter, rende
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz = Math.cos(theta);
-    const t0 = _innerCaloFaceIntersect(dx, dy, dz);
+    const t0 = _firstVisibleCellHit(dx, dy, dz);
     const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
     const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
     const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);

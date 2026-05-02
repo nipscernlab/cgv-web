@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { scene } from '../renderer.js';
 import { getPhotonGroup, setPhotonGroup } from '../visibility.js';
-import { _disposeGroup, _innerCaloFaceIntersect } from './_internal.js';
+import { _disposeGroup, _firstVisibleCellHit } from './_internal.js';
 
 const PHOTON_MAT = new THREE.LineBasicMaterial({
   color: 0xffcc00,
@@ -70,7 +70,7 @@ export function drawPhotons(photons) {
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz = Math.cos(theta);
-    const tEnd = _innerCaloFaceIntersect(dx, dy, dz);
+    const tEnd = _firstVisibleCellHit(dx, dy, dz);
     const nTurns = Math.round(PHOTON_SPRING_TURNS_PER_MM * Math.min(PHOTON_PRE_INNER_MM, tEnd));
     const pts = _makeSpringPoints(dx, dy, dz, tEnd, PHOTON_SPRING_R, nTurns, PHOTON_SPRING_PTS);
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
