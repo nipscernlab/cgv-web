@@ -108,31 +108,45 @@ export function initVisibility({ slicer }) {
 // Re-applies cluster / photon / electron visibility AND the cell cluster-filter
 // when the view level changes. Tracks are unaffected (they show at every level,
 // gated only by setTracksVisible).
+//
+// applyThreshold + applyFcalThreshold each have their own particle-endpoint
+// refresh hook; suppress them inside the wrapper so a single refresh runs
+// after the full sub-stage chain — same pattern as applyClusterThreshold /
+// applyJetThreshold / refreshSceneVisibility.
+//
+// Lepton match resolution is owned by applyTrackThreshold when on L3 (it
+// re-runs syncElectronTrackMatch / syncMuonTrackMatch in its stage 2). Here
+// we only need to *clear* those matches when leaving L3. τ match has no
+// equivalent inside applyTrackThreshold so this function owns it on every
+// transition.
 function _applyViewLevelGate() {
   const lvl = getViewLevel();
   applyDetectorGroupViewLevel();
-  // Refresh cell visibility: rebuildActiveClusterCellIds reads getViewLevel()
-  // and disables the cluster-membership filter outside level 2; applyThreshold
-  // then re-evaluates per-cell visibility.
-  rebuildActiveClusterCellIds();
-  applyThreshold();
-  applyFcalThreshold();
-  // Track jet-match highlight is only meaningful on level 3; passing null
-  // (off levels) makes recompute clear all isJetMatched flags.
-  recomputeJetTrackMatch(lvl === 3 ? getActiveJetCollection() : null, thrJetEtGev);
-  // Same gate for the electron→track ΔR match — outside L3 we don't want the
-  // red/green colours bleeding into the simpler views. syncElectronTrackMatch
-  // re-marks tracks AND rebuilds the floating "e±" label sprites.
-  syncElectronTrackMatch(lvl === 3 ? getLastElectrons() : null);
-  // τ→track colour mirrors the same L3-only gate.
-  syncTauTrackMatch(lvl === 3 ? getLastTaus() : null);
-  // μ→track sprite labels — same L3-only gate.
-  syncMuonTrackMatch(lvl === 3 ? getLastMuons() : null);
-  // Re-run the track pipeline so the K-popover filters (in particular the
-  // L3-only unmatched filter) get re-evaluated against the new level. Without
-  // this, leaving L3 with unmatched=off leaves the tracks hidden at L1/L2.
-  applyTrackThreshold();
-  markDirty();
+  withSuppressedCaloBoundRefresh(() => {
+    // Refresh cell visibility: rebuildActiveClusterCellIds reads getViewLevel()
+    // and disables the cluster-membership filter outside level 2; applyThreshold
+    // then re-evaluates per-cell visibility.
+    rebuildActiveClusterCellIds();
+    applyThreshold();
+    applyFcalThreshold();
+    // Track jet-match highlight is only meaningful on level 3; passing null
+    // (off levels) makes recompute clear all isJetMatched flags.
+    recomputeJetTrackMatch(lvl === 3 ? getActiveJetCollection() : null, thrJetEtGev);
+    if (lvl !== 3) {
+      // Leaving L3: clear lepton matches so the red/green colouring drops out
+      // of the L1/L2 views. On L3 → L3 transitions (or entering L3 from
+      // L1/L2) applyTrackThreshold below re-establishes the matches.
+      syncElectronTrackMatch(null);
+      syncMuonTrackMatch(null);
+    }
+    syncTauTrackMatch(lvl === 3 ? getLastTaus() : null);
+    // Re-run the track pipeline so the K-popover filters (in particular the
+    // L3-only unmatched filter) get re-evaluated against the new level.
+    // applyTrackThreshold's stage 2 also re-syncs electron/muon matches when
+    // L3, so we don't pre-call them above.
+    applyTrackThreshold();
+  });
+  refreshCaloBoundParticles();
 }
 onViewLevelChange(_applyViewLevelGate);
 
