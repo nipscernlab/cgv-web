@@ -265,6 +265,43 @@ export function _buildEtaPhiLineGroup({
 }
 
 /**
+ * Visibility-driven refresh for an η/φ-line group built by
+ * _buildEtaPhiLineGroup. Walks the existing Lines, recomputes (t0, t1) from
+ * each Line's userData.eta / userData.phi, and rewrites its 6-float position
+ * attribute in place. Skips the Group / Line / BufferGeometry allocation
+ * dance that would otherwise run per slider tick. computeLineDistances()
+ * is re-run since the LineDashedMaterial caches them based on positions.
+ *
+ * @param {THREE.Group | null} g  the existing line group (no-op if null)
+ * @param {boolean} useCellRaycast  same semantics as in _buildEtaPhiLineGroup
+ */
+export function _refreshEtaPhiLineGroupGeometry(g, useCellRaycast = true) {
+  if (!g) return;
+  const innerHit = useCellRaycast ? _firstVisibleCellHit : _innerCaloFaceIntersect;
+  for (const line of g.children) {
+    const { eta, phi } = line.userData;
+    if (eta == null || phi == null) continue;
+    const theta = 2 * Math.atan(Math.exp(-eta));
+    const sinT = Math.sin(theta);
+    const dx = -sinT * Math.cos(phi);
+    const dy = -sinT * Math.sin(phi);
+    const dz = Math.cos(theta);
+    const t0 = innerHit(dx, dy, dz);
+    const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
+    const posAttr = line.geometry.getAttribute('position');
+    const arr = posAttr.array;
+    arr[0] = dx * t0;
+    arr[1] = dy * t0;
+    arr[2] = dz * t0;
+    arr[3] = dx * t1;
+    arr[4] = dy * t1;
+    arr[5] = dz * t1;
+    posAttr.needsUpdate = true;
+    line.computeLineDistances();
+  }
+}
+
+/**
  * Builds a Group of sprite labels — one per matched track that `predicate`
  * accepts — anchored at the polyline point selected by `anchorIdx`, pushed
  * radially outward by LEPTON_LABEL_RADIAL_OFFSET_MM. Each sprite stashes its
