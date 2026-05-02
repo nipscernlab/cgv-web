@@ -64,6 +64,7 @@ import {
   clearMuons,
   clearJets,
   clearTaus,
+  withSuppressedCaloBoundRefresh,
 } from './particles.js';
 import { parseJets } from './parsers/jetParser.js';
 import {
@@ -478,13 +479,17 @@ export async function processXml(xmlText) {
 
   // Calo-bound particle endpoints (γ / clusters / τ / jets) — drawn AFTER
   // applyThreshold so _firstVisibleCellHit can raycast against the now-
-  // energized cells. Order preserves the original drawTaus → setJetCollections
-  // dependency (the L3 jet/τ ET slider listener that fires on
-  // setJetCollections reads getLastTaus()).
-  drawPhotons(rawPhotons);
-  drawClusters(rawClusters);
-  drawTaus(tausParsed);
-  setJetCollections(jetsParsed);
+  // energized cells. Wrapped in withSuppressedCaloBoundRefresh so the inner
+  // applyClusterThreshold / applyJetThreshold / applyFcalThreshold calls
+  // don't each kick off an additional full refresh of all four particle
+  // groups. Order preserves the drawTaus → setJetCollections dependency
+  // (the L3 ET-slider listener fired by setJetCollections reads getLastTaus()).
+  withSuppressedCaloBoundRefresh(() => {
+    drawPhotons(rawPhotons);
+    drawClusters(rawClusters);
+    drawTaus(tausParsed);
+    setJetCollections(jetsParsed);
+  });
 
   showEventInfo(currentEventInfo);
   updateMinimap({ active, fcalCells, clusters: rawClusters });

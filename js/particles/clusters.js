@@ -18,14 +18,23 @@ const CLUSTER_MAT = new THREE.LineDashedMaterial({
   depthWrite: false,
 });
 
+// Cached cluster list so refreshCaloBoundParticles (in particles.js) can
+// re-run drawClusters after a visibility change without re-parsing the XML.
+let _lastClusters = [];
+export function getLastClusters() {
+  return _lastClusters;
+}
+
 export function clearClusters() {
+  _lastClusters = [];
   _disposeGroup(getClusterGroup, setClusterGroup);
 }
 
 export function drawClusters(clusters) {
   clearClusters();
+  _lastClusters = Array.isArray(clusters) ? clusters : [];
   _buildEtaPhiLineGroup({
-    items: clusters,
+    items: _lastClusters,
     mat: CLUSTER_MAT,
     mapToUserData: (c) => ({
       etGev: c.etGev,

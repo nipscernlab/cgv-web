@@ -55,16 +55,25 @@ function _makeSpringPoints(dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
   return pts;
 }
 
+// Cached photon list so refreshCaloBoundParticles (in particles.js) can
+// re-run drawPhotons after a visibility change without re-parsing the XML.
+let _lastPhotons = [];
+export function getLastPhotons() {
+  return _lastPhotons;
+}
+
 export function clearPhotons() {
+  _lastPhotons = [];
   _disposeGroup(getPhotonGroup, setPhotonGroup);
 }
 
 export function drawPhotons(photons) {
   clearPhotons();
-  if (!photons.length) return;
+  _lastPhotons = Array.isArray(photons) ? photons : [];
+  if (!_lastPhotons.length) return;
   const g = new THREE.Group();
   g.renderOrder = 7;
-  for (const { eta, phi, ptGev } of photons) {
+  for (const { eta, phi, ptGev } of _lastPhotons) {
     const theta = 2 * Math.atan(Math.exp(-eta));
     const sinT = Math.sin(theta);
     const dx = -sinT * Math.cos(phi);
