@@ -24,10 +24,23 @@ import {
   getParticleLabelsVisible,
 } from '../visibility.js';
 
-// Inner cylinder (calo entry):  r = 1.42 m, h = 6.4 m
-export const CLUSTER_CYL_IN_R = 1421.73;
-export const CLUSTER_CYL_IN_HALF_H = 3680.75;
-// Outer cylinder (calo exit):   r = 4.25 m, h = 12 m
+// Inner calo face — composite surface extracted from CaloGeometry.glb. Particles
+// terminate at the first LAr EM volume they enter, which depends on |η|:
+//   |η| ≤ 1.5346       → Barrel PS  (cylinder, r = 1423.445)
+//   1.5346 < |η| ≤ 1.8071 → EC PS    (disc at |z| = 3680.75, r ∈ [1241.6, 1730.6])
+//   1.8071 < |η|       → EC Strip   (disc at |z| = 3754.24, r ∈ [304.4, 2011.5])
+// Beyond |η| ≈ 3.207 the ray passes through the strip's inner hole — we fall
+// back to the strip face plane so the visible spring still terminates cleanly.
+const CALO_BPS_R       = 1423.445;
+const CALO_BPS_ZMAX    = 3148.708;
+const CALO_ECPS_Z      = 3680.75;
+const CALO_ECPS_RMIN   = 1241.636;
+const CALO_ECPS_RMAX   = 1730.580;
+const CALO_ECSTRIP_Z   = 3754.240;
+const CALO_ECSTRIP_RMIN = 304.401;
+const CALO_ECSTRIP_RMAX = 2011.535;
+
+// Outer cylinder (calo exit): r = 3.82 m, half-h = 6.0 m
 export const CLUSTER_CYL_OUT_R = 3820;
 export const CLUSTER_CYL_OUT_HALF_H = 6000;
 
@@ -49,6 +62,34 @@ export function _cylIntersect(dx, dy, dz, r, halfH) {
     if (Math.abs(dz * tBarrel) <= halfH) return tBarrel;
   }
   return halfH / Math.abs(dz);
+}
+
+/**
+ * Returns t at which the unit-direction ray (dx,dy,dz) from the origin first
+ * enters a LAr EM calorimeter volume — Barrel PS, EC PS, or EC Strip — using
+ * surface dimensions extracted from CaloGeometry.glb. See the CALO_* constants
+ * above for the geometry. Used for the inner endpoint of cluster/jet/τ lines
+ * and the spring termination of γ/e helices.
+ */
+export function _innerCaloFaceIntersect(dx, dy, dz) {
+  const rT = Math.sqrt(dx * dx + dy * dy);
+  const dzAbs = Math.abs(dz);
+  // Barrel PS (cylinder)
+  if (rT > 1e-9) {
+    const t = CALO_BPS_R / rT;
+    if (dzAbs * t <= CALO_BPS_ZMAX) return t;
+  }
+  if (dzAbs > 1e-9) {
+    // EC PS (disc)
+    const tPS = CALO_ECPS_Z / dzAbs;
+    const rPS = rT * tPS;
+    if (rPS >= CALO_ECPS_RMIN && rPS <= CALO_ECPS_RMAX) return tPS;
+    // EC Strip (disc) — also the fallback for very high |η| where the ray
+    // passes through the strip's inner hole.
+    return CALO_ECSTRIP_Z / dzAbs;
+  }
+  // Pure-transverse ray (dz=0): always hits the barrel
+  return rT > 1e-9 ? CALO_BPS_R / rT : 1e9;
 }
 
 /**
@@ -105,7 +146,7 @@ export function _buildEtaPhiLineGroup({ items, mat, mapToUserData, setter, rende
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz = Math.cos(theta);
-    const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
+    const t0 = _innerCaloFaceIntersect(dx, dy, dz);
     const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
     const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
     const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);

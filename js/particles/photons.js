@@ -8,12 +8,7 @@
 import * as THREE from 'three';
 import { scene } from '../renderer.js';
 import { getPhotonGroup, setPhotonGroup } from '../visibility.js';
-import {
-  _disposeGroup,
-  _cylIntersect,
-  CLUSTER_CYL_IN_R,
-  CLUSTER_CYL_IN_HALF_H,
-} from './_internal.js';
+import { _disposeGroup, _innerCaloFaceIntersect } from './_internal.js';
 
 const PHOTON_MAT = new THREE.LineBasicMaterial({
   color: 0xffcc00,
@@ -36,12 +31,19 @@ function _makeSpringPoints(dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
   const visibleLen = Math.max(0, totalLen - startOffset);
   const nTotal = nTurns * ptsPerTurn + 1;
   const pts = [];
+  // Taper radius smoothly to 0 over the last 15% of t so the spring closes
+  // onto the centerline endpoint — for endcap photons the centerline ends at
+  // z = ±halfH, so the visible tip lands exactly on the calo face. Without
+  // the taper the radial helix offset (R) has a z-component that pulls the
+  // tip a few mm short of the cap.
+  const TAPER_START = 0.85;
   for (let i = 0; i < nTotal; i++) {
     const t = i / (nTotal - 1);
     const angle = t * nTurns * 2 * Math.PI;
     const along = startOffset + t * visibleLen;
-    const cx = Math.cos(angle) * radius;
-    const cy = Math.sin(angle) * radius;
+    const taper = t < TAPER_START ? 1 : 1 - (t - TAPER_START) / (1 - TAPER_START);
+    const cx = Math.cos(angle) * radius * taper;
+    const cy = Math.sin(angle) * radius * taper;
     pts.push(
       new THREE.Vector3(
         fwd.x * along + right.x * cx + up.x * cy,
@@ -68,7 +70,7 @@ export function drawPhotons(photons) {
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz = Math.cos(theta);
-    const tEnd = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
+    const tEnd = _innerCaloFaceIntersect(dx, dy, dz);
     const nTurns = Math.round(PHOTON_SPRING_TURNS_PER_MM * Math.min(PHOTON_PRE_INNER_MM, tEnd));
     const pts = _makeSpringPoints(dx, dy, dz, tEnd, PHOTON_SPRING_R, nTurns, PHOTON_SPRING_PTS);
     const geo = new THREE.BufferGeometry().setFromPoints(pts);

@@ -239,10 +239,18 @@ function parseMuons(doc){
 
 // ── Clusters ──────────────────────────────────────────────────────────────────
 const CLUSTER_THR_GEV = 3;
-const CLUSTER_CYL_IN_R = 1421.73, CLUSTER_CYL_IN_HALF_H = 3680.75;
 const CLUSTER_CYL_OUT_R = 3820, CLUSTER_CYL_OUT_HALF_H = 6000;
 // Muon spectrometer outer boundary (barrel r=10 m, endcap z=±22 m)
 const MUON_R = 10000, MUON_Z = 22000;
+
+// Inner calo face — composite from CaloGeometry.glb. See _internal.js for the
+// rationale; same surface dimensions used here so live and baked geometry agree.
+const CALO_BPS_R       = 1423.445;
+const CALO_BPS_ZMAX    = 3148.708;
+const CALO_ECPS_Z      = 3680.75;
+const CALO_ECPS_RMIN   = 1241.636;
+const CALO_ECPS_RMAX   = 1730.580;
+const CALO_ECSTRIP_Z   = 3754.240;
 
 function _cylIntersect(dx, dy, dz, r, halfH){
   const rT = Math.sqrt(dx*dx + dy*dy);
@@ -251,6 +259,23 @@ function _cylIntersect(dx, dy, dz, r, halfH){
     if(Math.abs(dz * tB) <= halfH) return tB;
   }
   return halfH / Math.abs(dz);
+}
+
+// First-entry into Barrel PS / EC PS / EC Strip — see _internal.js.
+function _innerCaloFaceIntersect(dx, dy, dz){
+  const rT = Math.sqrt(dx*dx + dy*dy);
+  const dzAbs = Math.abs(dz);
+  if(rT > 1e-9){
+    const t = CALO_BPS_R / rT;
+    if(dzAbs * t <= CALO_BPS_ZMAX) return t;
+  }
+  if(dzAbs > 1e-9){
+    const tPS = CALO_ECPS_Z / dzAbs;
+    const rPS = rT * tPS;
+    if(rPS >= CALO_ECPS_RMIN && rPS <= CALO_ECPS_RMAX) return tPS;
+    return CALO_ECSTRIP_Z / dzAbs;
+  }
+  return rT > 1e-9 ? CALO_BPS_R / rT : 1e9;
 }
 
 function parseClusters(doc){
@@ -273,7 +298,7 @@ function parseClusters(doc){
       const dx = -sinT * Math.cos(phi);
       const dy = -sinT * Math.sin(phi);
       const dz =  Math.cos(theta);
-      const t0 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R,  CLUSTER_CYL_IN_HALF_H);
+      const t0 = _innerCaloFaceIntersect(dx, dy, dz);
       const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
       const arr = new Float32Array(6);
       arr[0] = dx*t0; arr[1] = dy*t0; arr[2] = dz*t0;
@@ -330,13 +355,20 @@ function _makeSpringPoints(dx, dy, dz, totalLen){
   const nTurns  = Math.round(PHOTON_SPRING_TURNS_PER_MM * Math.min(PHOTON_PRE_INNER_MM, totalLen));
   const nTotal  = nTurns * PHOTON_SPRING_PTS + 1;
   if(nTotal < 2) return null;
+  // Taper radius smoothly to 0 over the last 15% of t so the spring closes
+  // onto the centerline endpoint — for endcap photons the centerline ends at
+  // z = ±halfH, so the visible tip lands exactly on the calo face. Without
+  // the taper the radial helix offset has a z-component that pulls the tip
+  // a few mm short of the cap.
+  const TAPER_START = 0.85;
   const arr = new Float32Array(nTotal * 3);
   for(let i=0;i<nTotal;i++){
     const t = i/(nTotal-1);
     const angle = t * nTurns * 2 * Math.PI;
     const along = startOffset + t * visibleLen;
-    const cx = Math.cos(angle) * PHOTON_SPRING_R;
-    const cy = Math.sin(angle) * PHOTON_SPRING_R;
+    const taper = t < TAPER_START ? 1 : 1 - (t - TAPER_START) / (1 - TAPER_START);
+    const cx = Math.cos(angle) * PHOTON_SPRING_R * taper;
+    const cy = Math.sin(angle) * PHOTON_SPRING_R * taper;
     arr[i*3  ] = fwd.x*along + right.x*cx + up.x*cy;
     arr[i*3+1] = fwd.y*along + right.y*cx + up.y*cy;
     arr[i*3+2] = fwd.z*along + right.z*cx + up.z*cy;
@@ -639,7 +671,7 @@ async function main(){
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz =  Math.cos(theta);
-    const tEnd = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
+    const tEnd = _innerCaloFaceIntersect(dx, dy, dz);
     const arr = _makeSpringPoints(dx, dy, dz, tEnd);
     if(arr) photonHeaders.push(pushChunk(arr));
   }
@@ -652,7 +684,7 @@ async function main(){
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz =  Math.cos(theta);
-    const tEnd = _cylIntersect(dx, dy, dz, CLUSTER_CYL_IN_R, CLUSTER_CYL_IN_HALF_H);
+    const tEnd = _innerCaloFaceIntersect(dx, dy, dz);
     const arr = _makeElectronSpring(dx, dy, dz, tEnd);
     if(arr) electronHeaders.push(pushChunk(arr));
     else    electronHeaders.push(null);
