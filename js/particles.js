@@ -116,6 +116,7 @@ export function refreshCaloBoundParticles() {
   _refreshScheduled = true;
   requestAnimationFrame(_runRefreshNow);
 }
+/** @param {() => void} fn */
 export function withSuppressedCaloBoundRefresh(fn) {
   if (_refreshSuppressed) {
     fn();
@@ -138,6 +139,7 @@ export function withSuppressedCaloBoundRefresh(fn) {
 // suppressed block (initial event-load draws, refresh's own _drawAll)
 // the inner refresh is skipped by the suppress flag — so nesting
 // doesn't multiply the refresh count.
+/** @param {() => void} fn */
 export function withCoalescedCaloBoundRefresh(fn) {
   withSuppressedCaloBoundRefresh(fn);
   refreshCaloBoundParticles();
