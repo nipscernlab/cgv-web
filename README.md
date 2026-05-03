@@ -1,9 +1,6 @@
 <p align="center">
   <a href="https://github.com/nipscernlab/cgv-web" target="_blank" style="text-decoration:none;">
-    <img src="https://raw.githubusercontent.com/nipscernlab/nipscernweb/main/assets/icons/icon_cgv.svg"
-         alt="CGV-WEB"
-         width="120"
-         style="vertical-align:middle;margin:0 12px;border:none;">
+    <img src="assets/readme_cover.png" alt="CGV Web — Calorimeter Geometry Viewer" width="100%">
   </a>
 </p>
 
@@ -21,7 +18,22 @@
   <img src="https://img.shields.io/badge/code_style-prettier-ff69b4" alt="Code style: Prettier">
 </p>
 
+<p align="center">
+  <a href="https://nipscern.com">🌐 nipscern.com</a> ·
+  <a href="https://www.nipscern.com/library/cgvweb/twiki/">📖 TWiki</a> ·
+  <a href="https://github.com/nipscernlab/cgv-web">💾 Repo</a>
+</p>
+
 ---
+
+<p align="center">
+  <a href="https://github.com/nipscernlab/cgv-web" target="_blank" style="text-decoration:none;">
+    <img src="https://raw.githubusercontent.com/nipscernlab/nipscernweb/main/assets/icons/icon_cgv.svg"
+         alt="CGV-WEB"
+         width="64"
+         style="vertical-align:middle;margin:0 12px;border:none;">
+  </a>
+</p>
 
 CGV Web loads CERN `.root` geometry files, compiles them to a compact mesh
 format, and renders them with **Three.js + WebGL**. It overlays live event
@@ -147,36 +159,6 @@ directly by [js/main.js](js/main.js).
 
 ---
 
-## Directory structure
-
-```
-cgv-web/
-├── index.html                  entry point (HTML only)
-├── css/style.css               all styles
-├── js/main.js                  viewer logic (Three.js, UI, networking)
-├── assets/                     icons, fonts, images (incl. cgvweb_icon.svg)
-├── const/                      CaloBuild.C, CaloGeoConst.h (ATLAS geometry constants)
-├── default_xml/                gitignored; populated by scripts/fetch-samples.mjs
-├── parser/                     Rust ATLAS-ID parser
-│   ├── src/lib.rs              Rust source
-│   ├── Cargo.toml
-│   └── pkg/                    wasm-pack output (committed)
-├── geometry_data/              gitignored; populated by scripts/fetch-geometry.mjs
-├── scripts/
-│   ├── fetch-geometry.mjs      downloads .glb.gz / .root from GitHub Releases
-│   └── fetch-samples.mjs       downloads JiveXML samples from GitHub Releases
-├── setup/                      build pipeline scripts
-│   ├── setup.mjs               patches jsroot modules
-│   ├── root2scene.mjs          .root → .glb compiler (also writes .glb.gz)
-│   └── lib/                    patched jsroot modules
-├── nipscern/                   lightweight standalone preview (pre-baked scene_data.bin)
-├── twiki/                      ATLAS-style user documentation
-├── live_atlas/                 live ATLANTIS bridge (optional)
-└── docs/                       design notes & PDFs
-```
-
----
-
 ## Keyboard shortcuts
 
 | Key        | Action                                  |
@@ -201,8 +183,9 @@ cgv-web/
 
 ## Documentation
 
-User-facing documentation lives in [`twiki/`](twiki/) — start at
-[`twiki/WebHome.twiki`](twiki/WebHome.twiki).
+User-facing documentation is published as a TWiki at
+<https://www.nipscern.com/library/cgvweb/twiki/>. The source files live in
+[`twiki/`](twiki/) — start at [`twiki/WebHome.twiki`](twiki/WebHome.twiki).
 
 ---
 
@@ -219,5 +202,7 @@ See [`LICENSE`](LICENSE) for full text.
 
 ## Links
 
+- Site: <https://nipscern.com>
+- TWiki: <https://www.nipscern.com/library/cgvweb/twiki/>
 - Repo: <https://github.com/nipscernlab/cgv-web>
 - Issues: <https://github.com/nipscernlab/cgv-web/issues>
