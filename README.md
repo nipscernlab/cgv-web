@@ -19,9 +19,8 @@
 </p>
 
 <p align="center">
-  <a href="https://nipscern.com">🌐 nipscern.com</a> ·
-  <a href="https://www.nipscern.com/library/cgvweb/twiki/">📖 TWiki</a> ·
-  <a href="https://github.com/nipscernlab/cgv-web">💾 Repo</a>
+  <a href="https://nipscern.com">nipscern.com</a> ·
+  <a href="https://www.nipscern.com/library/cgvweb/twiki/">TWiki</a>
 </p>
 
 ---
