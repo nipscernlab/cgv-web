@@ -18,7 +18,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 os.environ.setdefault('PORT', '8080')
-os.environ.setdefault('BIND', '0.0.0.0')
+os.environ.setdefault('BIND', '127.0.0.1')
 
 import serve
 serve.main()
