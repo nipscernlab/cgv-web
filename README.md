@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/nipscernlab/cgv-web" target="_blank" style="text-decoration:none;">
-    <img src="assets/readme_cover.png" alt="CGV Web — Calorimeter Geometry Viewer" width="100%">
+    <img src="docs/images/readme_cover.png" alt="CGV Web — Calorimeter Geometry Viewer" width="100%">
   </a>
 </p>
 
