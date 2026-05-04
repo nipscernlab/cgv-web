@@ -63,7 +63,7 @@ echo.
 
 REM ---- Step 2: Patch jsroot modules ----
 echo [2/8] Patching jsroot modules (setup.mjs)...
-cd /d "%~dp0setup"
+cd /d "%~dp0tools\setup"
 call node setup.mjs
 if %errorlevel% neq 0 (
     echo ERROR: setup.mjs failed.
