@@ -34,6 +34,6 @@
 
 # ── Vendored / generated code ──────────────────────────────────
 # Tells GitHub's "Languages" stats not to count these as our code.
-assets/vendor/** linguist-vendored
+vendor/** linguist-vendored
 parser/pkg/**    linguist-generated
 setup/lib/**     linguist-vendored
