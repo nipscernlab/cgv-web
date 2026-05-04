@@ -203,7 +203,7 @@ describe('classifyCellName — match-order priority', () => {
 describe('_classifyTile — exhaustive layer table', () => {
   // Direct unit tests for the pure layer→sampling table, decoupled from the
   // mesh-name regex. Useful to catch off-by-one when the build sequence in
-  // const/CaloBuild.C changes.
+  // tools/const/CaloBuild.C changes.
   const cases = [
     [1, 'barrel', 'A'],
     [23, 'barrel', 'BC'],

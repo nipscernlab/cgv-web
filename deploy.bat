@@ -86,10 +86,10 @@ copy "%SRC%\parser\pkg\atlas_id_parser.js"      "%DEST%\parser\pkg\" >nul
 copy "%SRC%\parser\pkg\atlas_id_parser_bg.wasm" "%DEST%\parser\pkg\" >nul
 echo   - parser\pkg\ (JS + WASM only)
 
-REM --- twiki\  ->  nipscernweb\library\cgvweb\twiki ---
+REM --- tools\twiki\  ->  nipscernweb\library\cgvweb\twiki ---
 if exist "%TWIKI_DEST%" rd /s /q "%TWIKI_DEST%"
-xcopy "%SRC%\twiki" "%TWIKI_DEST%\" /e /i /q >nul
-echo   - twiki\  -^>  %TWIKI_DEST%
+xcopy "%SRC%\tools\twiki" "%TWIKI_DEST%\" /e /i /q >nul
+echo   - tools\twiki\  -^>  %TWIKI_DEST%
 
 echo.
 echo Done.

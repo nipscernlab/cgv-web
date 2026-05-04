@@ -111,11 +111,11 @@ aren't needed for our usage.
 ### 3. Prepare the patched jsroot modules
 
 JSROOT's geometry modules use relative imports that don't resolve outside its
-own tree. `setup/setup.mjs` copies and patches the two files we need
-(`geobase.mjs`, `csg.mjs`) into `setup/lib/`:
+own tree. `tools/setup/setup.mjs` copies and patches the two files we need
+(`geobase.mjs`, `csg.mjs`) into `tools/setup/lib/`:
 
 ```bash
-cd setup
+cd tools/setup
 node setup.mjs
 ```
 
@@ -132,7 +132,7 @@ there manually.
 ### 5. Compile `.root` → `.glb`
 
 ```bash
-node setup/root2scene.mjs geometry_data/CaloGeometry.root \
+node tools/setup/root2scene.mjs geometry_data/CaloGeometry.root \
                           --atlas geometry_data/atlas.root \
                           --atlas-subtree-node MUCH_1,MUC1_2 \
                           --out geometry_data
@@ -184,7 +184,7 @@ directly by [js/main.js](js/main.js).
 
 User-facing documentation is published as a TWiki at
 <https://www.nipscern.com/library/cgvweb/twiki/>. The source files live in
-[`twiki/`](twiki/) — start at [`twiki/WebHome.twiki`](twiki/WebHome.twiki).
+[`tools/twiki/`](tools/twiki/) — start at [`tools/twiki/WebHome.twiki`](tools/twiki/WebHome.twiki).
 
 ---
 

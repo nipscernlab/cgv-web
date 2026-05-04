@@ -110,7 +110,7 @@ echo.
 REM ---- Step 6: Compile .root -> optimized .glb (single step) ----
 echo [6/8] Compiling .root files to merged optimized .glb...
 echo       Atlas filter: MUCH_1,MUC1_2
-call node setup/root2scene.mjs geometry_data/CaloGeometry.root --atlas geometry_data/atlas.root --atlas-subtree-node MUCH_1,MUC1_2 --out geometry_data
+call node tools/setup/root2scene.mjs geometry_data/CaloGeometry.root --atlas geometry_data/atlas.root --atlas-subtree-node MUCH_1,MUC1_2 --out geometry_data
 if %errorlevel% neq 0 (
     echo ERROR: root2scene.mjs failed.
     exit /b 1

@@ -32,7 +32,7 @@ export default [
       'live_atlas/**',
       'tmp_atlas_*/**',
       '.chrome-headless/**',
-      'setup/lib/**',
+      'tools/setup/lib/**',
     ],
   },
 
@@ -70,7 +70,7 @@ export default [
 
   // Build pipeline (Node, ES module).
   {
-    files: ['setup/**/*.mjs'],
+    files: ['tools/setup/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',

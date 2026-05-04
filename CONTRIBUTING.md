@@ -94,7 +94,7 @@ Body only when the *why* isn't obvious from the diff.
 ## Layout reminders
 
 - Frontend code: `js/` (ES modules, loaded by `index.html` via importmap)
-- Build pipeline: `setup/` (Node, ES modules; `setup/lib/` is vendored
+- Build pipeline: `tools/setup/` (Node, ES modules; `tools/setup/lib/` is vendored
   jsroot — don't reformat or lint it)
 - Rust WASM parser: `parser/src/lib.rs` (`wasm-pack build --target web
   --release` regenerates `parser/pkg/`)

@@ -76,11 +76,11 @@ cd ..
    1 Place the source geometry at =geometry_data/CaloGeometry.root= and
    compile it to optimised glTF-binary:
 <verbatim>
-node setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
+node tools/setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data
 </verbatim>
    1 Strip and quantise the GLB (removes unused UVs / tangents / materials):
 <verbatim>
-node setup/optimize_glb.mjs --quantize
+node tools/setup/optimize_glb.mjs --quantize
 mv geometry_data/CaloGeometry_opt.glb geometry_data/CaloGeometry.glb
 </verbatim>
    Typical reduction: ~330 MB → ~70 MB, visually identical. Bump
@@ -110,10 +110,10 @@ The script performs these stages:
 | *Step* | *Action*                                                                         |
 | 0      | Check for =node=, =npm=, =rustc=, =wasm-pack= (installs =wasm-pack= if missing)   |
 | 1      | =npm install --ignore-scripts=                                                   |
-| 2      | =node setup/setup.mjs= — patch =jsroot= geometry modules                         |
+| 2      | =node tools/setup/setup.mjs= — patch =jsroot= geometry modules                   |
 | 3      | Delete any stale =geometry_data/CaloGeometry.glb= and =.glb.gz=                  |
 | 4      | Verify =geometry_data/CaloGeometry.root= exists                                  |
-| 5      | =node setup/root2scene.mjs= — compile =.root= → optimised =.glb=                 |
+| 5      | =node tools/setup/root2scene.mjs= — compile =.root= → optimised =.glb=           |
 | 6      | Compress the =.glb= to =.glb.gz= with PowerShell's =GZipStream=                  |
 | 7      | =wasm-pack build --target web --release= — build the Rust parser                 |
 
@@ -138,7 +138,6 @@ cgv-web/
 ├── css/style.css               all styles
 ├── js/main.js                  viewer logic (Three.js, UI, i18n, networking)
 ├── assets/                     icons, fonts, images (incl. cgvweb_icon.svg)
-├── const/                      CaloBuild.C, CaloGeoConst.h (ATLAS geometry constants)
 ├── default_xml/                bundled JiveXML samples + index.json
 ├── parser/                     Rust ATLAS-ID parser
 │   ├── src/lib.rs              Rust source
@@ -148,23 +147,25 @@ cgv-web/
 │   ├── CaloGeometry.root       source geometry (input)
 │   ├── CaloGeometry.glb        optimised glTF binary
 │   └── CaloGeometry.glb.gz     gzip-compressed GLB shipped to clients
-├── setup/                      build pipeline scripts
-│   ├── setup.mjs               patches jsroot modules
-│   ├── root2scene.mjs          .root → .glb compiler
-│   ├── optimize_glb.mjs        GLB stripper / quantiser
-│   └── lib/                    patched jsroot modules
 ├── nipscern/                   lightweight standalone preview (pre-baked scene_data.bin)
-├── twiki/                      ATLAS TWiki user documentation (this folder)
 ├── atlantis/                   bundled ATLANTIS archive
 ├── live_atlas/                 optional live ATLANTIS bridge
 ├── debug/                      debug scripts + dumps
 ├── docs/                       design notes & PDFs
+├── tools/                      offline-only tooling (not deployed)
+│   ├── const/                  CaloBuild.C, CaloGeoConst.h (ATLAS geometry constants)
+│   ├── setup/                  build pipeline scripts
+│   │   ├── setup.mjs           patches jsroot modules
+│   │   ├── root2scene.mjs      .root → .glb compiler
+│   │   ├── optimize_glb.mjs    GLB stripper / quantiser
+│   │   └── lib/                patched jsroot modules
+│   └── twiki/                  ATLAS TWiki user documentation (this folder)
 └── build.bat                   one-shot Windows full-build pipeline
 </verbatim>
 
 ---++ Code conventions
 
-   * No bundler — =index.html= loads =js/main.js= directly as a classic script, =twiki/app.js= as an ES module. Keep imports browser-native.
+   * No bundler — =index.html= loads =js/main.js= directly as a classic script, =tools/twiki/app.js= as an ES module. Keep imports browser-native.
    * =js/main.js= is a single file. Split only when a standalone concern emerges (WASM adapter, i18n table).
    * The WASM parser is called off the main thread via dynamic =import()=; never block the render loop on decoding.
    * Translations live in the =TRANSLATIONS= map at the top of =js/main.js=. Every UI string referenced by a =data-i18n= attribute must exist in all four locales (EN, FR, PT, NO).
@@ -172,8 +173,8 @@ cgv-web/
 
 ---++ Previewing the TWiki locally
 
-The =twiki/= folder is a self-contained preview of the published ATLAS
-TWiki pages. From =twiki/=:
+The =tools/twiki/= folder is a self-contained preview of the published ATLAS
+TWiki pages. From =tools/twiki/=:
 
 <verbatim>
 python -m http.server 8080
@@ -181,7 +182,7 @@ python -m http.server 8080
 
 Open =http://localhost:8080/=. The local shell (=index.html=, =app.js=,
 =twiki-parser.js=, =style.css=) is a client-side Foswiki renderer styled
-to match the ATLAS Pattern skin. See =twiki/PUBLISHING.txt= for the
+to match the ATLAS Pattern skin. See =tools/twiki/PUBLISHING.txt= for the
 procedure to copy each =.twiki= file into the CERN ATLAS TWiki.
 
 ---++ Opening an issue / contributing
