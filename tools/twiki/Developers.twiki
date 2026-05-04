@@ -135,7 +135,7 @@ needs administrative privileges to place =wasm-pack= on =PATH=.
 <verbatim>
 cgv-web/
 ├── index.html                  entry point (HTML only)
-├── css/style.css               all styles
+├── css/                        modular stylesheets (base, panel-*, modes, hud, toolbar, dialogs, loading, floating, cinema, mobile)
 ├── js/main.js                  viewer logic (Three.js, UI, i18n, networking)
 ├── assets/                     icons, fonts, images (incl. cgvweb_icon.svg)
 ├── default_xml/                bundled JiveXML samples + index.json

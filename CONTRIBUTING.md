@@ -99,7 +99,9 @@ Body only when the *why* isn't obvious from the diff.
 - Rust WASM parser: `parser/src/lib.rs` (`wasm-pack build --target web
   --release` regenerates `parser/pkg/`)
 - Tests: `tests/`
-- Styles: `css/style.css` (single file)
+- Styles: `css/` (one file per concern: `base`, `panel-left`, `panel-right`,
+  `modes`, `hud`, `toolbar`, `dialogs`, `loading`, `floating`, `cinema`, `mobile` —
+  all loaded directly by `index.html`, no `@import` chain)
 
 ## Questions / bugs
 
