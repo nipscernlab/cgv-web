@@ -36,11 +36,11 @@ import {
 //   1.5 < |η| ≤ 1.8   → EC PS      (|z| = 3680.75)
 //   1.8 < |η|         → EC Strip   (|z| = 3754.24, also the fallback when the
 //                                   ray would pass through the strip's inner hole)
-const CALO_BPS_R       = 1423.445;
-const CALO_ECPS_Z      = 3680.75;
-const CALO_ECSTRIP_Z   = 3754.240;
-const ETA_BPS_TO_ECPS    = 1.5;
-const ETA_ECPS_TO_STRIP  = 1.8;
+const CALO_BPS_R = 1423.445;
+const CALO_ECPS_Z = 3680.75;
+const CALO_ECSTRIP_Z = 3754.24;
+const ETA_BPS_TO_ECPS = 1.5;
+const ETA_ECPS_TO_STRIP = 1.8;
 
 // Outer cylinder (calo exit): r = 3.82 m, half-h = 6.0 m
 export const CLUSTER_CYL_OUT_R = 3820;
@@ -79,9 +79,9 @@ export function _innerCaloFaceIntersect(dx, dy, dz) {
   // Pure-z ray (no transverse component): far forward, send to strip face.
   if (rT < 1e-9) return CALO_ECSTRIP_Z / dzAbs;
   const absEta = Math.asinh(dzAbs / rT);
-  if (absEta <= ETA_BPS_TO_ECPS)   return CALO_BPS_R / rT;        // Barrel PS
-  if (absEta <= ETA_ECPS_TO_STRIP) return CALO_ECPS_Z / dzAbs;    // EC PS
-  return CALO_ECSTRIP_Z / dzAbs;                                  // EC Strip
+  if (absEta <= ETA_BPS_TO_ECPS) return CALO_BPS_R / rT; // Barrel PS
+  if (absEta <= ETA_ECPS_TO_STRIP) return CALO_ECPS_Z / dzAbs; // EC PS
+  return CALO_ECSTRIP_Z / dzAbs; // EC Strip
 }
 
 // World-space bounding sphere cached on each cell handle (lazy, on first
@@ -126,7 +126,9 @@ export function _firstVisibleCellHit(dx, dy, dz) {
   for (let i = 0; i < visHandles.length; i++) {
     const h = visHandles[i];
     const s = _handleWorldSphere(h);
-    const cx = s.center.x, cy = s.center.y, cz = s.center.z;
+    const cx = s.center.x,
+      cy = s.center.y,
+      cz = s.center.z;
     const r = s.radius;
     const tCenter = dx * cx + dy * cy + dz * cz; // closest-approach t along ray
     if (tCenter <= 0) continue; // sphere behind origin
@@ -152,7 +154,9 @@ export function _firstVisibleCellHit(dx, dy, dz) {
         // Translation column carries the world-space cell centre (the FCAL
         // builder pre-bakes scale/orientation into the local geometry).
         const e = _scratchMat4.elements;
-        const cx = e[12], cy = e[13], cz = e[14];
+        const cx = e[12],
+          cy = e[13],
+          cz = e[14];
         // Approx radius: max scale × local bsphere radius. The FCAL builder
         // applies non-uniform scales (rx, ry, len/2) to a unit-cylinder; pick
         // the largest axis so we don't false-negative.

@@ -74,9 +74,7 @@ function _hasAnyCachedCaloParticle() {
   // Mirrors _drawAll — clusters intentionally excluded (they use surface-
   // based intersection and don't refresh on visibility change).
   return (
-    getLastPhotons().length > 0 ||
-    getLastTaus().length > 0 ||
-    getActiveJetCollection() != null
+    getLastPhotons().length > 0 || getLastTaus().length > 0 || getActiveJetCollection() != null
   );
 }
 function _drawAll() {

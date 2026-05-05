@@ -44,9 +44,15 @@ function _fillSpringPoints(out, dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn
   const visibleLen = Math.max(0, totalLen - startOffset);
   const nTotal = nTurns * ptsPerTurn + 1;
   const TAPER_START = 0.85;
-  const fx = _fwd.x, fy = _fwd.y, fz = _fwd.z;
-  const rx = _right.x, ry = _right.y, rz = _right.z;
-  const ux = _up.x, uy = _up.y, uz = _up.z;
+  const fx = _fwd.x,
+    fy = _fwd.y,
+    fz = _fwd.z;
+  const rx = _right.x,
+    ry = _right.y,
+    rz = _right.z;
+  const ux = _up.x,
+    uy = _up.y,
+    uz = _up.z;
   const denom = nTotal - 1;
   for (let i = 0; i < nTotal; i++) {
     const t = i / denom;
@@ -56,7 +62,7 @@ function _fillSpringPoints(out, dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn
     const cx = Math.cos(angle) * radius * taper;
     const cy = Math.sin(angle) * radius * taper;
     const o = i * 3;
-    out[o]     = fx * along + rx * cx + ux * cy;
+    out[o] = fx * along + rx * cx + ux * cy;
     out[o + 1] = fy * along + ry * cx + uy * cy;
     out[o + 2] = fz * along + rz * cx + uz * cy;
   }
