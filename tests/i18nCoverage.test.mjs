@@ -4,7 +4,7 @@
 // is forgotten.
 
 import { describe, it, expect } from 'vitest';
-import { TRANSLATIONS } from '../js/i18n/translations.js';
+import { TRANSLATIONS } from '../public/js/i18n/translations.js';
 
 const SOURCE_LOCALE = 'en';
 const TARGET_LOCALES = Object.keys(TRANSLATIONS).filter((l) => l !== SOURCE_LOCALE);

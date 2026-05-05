@@ -7,7 +7,7 @@
 // segment and matches against detector-specific prefixes.
 
 import { describe, it, expect } from 'vitest';
-import { classifyCellName, _classifyTile } from '../js/cellClassifier.js';
+import { classifyCellName, _classifyTile } from '../public/js/cellClassifier.js';
 
 // Convenience: build a 3-segment mesh name with the given middle segment.
 // Segment must be the exact prefix the regex expects — the Tile regex is

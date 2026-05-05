@@ -1,11 +1,11 @@
 node_modules/
-parser/pkg/
+public/parser/pkg/
 parser/target/
-geometry_data/
-live_atlas/
+public/geometry_data/
+public/live_atlas/
 tmp_atlas_*/
 .chrome-headless/
-js/atlas_id_parser.js
+public/js/atlas_id_parser.js
 tools/setup/lib/
 *.min.js
 *.min.css

@@ -34,4 +34,4 @@ patch('geobase.mjs', [
 patch('csg.mjs', [["from '../base/base3d.mjs'", "from 'jsroot/base3d'"]]);
 
 console.log('\nSetup concluído. Agora execute:');
-console.log('  node tools/setup/root2scene.mjs geometry_data/CaloGeometry.root --out geometry_data\n');
+console.log('  node tools/setup/root2scene.mjs public/geometry_data/CaloGeometry.root --out public/geometry_data\n');

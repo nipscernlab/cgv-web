@@ -4,7 +4,7 @@
 // shape and pokes a leaf to assert the routing.
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { layerVis, setLayerLeaf, setLayerSubtree, isLayerOn } from '../js/visibility/layerVis.js';
+import { layerVis, setLayerLeaf, setLayerSubtree, isLayerOn } from '../public/js/visibility/layerVis.js';
 
 const _snapshot = JSON.parse(JSON.stringify(layerVis));
 function resetLayerVis() {

@@ -1,7 +1,7 @@
 // Unit tests for the pure helpers in js/utils.js.
 
 import { describe, it, expect } from 'vitest';
-import { fmtMev, esc, makeRelTime } from '../js/utils.js';
+import { fmtMev, esc, makeRelTime } from '../public/js/utils.js';
 
 describe('fmtMev', () => {
   it('returns "ALL" for non-finite values', () => {

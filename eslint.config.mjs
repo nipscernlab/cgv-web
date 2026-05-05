@@ -26,10 +26,10 @@ export default [
   {
     ignores: [
       'node_modules/**',
-      'parser/pkg/**',
+      'public/parser/pkg/**',
       'parser/target/**',
-      'geometry_data/**',
-      'live_atlas/**',
+      'public/geometry_data/**',
+      'public/live_atlas/**',
       'tmp_atlas_*/**',
       '.chrome-headless/**',
       'tools/setup/lib/**',
@@ -40,7 +40,7 @@ export default [
 
   // Frontend modules (browser + ES module).
   {
-    files: ['js/**/*.js'],
+    files: ['public/js/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',

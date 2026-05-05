@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Downloads geometry assets from the GitHub Release into geometry_data/.
+// Downloads geometry assets from the GitHub Release into public/geometry_data/.
 // Idempotent: skips files whose SHA-256 already matches the manifest.
 // Usage:
 //   node tools/scripts/fetch-geometry.mjs                # only what the viewer needs (~5 MB)
@@ -38,7 +38,7 @@ const MANIFEST = [
 ];
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const OUT_DIR = join(PROJECT_ROOT, 'geometry_data');
+const OUT_DIR = join(PROJECT_ROOT, 'public', 'geometry_data');
 
 const C = process.stdout.isTTY
   ? { dim: '\x1b[2m', green: '\x1b[32m', red: '\x1b[31m', yellow: '\x1b[33m', reset: '\x1b[0m' }

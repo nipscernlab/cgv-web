@@ -58,12 +58,12 @@ python -m http.server 8080            # or: npx serve .
 
 Then open <http://localhost:8080>.
 
-Heavy assets (`geometry_data/CaloGeometry.glb.gz` and the JiveXML samples
-under `default_xml/`) are hosted on
+Heavy assets (`public/geometry_data/CaloGeometry.glb.gz` and the JiveXML samples
+under `public/default_xml/`) are hosted on
 [GitHub Releases](https://github.com/nipscernlab/cgv-web/releases) and fetched
 on demand — no `npm install` or build pipeline required just to view the app.
 Both fetch scripts are idempotent: SHA-256 cached, network only on the first
-run. The Rust ATLAS-ID parser (`parser/pkg/*.wasm`) is committed.
+run. The Rust ATLAS-ID parser (`public/parser/pkg/*.wasm`) is committed.
 
 If you have npm installed, `npm run dev` chains both fetches and starts the
 server in one step.
@@ -126,35 +126,35 @@ npm run fetch:geometry:source
 ```
 
 Downloads `CaloGeometry.root` and `atlas.root` (~24 MB) from the GitHub Release
-into `geometry_data/`. Skip this step if you've placed your own `.root` files
+into `public/geometry_data/`. Skip this step if you've placed your own `.root` files
 there manually.
 
 ### 5. Compile `.root` → `.glb`
 
 ```bash
-node tools/setup/root2scene.mjs geometry_data/CaloGeometry.root \
-                          --atlas geometry_data/atlas.root \
+node tools/setup/root2scene.mjs public/geometry_data/CaloGeometry.root \
+                          --atlas public/geometry_data/atlas.root \
                           --atlas-subtree-node MUCH_1,MUC1_2 \
-                          --out geometry_data
+                          --out public/geometry_data
 ```
 
-Outputs (in `geometry_data/`):
+Outputs (in `public/geometry_data/`):
 
 - `CaloGeometry.glb` — optimized glTF binary (~50 MB)
 - `CaloGeometry.glb.gz` — gzip-compressed (~5 MB; this is what the viewer loads)
 
-After regenerating, bump `GEO_CACHE_VER` in `index.html` to force a client
+After regenerating, bump `GEO_CACHE_VER` in `public/index.html` to force a client
 cache refresh.
 
 ### 6. Build the Rust ATLAS-ID parser (WASM)
 
 ```bash
 cd parser
-wasm-pack build --target web --release
+wasm-pack build --target web --release --out-dir ../public/parser/pkg
 ```
 
-Output: `parser/pkg/atlas_id_parser.js` + `atlas_id_parser_bg.wasm`, loaded
-directly by [js/main.js](js/main.js).
+Output: `public/parser/pkg/atlas_id_parser.js` + `atlas_id_parser_bg.wasm`, loaded
+directly by [public/js/main.js](public/js/main.js).
 
 ---
 

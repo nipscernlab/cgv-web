@@ -735,7 +735,7 @@ async function main(){
   a.href = url; a.download = 'scene_data.bin';
   a.click();
   URL.revokeObjectURL(url);
-  log('Downloaded scene_data.bin — replace the file in nipscern/ and re-bake is done.');
+  log('Downloaded scene_data.bin — replace the file in public/nipscern/ and re-bake is done.');
   btn.disabled = false;
 }
 

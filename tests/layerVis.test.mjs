@@ -10,7 +10,7 @@ import {
   setLayerSubtree,
   anyLayerLeafOn,
   replaceMuonState,
-} from '../js/visibility/layerVis.js';
+} from '../public/js/visibility/layerVis.js';
 
 // Deep clone via JSON — layerVis is plain booleans + objects, no functions.
 const _snapshot = JSON.parse(JSON.stringify(layerVis));

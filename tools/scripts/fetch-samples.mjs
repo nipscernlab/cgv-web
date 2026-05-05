@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Downloads JiveXML sample files from the GitHub Release into default_xml/
-// and writes default_xml/index.json from the manifest.
+// Downloads JiveXML sample files from the GitHub Release into public/default_xml/
+// and writes public/default_xml/index.json from the manifest.
 // Idempotent: skips files whose SHA-256 already matches the manifest.
 // Usage:
 //   node tools/scripts/fetch-samples.mjs
@@ -37,7 +37,7 @@ const MANIFEST = [
 ];
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const OUT_DIR = join(PROJECT_ROOT, 'default_xml');
+const OUT_DIR = join(PROJECT_ROOT, 'public', 'default_xml');
 
 const C = process.stdout.isTTY
   ? { dim: '\x1b[2m', green: '\x1b[32m', red: '\x1b[31m', yellow: '\x1b[33m', reset: '\x1b[0m' }

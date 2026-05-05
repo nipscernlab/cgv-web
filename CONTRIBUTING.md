@@ -63,15 +63,15 @@ print width. **Don't hand-align assignment columns** — Prettier collapses
 them.
 
 JSDoc `// @ts-check` is opt-in per file. Annotated so far:
-[js/utils.js](js/utils.js), [js/palette.js](js/palette.js),
-[js/state.js](js/state.js). New frontend modules are encouraged (but not
+[public/js/utils.js](public/js/utils.js), [public/js/palette.js](public/js/palette.js),
+[public/js/state.js](public/js/state.js). New frontend modules are encouraged (but not
 required) to add `// @ts-check` + JSDoc for exports.
 
 ## Adding tests
 
 Unit tests live in `tests/` as `*.test.mjs`. Good candidates: pure functions
-([js/utils.js](js/utils.js)), bit-level encoders
-([js/state.js](js/state.js)), XML parsers, anything without DOM / WebGL
+([public/js/utils.js](public/js/utils.js)), bit-level encoders
+([public/js/state.js](public/js/state.js)), XML parsers, anything without DOM / WebGL
 dependencies.
 
 ```bash
@@ -93,13 +93,13 @@ Body only when the *why* isn't obvious from the diff.
 
 ## Layout reminders
 
-- Frontend code: `js/` (ES modules, loaded by `index.html` via importmap)
+- Frontend code: `public/js/` (ES modules, loaded by `public/index.html` via importmap)
 - Build pipeline: `tools/setup/` (Node, ES modules; `tools/setup/lib/` is vendored
   jsroot — don't reformat or lint it)
 - Rust WASM parser: `parser/src/lib.rs` (`wasm-pack build --target web
-  --release` regenerates `parser/pkg/`)
+  --release --out-dir ../public/parser/pkg` regenerates `public/parser/pkg/`)
 - Tests: `tests/`
-- Styles: `css/` (one file per concern: `base`, `panel-left`, `panel-right`,
+- Styles: `public/css/` (one file per concern: `base`, `panel-left`, `panel-right`,
   `modes`, `hud`, `toolbar`, `dialogs`, `loading`, `floating`, `cinema`, `mobile` —
   all loaded directly by `index.html`, no `@import` chain)
 

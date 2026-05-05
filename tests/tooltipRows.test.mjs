@@ -4,7 +4,7 @@
 // HTML-escaped before insertion.
 
 import { describe, it, expect } from 'vitest';
-import { buildExtrasHtml } from '../js/tooltipRows.js';
+import { buildExtrasHtml } from '../public/js/tooltipRows.js';
 
 describe('buildExtrasHtml — empty inputs', () => {
   it('returns empty string for null', () => {

@@ -11,5 +11,5 @@
     "resolveJsonModule": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"]
   },
-  "include": ["js/**/*.js"]
+  "include": ["public/js/**/*.js"]
 }

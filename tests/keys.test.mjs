@@ -3,7 +3,7 @@
 // never collide across detectors (bits [1:0] are the detector tag).
 
 import { describe, it, expect } from 'vitest';
-import { _tileKey, _larEmKey, _hecKey } from '../js/state.js';
+import { _tileKey, _larEmKey, _hecKey } from '../public/js/state.js';
 
 describe('_tileKey — TILE cell encoder', () => {
   it('places detector tag (TILE = 0b00) in bits [1:0]', () => {

@@ -3,13 +3,13 @@ node_modules/
 parser/target/
 
 # ── Geometry assets (hosted on GitHub Releases, fetched by npm run fetch:geometry)
-geometry_data/*.glb
-geometry_data/*.glb.gz
-geometry_data/*.root
+public/geometry_data/*.glb
+public/geometry_data/*.glb.gz
+public/geometry_data/*.root
 
 # ── JiveXML samples (hosted on GitHub Releases, fetched by npm run fetch:samples)
-default_xml/*.xml
-default_xml/index.json
+public/default_xml/*.xml
+public/default_xml/index.json
 
 # ── Temporary / scratch data dumps ─────────────────────────────────────────────
 # Ad-hoc ATLAS XML scratch folders produced during local experimentation.

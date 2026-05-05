@@ -27,7 +27,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote
 
-ROOT        = Path(__file__).resolve().parent
+ROOT        = Path(__file__).resolve().parent / 'public'
 MAX_ENTRIES = 100
 
 mimetypes.add_type('application/wasm',  '.wasm')

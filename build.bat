@@ -86,31 +86,31 @@ echo.
 
 REM ---- Step 4: Delete old .glb / .glb.gz files ----
 echo [4/8] Deleting old CaloGeometry.glb and .glb.gz...
-if exist "geometry_data\CaloGeometry.glb"    del "geometry_data\CaloGeometry.glb"
-if exist "geometry_data\CaloGeometry.glb.gz" del "geometry_data\CaloGeometry.glb.gz"
+if exist "public\geometry_data\CaloGeometry.glb"    del "public\geometry_data\CaloGeometry.glb"
+if exist "public\geometry_data\CaloGeometry.glb.gz" del "public\geometry_data\CaloGeometry.glb.gz"
 echo Done.
 echo.
 
 REM ---- Step 5: Check that source .root files exist ----
 echo [5/8] Checking for source .root files...
-if not exist "geometry_data\CaloGeometry.root" (
-    echo ERROR: geometry_data\CaloGeometry.root not found!
-    echo Place CaloGeometry.root in geometry_data\ before running this script.
+if not exist "public\geometry_data\CaloGeometry.root" (
+    echo ERROR: public\geometry_data\CaloGeometry.root not found!
+    echo Place CaloGeometry.root in public\geometry_data\ before running this script.
     exit /b 1
 )
-if not exist "geometry_data\atlas.root" (
-    echo ERROR: geometry_data\atlas.root not found!
-    echo Place atlas.root in geometry_data\ before running this script.
+if not exist "public\geometry_data\atlas.root" (
+    echo ERROR: public\geometry_data\atlas.root not found!
+    echo Place atlas.root in public\geometry_data\ before running this script.
     exit /b 1
 )
-echo Found geometry_data\CaloGeometry.root
-echo Found geometry_data\atlas.root
+echo Found public\geometry_data\CaloGeometry.root
+echo Found public\geometry_data\atlas.root
 echo.
 
 REM ---- Step 6: Compile .root -> optimized .glb (single step) ----
 echo [6/8] Compiling .root files to merged optimized .glb...
 echo       Atlas filter: MUCH_1,MUC1_2
-call node tools/setup/root2scene.mjs geometry_data/CaloGeometry.root --atlas geometry_data/atlas.root --atlas-subtree-node MUCH_1,MUC1_2 --out geometry_data
+call node tools/setup/root2scene.mjs public/geometry_data/CaloGeometry.root --atlas public/geometry_data/atlas.root --atlas-subtree-node MUCH_1,MUC1_2 --out public/geometry_data
 if %errorlevel% neq 0 (
     echo ERROR: root2scene.mjs failed.
     exit /b 1
@@ -126,7 +126,7 @@ REM Using Node's zlib instead of PowerShell GZipStream so the script behaves
 REM identically in cmd.exe, bash, and CI runners (PowerShell availability
 REM varies; Node is already a required dep per step 1).
 echo [7/8] Compressing CaloGeometry.glb to CaloGeometry.glb.gz...
-call node -e "const fs=require('fs'),zlib=require('zlib');const s='geometry_data/CaloGeometry.glb',d='geometry_data/CaloGeometry.glb.gz';fs.createReadStream(s).pipe(zlib.createGzip({level:9})).pipe(fs.createWriteStream(d)).on('finish',()=>{const sz=fs.statSync(d).size;console.log('Compressed to '+(sz/1048576).toFixed(2)+' MB');});"
+call node -e "const fs=require('fs'),zlib=require('zlib');const s='public/geometry_data/CaloGeometry.glb',d='public/geometry_data/CaloGeometry.glb.gz';fs.createReadStream(s).pipe(zlib.createGzip({level:9})).pipe(fs.createWriteStream(d)).on('finish',()=>{const sz=fs.statSync(d).size;console.log('Compressed to '+(sz/1048576).toFixed(2)+' MB');});"
 if %errorlevel% neq 0 (
     echo ERROR: GZip compression failed.
     exit /b 1
@@ -142,13 +142,13 @@ REM wasm-opt is invoked with matching --enable-* flags. The worker loads the
 REM resulting atlas_id_parser.js + atlas_id_parser_bg.wasm off-main-thread.
 echo [8/8] Building Rust ATLAS-ID parser (WASM)...
 cd /d "%~dp0parser"
-call wasm-pack build --target web --release
+call wasm-pack build --target web --release --out-dir ../public/parser/pkg
 if %errorlevel% neq 0 (
     echo ERROR: wasm-pack build failed.
     exit /b 1
 )
-echo Removing generated .gitignore from parser/pkg...
-if exist "%~dp0parser\pkg\.gitignore" del "%~dp0parser\pkg\.gitignore"
+echo Removing generated .gitignore from public/parser/pkg...
+if exist "%~dp0public\parser\pkg\.gitignore" del "%~dp0public\parser\pkg\.gitignore"
 cd /d "%~dp0"
 echo Done.
 echo.
@@ -158,10 +158,10 @@ echo   Build complete!
 echo ============================================
 echo.
 echo Output files:
-echo   - geometry_data\CaloGeometry.glb (optimized)
-echo   - geometry_data\CaloGeometry.glb.gz (gzip-compressed)
-echo   - parser\pkg\atlas_id_parser.js      (ES module shim)
-echo   - parser\pkg\atlas_id_parser_bg.wasm (SIMD + bulk-memory)
+echo   - public\geometry_data\CaloGeometry.glb (optimized)
+echo   - public\geometry_data\CaloGeometry.glb.gz (gzip-compressed)
+echo   - public\parser\pkg\atlas_id_parser.js      (ES module shim)
+echo   - public\parser\pkg\atlas_id_parser_bg.wasm (SIMD + bulk-memory)
 echo.
 echo Runtime entrypoints:
 echo   - js\main.js         (spawns the WASM Web Worker)
