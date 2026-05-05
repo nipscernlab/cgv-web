@@ -35,8 +35,8 @@ testing the deployed Pages build locally — any static server works after
 the fetches have run once:
 
 ```bash
-node scripts/fetch-geometry.mjs
-node scripts/fetch-samples.mjs
+node tools/scripts/fetch-geometry.mjs
+node tools/scripts/fetch-samples.mjs
 python -m http.server 8080      # or: npx serve .
 ```
 

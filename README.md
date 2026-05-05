@@ -51,8 +51,8 @@ the CERN ATLAS Experiment. Undergraduate developer:
 ## Quick start (just run the viewer)
 
 ```bash
-node scripts/fetch-geometry.mjs       # ~5 MB  (calorimeter mesh)
-node scripts/fetch-samples.mjs        # ~75 MB (4 JiveXML event samples)
+node tools/scripts/fetch-geometry.mjs       # ~5 MB  (calorimeter mesh)
+node tools/scripts/fetch-samples.mjs        # ~75 MB (4 JiveXML event samples)
 python -m http.server 8080            # or: npx serve .
 ```
 
