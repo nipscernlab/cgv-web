@@ -59,10 +59,13 @@ let _trackAtlasOutlineMeshes = null;
 let _trackAtlasMeshBoxes = null;
 
 let _getTrackGroup = () => null;
+/** @type {() => any} */
+let _getSlicer = () => null;
 
-/** @param {{ getTrackGroup: () => any }} deps */
-export function initTrackAtlasIntersections({ getTrackGroup }) {
+/** @param {{ getTrackGroup: () => any, getSlicer?: () => any }} deps */
+export function initTrackAtlasIntersections({ getTrackGroup, getSlicer }) {
   _getTrackGroup = getTrackGroup;
+  if (getSlicer) _getSlicer = getSlicer;
   // Cascade init to the sibling track-match module so consumers only call
   // one init at startup (see main.js).
   initTrackMatch({ getTrackGroup });
@@ -258,14 +261,25 @@ export function updateTrackAtlasIntersections() {
   const hitMeshes = new Set();
   const hitTracks = new Set();
 
-  if (allTracks.length) {
+  // Slicer state — when active in show-all mode, every chamber the panel
+  // allows is shown (no track-hit gate) and the wedge cut carves through them
+  // just like through calo cells.
+  const slicer = _getSlicer();
+  const slicerMask = slicer?.getMaskState() ?? null;
+  const showAllChambers = !!slicer?.isShowAllCells();
+
+  if (allTracks.length || slicerMask?.active) {
     scene.updateMatrixWorld(true);
 
     // Cache world-space AABBs for all target meshes once (static geometry).
+    // Needed both for per-track raycast AABB pre-filter and for the per-mesh
+    // wedge-mask centre test below.
     if (!_trackAtlasMeshBoxes) {
       _trackAtlasMeshBoxes = meshes.map((m) => new THREE.Box3().setFromObject(m));
     }
+  }
 
+  if (allTracks.length) {
     for (const line of allTracks) {
       // Per-track chamber-hit cache. The geometric question "which chambers
       // does this polyline pass through?" is fully determined by the line's
@@ -325,14 +339,26 @@ export function updateTrackAtlasIntersections() {
     }
   }
 
-  // A muon chamber shows only when a track passes through it AND the user
-  // hasn't turned that station off in the layers panel
-  // (mesh.userData.muonForceVisible). Defaults to AND-true so the prior
-  // hit-driven behaviour is preserved out of the box; flipping a panel toggle
-  // off vetoes the chamber even when a track hits it.
+  // Per-chamber visibility rule:
+  //   - Default: shown when a track passes through it AND the layers-panel
+  //     toggle for its station is on (mesh.userData.muonForceVisible).
+  //   - Show-all (slicer active): track-hit gate is dropped — every chamber
+  //     the panel allows shows up. The slicer wedge then carves chambers
+  //     whose AABB centre falls inside the cut, mirroring how cells behave.
   let changed = false;
-  for (const mesh of meshes) {
-    const next = hitMeshes.has(mesh) && !!mesh.userData.muonForceVisible;
+  for (let mi = 0; mi < meshes.length; mi++) {
+    const mesh = meshes[mi];
+    const baseShow = showAllChambers || hitMeshes.has(mesh);
+    let next = baseShow && !!mesh.userData.muonForceVisible;
+    if (next && slicerMask?.active) {
+      const box = _trackAtlasMeshBoxes?.[mi];
+      if (box) {
+        const cx = (box.min.x + box.max.x) * 0.5;
+        const cy = (box.min.y + box.max.y) * 0.5;
+        const cz = (box.min.z + box.max.z) * 0.5;
+        if (slicer.isPointInsideWedge(cx, cy, cz, slicerMask)) next = false;
+      }
+    }
     if (mesh.visible !== next) {
       mesh.visible = next;
       changed = true;
