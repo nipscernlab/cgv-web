@@ -22,6 +22,13 @@ if not exist "%DEST%" mkdir "%DEST%"
 if not exist "..\nipscernweb\library" mkdir "..\nipscernweb\library"
 if not exist "..\nipscernweb\library\cgvweb" mkdir "..\nipscernweb\library\cgvweb"
 
+REM ---- Ensure geometry is present (fetched from GitHub Release) ----
+call node tools\scripts\fetch-geometry.mjs
+if errorlevel 1 (
+    echo ERROR: fetch-geometry.mjs failed.
+    exit /b 1
+)
+
 REM ---- Ensure sample XMLs are present (fetched from GitHub Release) ----
 call node tools\scripts\fetch-samples.mjs
 if errorlevel 1 (
