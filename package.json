@@ -38,7 +38,7 @@
     "dev":                   "npm run fetch:geometry && npm run fetch:samples && python serve.py",
     "build":                 "build.bat",
     "build:geom":            "node tools/setup/setup.mjs",
-    "deploy":                "deploy.bat",
+    "deploy":                "node tools/scripts/deploy.mjs",
     "fetch:geometry":        "node tools/scripts/fetch-geometry.mjs",
     "fetch:geometry:source": "node tools/scripts/fetch-geometry.mjs --with-source",
     "fetch:samples":         "node tools/scripts/fetch-samples.mjs",
