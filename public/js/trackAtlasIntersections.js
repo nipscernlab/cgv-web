@@ -56,6 +56,8 @@ let atlasRoot = null;
 let _trackAtlasNodes = null;
 let _trackAtlasMeshes = null;
 let _trackAtlasOutlineMeshes = null;
+/** @type {Set<any> | null} */
+let _trackAtlasOutlineMeshSet = null;
 let _trackAtlasMeshBoxes = null;
 
 let _getTrackGroup = () => null;
@@ -76,6 +78,7 @@ export function setAtlasRoot(tree) {
   _trackAtlasNodes = null;
   _trackAtlasMeshes = null;
   _trackAtlasOutlineMeshes = null;
+  _trackAtlasOutlineMeshSet = null;
   _trackAtlasMeshBoxes = null;
   // Chamber meshes change with a new atlas tree → per-track chamber caches
   // are stale. Lines stay between events; explicit reset here. (Fresh-event
@@ -234,6 +237,10 @@ function _resolveTrackAtlasTargets() {
   _trackAtlasNodes = nodes;
   _trackAtlasMeshes = meshes;
   _trackAtlasOutlineMeshes = outlineMeshes;
+  // O(1) membership lookup for the show-all visibility loop below — used to
+  // restrict slicer-mode rendering to outer chamber boxes only (skip the
+  // inner-leaf hierarchy that would otherwise show through the cut faces).
+  _trackAtlasOutlineMeshSet = new Set(outlineMeshes);
   return { nodes, meshes, outlineMeshes };
 }
 
@@ -342,13 +349,17 @@ export function updateTrackAtlasIntersections() {
   // Per-chamber visibility rule:
   //   - Default: shown when a track passes through it AND the layers-panel
   //     toggle for its station is on (mesh.userData.muonForceVisible).
-  //   - Show-all (slicer active): track-hit gate is dropped — every chamber
-  //     the panel allows shows up. The slicer wedge then carves chambers
-  //     whose AABB centre falls inside the cut, mirroring how cells behave.
+  //   - Show-all (slicer active): track-hit gate is dropped — every OUTER
+  //     chamber the panel allows shows up. Inner-leaf meshes (the deeper
+  //     hierarchy) stay hidden because they'd render as overlapping shapes
+  //     inside the outer box. The wedge then carves chambers whose AABB
+  //     centre falls inside the cut, mirroring how cells behave.
   let changed = false;
   for (let mi = 0; mi < meshes.length; mi++) {
     const mesh = meshes[mi];
-    const baseShow = showAllChambers || hitMeshes.has(mesh);
+    const baseShow = showAllChambers
+      ? (_trackAtlasOutlineMeshSet?.has(mesh) ?? false)
+      : hitMeshes.has(mesh);
     let next = baseShow && !!mesh.userData.muonForceVisible;
     if (next && slicerMask?.active) {
       const box = _trackAtlasMeshBoxes?.[mi];
