@@ -4,6 +4,7 @@ setlocal
 set "SRC=."
 set "DEST=..\nipscernweb\projects\cgvweb"
 set "TWIKI_DEST=..\nipscernweb\library\cgvweb\twiki"
+set "EXCLUDE=%TEMP%\cgvweb_exclude_root.txt"
 
 echo ============================================
 echo   CGV-Web Deploy to nipscernweb
@@ -56,18 +57,12 @@ if exist "%DEST%\default_xml" rd /s /q "%DEST%\default_xml"
 xcopy "%SRC%\public\default_xml" "%DEST%\default_xml\" /e /i /q >nul
 echo   - default_xml\
 
-REM --- geometry_data\ (without .root) ---
+REM --- geometry_data\ (sem .root em nenhum nivel de subpasta) ---
 if exist "%DEST%\geometry_data" rd /s /q "%DEST%\geometry_data"
-mkdir "%DEST%\geometry_data"
-for %%F in ("%SRC%\public\geometry_data\*") do (
-    if /i not "%%~xF"==".root" (
-        copy "%%F" "%DEST%\geometry_data\" >nul
-    )
-)
-for /d %%D in ("%SRC%\public\geometry_data\*") do (
-    xcopy "%%D" "%DEST%\geometry_data\%%~nxD\" /e /i /q >nul
-)
-echo   - geometry_data\ (without .root)
+(echo .root)> "%EXCLUDE%"
+xcopy "%SRC%\public\geometry_data" "%DEST%\geometry_data\" /e /i /q /exclude:"%EXCLUDE%" >nul
+del /q "%EXCLUDE%" 2>nul
+echo   - geometry_data\ (sem .root)
 
 REM --- js\ ---
 if exist "%DEST%\js" rd /s /q "%DEST%\js"
@@ -79,14 +74,14 @@ if exist "%DEST%\live_atlas" rd /s /q "%DEST%\live_atlas"
 xcopy "%SRC%\public\live_atlas" "%DEST%\live_atlas\" /e /i /q >nul
 echo   - live_atlas\
 
-REM --- parser\pkg\ (JS + WASM only) ---
+REM --- parser\pkg\ (apenas .js e .wasm, sem .d.ts ou package.json) ---
 if exist "%DEST%\parser" rd /s /q "%DEST%\parser"
 mkdir "%DEST%\parser\pkg"
 copy "%SRC%\public\parser\pkg\atlas_id_parser.js"      "%DEST%\parser\pkg\" >nul
 copy "%SRC%\public\parser\pkg\atlas_id_parser_bg.wasm" "%DEST%\parser\pkg\" >nul
-echo   - parser\pkg\ (JS + WASM only)
+echo   - parser\pkg\ (JS + WASM)
 
-REM --- vendor\ (third-party libs: Three.js, fonts, icons) ---
+REM --- vendor\ (Three.js, flag-icons, fontes, tabler-icons) ---
 if exist "%DEST%\vendor" rd /s /q "%DEST%\vendor"
 xcopy "%SRC%\public\vendor" "%DEST%\vendor\" /e /i /q >nul
 echo   - vendor\
@@ -101,19 +96,19 @@ echo Done.
 echo.
 
 REM ---- Summary ----
-echo [2/2] Verifying...
+echo [2/2] Verificando...
 echo.
-echo Files in %DEST%:
+echo Arquivos em %DEST%:
 dir /s /b "%DEST%" 2>nul | find /c /v ""
-echo Files in %TWIKI_DEST%:
+echo Arquivos em %TWIKI_DEST%:
 dir /s /b "%TWIKI_DEST%" 2>nul | find /c /v ""
 echo.
 
 echo ============================================
-echo   Deploy complete!
+echo   Deploy completo!
 echo ============================================
 echo.
-echo Next steps:
+echo Proximos passos:
 echo   cd ..\nipscernweb
 echo   git add projects\cgvweb library\cgvweb\twiki
 echo   git commit -m "Update CGV-Web"
