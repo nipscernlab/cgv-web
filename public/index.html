@@ -1175,7 +1175,16 @@
          ───────────────────────────────────────────────────────── -->
     <div id="about-overlay">
       <div class="about-card">
-        <div class="about-title" data-i18n="about-title">Calorimeter Geometry Viewer</div>
+        <div class="about-title-row">
+          <div class="about-title" data-i18n="about-title">Calorimeter Geometry Viewer</div>
+          <!-- ============================================================
+               BUMP VERSION ON RELEASE.
+               Edit just the text inside #cgv-version when cutting a new
+               .rpm for ATLAS Point 1. The element id stays stable so the
+               build script (or grep) can find it without ambiguity.
+               ============================================================ -->
+          <span id="cgv-version" class="about-version">v1.0.3</span>
+        </div>
         <div class="about-sub" data-i18n="about-sub">ATLAS · TileCal · NIPSCERN</div>
         <div class="about-body">
           <p data-i18n="about-p1">

@@ -96,10 +96,14 @@
   }
 
   /* ── Sidebar — slides in from the left edge ────────── */
+  /* z-index 50 so the panel overlays the bottom dock (z-index 40) and
+     the dock toggle pill (z-index 46). Same idea applies to the right
+     dock so its open state covers the bottom dock too. */
   #panel {
     top: 0;
     left: 0;
     height: 100vh;
+    z-index: 50;
     border-right: 1px solid var(--border);
     box-shadow: 6px 0 32px rgba(0, 0, 0, 0.55);
   }
@@ -108,6 +112,9 @@
   }
   #panel-resizer {
     display: none;
+  }
+  #rpanel-wrap {
+    z-index: 50;
   }
 
   /* Compact header — drop the long subtitle. */
