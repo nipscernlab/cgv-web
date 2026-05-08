@@ -41,6 +41,9 @@ rustup target list --installed 2>nul | findstr /B /C:"wasm32-unknown-unknown" >n
 if %errorlevel% neq 0 (
     echo wasm32-unknown-unknown target missing. Installing via rustup...
     rustup target add wasm32-unknown-unknown
+    REM Re-verify by listing targets — rustup target add can return non-zero on
+    REM Windows even when the component installed successfully (known rustup quirk).
+    rustup target list --installed 2>nul | findstr /B /C:"wasm32-unknown-unknown" >nul
     if %errorlevel% neq 0 (
         echo ERROR: Failed to install wasm32-unknown-unknown target.
         exit /b 1
