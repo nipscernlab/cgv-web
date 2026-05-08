@@ -52,23 +52,23 @@
     <script defer>
       window.addEventListener('DOMContentLoaded', () => {
         if (typeof VANTA === 'undefined' || !VANTA.TRUNK) return;
-        // Tokens mirror css/base.css. Bumping spacing/lowering chaos
-        // gives a calmer, more elegant branching pattern than the
-        // out-of-the-box look. mouse/touch/gyro controls disabled —
-        // the loading screen is transient and non-interactive.
+        // chaos 9 + spacing 0 is dense and lively; scaleMobile is halved
+        // so weaker GPUs (the ATLAS Point 1 control-room machines, also
+        // any phone) don't choke during boot when three.js + the WASM
+        // parser are also warming up.
         window._cgvLoadingVanta = VANTA.TRUNK({
           el: '#loading-overlay',
-          mouseControls: false,
-          touchControls: false,
+          mouseControls: true,
+          touchControls: true,
           gyroControls: false,
           minHeight: 200,
           minWidth: 200,
           scale: 1,
-          scaleMobile: 1,
-          color: 0x4d83ee, // --accent-strong
-          backgroundColor: 0x0e1014, // --bg
-          spacing: 18,
-          chaos: 1.6,
+          scaleMobile: 0.5,
+          color: 0x758b,
+          backgroundColor: 0x1d47,
+          spacing: 0,
+          chaos: 9,
         });
       });
     </script>

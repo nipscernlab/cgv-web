@@ -9,27 +9,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
+  /* Background is set by Vanta (0x1d47); fallback only matters before
+     the canvas mounts. Keep it close so the page doesn't flash. */
+  background: #001d47;
   transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1);
-  /* Vanta injects a <canvas> child that fills the overlay. Containing it
-     here lets the card sit on top via z-index. */
+  /* Vanta injects a <canvas> child that fills the overlay. */
   overflow: hidden;
 }
 #loading-overlay.done {
   opacity: 0;
   pointer-events: none;
 }
-/* Vanta canvas — slightly desaturated and dimmed so the branching
-   tree is felt, not seen, behind the card. */
 #loading-overlay > canvas {
   position: absolute !important;
   inset: 0;
   width: 100% !important;
   height: 100% !important;
-  opacity: 0.78;
-  filter: saturate(0.85);
 }
 
+/* Card sits on top of the canvas with no panel — the type is hardened
+   with a text-shadow so it stays readable against the moving lines. */
 .loading-card {
   position: relative;
   z-index: 1;
@@ -37,13 +36,8 @@
   flex-direction: column;
   align-items: center;
   user-select: none;
-  padding: 36px 56px;
-  background: rgba(14, 16, 20, 0.55);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
-  box-shadow: var(--shadow-3);
+  pointer-events: none;
+  text-shadow: 0 2px 12px rgba(0, 6, 18, 0.7);
 }
 .loading-logo {
   width: 56px;
