@@ -38,6 +38,18 @@ export function dismissLoadingScreen() {
   if (_loadBar) _loadBar.style.width = '100%';
   overlay.classList.add('done');
   setTimeout(() => {
+    // Tear down the Vanta TRUNK animation set up in index.html so it
+    // stops eating GPU/CPU once the overlay is gone. The handle is
+    // stashed on window because Vanta is loaded as a non-module script.
+    /** @type {{ destroy?: () => void } | undefined} */
+    const vanta = /** @type {any} */ (window)._cgvLoadingVanta;
+    try {
+      vanta?.destroy?.();
+    } catch (_) {
+      // Vanta sometimes throws on destroy if its canvas was already
+      // detached; safe to ignore in that case.
+    }
+    /** @type {any} */ (window)._cgvLoadingVanta = null;
     if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
   }, 750);
 }

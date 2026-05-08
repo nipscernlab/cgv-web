@@ -41,6 +41,37 @@
     <link rel="stylesheet" href="./css/floating.css" />
     <link rel="stylesheet" href="./css/cinema.css" />
     <link rel="stylesheet" href="./css/mobile.css" />
+
+    <!-- Vanta TRUNK — ambient backdrop animation for the loading screen.
+         Vendored under ./vendor/vanta/. Both scripts are deferred so they
+         don't block the static loading-overlay markup; the inline init
+         below runs after them (deferred scripts execute in document order
+         before DOMContentLoaded). -->
+    <script defer src="./vendor/vanta/p5.min.js"></script>
+    <script defer src="./vendor/vanta/vanta.trunk.min.js"></script>
+    <script defer>
+      window.addEventListener('DOMContentLoaded', () => {
+        if (typeof VANTA === 'undefined' || !VANTA.TRUNK) return;
+        // Tokens mirror css/base.css. Bumping spacing/lowering chaos
+        // gives a calmer, more elegant branching pattern than the
+        // out-of-the-box look. mouse/touch/gyro controls disabled —
+        // the loading screen is transient and non-interactive.
+        window._cgvLoadingVanta = VANTA.TRUNK({
+          el: '#loading-overlay',
+          mouseControls: false,
+          touchControls: false,
+          gyroControls: false,
+          minHeight: 200,
+          minWidth: 200,
+          scale: 1,
+          scaleMobile: 1,
+          color: 0x4d83ee, // --accent-strong
+          backgroundColor: 0x0e1014, // --bg
+          spacing: 18,
+          chaos: 1.6,
+        });
+      });
+    </script>
   </head>
 
   <body>
