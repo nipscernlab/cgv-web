@@ -59,6 +59,9 @@ describe('makeRelTime', () => {
       's-ago': 's ago',
       'm-ago': 'm ago',
       'h-ago': 'h ago',
+      'd-ago': 'd ago',
+      'mo-ago': 'mo ago',
+      'y-ago': 'y ago',
     })[key] ?? key;
 
   it('returns a function', () => {
@@ -80,8 +83,32 @@ describe('makeRelTime', () => {
     expect(rel(Date.now() - 5 * 60_000)).toBe('5m ago');
   });
 
-  it('reports hours for timestamps at or above 1 hour old', () => {
+  it('reports hours for timestamps under 24 hours old', () => {
     const rel = makeRelTime(t);
     expect(rel(Date.now() - 3 * 3_600_000)).toBe('3h ago');
+    expect(rel(Date.now() - 23 * 3_600_000)).toBe('23h ago');
+  });
+
+  it('promotes to days at the 24-hour boundary', () => {
+    const rel = makeRelTime(t);
+    const day = 86_400_000;
+    expect(rel(Date.now() - day)).toBe('1d ago');
+    expect(rel(Date.now() - 7 * day)).toBe('7d ago');
+    expect(rel(Date.now() - 29 * day)).toBe('29d ago');
+  });
+
+  it('promotes to months at the 30-day boundary', () => {
+    const rel = makeRelTime(t);
+    const day = 86_400_000;
+    expect(rel(Date.now() - 30 * day)).toBe('1mo ago');
+    expect(rel(Date.now() - 90 * day)).toBe('3mo ago');
+    expect(rel(Date.now() - 360 * day)).toBe('12mo ago');
+  });
+
+  it('promotes to years at the 365-day boundary', () => {
+    const rel = makeRelTime(t);
+    const day = 86_400_000;
+    expect(rel(Date.now() - 365 * day)).toBe('1y ago');
+    expect(rel(Date.now() - 2 * 365 * day)).toBe('2y ago');
   });
 });
