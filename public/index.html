@@ -52,10 +52,21 @@
     <script defer>
       window.addEventListener('DOMContentLoaded', () => {
         if (typeof VANTA === 'undefined' || !VANTA.TRUNK) return;
-        // chaos 9 + spacing 0 is dense and lively; scaleMobile is halved
-        // so weaker GPUs (the ATLAS Point 1 control-room machines, also
-        // any phone) don't choke during boot when three.js + the WASM
-        // parser are also warming up.
+        // ── Cost-tuned for the boot freeze ──
+        // Boot blocks the main thread (three.js loading the GLB, the WASM
+        // parser warming up, geometry tessellation), and Vanta's RAF loop
+        // freezes whenever that happens. We can't unblock the thread, so
+        // we make Vanta cheap enough that:
+        //   • each frame finishes fast
+        //   • the freeze windows are short-lived
+        //   • the post-freeze catch-up doesn't render a wall of branches.
+        //
+        // Levers: spacing > 0 (fewer spawn points), moderate chaos (less
+        // path math per branch), scale < 1 (smaller canvas → less GPU
+        // fill), tighter scaleMobile.
+        //
+        // Colors come from base.css: --accent (#6398ff) for the lines,
+        // --bg (#0e1014) for the canvas back.
         window._cgvLoadingVanta = VANTA.TRUNK({
           el: '#loading-overlay',
           mouseControls: true,
@@ -63,12 +74,12 @@
           gyroControls: false,
           minHeight: 200,
           minWidth: 200,
-          scale: 1,
-          scaleMobile: 0.5,
-          color: 0x758b,
-          backgroundColor: 0x1d47,
-          spacing: 0,
-          chaos: 9,
+          scale: 0.7,
+          scaleMobile: 0.4,
+          color: 0x6398ff,
+          backgroundColor: 0x0e1014,
+          spacing: 14,
+          chaos: 3.5,
         });
       });
     </script>
