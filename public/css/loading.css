@@ -9,11 +9,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Vanta paints the same color via its canvas. The fallback only
-     matters for the brief instant before the canvas mounts. */
+  /* anim_worker.js paints the same color via its canvas. The fallback
+     only matters for the brief instant before the worker mounts. */
   background: var(--bg);
   transition: opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1);
-  /* Vanta injects a <canvas> child that fills the overlay. */
   overflow: hidden;
 }
 #loading-overlay.done {
