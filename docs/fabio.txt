@@ -1,0 +1,33 @@
+Hi Fabio,
+
+My name is Kristoffer Arthur, I am a researcher at UFJF/NIPSCERN and I work
+with Luciano on the CGV Web project. I will be following up on this ticket
+together with him from now on.
+
+I prepared cgv-web-1.0.4-1.el9.noarch.rpm, which addresses the regression
+you reported in note #37 and follows the plan we outlined in note #38.
+
+Changes in 1.0.4:
+
+  * /etc/httpd/conf.d/cgv-web.conf is no longer shipped, and %post no
+    longer reloads httpd. Apache configuration is now left entirely to the
+    host (Puppet at P1). This was the cause of the regression after the
+    upgrade to 1.0.3.
+  * httpd was dropped from Requires.
+  * The Apache directives are still available as a reference example at
+    /var/www/cgv-web/examples/apache-cgv-web.conf.example, in case it
+    helps when comparing against the Puppet-managed configuration.
+  * No changes to the Python backend, the static site, or the systemd
+    unit. The backend still binds to 127.0.0.1:8080 via
+    /etc/sysconfig/cgv-web.
+  * The package supports rolling upgrades, so there is no need to remove
+    the previous version first.
+
+The RPM is available at:
+/afs/cern.ch/user/l/lucianom/public/CGV-Web/1.0.4/cgv-web-1.0.4-1.el9.noarch.rpm
+
+Please let us know how the installation goes. Happy to debug or follow up
+on anything that regresses.
+
+Best regards,
+Kristoffer

@@ -1,23 +1,26 @@
 Name:           cgv-web
-Version:        1.0.3
+Version:        1.0.4
 Release:        1%{?dist}
-Summary:        Static Web Server for ATLAS Control Room
+Summary:        CGV Web -- 3D Calorimeter Event Display for ATLAS
 License:        NIPSCERN License
 BuildArch:      noarch
 Source0:        %{name}-%{version}.tar.gz
-Requires:       python3, systemd, httpd
+Requires:       python3, systemd
 BuildRequires:  systemd
 
 %description
-CGV Web static project packaged as a systemd service for CERN P1.
+CGV Web is a 3D ATLAS calorimeter event display, packaged as a small
+systemd service for use at P1.
 
 The package ships:
-  - the static site under /var/www/cgv-web
-  - a systemd unit running the Python backend on 127.0.0.1:8080
-    (serves /api/xml/* used by the LIVE -> SERVER mode of the UI)
-  - an Apache snippet that reverse-proxies /cgv-web/api/xml/* to the
-    local backend, so the same URL that already serves the site
-    (e.g. http://pc-atlas-www.cern.ch/cgv-web/) can also reach the API.
+  - the static site under /var/www/cgv-web/public/
+  - a Python backend (cgv-web.service) bound to 127.0.0.1:8080 that
+    exposes /api/xml/* used by the LIVE -> SERVER mode of the UI to
+    list and stream JiveXML files from a configured directory
+    (e.g. /atlas/EventDisplayEvents at P1)
+  - an example Apache snippet under /var/www/cgv-web/examples/ -- this
+    file is NOT loaded automatically. Apache configuration is left
+    entirely to the host's administrator (Puppet at P1).
 
 %prep
 %setup -q -n %{name}-%{version}
@@ -26,8 +29,8 @@ The package ships:
 mkdir -p %{buildroot}/var/www/cgv-web
 cp -r * %{buildroot}/var/www/cgv-web/
 mkdir -p %{buildroot}/usr/lib/systemd/system
-mkdir -p %{buildroot}/etc/httpd/conf.d
 mkdir -p %{buildroot}/etc/sysconfig
+mkdir -p %{buildroot}/var/www/cgv-web/examples
 
 cat <<SERVICE > %{buildroot}/usr/lib/systemd/system/cgv-web.service
 [Unit]
@@ -53,42 +56,48 @@ cat <<SYSCONFIG > %{buildroot}/etc/sysconfig/cgv-web
 # Edit this file then: systemctl restart cgv-web
 PORT=8080
 BIND=127.0.0.1
-# XML_FOLDER can also be set at runtime from the UI (pencil icon).
-# Uncomment to set a default folder watched at boot:
+# XML_FOLDER can also be set at runtime from the UI (pencil icon next to
+# the current folder path). Uncomment below to set a default folder
+# watched at boot. At P1 the recommended value is:
 # XML_FOLDER=/atlas/EventDisplayEvents
 SYSCONFIG
 
-cat <<HTTPD > %{buildroot}/etc/httpd/conf.d/cgv-web.conf
-# CGV Web -- bridge from Apache to the local Python backend.
-# Apache keeps serving the static site (HTML/JS/CSS) directly from disk;
-# only the /api/xml/* paths are forwarded to the backend.
+cat <<APACHE > %{buildroot}/var/www/cgv-web/examples/apache-cgv-web.conf.example
+# Example Apache snippet for CGV Web -- NOT loaded automatically.
+# Copy the relevant directives into the host's Apache configuration if
+# you want to expose the application through the host's Apache (this is
+# the recommended setup at P1, where Apache is managed by Puppet).
 #
-# Assumes Apache and the backend run on the SAME host. If you ever split
-# them, change 127.0.0.1:8080 below to <backend-host>:<port> AND change
-# BIND in /etc/sysconfig/cgv-web accordingly (and open the firewall).
+# Two parts:
+#   1. Alias for the static site (HTML/JS/CSS/binaries under public/)
+#   2. ProxyPass for /api/xml/* -> local Python backend on 127.0.0.1:8080
+Alias /cgv-web/ /var/www/cgv-web/public/
+<Directory /var/www/cgv-web/public/>
+    Require all granted
+</Directory>
+
 <IfModule mod_proxy.c>
-  ProxyRequests Off
-  ProxyPreserveHost On
-  ProxyPass        /cgv-web/api/xml/  http://127.0.0.1:8080/api/xml/
-  ProxyPassReverse /cgv-web/api/xml/  http://127.0.0.1:8080/api/xml/
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyPass        /cgv-web/api/xml/  http://127.0.0.1:8080/api/xml/
+    ProxyPassReverse /cgv-web/api/xml/  http://127.0.0.1:8080/api/xml/
 </IfModule>
-HTTPD
+APACHE
 
 %files
 /var/www/cgv-web/
 /usr/lib/systemd/system/cgv-web.service
 %config(noreplace) /etc/sysconfig/cgv-web
-%config(noreplace) /etc/httpd/conf.d/cgv-web.conf
 
 %post
 %systemd_post cgv-web.service
 systemctl enable --now cgv-web.service >/dev/null 2>&1 || :
-systemctl is-active --quiet httpd && systemctl reload httpd >/dev/null 2>&1 || :
-IP_ADDR=$(hostname -I | awk '{print $1}')
 echo "------------------------------------------------------"
-echo "  SUCCESS: CGV Web has been installed."
-echo "  Site:    http://${IP_ADDR}/cgv-web/   (via Apache)"
-echo "  Backend: http://127.0.0.1:8080/       (local only)"
+echo "  CGV Web %{version} installed."
+echo "  Backend systemd unit: cgv-web.service (127.0.0.1:8080)"
+echo "  Apache configuration is owned by the host (not this RPM)."
+echo "  Reference snippet:"
+echo "    /var/www/cgv-web/examples/apache-cgv-web.conf.example"
 echo "------------------------------------------------------"
 
 %preun
@@ -96,9 +105,19 @@ echo "------------------------------------------------------"
 
 %postun
 %systemd_postun_with_restart cgv-web.service
-systemctl is-active --quiet httpd && systemctl reload httpd >/dev/null 2>&1 || :
 
 %changelog
+* Sun May 10 2026 Chrysthofer - 1.0.4-1
+- Stop shipping /etc/httpd/conf.d/cgv-web.conf and stop reloading httpd in
+  %%post. The host's Apache configuration is owned by Puppet at P1, and
+  the bundled snippet conflicted with the existing setup, leaving
+  https://pc-atlas-www.cern.ch/cgv-web/ unreachable after upgrading to
+  1.0.3 (see ticket #14110, note #37).
+- Ship the Apache directives as a reference example under
+  /var/www/cgv-web/examples/apache-cgv-web.conf.example -- documentation
+  only, never loaded by Apache.
+- Drop httpd from Requires (no longer touched by this package).
+- No changes to the Python backend, the static site, or the systemd unit.
 * Mon May 04 2026 Chrysthofer - 1.0.3-1
 - Auto-enable and start cgv-web.service on install (was registered but
   never started, leaving the /api/xml backend dormant in P1).
