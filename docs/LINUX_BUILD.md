@@ -182,7 +182,9 @@ Stop with `Ctrl+C`.
 ### 11a. Bump the version (only if you're cutting a new release)
 
 ```bash
-sed -i -E 's/^Version:[[:space:]]+.*$/Version:        1.0.4/' cgv-web.spec
+sed -i -E 's/^Version:[[:space:]]+.*$/Version:        1.0.5/' cgv-web.spec
+# Keep `Epoch: 1` in the spec and keep the version monotonically increasing
+# (1.0.5 -> 1.0.6 -> ...) -- never go back to date-based versions.
 ```
 
 ### 11b. Stage a *clean* source tree
@@ -193,7 +195,7 @@ ends up served by Apache. We must NOT ship: `node_modules/`, `parser/target/`,
 the `.root` build inputs, the `nipscern/` baker, etc.
 
 ```bash
-VER=1.0.4         # match Version: in the spec
+VER=1.0.5         # match Version: in the spec
 mkdir -p ~/rpmbuild/{SOURCES,SPECS,BUILD,BUILDROOT,RPMS,SRPMS}
 
 STAGE=$(mktemp -d)
@@ -240,9 +242,9 @@ ls -lh ~/rpmbuild/RPMS/noarch/cgv-web-$VER-1.el9.noarch.rpm
 ## 12. Test the RPM on this machine
 
 ```bash
-RPM=~/rpmbuild/RPMS/noarch/cgv-web-1.0.4-1.el9.noarch.rpm
+RPM=~/rpmbuild/RPMS/noarch/cgv-web-1.0.5-1.el9.noarch.rpm
 
-# Wipe any old install (avoids the obsolete 1.0.3 httpd snippet leaking in)
+# Clean local test: wipe any old install first
 rpm -q cgv-web && sudo dnf remove -y cgv-web
 
 # Install
@@ -251,7 +253,7 @@ sudo dnf install -y "$RPM"
 # Service should be enabled + active
 systemctl status cgv-web
 
-# v1.0.4 must NOT have shipped /etc/httpd/conf.d/cgv-web.conf:
+# v1.0.4 and later must NOT ship /etc/httpd/conf.d/cgv-web.conf:
 ls /etc/httpd/conf.d/cgv-web.conf 2>/dev/null && echo 'BUG -- file should not exist'
 
 # Reference snippet should be in examples/:
@@ -278,88 +280,102 @@ sudo dnf remove -y cgv-web
 
 ---
 
-## 13. Upload to CERN
+## 13. Get the RPM to Point 1
 
-CERN account: **`camaroaf`**. You have write access on Luciano's AFS
-public folder, which is the path Luciano was already using on the ticket
-(notes #28 and #36) — drop the RPM straight there:
-
-```bash
-RPM=~/rpmbuild/RPMS/noarch/cgv-web-1.0.4-1.el9.noarch.rpm
-
-# Make sure the target folder exists (idempotent):
-ssh camaroaf@lxplus.cern.ch 'mkdir -p /afs/cern.ch/user/l/lucianom/public/CGV-Web/1.0.4'
-
-# Upload
-scp "$RPM" camaroaf@lxplus.cern.ch:/afs/cern.ch/user/l/lucianom/public/CGV-Web/1.0.4/
-
-# Verify it landed
-ssh camaroaf@lxplus.cern.ch 'ls -lh /afs/cern.ch/user/l/lucianom/public/CGV-Web/1.0.4/'
-```
-
-The full path to give Fabio is then:
-
-```
-/afs/cern.ch/user/l/lucianom/public/CGV-Web/1.0.4/cgv-web-1.0.4-1.el9.noarch.rpm
-```
-
-> Fabio originally asked for `/atlas-home/0/lucianom/` (note #37), which is
-> a Point-1-only mount and not reachable from lxplus/AFS. The AFS path
-> above is what he installed from in note #27 (1.0.2) and note #36 (1.0.3),
-> so it's already part of his workflow.
-
-### Fallback — your own AFS public folder
-
-If for any reason the write to `lucianom/public/` fails (quota, ACL drift),
-upload to your own home and tell Fabio that path instead:
+The sysadmins asked (notes #37 and #41) for the RPM to live **inside
+Point 1**, not on AFS. Chrysthofer has no P1 account, so the flow is:
+build here → hand the RPM to Luciano → Luciano drops it under his P1 home.
 
 ```bash
-ssh camaroaf@lxplus.cern.ch 'mkdir -p ~/public/cgv-web'
-scp "$RPM" camaroaf@lxplus.cern.ch:~/public/cgv-web/
+RPM=~/rpmbuild/RPMS/noarch/cgv-web-1.0.5-1.el9.noarch.rpm
+
+# Give Luciano the file (e.g. via lxplus, then he copies it across to P1):
+ssh camaroaf@lxplus.cern.ch 'mkdir -p ~/public/cgv-web/1.0.5'
+scp "$RPM" camaroaf@lxplus.cern.ch:~/public/cgv-web/1.0.5/
 ssh camaroaf@lxplus.cern.ch 'fs setacl -dir ~/public -acl system:anyuser rl'
-
-# Sysadmins can then read from:
-#   /afs/cern.ch/user/c/camaroaf/public/cgv-web/cgv-web-1.0.4-1.el9.noarch.rpm
 ```
+
+Luciano (P1 account) then places it at:
+
+```
+/atlas-home/0/lucianom/cgv-web-1.0.5-1.el9.noarch.rpm
+```
+
+and posts that path on the ticket. AFS (`/afs/cern.ch/user/l/lucianom/public/`
+or `/afs/cern.ch/user/c/camaroaf/public/cgv-web/`) is only a fallback if the
+P1 home is not an option.
 
 ---
 
 ## 14. Message to post on ticket #14110
 
-Replace the path on the message below if you used the fallback in step 13.
-
-> Hi Fabio,
+> Hi Diana, Fabio,
 >
-> My name is Kristoffer (Chrysthofer Afonso) — I work with Luciano on the
-> CGV Web project at NIPSCERN/UFJF, and I'll be following up on this
-> ticket together with him from now on.
+> Thanks for the feedback. Replying to note #41 point by point.
 >
-> I've prepared `cgv-web-1.0.4-1.el9.noarch.rpm`, which addresses the
-> regression you reported in note #37 and follows the plan we outlined in
-> note #38:
+> RPM location: understood, it should be inside P1, not on AFS. Luciano
+> will put the build under `/atlas-home/0/lucianom/` and post the exact
+> path here. I (Chrysthofer) don't have a P1 account yet, so for now
+> Luciano handles anything that touches the node or the web servers. If it
+> would help for me to get a P1 account and the AM role for on-node
+> debugging, just point me at the procedure; otherwise Luciano stays the
+> P1-side contact. He will also request the AM role so he can log in to
+> `vm-calo-web-01`.
 >
-> - `/etc/httpd/conf.d/cgv-web.conf` is no longer shipped, and `%post` no
->   longer reloads `httpd`. Apache configuration is now left entirely to
->   the host (Puppet at P1) — this was the cause of the regression after
->   the upgrade to 1.0.3.
-> - `httpd` is dropped from `Requires`.
-> - The Apache directives are still available as a reference-only example
->   at `/var/www/cgv-web/examples/apache-cgv-web.conf.example`, in case it
->   helps when comparing with the Puppet-managed configuration.
-> - No changes to the Python backend, the static site, or the systemd
->   unit; the backend still binds to `127.0.0.1:8080` via
->   `/etc/sysconfig/cgv-web`.
-> - The package supports rolling upgrades (no need to remove the previous
->   version first).
+> Versioning: good catch. The package versioned by date
+> (`cgv-web-04.28.26`) counts as newer than `1.0.x` in RPM, so a plain
+> `dnf update` / Puppet run won't move off it. The new build is
+> `cgv-web-1.0.5-1.el9` with `Epoch: 1`, so `1:1.0.5` supersedes
+> `0:04.28.26` cleanly. From now on the version only increases (1.0.5,
+> 1.0.6, ...), no more dates, and upgrades are in-place (no
+> remove/reinstall). 1.0.5 also supersedes the 1.0.4 from note #40: same
+> fixes (no `httpd` conf shipped, no `httpd` reload in `%post`, `httpd`
+> dropped from `Requires`) plus the epoch fix and a small frontend fix
+> mentioned below.
 >
-> The RPM is available at:
-> `/afs/cern.ch/user/l/lucianom/public/CGV-Web/1.0.4/cgv-web-1.0.4-1.el9.noarch.rpm`
+> The example Apache snippet: just to be clear,
+> `examples/apache-cgv-web.conf.example` is reference-only and is not
+> loaded by anything. It's a minimal illustration, not a description of
+> your setup, and the package makes no assumptions about how
+> `pc-atlas-www` and `vm-calo-web-01` are wired together. All the
+> application needs from the front-end host is: (1) the static files under
+> `public/` served at some prefix, and (2) `<that prefix>/api/xml/`
+> reverse-proxied to the backend on `127.0.0.1:8080` keeping the
+> `/api/xml/` sub-path. The backend only listens on localhost. Everything
+> else (Apache / Puppet) is yours. If at some point it helps to see the
+> actual cgv-web vhost so we can match the example to it, just say so.
 >
-> Please let us know how the installation goes — happy to debug or follow
-> up on anything that regresses.
+> Related fix in 1.0.5: the frontend now resolves the `/api/xml` endpoint
+> from the module's own URL rather than the page URL, so the LIVE > SERVER
+> (live-folder) feature works regardless of the mount prefix and even if
+> the page is opened without the trailing slash. That was behind the 404
+> on `/api/xml/folder` in note #36. The "pick the folder" action in the UI
+> uses the same endpoint, so this fixes that too.
+>
+> XML folder: nothing to change on the package side. The watched folder is
+> picked at runtime from the UI (pencil icon next to the folder path), so
+> the operator points it at `/atlas/EventDisplayEvents` (or wherever)
+> without editing config. `/etc/sysconfig/cgv-web` has an optional
+> `XML_FOLDER` for a boot-time default, commented out by design.
+>
+> Authentication: the app is view-only. It reads and renders JiveXML,
+> writes nothing, has no destructive action, so from our side it's fine
+> for it to be reachable inside P1 without a login. If you'd rather
+> restrict it, that can be done at the Apache layer (SSO/Shibboleth, or a
+> role like the one used for the node login) with no change to the app.
+>
+> e-group: we'll create one for support and notifications and post the
+> name here. For now: lucianom@cern.ch,
+> chrysthofer.afonso@estudante.ufjf.br, contact@nipscern.com.
+>
+> Testing: once 1.0.5 is in place we're glad to set a date to check the
+> live-folder mode against `/atlas/EventDisplayEvents` in the Control
+> Room. Fabio's offer to come along works for us.
+>
+> Thanks again for the patience with this.
 >
 > Best regards,
-> Kristoffer
+> Chrysthofer
 
 ---
 
@@ -373,5 +389,6 @@ Replace the path on the message below if you used the fallback in step 13.
 | `fetch-geometry.mjs` fails with 404 | the `geometry-v4` release tag was renamed — bump `TAG` in the script |
 | Service starts but `curl /api/xml/folder` → connection refused | check `BIND` in `/etc/sysconfig/cgv-web` (default `127.0.0.1`) |
 | Service running but `/api/xml/list` → 503 | no `XML_FOLDER` configured — set via UI pencil or in `/etc/sysconfig/cgv-web` |
-| 404 from `https://pc-atlas-www.cern.ch/cgv-web/api/...` | host's Apache is missing the `ProxyPass` lines — give Fabio `/var/www/cgv-web/examples/apache-cgv-web.conf.example` |
-| `dnf install` complains about old `cgv-web-04.28.26-1.el9` | `sudo dnf remove cgv-web` first; the new versioning (`1.0.x`) is not seen as an upgrade of the date-based one |
+| 404 from `https://pc-atlas-www.cern.ch/cgv-web/api/...` | host's Apache is missing the `<prefix>/api/xml/` → `127.0.0.1:8080/api/xml/` reverse-proxy (the `examples/` snippet shows a minimal version) |
+| 404 from `https://pc-atlas-www.cern.ch/api/xml/...` (no `/cgv-web/`) | page was opened as `.../cgv-web` without the trailing slash and the host doesn't 301 to `.../cgv-web/`; fixed in 1.0.5 (API path resolved from the module URL), but the redirect is still good hygiene |
+| `dnf update` doesn't move off `cgv-web-04.28.26-1.el9` | needs the `Epoch: 1` build (1:1.0.5 ≥ 0:04.28.26); with an older non-epoch RPM, `sudo dnf remove cgv-web` then install, or `dnf install --allowerasing` |

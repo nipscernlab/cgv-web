@@ -6,10 +6,12 @@ The RPM's systemd unit (cgv-web.service) invokes this file. To avoid
 duplicating code, it is a thin wrapper that defers to serve.py, which
 contains the real HTTP server + /api/xml/* folder API used by the site.
 
-Env vars honoured (set in the systemd unit if you need to change them):
+Env vars honoured (set via /etc/sysconfig/cgv-web; the systemd unit reads it):
   PORT        listening port       (default 8080)
-  BIND        bind address         (default 0.0.0.0 -- reachable on the LAN)
-  XML_FOLDER  path to the XML dir  (e.g. /atlas/EventDisplayEvents)
+  BIND        bind address         (default 127.0.0.1 -- localhost only;
+                                    the host's reverse proxy exposes it)
+  XML_FOLDER  default XML dir       (optional; the watched folder is normally
+                                    chosen at runtime from the UI)
 """
 import os, sys
 from pathlib import Path

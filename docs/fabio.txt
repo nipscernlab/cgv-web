@@ -1,33 +1,63 @@
-Hi Fabio,
+Hi Diana, Fabio,
 
-My name is Kristoffer Arthur, I am a researcher at UFJF/NIPSCERN and I work
-with Luciano on the CGV Web project. I will be following up on this ticket
-together with him from now on.
+Thanks for the feedback. Replying to note #41 point by point.
 
-I prepared cgv-web-1.0.4-1.el9.noarch.rpm, which addresses the regression
-you reported in note #37 and follows the plan we outlined in note #38.
+RPM location: understood, it should be inside P1, not on AFS. Luciano will
+put the build under /atlas-home/0/lucianom/ and post the exact path here.
+I (Chrysthofer) don't have a P1 account yet, so for now Luciano handles
+anything that touches the node or the web servers. If it would help for me
+to get a P1 account and the AM role for on-node debugging, just point me at
+the procedure; otherwise Luciano stays the P1-side contact. He will also
+request the AM role so he can log in to vm-calo-web-01.
 
-Changes in 1.0.4:
+Versioning: good catch. The package versioned by date (cgv-web-04.28.26)
+counts as newer than 1.0.x in RPM, so a plain dnf update / Puppet run won't
+move off it. The new build is cgv-web-1.0.5-1.el9 with Epoch: 1, so 1:1.0.5
+supersedes 0:04.28.26 cleanly. From now on the version only increases
+(1.0.5, 1.0.6, ...), no more dates, and upgrades are in-place (no
+remove/reinstall). 1.0.5 also supersedes the 1.0.4 from note #40: same fixes
+(no httpd conf shipped, no httpd reload in %post, httpd dropped from
+Requires) plus the epoch fix and a small frontend fix mentioned below.
 
-  * /etc/httpd/conf.d/cgv-web.conf is no longer shipped, and %post no
-    longer reloads httpd. Apache configuration is now left entirely to the
-    host (Puppet at P1). This was the cause of the regression after the
-    upgrade to 1.0.3.
-  * httpd was dropped from Requires.
-  * The Apache directives are still available as a reference example at
-    /var/www/cgv-web/examples/apache-cgv-web.conf.example, in case it
-    helps when comparing against the Puppet-managed configuration.
-  * No changes to the Python backend, the static site, or the systemd
-    unit. The backend still binds to 127.0.0.1:8080 via
-    /etc/sysconfig/cgv-web.
-  * The package supports rolling upgrades, so there is no need to remove
-    the previous version first.
+The example Apache snippet: just to be clear, examples/apache-cgv-web.conf.example
+is reference-only and is not loaded by anything. It's a minimal illustration,
+not a description of your setup, and the package makes no assumptions about
+how pc-atlas-www and vm-calo-web-01 are wired together. All the application
+needs from the front-end host is: (1) the static files under public/ served
+at some prefix, and (2) <that prefix>/api/xml/ reverse-proxied to the backend
+on 127.0.0.1:8080 keeping the /api/xml/ sub-path. The backend only listens on
+localhost. Everything else (Apache / Puppet) is yours. If at some point it
+helps to see the actual cgv-web vhost so we can match the example to it, just
+say so.
 
-The RPM is available at:
-/afs/cern.ch/user/l/lucianom/public/CGV-Web/1.0.4/cgv-web-1.0.4-1.el9.noarch.rpm
+Related fix in 1.0.5: the frontend now resolves the /api/xml endpoint from
+the module's own URL rather than the page URL, so the LIVE > SERVER
+(live-folder) feature works regardless of the mount prefix and even if the
+page is opened without the trailing slash. That was behind the 404 on
+/api/xml/folder in note #36. The "pick the folder" action in the UI uses the
+same endpoint, so this fixes that too.
 
-Please let us know how the installation goes. Happy to debug or follow up
-on anything that regresses.
+XML folder: nothing to change on the package side. The watched folder is
+picked at runtime from the UI (pencil icon next to the folder path), so the
+operator points it at /atlas/EventDisplayEvents (or wherever) without editing
+config. /etc/sysconfig/cgv-web has an optional XML_FOLDER for a boot-time
+default, commented out by design.
+
+Authentication: the app is view-only. It reads and renders JiveXML, writes
+nothing, has no destructive action, so from our side it's fine for it to be
+reachable inside P1 without a login. If you'd rather restrict it, that can be
+done at the Apache layer (SSO/Shibboleth, or a role like the one used for the
+node login) with no change to the app.
+
+e-group: we'll create one for support and notifications and post the name
+here. For now: lucianom@cern.ch, chrysthofer.afonso@estudante.ufjf.br,
+contact@nipscern.com.
+
+Testing: once 1.0.5 is in place we're glad to set a date to check the
+live-folder mode against /atlas/EventDisplayEvents in the Control Room.
+Fabio's offer to come along works for us.
+
+Thanks again for the patience with this.
 
 Best regards,
-Kristoffer
+Chrysthofer

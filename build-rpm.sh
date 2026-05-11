@@ -235,8 +235,9 @@ echo "============================================"
 echo "  RPM: $RPM_OUT"
 echo
 echo "  Next steps:"
-echo "    1. Upload to Luciano's AFS public folder:"
-echo "         ssh camaroaf@lxplus.cern.ch 'mkdir -p /afs/cern.ch/user/l/lucianom/public/CGV-Web/$NEW_VERSION'"
-echo "         scp $RPM_OUT camaroaf@lxplus.cern.ch:/afs/cern.ch/user/l/lucianom/public/CGV-Web/$NEW_VERSION/"
+echo "    1. Hand the RPM to Luciano so he can place it inside Point 1 (the"
+echo "       sysadmins asked for the RPM in P1, not on AFS):"
+echo "         /atlas-home/0/lucianom/cgv-web-$NEW_VERSION-1.el9.noarch.rpm"
+echo "       (AFS -- /afs/cern.ch/user/l/lucianom/public/CGV-Web/$NEW_VERSION/ -- only as a fallback.)"
 echo "    2. Post on ticket #14110 -- message template in docs/LINUX_BUILD.md (step 14)."
 echo

@@ -1,5 +1,6 @@
 Name:           cgv-web
-Version:        1.0.4
+Epoch:          1
+Version:        1.0.5
 Release:        1%{?dist}
 Summary:        CGV Web -- 3D Calorimeter Event Display for ATLAS
 License:        NIPSCERN License
@@ -107,6 +108,25 @@ echo "------------------------------------------------------"
 %systemd_postun_with_restart cgv-web.service
 
 %changelog
+* Mon May 11 2026 Chrysthofer - 1:1.0.5-1
+- Add `Epoch: 1`. The package currently installed at P1 is versioned by
+  date (cgv-web-04.28.26), which RPM considers *newer* than 1.0.x, so a
+  plain `dnf update` / Puppet run would not move off it. With the epoch,
+  1:1.0.5 cleanly supersedes 0:04.28.26. From here on the version number is
+  monotonic (1.0.5 -> 1.0.6 -> ...), no more date-based versions, and
+  upgrades stay in-place (no remove/reinstall).
+- Frontend: resolve the /api/xml endpoint relative to this module's own URL
+  instead of the page URL, so the LIVE -> SERVER (live-folder) feature --
+  including the "pick the folder" action -- works regardless of the mount
+  prefix and is robust to a missing trailing-slash redirect on the
+  front-end host (the 404 on /api/xml/folder reported in note #36).
+- server.py: fix a stale docstring (the backend binds to 127.0.0.1 by
+  default, not 0.0.0.0).
+- Supersedes the 1.0.4 build posted in note #40 -- same fixes there (no
+  httpd conf shipped, no `httpd` reload in %%post, `httpd` dropped from
+  Requires) plus the above. The RPM still ships only files + the
+  cgv-web.service systemd unit; Apache configuration stays entirely with
+  the host (Puppet at P1).
 * Sun May 10 2026 Chrysthofer - 1.0.4-1
 - Stop shipping /etc/httpd/conf.d/cgv-web.conf and stop reloading httpd in
   %%post. The host's Apache configuration is owned by Puppet at P1, and
