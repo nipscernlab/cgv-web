@@ -4,11 +4,6 @@ Thanks for the feedback. Replying to note #41 point by point.
 
 RPM location: understood, it should be inside P1, not on AFS. Luciano will
 put the build under /atlas-home/0/lucianom/ and post the exact path here.
-I (Chrysthofer) don't have a P1 account yet, so for now Luciano handles
-anything that touches the node or the web servers. If it would help for me
-to get a P1 account and the AM role for on-node debugging, just point me at
-the procedure; otherwise Luciano stays the P1-side contact. He will also
-request the AM role so he can log in to vm-calo-web-01.
 
 Versioning: good catch. The package versioned by date (cgv-web-04.28.26)
 counts as newer than 1.0.x in RPM, so a plain dnf update / Puppet run won't
@@ -45,17 +40,13 @@ default, commented out by design.
 
 Authentication: the app is view-only. It reads and renders JiveXML, writes
 nothing, has no destructive action, so from our side it's fine for it to be
-reachable inside P1 without a login. If you'd rather restrict it, that can be
-done at the Apache layer (SSO/Shibboleth, or a role like the one used for the
-node login) with no change to the app.
+reachable inside P1 without a login.
 
 e-group: we'll create one for support and notifications and post the name
-here. For now: lucianom@cern.ch, chrysthofer.afonso@estudante.ufjf.br,
-contact@nipscern.com.
+here.
 
-Testing: once 1.0.5 is in place we're glad to set a date to check the
+Testing: once 1.0.5 is in place we're glad to check the
 live-folder mode against /atlas/EventDisplayEvents in the Control Room.
-Fabio's offer to come along works for us.
 
 Thanks again for the patience with this.
 
