@@ -52,7 +52,7 @@ the CERN ATLAS Experiment. Undergraduate developer:
 
 ```bash
 node tools/scripts/fetch-geometry.mjs       # ~5 MB  (calorimeter mesh)
-node tools/scripts/fetch-samples.mjs        # ~75 MB (4 JiveXML event samples)
+node tools/scripts/fetch-samples.mjs        # ~170 MB (6 JiveXML event samples)
 python -m http.server 8080            # or: npx serve .
 ```
 

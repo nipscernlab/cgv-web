@@ -25,7 +25,7 @@ npm run dev            # fetch:geometry + fetch:samples + python serve.py on :80
 ```
 
 `npm run dev` is the recommended path: it downloads the calorimeter mesh
-(~5 MB) and the four JiveXML samples (~75 MB) from GitHub Releases, then
+(~5 MB) and the six JiveXML samples (~170 MB) from GitHub Releases, then
 starts `serve.py` (which adds the `/api/xml/*` folder API on top of a
 static server). Subsequent runs skip fetches that are already cached
 (SHA-256 verified).

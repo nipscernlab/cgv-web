@@ -34,6 +34,14 @@ const MANIFEST = [
     name: 'JiveXML_518084_14173642443.xml',
     sha256: 'c876ca39824424c066907b15e5b28da4cbf0f1b23e5da1ea1b5fed5ca6cf6000',
   },
+  {
+    name: 'JiveXML_520526_399935948.xml',
+    sha256: '6e4b7a73e0bd97aa442881886dd6a6d2a1f7752861749881edb3c7290b97fd55',
+  },
+  {
+    name: 'JiveXML_520534_4444305398.xml',
+    sha256: '7f6887008af33e1e52c7a2dcbc0202cc18f10af2203d02d902243ca011d524da',
+  },
 ];
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');

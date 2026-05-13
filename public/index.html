@@ -42,31 +42,11 @@
     <link rel="stylesheet" href="./css/cinema.css" />
     <link rel="stylesheet" href="./css/mobile.css" />
 
-    <!-- Loading screen backdrop — OffscreenCanvas animation running in a
-         dedicated Web Worker (js/anim_worker.js).  The worker owns its own
-         RAF loop so the animation keeps running even when the main thread is
-         blocked by GLTFLoader.parse() or WASM initialisation. -->
-    <script>
-      document.addEventListener('DOMContentLoaded', function () {
-        var cv = document.getElementById('anim-canvas');
-        if (!cv || !cv.transferControlToOffscreen) return;
-        cv.width  = window.innerWidth;
-        cv.height = window.innerHeight;
-        var offscreen = cv.transferControlToOffscreen();
-        var worker = new Worker('./js/anim_worker.js');
-        worker.postMessage({ type: 'init', canvas: offscreen }, [offscreen]);
-        window.addEventListener('resize', function () {
-          worker.postMessage({ type: 'resize', w: window.innerWidth, h: window.innerHeight });
-        });
-        window._cgvAnimWorker = worker;
-      });
-    </script>
   </head>
 
   <body>
     <!-- ── Loading overlay ─────────────────────────────────── -->
     <div id="loading-overlay">
-      <canvas id="anim-canvas" aria-hidden="true"></canvas>
       <div class="loading-card">
         <img src="./assets/icons/cgvweb_icon.svg" class="loading-logo" alt="CGV" />
         <div class="loading-title">CGV</div>
