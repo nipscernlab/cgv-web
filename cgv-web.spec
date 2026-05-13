@@ -1,6 +1,6 @@
 Name:           cgv-web
 Epoch:          1
-Version:        1.0.5
+Version:        2.0.1
 Release:        1%{?dist}
 Summary:        CGV Web -- 3D Calorimeter Event Display for ATLAS
 License:        NIPSCERN License

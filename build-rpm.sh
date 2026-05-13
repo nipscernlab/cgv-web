@@ -17,10 +17,13 @@
 #  12. (optional, --install) curl the API to verify the service answers
 #
 # Usage:
+#    chmod +x build-rpm.sh
 #   ./build-rpm.sh                       # interactive
 #   ./build-rpm.sh 1.0.4                 # non-interactive, version pinned
 #   ./build-rpm.sh 1.0.4 --install       # also install the result locally
 #   ./build-rpm.sh --install             # interactive version + install
+#   cp /root/rpmbuild/RPMS/noarch/cgv-web-2.0.1-1.el9.noarch.rpm .
+#   chown nipscern-linux:nipscern-linux cgv-web-2.0.1-1.el9.noarch.rpm
 #
 # Re-runs are safe -- every step is idempotent.
 set -euo pipefail
