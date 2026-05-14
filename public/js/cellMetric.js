@@ -14,8 +14,10 @@
 
 /** @typedef {'E' | 'ET'} CellMetric */
 
-/** @type {CellMetric} */
-let _metric = 'E';
+/** @type {CellMetric} — E_T is the default: it's the quantity physics
+ * analyses threshold on, and it's what the forward (high-|η|) cells need
+ * to read sensibly. */
+let _metric = 'ET';
 
 /** @type {Array<(m: CellMetric) => void>} */
 const _listeners = [];

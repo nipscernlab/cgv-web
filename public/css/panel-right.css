@@ -76,8 +76,9 @@
 #cell-metric-row {
   display: flex;
   flex-shrink: 0;
-  padding: 6px 0 7px;
-  border-bottom: 1px solid var(--border);
+  padding: 7px 0 8px;
+  /* sits at the bottom of #rpanel, under the slider panes */
+  border-top: 1px solid var(--border);
 }
 .cell-metric-trigger {
   display: flex;
