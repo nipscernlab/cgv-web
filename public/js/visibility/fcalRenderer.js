@@ -177,7 +177,9 @@ function _applyFcalDraw() {
     const r = Math.hypot(c.x, c.y);
     const theta = Math.atan2(r, c.z);
     const eta = -Math.log(Math.tan(theta / 2));
-    const phi = Math.atan2(-c.y, -c.x);
+    // FCAL cells plot at their raw JiveXML x/y — the -x,-y "scene
+    // convention" mis-positioned them. φ = atan2(y,x) ∈ [-π, π].
+    const phi = Math.atan2(c.y, c.x);
     const cellVal = metric === 'ET' ? etMevFromE(eMev, eta) : eMev;
     // Heatmap: module on + raw threshold + cluster membership. No slicer,
     // no rect — the minimap is a stable overview.
@@ -195,8 +197,8 @@ function _applyFcalDraw() {
     )
       return false;
     if (slicerMask.active && slicer) {
-      const cx = -c.x * 10,
-        cy = -c.y * 10,
+      const cx = c.x * 10,
+        cy = c.y * 10,
         cz = c.z * 10;
       if (slicer.isPointInsideWedge(cx, cy, cz, slicerMask)) return false;
     }
@@ -224,8 +226,8 @@ function _applyFcalDraw() {
     const rx = Math.max(Math.abs(dx) * 5, 1e-3);
     const ry = Math.max(Math.abs(dy) * 5, 1e-3);
     const len = Math.max(Math.abs(dz) * 2 * 10, 1e-3);
-    const cx = -x * 10,
-      cy = -y * 10,
+    const cx = x * 10,
+      cy = y * 10,
       cz = z * 10;
     _fcalDir.set(0, 0, dz >= 0 ? 1 : -1);
     _fcalDummy.position.set(cx, cy, cz);
