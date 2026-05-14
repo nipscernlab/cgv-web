@@ -281,20 +281,23 @@ function doRaycast(clientX, clientY) {
     if (fcalHit) {
       const iid = fcalHit.instanceId;
       const cell = fcalVisibleMap[iid];
-      const side = cell.eta >= 0 ? 'A' : 'C';
-      // FcalCell carries raw energy only — derive E_T from the same η the
-      // renderer computes from JiveXML geometry.
+      // Derive η/φ from the cell's JiveXML geometry, NOT the parser's
+      // cell.eta/cell.phi — those come from the compact-ID index (φ
+      // quantised to 16 sectors, range [0,2π)). The geometry values use the
+      // same -x,-y scene convention and φ = atan2(-y,-x) ∈ [-π,π] that the
+      // renderer / heatmap / region filter already use, so the tooltip
+      // matches the rest of the FCAL pipeline.
+      const r = Math.hypot(cell.x, cell.y);
+      const eta = -Math.log(Math.tan(Math.atan2(r, cell.z) / 2));
+      const phi = Math.atan2(-cell.y, -cell.x);
+      const side = eta >= 0 ? 'A' : 'C';
       let valGev = cell.energy;
-      if (isET) {
-        const r = Math.hypot(cell.x, cell.y);
-        const eta = -Math.log(Math.tan(Math.atan2(r, cell.z) / 2));
-        valGev = etMevFromE(cell.energy * 1000, eta) / 1000;
-      }
+      if (isET) valGev = etMevFromE(cell.energy * 1000, eta) / 1000;
       _finishHit({
         outlineAction: () => (wantTooltip ? showFcalOutline(iid) : clearOutline()),
         showHitArgs: {
           label: `FCAL${cell.module} (${side}-side)`,
-          coord: `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`,
+          coord: `η = ${eta.toFixed(3)}   φ = ${phi.toFixed(3)} rad`,
           valueText: `${valGev.toFixed(4)} GeV`,
           ...(isET ? { keyHtml: 'E<sub>T</sub>' } : { keyText: _t('tip-energy-key') }),
         },
