@@ -283,9 +283,8 @@ function doRaycast(clientX, clientY) {
       const cell = fcalVisibleMap[iid];
       // Derive η/φ from the cell's JiveXML geometry, NOT the parser's
       // cell.eta/cell.phi — those come from the compact-ID index (φ
-      // quantised to 16 sectors, range [0,2π)). Raw x/y, φ = atan2(y,x) ∈
-      // [-π,π] — same as the renderer / heatmap / region filter, so the
-      // tooltip matches the rest of the FCAL pipeline.
+      // quantised to 16 sectors, range [0,2π)). Physics φ = atan2(y,x) on
+      // the RAW x/y ∈ [-π,π] — same as the renderer's heatmap/region φ.
       const r = Math.hypot(cell.x, cell.y);
       const eta = -Math.log(Math.tan(Math.atan2(r, cell.z) / 2));
       const phi = Math.atan2(cell.y, cell.x);

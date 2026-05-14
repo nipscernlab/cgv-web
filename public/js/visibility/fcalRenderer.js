@@ -177,8 +177,10 @@ function _applyFcalDraw() {
     const r = Math.hypot(c.x, c.y);
     const theta = Math.atan2(r, c.z);
     const eta = -Math.log(Math.tan(theta / 2));
-    // FCAL cells plot at their raw JiveXML x/y — the -x,-y "scene
-    // convention" mis-positioned them. φ = atan2(y,x) ∈ [-π, π].
+    // φ is physics (ATLAS) φ — atan2 on the RAW x/y. The -x,-y below is the
+    // scene-placement convention (scene = -ATLAS x/y, matches the GLB), NOT
+    // a physics transform: applying it to φ too rotated the heatmap/region
+    // gate by π. Keep the two separate. φ ∈ [-π, π].
     const phi = Math.atan2(c.y, c.x);
     const cellVal = metric === 'ET' ? etMevFromE(eMev, eta) : eMev;
     // Heatmap: module on + raw threshold + cluster membership. No slicer,
@@ -197,8 +199,10 @@ function _applyFcalDraw() {
     )
       return false;
     if (slicerMask.active && slicer) {
-      const cx = c.x * 10,
-        cy = c.y * 10,
+      // Scene-space position (scene = -ATLAS x/y) — the wedge is defined in
+      // scene coords, same as the GLB cells it tests against.
+      const cx = -c.x * 10,
+        cy = -c.y * 10,
         cz = c.z * 10;
       if (slicer.isPointInsideWedge(cx, cy, cz, slicerMask)) return false;
     }
@@ -226,8 +230,9 @@ function _applyFcalDraw() {
     const rx = Math.max(Math.abs(dx) * 5, 1e-3);
     const ry = Math.max(Math.abs(dy) * 5, 1e-3);
     const len = Math.max(Math.abs(dz) * 2 * 10, 1e-3);
-    const cx = x * 10,
-      cy = y * 10,
+    // Scene placement: scene x/y = -ATLAS x/y (matches the GLB cells).
+    const cx = -x * 10,
+      cy = -y * 10,
       cz = z * 10;
     _fcalDir.set(0, 0, dz >= 0 ? 1 : -1);
     _fcalDummy.position.set(cx, cy, cz);
