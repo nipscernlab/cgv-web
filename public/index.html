@@ -604,13 +604,22 @@
 
         <!-- Global cell-metric selector: switches every calo threshold /
              colour / tooltip between energy (E) and transverse energy (E_T).
-             E_T = E / cosh(η) per cell. -->
+             E_T = E / cosh(η) per cell. Custom dropdown (not a native
+             <select>) so the E_T option can carry a real <sub> subscript;
+             the menu itself lives at <body> root — see #cell-metric-menu. -->
         <div id="cell-metric-row">
-          <label for="cell-metric-select" data-i18n="metric-label">Metric</label>
-          <select id="cell-metric-select">
-            <option value="E" data-i18n="metric-energy">Energy</option>
-            <option value="ET" data-i18n="metric-et">E_{T}</option>
-          </select>
+          <button
+            type="button"
+            id="cell-metric-trigger"
+            class="cell-metric-trigger"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+          >
+            <span class="cell-metric-label" id="cell-metric-label">Energy</span>
+            <svg class="cell-metric-chev" viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
         </div>
 
         <div class="det-pane" id="pane-tile">
@@ -707,6 +716,28 @@
 
     <!-- ── Jet collection dropdown (escapes rpanel containing block) ─ -->
     <div id="jet-coll-menu" class="jet-coll-menu" role="listbox"></div>
+
+    <!-- ── Cell-metric dropdown (escapes rpanel containing block) ──── -->
+    <div id="cell-metric-menu" class="cell-metric-menu" role="listbox">
+      <button
+        type="button"
+        class="cell-metric-opt on"
+        role="option"
+        data-metric="E"
+        aria-selected="true"
+      >
+        <span class="cell-metric-opt-name">Energy</span>
+      </button>
+      <button
+        type="button"
+        class="cell-metric-opt"
+        role="option"
+        data-metric="ET"
+        aria-selected="false"
+      >
+        <span class="cell-metric-opt-name">E<sub>T</sub></span>
+      </button>
+    </div>
 
     <!-- ── Language menu ────────────────────────────────────── -->
     <div id="lang-menu">

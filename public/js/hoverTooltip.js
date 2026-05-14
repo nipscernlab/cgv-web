@@ -272,7 +272,8 @@ function doRaycast(clientX, clientY) {
           label: data.cellName,
           coord: data.coords,
           valueText: `${valGev.toFixed(4)} GeV`,
-          keyText: _t(isET ? 'tip-et-key' : 'tip-energy-key'),
+          // E_T renders with a real subscript T; energy stays a plain word.
+          ...(isET ? { keyHtml: 'E<sub>T</sub>' } : { keyText: _t('tip-energy-key') }),
         },
       });
       return;
@@ -295,7 +296,7 @@ function doRaycast(clientX, clientY) {
           label: `FCAL${cell.module} (${side}-side)`,
           coord: `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`,
           valueText: `${valGev.toFixed(4)} GeV`,
-          keyText: _t(isET ? 'tip-et-key' : 'tip-energy-key'),
+          ...(isET ? { keyHtml: 'E<sub>T</sub>' } : { keyText: _t('tip-energy-key') }),
         },
       });
       return;

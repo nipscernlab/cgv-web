@@ -474,19 +474,79 @@ export function setupDetectorPanels({
     applyFcalThreshold();
   }
 
-  const metricSelect = /** @type {HTMLSelectElement | null} */ (
-    document.getElementById('cell-metric-select')
-  );
-  if (metricSelect) {
-    metricSelect.value = getCellMetric();
-    metricSelect.addEventListener('change', () => {
-      setCellMetric(metricSelect.value === 'ET' ? 'ET' : 'E');
+  // Custom listbox dropdown (mirrors the jet-collection one in topToolbar.js)
+  // rather than a native <select> so the E_T option can carry a real <sub>.
+  // Two static options — no repopulation, just open/close/position + select.
+  const metricTrigger = document.getElementById('cell-metric-trigger');
+  const metricMenu = document.getElementById('cell-metric-menu');
+  const metricLabelEl = document.getElementById('cell-metric-label');
+  /** @type {Record<string, string>} */
+  const METRIC_HTML = { E: 'Energy', ET: 'E<sub>T</sub>' };
+
+  function syncMetricUI() {
+    const m = getCellMetric();
+    if (metricLabelEl) metricLabelEl.innerHTML = METRIC_HTML[m] ?? METRIC_HTML.E;
+    if (metricMenu)
+      for (const opt of metricMenu.querySelectorAll('.cell-metric-opt')) {
+        const on = opt.getAttribute('data-metric') === m;
+        opt.classList.toggle('on', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+  }
+  function closeMetricMenu() {
+    if (!metricMenu) return;
+    metricMenu.classList.remove('open');
+    metricTrigger?.setAttribute('aria-expanded', 'false');
+  }
+  function positionMetricMenu() {
+    if (!metricMenu || !metricTrigger) return;
+    const br = metricTrigger.getBoundingClientRect();
+    const left = Math.max(6, Math.min(br.left, window.innerWidth - metricMenu.offsetWidth - 6));
+    metricMenu.style.left = `${left}px`;
+    metricMenu.style.top = `${br.bottom + 6}px`;
+  }
+  function openMetricMenu() {
+    if (!metricMenu || !metricTrigger) return;
+    metricMenu.style.display = 'flex';
+    metricMenu.style.visibility = 'hidden';
+    positionMetricMenu();
+    metricMenu.style.visibility = '';
+    requestAnimationFrame(() => {
+      metricMenu.classList.add('open');
+      metricTrigger.setAttribute('aria-expanded', 'true');
     });
   }
-  // Metric flip: recolour + re-range (threshold values stay fixed), then
-  // re-run the cell-visibility pass.
+  if (metricTrigger && metricMenu) {
+    metricTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (metricMenu.classList.contains('open')) closeMetricMenu();
+      else openMetricMenu();
+    });
+    for (const opt of metricMenu.querySelectorAll('.cell-metric-opt')) {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setCellMetric(opt.getAttribute('data-metric') === 'ET' ? 'ET' : 'E');
+        closeMetricMenu();
+      });
+    }
+    document.addEventListener('click', (e) => {
+      if (!metricMenu.classList.contains('open')) return;
+      if (e.target === metricMenu || metricMenu.contains(/** @type {Node} */ (e.target))) return;
+      closeMetricMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && metricMenu.classList.contains('open')) closeMetricMenu();
+    });
+    window.addEventListener('resize', () => {
+      if (metricMenu.classList.contains('open')) positionMetricMenu();
+    });
+  }
+  syncMetricUI();
+
+  // Metric flip: update the dropdown UI, recolour + re-range (threshold
+  // values stay fixed), then re-run the cell-visibility pass.
   onCellMetricChange(() => {
-    if (metricSelect) metricSelect.value = getCellMetric();
+    syncMetricUI();
     syncCellMetric();
     applyThreshold();
   });
