@@ -23,11 +23,13 @@ const BIN_PHI = 0.1;
 const NBINS_ETA = Math.ceil((ETA_MAX - ETA_MIN) / BIN_ETA);
 const NBINS_PHI = Math.ceil((PHI_MAX - PHI_MIN) / BIN_PHI);
 
-const W = 400;
+const W = 342;
 const H = 220;
 
 const INSET_L = 26;
-const INSET_R = 78;
+// Right inset only has to clear the legend colour bar now (no value labels) —
+// LEGEND_GAP + LEGEND_W + a 4px margin to the canvas edge.
+const INSET_R = 20;
 const INSET_T = 10;
 const INSET_B = 20;
 
@@ -241,10 +243,12 @@ function _drawHeatmap() {
   ctx.restore();
 }
 
+// Bare colour bar — no min/max value labels, no title, no empty-state text.
+// The bar conveys the relative scale; everything else was clutter, and
+// dropping it lets the window hug the palette (see INSET_R).
 function _drawLegend() {
   const ctx = _ctx;
   const area = _plotArea();
-  const { max } = _buildBins();
 
   const xL = area.x1 + LEGEND_GAP;
   const yTop = area.y0 + 4;
@@ -259,20 +263,6 @@ function _drawLegend() {
   ctx.strokeStyle = 'rgba(120, 150, 190, 0.55)';
   ctx.lineWidth = 1;
   ctx.strokeRect(xL + 0.5, yTop + 0.5, LEGEND_W, barH);
-
-  // The numeric min / max labels are intentionally not drawn — the colour
-  // bar shows the relative scale; the absolute values added clutter. The
-  // empty-state hint and the "E" title stay.
-  ctx.fillStyle = 'rgba(190, 210, 235, 0.9)';
-  ctx.font = '9px ui-monospace, monospace';
-  if (max <= 0) {
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('no data', xL + LEGEND_W + 3, (yTop + yBot) / 2);
-  }
-  ctx.textBaseline = 'bottom';
-  ctx.textAlign = 'center';
-  ctx.fillText('E', xL + LEGEND_W / 2, yTop - 4);
 }
 
 // Draws all active rectangles. No per-rect label — with multiple rects the
