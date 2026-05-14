@@ -207,11 +207,7 @@ export function filterPOIsByMinimap(pois, rects) {
   if (!rects || !rects.length) return pois;
   return pois.filter((p) =>
     rects.some(
-      (r) =>
-        p.eta >= r.etaMin &&
-        p.eta <= r.etaMax &&
-        p.phi >= r.phiMin &&
-        p.phi <= r.phiMax,
+      (r) => p.eta >= r.etaMin && p.eta <= r.etaMax && p.phi >= r.phiMin && p.phi <= r.phiMax,
     ),
   );
 }
@@ -263,9 +259,7 @@ export function buildFallbackCurves() {
     // Two full z-cycles per loop so the path has visible vertical motion
     // without becoming a corkscrew (amplitude is 1/2 of Z_AXIAL_MAX).
     const z = Math.sin(t * Math.PI * 4) * (Z_AXIAL_MAX * 0.5);
-    camPts.push(
-      new THREE.Vector3(-R_SAFE_MM * Math.cos(phi), -R_SAFE_MM * Math.sin(phi), z),
-    );
+    camPts.push(new THREE.Vector3(-R_SAFE_MM * Math.cos(phi), -R_SAFE_MM * Math.sin(phi), z));
     tgtPts.push(new THREE.Vector3(0, 0, z * 0.4));
   }
   const posCurve = new THREE.CatmullRomCurve3(camPts, true, 'centripetal', 0.5);
@@ -308,26 +302,29 @@ export function pathFingerprint(cellEntries, fcalEntries, slicerMask, minimapRec
   accum(cellEntries);
   accum(fcalEntries);
 
-  const evtPart = (count === 0 || totalE === 0)
-    ? 'empty'
-    : `${count}|${Math.round(Math.log10(totalE) * 20)}|` +
-      `${(etaSum / totalE).toFixed(2)}|` +
-      `${Math.atan2(phiSin / totalE, phiCos / totalE).toFixed(2)}`;
+  const evtPart =
+    count === 0 || totalE === 0
+      ? 'empty'
+      : `${count}|${Math.round(Math.log10(totalE) * 20)}|` +
+        `${(etaSum / totalE).toFixed(2)}|` +
+        `${Math.atan2(phiSin / totalE, phiCos / totalE).toFixed(2)}`;
 
-  const slicerPart = !slicerMask || !slicerMask.active
-    ? 'none'
-    : `${slicerMask.phi.toFixed(2)}|${slicerMask.thetaLen.toFixed(2)}|` +
-      `${(slicerMask.zMin | 0)}|${(slicerMask.zMax | 0)}`;
+  const slicerPart =
+    !slicerMask || !slicerMask.active
+      ? 'none'
+      : `${slicerMask.phi.toFixed(2)}|${slicerMask.thetaLen.toFixed(2)}|` +
+        `${slicerMask.zMin | 0}|${slicerMask.zMax | 0}`;
 
-  const minimapPart = !minimapRects || !minimapRects.length
-    ? 'none'
-    : minimapRects
-        .map(
-          (r) =>
-            `${r.etaMin.toFixed(2)},${r.etaMax.toFixed(2)},` +
-            `${r.phiMin.toFixed(2)},${r.phiMax.toFixed(2)}`,
-        )
-        .join(';');
+  const minimapPart =
+    !minimapRects || !minimapRects.length
+      ? 'none'
+      : minimapRects
+          .map(
+            (r) =>
+              `${r.etaMin.toFixed(2)},${r.etaMax.toFixed(2)},` +
+              `${r.phiMin.toFixed(2)},${r.phiMax.toFixed(2)}`,
+          )
+          .join(';');
 
   const levelPart = Number.isFinite(viewLevel) ? `L${viewLevel | 0}` : 'L?';
   return `${evtPart}#${slicerPart}#${minimapPart}#${levelPart}`;

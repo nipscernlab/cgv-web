@@ -41,7 +41,9 @@ export function setupCinemaControls({
   let _lastCells = /** @type {any[]} */ ([]);
   let _lastFcal = /** @type {any[]} */ ([]);
   let _lastSlicerMask = /** @type {any} */ (null);
-  let _lastIsInsideWedge = /** @type {((x:number,y:number,z:number,m:any)=>boolean) | null} */ (null);
+  let _lastIsInsideWedge = /** @type {((x:number,y:number,z:number,m:any)=>boolean) | null} */ (
+    null
+  );
   let _lastMinimapRects = /** @type {any[] | null} */ (null);
   // View level (1=hits, 2=clusters, 3=particles). Always part of the
   // fingerprint so L2↔L3 transitions trigger a rebuild even when the

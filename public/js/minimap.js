@@ -216,11 +216,9 @@ function _drawHeatmap() {
   const plotH = area.y1 - area.y0;
 
   const xEdges = new Int16Array(NBINS_ETA + 1);
-  for (let i = 0; i <= NBINS_ETA; i++)
-    xEdges[i] = Math.round(area.x0 + (i * plotW) / NBINS_ETA);
+  for (let i = 0; i <= NBINS_ETA; i++) xEdges[i] = Math.round(area.x0 + (i * plotW) / NBINS_ETA);
   const yEdges = new Int16Array(NBINS_PHI + 1);
-  for (let i = 0; i <= NBINS_PHI; i++)
-    yEdges[i] = Math.round(area.y0 + (i * plotH) / NBINS_PHI);
+  for (let i = 0; i <= NBINS_PHI; i++) yEdges[i] = Math.round(area.y0 + (i * plotH) / NBINS_PHI);
 
   ctx.save();
   ctx.beginPath();
@@ -422,10 +420,14 @@ function _onMouseMove(ev) {
     const ddy = y - _dragAnchor.y;
     if (Math.hypot(ddx, ddy) >= DRAG_THRESHOLD_PX) {
       _mouseState = 'drawing';
-      _rects.push(_normalizeRect({
-        etaMin: _dragAnchor.eta, etaMax: eta,
-        phiMin: _dragAnchor.phi, phiMax: phi,
-      }));
+      _rects.push(
+        _normalizeRect({
+          etaMin: _dragAnchor.eta,
+          etaMax: eta,
+          phiMin: _dragAnchor.phi,
+          phiMax: phi,
+        }),
+      );
       _notifyRegion();
       _redraw();
     }
@@ -434,8 +436,10 @@ function _onMouseMove(ev) {
 
   if (_mouseState === 'drawing') {
     _rects[_rects.length - 1] = _normalizeRect({
-      etaMin: _dragAnchor.eta, etaMax: eta,
-      phiMin: _dragAnchor.phi, phiMax: phi,
+      etaMin: _dragAnchor.eta,
+      etaMax: eta,
+      phiMin: _dragAnchor.phi,
+      phiMax: phi,
     });
     _notifyRegion();
     _redraw();
@@ -461,8 +465,10 @@ function _onMouseMove(ev) {
     const cE = Math.max(ETA_MIN + halfE, Math.min(ETA_MAX - halfE, ncx));
     const cP = Math.max(PHI_MIN + halfP, Math.min(PHI_MAX - halfP, ncy));
     _rects[_activeRectIdx] = {
-      etaMin: cE - halfE, etaMax: cE + halfE,
-      phiMin: cP - halfP, phiMax: cP + halfP,
+      etaMin: cE - halfE,
+      etaMax: cE + halfE,
+      phiMin: cP - halfP,
+      phiMax: cP + halfP,
     };
     _notifyRegion();
     _redraw();
