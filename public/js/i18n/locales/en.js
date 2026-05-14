@@ -63,7 +63,7 @@ export default {
   'tip-et-key': 'Transverse E',
   'metric-label': 'Metric',
   'metric-energy': 'Energy',
-  'metric-et': 'Transverse E_T',
+  'metric-et': 'E_{T}',
   'tip-panel': 'Toggle the sidebar panel (M)',
   'tip-cinema': 'Cinema mode — auto-rotation, hide UI (C)',
   'tip-helpers': 'Helpers — Ghost, Cell Info, Vertices, Jet/Cluster lines',

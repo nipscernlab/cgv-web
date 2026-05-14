@@ -69,13 +69,15 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
-/* ── Cell-metric selector (E vs E_T) ───────────────────── */
+/* ── Cell-metric selector (E vs E_T) ─────────────────────
+   Styled to rhyme with the jet-collection dropdown trigger below:
+   dark surface, mono type, custom chevron, no native chrome. */
 #cell-metric-row {
   display: flex;
   flex-direction: column;
   gap: 3px;
   flex-shrink: 0;
-  padding: 6px 6px 7px;
+  padding: 6px 7px 7px;
   border-bottom: 1px solid var(--border);
 }
 #cell-metric-row label {
@@ -85,17 +87,43 @@
   text-transform: uppercase;
 }
 #cell-metric-select {
-  font: 500 10px/1.2 var(--font);
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
+  /* color-scheme keeps the native option popup dark on every platform */
+  color-scheme: dark;
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  padding: 5px 22px 5px 7px;
+  background-color: var(--surface-3);
+  /* inline chevron — mirrors .jet-coll-chev's down-caret */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a93a6' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 10px 10px;
   border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 3px 4px;
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.02em;
   cursor: pointer;
+  transition:
+    border-color var(--motion-fast),
+    background var(--motion-fast),
+    color var(--motion-fast);
 }
 #cell-metric-select:hover {
+  border-color: var(--border-strong);
   color: var(--bright);
+}
+#cell-metric-select:focus-visible {
+  outline: none;
   border-color: var(--accent);
+  color: var(--bright);
+  background-color: var(--accent-soft);
+}
+#cell-metric-select option {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 /* ── Detector pane (vertical slider area) ──────────────── */

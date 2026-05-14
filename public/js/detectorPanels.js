@@ -454,23 +454,16 @@ export function setupDetectorPanels({
   );
 
   // ── Cell-metric (E vs E_T) ───────────────────────────────────────────────
-  // Recolours every calo cell + FCAL for the current metric, re-derives the
-  // per-detector percentile ranges, and pushes them into the threshold
-  // sliders. processXml calls this on load when the panel sits in E_T mode;
-  // the select-change handler below calls it (with a threshold reset, per the
-  // "switch resets to show-all" decision) when the user flips the metric.
-  /** @param {{ resetThresholds?: boolean }} [opts] */
-  function syncCellMetric({ resetThresholds = false } = {}) {
+  // Recolours every calo cell + FCAL for the current metric and re-derives the
+  // per-detector percentile ranges that feed the colour palette + the slider
+  // min/max labels. The threshold *values* are deliberately left untouched —
+  // the user keeps whatever cut they had; only the slider's range relabels, so
+  // the thumb just lands at a new position within the rescaled track.
+  // processXml calls this on load when the panel sits in E_T mode; the
+  // select-change handler below calls it on every flip.
+  function syncCellMetric() {
     const { tile, lar, hec } = recolorActiveCells();
     const fcal = computeFcalMetricRange();
-    if (resetThresholds) {
-      // E and E_T live on different scales — the old numeric threshold is
-      // meaningless after a switch, so drop every calo cut to "show all".
-      state.setThrTileMev(-Infinity);
-      state.setThrLArMev(-Infinity);
-      state.setThrHecMev(-Infinity);
-      state.setThrFcalMev(-Infinity);
-    }
     tileSlider.update(tile[0], tile[1]);
     larSlider.update(lar[0], lar[1]);
     hecSlider.update(hec[0], hec[1]);
@@ -490,11 +483,11 @@ export function setupDetectorPanels({
       setCellMetric(metricSelect.value === 'ET' ? 'ET' : 'E');
     });
   }
-  // Metric flip: recolour + re-range + reset cuts to show-all, then re-run
-  // the cell-visibility pass.
+  // Metric flip: recolour + re-range (threshold values stay fixed), then
+  // re-run the cell-visibility pass.
   onCellMetricChange(() => {
     if (metricSelect) metricSelect.value = getCellMetric();
-    syncCellMetric({ resetThresholds: true });
+    syncCellMetric();
     applyThreshold();
   });
 
