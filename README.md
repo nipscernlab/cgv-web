@@ -86,14 +86,71 @@ The build pipeline is only needed if you want to:
 | Rust         | stable     | Compiles the ATLAS ID parser             |
 | `wasm-pack`  | ≥ 0.12     | Builds the parser to WebAssembly         |
 
-Install Rust + wasm-pack:
+> **Heads up (Windows):** [`build.bat`](build.bat) auto-installs Node.js and
+> Rust (via `winget`, falling back to the official MSI / `rustup-init.exe` over
+> PowerShell) and also fetches the `.root` geometry inputs and JiveXML samples
+> before compiling. You only need the manual commands below if you'd rather
+> install them yourself, or if you're on macOS / Linux.
+
+#### Install Node.js
+
+**Windows** (requires [winget](https://aka.ms/winget), available on Windows 10 1709+ and Windows 11):
+```bat
+winget install --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+```
+
+**Windows** (alternative — download the MSI installer directly):
+```powershell
+$v = (Invoke-RestMethod 'https://nodejs.org/dist/index.json' | Where-Object { $_.lts } | Select-Object -First 1).version
+Invoke-WebRequest "https://nodejs.org/dist/$v/node-$v-x64.msi" -OutFile "$env:TEMP\node-lts.msi"
+Start-Process msiexec -ArgumentList "/i $env:TEMP\node-lts.msi /qn" -Wait
+```
+
+**Linux** (Ubuntu / Debian):
+```bash
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+**Linux** (Fedora / RHEL):
+```bash
+curl -fsSL https://rpm.nodesource.com/setup_lts.x | sudo bash -
+sudo dnf install -y nodejs
+```
+
+**Linux** (via nvm — works on any distro):
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install --lts
+```
+
+#### Install Rust
+
+**Windows** (via winget):
+```bat
+winget install --id Rustlang.Rustup --accept-package-agreements --accept-source-agreements
+```
+
+**Windows** (alternative — download rustup-init.exe directly):
+```powershell
+Invoke-WebRequest 'https://win.rustup.rs/x86_64' -OutFile "$env:TEMP\rustup-init.exe"
+& "$env:TEMP\rustup-init.exe" -y --default-toolchain stable
+```
+After installation, restart your terminal so `%USERPROFILE%\.cargo\bin` is on `PATH`.
+
+**Linux / macOS**:
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+source "$HOME/.cargo/env"
+```
+
+#### Install wasm-pack and the wasm32 target (Windows and Linux)
+
+After Rust is on `PATH`:
 
 ```bash
-# Rust (rustup)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Linux/macOS
-# or on Windows: https://www.rust-lang.org/tools/install
-
-# wasm-pack
+rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
 ```
 
