@@ -3,6 +3,9 @@ import { getViewLevel, onViewLevelChange } from './viewLevel.js';
 import { getActiveJetCollection, onJetStateChange } from './jets.js';
 import { getLastTaus } from './particles.js';
 import { t } from './i18n/index.js';
+import { getCellMetric, setCellMetric, onCellMetricChange } from './cellMetric.js';
+import { recolorActiveCells } from './visibility.js';
+import { computeFcalMetricRange } from './visibility/fcalRenderer.js';
 
 function fmtGev(v) {
   return v.toFixed(2) + ' GeV';
@@ -450,6 +453,51 @@ export function setupDetectorPanels({
     'cluster-sval-min',
   );
 
+  // ── Cell-metric (E vs E_T) ───────────────────────────────────────────────
+  // Recolours every calo cell + FCAL for the current metric, re-derives the
+  // per-detector percentile ranges, and pushes them into the threshold
+  // sliders. processXml calls this on load when the panel sits in E_T mode;
+  // the select-change handler below calls it (with a threshold reset, per the
+  // "switch resets to show-all" decision) when the user flips the metric.
+  /** @param {{ resetThresholds?: boolean }} [opts] */
+  function syncCellMetric({ resetThresholds = false } = {}) {
+    const { tile, lar, hec } = recolorActiveCells();
+    const fcal = computeFcalMetricRange();
+    if (resetThresholds) {
+      // E and E_T live on different scales — the old numeric threshold is
+      // meaningless after a switch, so drop every calo cut to "show all".
+      state.setThrTileMev(-Infinity);
+      state.setThrLArMev(-Infinity);
+      state.setThrHecMev(-Infinity);
+      state.setThrFcalMev(-Infinity);
+    }
+    tileSlider.update(tile[0], tile[1]);
+    larSlider.update(lar[0], lar[1]);
+    hecSlider.update(hec[0], hec[1]);
+    fcalSlider.update(fcal[0], fcal[1]);
+    // FCAL fully rebuilds on applyFcalThreshold → repaints with the new
+    // palette + metric. Calo cell colours were already rewritten by
+    // recolorActiveCells; the caller runs applyThreshold for cell visibility.
+    applyFcalThreshold();
+  }
+
+  const metricSelect = /** @type {HTMLSelectElement | null} */ (
+    document.getElementById('cell-metric-select')
+  );
+  if (metricSelect) {
+    metricSelect.value = getCellMetric();
+    metricSelect.addEventListener('change', () => {
+      setCellMetric(metricSelect.value === 'ET' ? 'ET' : 'E');
+    });
+  }
+  // Metric flip: recolour + re-range + reset cuts to show-all, then re-run
+  // the cell-visibility pass.
+  onCellMetricChange(() => {
+    if (metricSelect) metricSelect.value = getCellMetric();
+    syncCellMetric({ resetThresholds: true });
+    applyThreshold();
+  });
+
   function initDetPanel(hasTile, hasLAr, hasHec, hasTracks, hasFcal) {
     tileSlider.updateUI(state.getThrTileMev());
     larSlider.updateUI(state.getThrLArMev());
@@ -482,6 +530,7 @@ export function setupDetectorPanels({
   return {
     switchTab,
     initDetPanel,
+    syncCellMetric,
     tileSlider,
     larSlider,
     fcalSlider,

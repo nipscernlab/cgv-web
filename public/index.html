@@ -47,7 +47,6 @@
     <link rel="stylesheet" href="./css/floating.css" />
     <link rel="stylesheet" href="./css/cinema.css" />
     <link rel="stylesheet" href="./css/mobile.css" />
-
   </head>
 
   <body>
@@ -601,6 +600,17 @@
           <button class="det-tab mobile-only" id="tab-cluster" style="--tab-col: #ff5a3a">
             Clu
           </button>
+        </div>
+
+        <!-- Global cell-metric selector: switches every calo threshold /
+             colour / tooltip between energy (E) and transverse energy (E_T).
+             E_T = E / cosh(η) per cell. -->
+        <div id="cell-metric-row">
+          <label for="cell-metric-select" data-i18n="metric-label">Metric</label>
+          <select id="cell-metric-select">
+            <option value="E" data-i18n="metric-energy">Energy</option>
+            <option value="ET" data-i18n="metric-et">Transverse E_T</option>
+          </select>
         </div>
 
         <div class="det-pane" id="pane-tile">

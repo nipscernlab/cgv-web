@@ -18,6 +18,7 @@ import { buildExtrasHtml } from './tooltipRows.js';
 import { getMuonChamberMeshes, showChamberHoverOutline } from './trackAtlasIntersections.js';
 import { getMuonAliasForMesh, getStationMeshes } from './visibility/muonAliases.js';
 import { leptonSymbol, tauSymbolFromCharge } from './particleSymbols.js';
+import { getCellMetric, etMevFromE } from './cellMetric.js';
 
 export const tooltip = document.getElementById('tip');
 export const tipCellEl = document.getElementById('tip-cell');
@@ -259,15 +260,19 @@ function doRaycast(clientX, clientY) {
         }
       }
     }
+    // E_T mode swaps the tooltip's energy row for transverse energy
+    // (E_T = E / cosh η). The cell metric is a global toggle in #rpanel.
+    const isET = getCellMetric() === 'ET';
     if (cellHit && cellDist <= fcalDist) {
       const data = active.get(cellHandle);
+      const valGev = isET ? data.etMev / 1000 : data.energyGev;
       _finishHit({
         outlineAction: () => (wantTooltip ? showOutline(cellHandle) : clearOutline()),
         showHitArgs: {
           label: data.cellName,
           coord: data.coords,
-          valueText: `${data.energyGev.toFixed(4)} GeV`,
-          keyText: _t('tip-energy-key'),
+          valueText: `${valGev.toFixed(4)} GeV`,
+          keyText: _t(isET ? 'tip-et-key' : 'tip-energy-key'),
         },
       });
       return;
@@ -276,13 +281,21 @@ function doRaycast(clientX, clientY) {
       const iid = fcalHit.instanceId;
       const cell = fcalVisibleMap[iid];
       const side = cell.eta >= 0 ? 'A' : 'C';
+      // FcalCell carries raw energy only — derive E_T from the same η the
+      // renderer computes from JiveXML geometry.
+      let valGev = cell.energy;
+      if (isET) {
+        const r = Math.hypot(cell.x, cell.y);
+        const eta = -Math.log(Math.tan(Math.atan2(r, cell.z) / 2));
+        valGev = etMevFromE(cell.energy * 1000, eta) / 1000;
+      }
       _finishHit({
         outlineAction: () => (wantTooltip ? showFcalOutline(iid) : clearOutline()),
         showHitArgs: {
           label: `FCAL${cell.module} (${side}-side)`,
           coord: `η = ${cell.eta.toFixed(3)}   φ = ${cell.phi.toFixed(3)} rad`,
-          valueText: `${cell.energy.toFixed(4)} GeV`,
-          keyText: _t('tip-energy-key'),
+          valueText: `${valGev.toFixed(4)} GeV`,
+          keyText: _t(isET ? 'tip-et-key' : 'tip-energy-key'),
         },
       });
       return;

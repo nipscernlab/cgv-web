@@ -69,6 +69,35 @@
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* ── Cell-metric selector (E vs E_T) ───────────────────── */
+#cell-metric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 6px 6px 7px;
+  border-bottom: 1px solid var(--border);
+}
+#cell-metric-row label {
+  font: 600 8.5px/1 var(--mono);
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+#cell-metric-select {
+  font: 500 10px/1.2 var(--font);
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 4px;
+  cursor: pointer;
+}
+#cell-metric-select:hover {
+  color: var(--bright);
+  border-color: var(--accent);
+}
+
 /* ── Detector pane (vertical slider area) ──────────────── */
 .det-pane {
   flex: 1;

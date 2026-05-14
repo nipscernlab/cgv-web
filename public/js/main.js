@@ -146,6 +146,7 @@ let hecSlider = null;
 let trackPtSlider = null;
 let clusterEtSlider = null;
 let initDetPanel = null;
+let syncCellMetric = null;
 const { startProgress, advanceProgress, endProgress } = createDownloadProgressController();
 
 const cinema = setupCinemaControls({
@@ -216,47 +217,55 @@ initStatusHud({
   getPanelPinned: () => sidebarControls.getState().panelPinned,
 });
 
-({ tileSlider, larSlider, fcalSlider, hecSlider, trackPtSlider, clusterEtSlider, initDetPanel } =
-  setupDetectorPanels({
-    TILE_SCALE,
-    LAR_SCALE,
-    FCAL_SCALE,
-    HEC_SCALE,
-    applyThreshold,
-    applyFcalThreshold,
-    applyTrackThreshold,
-    applyClusterThreshold,
-    applyJetThreshold,
-    sidebarControls,
-    state: {
-      getThrTileMev: () => thrTileMev,
-      setThrTileMev,
-      getThrLArMev: () => thrLArMev,
-      setThrLArMev,
-      getThrFcalMev: () => thrFcalMev,
-      setThrFcalMev,
-      getThrHecMev: () => thrHecMev,
-      setThrHecMev,
-      getThrTrackGev: () => thrTrackGev,
-      setThrTrackGev,
-      getTrackPtMinGev: () => trackPtMinGev,
-      setTrackPtMinGev,
-      getTrackPtMaxGev: () => trackPtMaxGev,
-      setTrackPtMaxGev,
-      getThrClusterEtGev: () => thrClusterEtGev,
-      setThrClusterEtGev,
-      getClusterEtMinGev: () => clusterEtMinGev,
-      setClusterEtMinGev,
-      getClusterEtMaxGev: () => clusterEtMaxGev,
-      setClusterEtMaxGev,
-      getThrJetEtGev: () => thrJetEtGev,
-      setThrJetEtGev,
-      getJetEtMinGev: () => jetEtMinGev,
-      setJetEtMinGev,
-      getJetEtMaxGev: () => jetEtMaxGev,
-      setJetEtMaxGev,
-    },
-  }));
+({
+  tileSlider,
+  larSlider,
+  fcalSlider,
+  hecSlider,
+  trackPtSlider,
+  clusterEtSlider,
+  initDetPanel,
+  syncCellMetric,
+} = setupDetectorPanels({
+  TILE_SCALE,
+  LAR_SCALE,
+  FCAL_SCALE,
+  HEC_SCALE,
+  applyThreshold,
+  applyFcalThreshold,
+  applyTrackThreshold,
+  applyClusterThreshold,
+  applyJetThreshold,
+  sidebarControls,
+  state: {
+    getThrTileMev: () => thrTileMev,
+    setThrTileMev,
+    getThrLArMev: () => thrLArMev,
+    setThrLArMev,
+    getThrFcalMev: () => thrFcalMev,
+    setThrFcalMev,
+    getThrHecMev: () => thrHecMev,
+    setThrHecMev,
+    getThrTrackGev: () => thrTrackGev,
+    setThrTrackGev,
+    getTrackPtMinGev: () => trackPtMinGev,
+    setTrackPtMinGev,
+    getTrackPtMaxGev: () => trackPtMaxGev,
+    setTrackPtMaxGev,
+    getThrClusterEtGev: () => thrClusterEtGev,
+    setThrClusterEtGev,
+    getClusterEtMinGev: () => clusterEtMinGev,
+    setClusterEtMinGev,
+    getClusterEtMaxGev: () => clusterEtMaxGev,
+    setClusterEtMaxGev,
+    getThrJetEtGev: () => thrJetEtGev,
+    setThrJetEtGev,
+    getJetEtMinGev: () => jetEtMinGev,
+    setJetEtMinGev,
+    getJetEtMaxGev: () => jetEtMaxGev,
+    setJetEtMaxGev,
+  },
+}));
 
 setProcessXmlDeps({
   getWasmOk: sceneInit.isWasmOk,
@@ -267,6 +276,7 @@ setProcessXmlDeps({
   trackPtSlider,
   clusterEtSlider,
   initDetPanel,
+  syncCellMetric,
 });
 
 setupButtonTooltips();
