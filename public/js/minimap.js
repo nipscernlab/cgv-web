@@ -244,7 +244,7 @@ function _drawHeatmap() {
 function _drawLegend() {
   const ctx = _ctx;
   const area = _plotArea();
-  const { min, max } = _buildBins();
+  const { max } = _buildBins();
 
   const xL = area.x1 + LEGEND_GAP;
   const yTop = area.y0 + 4;
@@ -260,31 +260,19 @@ function _drawLegend() {
   ctx.lineWidth = 1;
   ctx.strokeRect(xL + 0.5, yTop + 0.5, LEGEND_W, barH);
 
+  // The numeric min / max labels are intentionally not drawn — the colour
+  // bar shows the relative scale; the absolute values added clutter. The
+  // empty-state hint and the "E" title stay.
   ctx.fillStyle = 'rgba(190, 210, 235, 0.9)';
   ctx.font = '9px ui-monospace, monospace';
-  ctx.textAlign = 'left';
-  if (max > 0) {
-    ctx.textBaseline = 'top';
-    ctx.fillText(_fmtEnergy(max), xL + LEGEND_W + 3, yTop - 2);
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(_fmtEnergy(min), xL + LEGEND_W + 3, yBot + 2);
-  } else {
+  if (max <= 0) {
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText('no data', xL + LEGEND_W + 3, (yTop + yBot) / 2);
   }
   ctx.textBaseline = 'bottom';
   ctx.textAlign = 'center';
   ctx.fillText('E', xL + LEGEND_W / 2, yTop - 4);
-}
-
-function _fmtEnergy(eMev) {
-  const eGev = eMev / 1000;
-  if (eGev >= 100) return `${eGev.toFixed(0)} GeV`;
-  if (eGev >= 10) return `${eGev.toFixed(1)} GeV`;
-  if (eGev >= 1) return `${eGev.toFixed(2)} GeV`;
-  if (eGev >= 0.1) return `${eGev.toFixed(2)} GeV`;
-  if (eGev >= 0.01) return `${(eGev * 1000).toFixed(0)} MeV`;
-  return `${(eGev * 1000).toFixed(1)} MeV`;
 }
 
 // Draws all active rectangles. No per-rect label — with multiple rects the
