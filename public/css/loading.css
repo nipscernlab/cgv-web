@@ -156,27 +156,6 @@
   position: relative;
 }
 
-/* shimmer sweep */
-.loading-bar-fill::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent            0%,
-    rgba(255,255,255,0.20) 42%,
-    rgba(255,255,255,0.38) 50%,
-    rgba(255,255,255,0.12) 58%,
-    transparent           100%
-  );
-  animation: bar-shimmer 1.8s ease-in-out infinite;
-  transform: translateX(-100%);
-}
-
-@keyframes bar-shimmer {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(240%); }
-}
 
 .loading-msg {
   font: 400 10.5px var(--mono);
