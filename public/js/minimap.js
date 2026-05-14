@@ -12,11 +12,17 @@
 //   • click on existing rect (no drag) → delete that rectangle
 //   • click on empty area (no drag) → no-op
 //   • multiple rects may overlap; visibility uses the UNION of all rects
+//
+// φ seam slider (left pane):
+//   • drag up/down → rotate where the cylinder cut falls on the φ axis
+//   • clusters split across the ±π seam can be centred by sliding the seam away
+//   • dbl-click → reset seam to default (−π)
 
 const ETA_MIN = -4.9;
 const ETA_MAX = 4.9;
 const PHI_MIN = -Math.PI;
 const PHI_MAX = Math.PI;
+const TWO_PI  = PHI_MAX - PHI_MIN;   // 2π
 
 const BIN_ETA = 0.1;
 const BIN_PHI = 0.1;
@@ -47,9 +53,10 @@ const RAMP = [
   [255, 20, 0],
 ];
 
-let _canvas = null;
-let _ctx = null;
+let _canvas  = null;
+let _ctx     = null;
 let _enabled = false;
+let _wrapEl  = null;   // outer wrapper div (#minimap-wrap)
 
 /** @type {Array<{eta:number, phi:number, energyMev:number}>} */
 let _cellEntries = [];
@@ -68,14 +75,23 @@ let _rects = [];
 //   'maybe-pan'  — mousedown on existing rect; release = delete, drag = move
 //   'drawing'    — sweeping out a new rect (already pushed to _rects)
 //   'panning'    — translating an existing rect
-let _mouseState = 'idle';
-let _dragAnchor = null;
+let _mouseState    = 'idle';
+let _dragAnchor    = null;
 let _activeRectIdx = -1;
 const DRAG_THRESHOLD_PX = 3;
 const MIN_RECT_ETA = 0.05;
 const MIN_RECT_PHI = 0.05;
 
 let _regionListener = null;
+
+// ── φ seam (cylinder-cut) state ─────────────────────────────────────────────
+// The display always spans a full 2π of φ. _phiSeam is the φ value placed at
+// the BOTTOM of the minimap (the "cut"). Default −π is the ATLAS convention.
+// Drag the left-side slider to rotate the cut away from a cluster of interest.
+let _phiSeam      = PHI_MIN;   // radians, range [−π, +π)
+let _seamTrackEl  = null;
+let _seamThumbEl  = null;
+let _seamDragging = false;
 
 // ── Coordinate helpers ──────────────────────────────────────────────────────
 function _plotArea() {
@@ -85,17 +101,24 @@ function _etaToX(eta, area) {
   const t = (eta - ETA_MIN) / (ETA_MAX - ETA_MIN);
   return area.x0 + t * (area.x1 - area.x0);
 }
+// Maps a physical φ to a canvas y, respecting the current seam offset.
+// φ = _phiSeam → y = area.y1 (bottom / cut edge)
+// φ = _phiSeam + π → y = midpoint
+// φ → _phiSeam (from above) → y = area.y0 (top / same cut edge)
 function _phiToY(phi, area) {
-  const t = (phi - PHI_MIN) / (PHI_MAX - PHI_MIN);
+  const normalized = ((phi - _phiSeam) % TWO_PI + TWO_PI) % TWO_PI;
+  const t = normalized / TWO_PI;
   return area.y1 - t * (area.y1 - area.y0);
 }
 function _xToEta(x, area) {
   const t = (x - area.x0) / (area.x1 - area.x0);
   return ETA_MIN + t * (ETA_MAX - ETA_MIN);
 }
+// Inverse of _phiToY — wraps result to [−π, +π].
 function _yToPhi(y, area) {
-  const t = (area.y1 - y) / (area.y1 - area.y0);
-  return PHI_MIN + t * (PHI_MAX - PHI_MIN);
+  const t   = (area.y1 - y) / (area.y1 - area.y0);
+  const phi = _phiSeam + t * TWO_PI;
+  return ((phi + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
 }
 function _clientToCanvas(ev) {
   const r = _canvas.getBoundingClientRect();
@@ -105,11 +128,21 @@ function _clientToCanvas(ev) {
 function _ramp(t) {
   t = Math.max(0, Math.min(1, t));
   const seg = t * (RAMP.length - 1);
-  const i = Math.min(RAMP.length - 2, Math.floor(seg));
-  const f = seg - i;
-  const a = RAMP[i];
-  const b = RAMP[i + 1];
+  const i   = Math.min(RAMP.length - 2, Math.floor(seg));
+  const f   = seg - i;
+  const a   = RAMP[i];
+  const b   = RAMP[i + 1];
   return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+}
+
+// Formats a φ value (radians) as a compact π-fraction string.
+function _phiLabel(phi) {
+  phi = ((phi + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
+  if (Math.abs(phi) < 0.02)                         return '0';
+  if (Math.abs(Math.abs(phi) - Math.PI) < 0.02)     return phi > 0 ? '+π' : '-π';
+  if (Math.abs(Math.abs(phi) - Math.PI / 2) < 0.02) return phi > 0 ? '+π/2' : '-π/2';
+  const sign = phi > 0 ? '+' : '-';
+  return sign + (Math.abs(phi) / Math.PI).toFixed(2) + 'π';
 }
 
 function _normalizeRect(r) {
@@ -162,10 +195,13 @@ function _drawFrame() {
 }
 
 function _drawAxes() {
-  const ctx = _ctx;
+  const ctx  = _ctx;
   const area = _plotArea();
+
+  // Vertical η grid lines
   ctx.strokeStyle = 'rgba(150, 180, 220, 0.18)';
   ctx.setLineDash([3, 3]);
+  ctx.lineWidth = 1;
   for (const eta of [-3.2, -1.5, 0, 1.5, 3.2]) {
     const x = _etaToX(eta, area);
     ctx.beginPath();
@@ -173,17 +209,29 @@ function _drawAxes() {
     ctx.lineTo(x, area.y1);
     ctx.stroke();
   }
-  const yZero = _phiToY(0, area);
-  ctx.beginPath();
-  ctx.moveTo(area.x0, yZero);
-  ctx.lineTo(area.x1, yZero);
-  ctx.stroke();
+
+  // Horizontal φ reference lines for the 4 notable values.
+  // Skip any that land within a few pixels of the seam boundary edges.
+  const EDGE_PX  = 5;
+  const phiRefs  = [Math.PI / 2, 0, -Math.PI / 2, -Math.PI];
+  const phiRefLb = ['+π/2',     '0', '-π/2',       '-π'   ];
+  for (const phi of phiRefs) {
+    const y = _phiToY(phi, area);
+    if (y <= area.y0 + EDGE_PX || y >= area.y1 - EDGE_PX) continue;
+    ctx.beginPath();
+    ctx.moveTo(area.x0, y);
+    ctx.lineTo(area.x1, y);
+    ctx.stroke();
+  }
   ctx.setLineDash([]);
 
+  // ── Labels ────────────────────────────────────────────────────────────────
   ctx.fillStyle = 'rgba(170, 195, 225, 0.78)';
-  ctx.font = '9px ui-monospace, monospace';
+  ctx.font      = '9px ui-monospace, monospace';
+
+  // η axis labels (bottom)
   ctx.textBaseline = 'top';
-  ctx.textAlign = 'center';
+  ctx.textAlign    = 'center';
   ctx.fillText('η', (area.x0 + area.x1) / 2, area.y1 + 3);
   ctx.textAlign = 'left';
   ctx.fillText('-4', area.x0, area.y1 + 3);
@@ -192,27 +240,42 @@ function _drawAxes() {
   ctx.textAlign = 'right';
   ctx.fillText('+4', area.x1, area.y1 + 3);
 
-  ctx.textAlign = 'right';
+  // φ notable-value labels (left side, interior)
   ctx.textBaseline = 'middle';
-  ctx.fillText('+π', area.x0 - 2, area.y0 + 4);
-  ctx.fillText('0', area.x0 - 2, yZero);
-  ctx.fillText('-π', area.x0 - 2, area.y1 - 4);
+  ctx.textAlign    = 'right';
+  for (let i = 0; i < phiRefs.length; i++) {
+    const y = _phiToY(phiRefs[i], area);
+    if (y <= area.y0 + EDGE_PX || y >= area.y1 - EDGE_PX) continue;
+    ctx.fillText(phiRefLb[i], area.x0 - 2, y);
+  }
+
+  // Seam boundary labels at top and bottom edges (dimmer — same physical φ)
+  ctx.fillStyle    = 'rgba(170, 195, 225, 0.45)';
+  ctx.textAlign    = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText(_phiLabel(_phiSeam), area.x0 - 2, area.y0 + 2);
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(_phiLabel(_phiSeam), area.x0 - 2, area.y1 - 2);
+
+  // φ axis title (rotated)
+  ctx.fillStyle    = 'rgba(170, 195, 225, 0.78)';
   ctx.save();
   ctx.translate(8, (area.y0 + area.y1) / 2);
   ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = 'center';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillText('φ', 0, 0);
   ctx.restore();
 }
 
 function _drawHeatmap() {
-  const ctx = _ctx;
+  const ctx  = _ctx;
   const area = _plotArea();
   const { grid, min, max } = _buildBins();
   if (max <= 0) return;
   const logMin = Math.log10(Math.max(min, 1e-3));
   const logMax = Math.log10(Math.max(max, logMin + 1e-3));
-  const denom = Math.max(1e-6, logMax - logMin);
+  const denom  = Math.max(1e-6, logMax - logMin);
 
   const plotW = area.x1 - area.x0;
   const plotH = area.y1 - area.y0;
@@ -222,20 +285,28 @@ function _drawHeatmap() {
   const yEdges = new Int16Array(NBINS_PHI + 1);
   for (let i = 0; i <= NBINS_PHI; i++) yEdges[i] = Math.round(area.y0 + (i * plotH) / NBINS_PHI);
 
+  // Which φ bin sits at the bottom of the display (the seam)?
+  // Round to nearest bin so the visual shift snaps cleanly.
+  const seamBin =
+    ((Math.round((_phiSeam - PHI_MIN) / BIN_PHI) % NBINS_PHI) + NBINS_PHI) % NBINS_PHI;
+
   ctx.save();
   ctx.beginPath();
   ctx.rect(area.x0, area.y0, plotW, plotH);
   ctx.clip();
 
   for (let iy = 0; iy < NBINS_PHI; iy++) {
+    // Rotate bin index so that bin `seamBin` maps to display row 0 (bottom).
+    const displayRow = (iy - seamBin + NBINS_PHI) % NBINS_PHI;
+    const y  = yEdges[NBINS_PHI - 1 - displayRow];
+    const yn = yEdges[NBINS_PHI     - displayRow];
+
     for (let ix = 0; ix < NBINS_ETA; ix++) {
       const v = grid[iy * NBINS_ETA + ix];
       if (v <= 0) continue;
-      const t = (Math.log10(v) - logMin) / denom;
-      const x = xEdges[ix];
+      const t  = (Math.log10(v) - logMin) / denom;
+      const x  = xEdges[ix];
       const xn = xEdges[ix + 1];
-      const y = yEdges[NBINS_PHI - 1 - iy];
-      const yn = yEdges[NBINS_PHI - iy];
       ctx.fillStyle = _ramp(t);
       ctx.fillRect(x, y, xn - x, yn - y);
     }
@@ -247,10 +318,10 @@ function _drawHeatmap() {
 // The bar conveys the relative scale; everything else was clutter, and
 // dropping it lets the window hug the palette (see INSET_R).
 function _drawLegend() {
-  const ctx = _ctx;
+  const ctx  = _ctx;
   const area = _plotArea();
 
-  const xL = area.x1 + LEGEND_GAP;
+  const xL   = area.x1 + LEGEND_GAP;
   const yTop = area.y0 + 4;
   const yBot = area.y1 - 4;
   const barH = yBot - yTop;
@@ -261,7 +332,7 @@ function _drawLegend() {
     ctx.fillRect(xL, yTop + i, LEGEND_W, 1);
   }
   ctx.strokeStyle = 'rgba(120, 150, 190, 0.55)';
-  ctx.lineWidth = 1;
+  ctx.lineWidth   = 1;
   ctx.strokeRect(xL + 0.5, yTop + 0.5, LEGEND_W, barH);
 }
 
@@ -270,17 +341,17 @@ function _drawLegend() {
 // share a union, not their individual bounds).
 function _drawRects() {
   if (!_rects.length) return;
-  const ctx = _ctx;
+  const ctx  = _ctx;
   const area = _plotArea();
   for (const rect of _rects) {
     const x0 = _etaToX(rect.etaMin, area);
     const x1 = _etaToX(rect.etaMax, area);
     const yA = _phiToY(rect.phiMax, area);
     const yB = _phiToY(rect.phiMin, area);
-    const x = Math.min(x0, x1);
-    const y = Math.min(yA, yB);
-    const w = Math.abs(x1 - x0);
-    const h = Math.abs(yB - yA);
+    const x  = Math.min(x0, x1);
+    const y  = Math.min(yA, yB);
+    const w  = Math.abs(x1 - x0);
+    const h  = Math.abs(yB - yA);
 
     // Vivid fill.
     ctx.fillStyle = 'rgba(255, 60, 200, 0.22)';
@@ -290,19 +361,19 @@ function _drawRects() {
     // top, then a thin white highlight. The three-layer approach ensures the
     // rect stays legible against every part of the heat ramp.
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.9)';
-    ctx.lineWidth = 5;
+    ctx.lineWidth   = 5;
     ctx.strokeRect(x + 0.5, y + 0.5, w, h);
 
     ctx.save();
     ctx.shadowColor = 'rgba(255, 80, 220, 0.85)';
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur  = 8;
     ctx.strokeStyle = 'rgba(255, 80, 220, 1)';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth   = 2.5;
     ctx.strokeRect(x + 0.5, y + 0.5, w, h);
     ctx.restore();
 
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.lineWidth = 1;
+    ctx.lineWidth   = 1;
     ctx.strokeRect(x + 0.5, y + 0.5, w, h);
   }
 }
@@ -339,6 +410,46 @@ function _hitRectAt(eta, phi) {
   return -1;
 }
 
+// ── φ seam slider ────────────────────────────────────────────────────────────
+function _updateSeamThumb() {
+  if (!_seamThumbEl) return;
+  const ratio = (_phiSeam - PHI_MIN) / TWO_PI;   // 0 = −π (bottom), 1 = +π (top)
+  _seamThumbEl.style.top = (1 - ratio) * 100 + '%';
+}
+
+function _applySeamFromPointer(ev) {
+  const rect  = _seamTrackEl.getBoundingClientRect();
+  const ratio = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
+  _phiSeam    = PHI_MIN + ratio * TWO_PI;
+  _updateSeamThumb();
+  _redraw();
+}
+
+function _onSeamPointerDown(ev) {
+  if (ev.button !== 0) return;
+  ev.preventDefault();
+  _seamDragging = true;
+  _seamTrackEl.setPointerCapture(ev.pointerId);
+  _applySeamFromPointer(ev);
+}
+
+function _onSeamPointerMove(ev) {
+  if (!_seamDragging) return;
+  _applySeamFromPointer(ev);
+}
+
+function _onSeamPointerUp(ev) {
+  if (!_seamDragging) return;
+  _seamDragging = false;
+  _seamTrackEl.releasePointerCapture(ev.pointerId);
+}
+
+function _onSeamDblClick() {
+  _phiSeam = PHI_MIN;   // reset to default (−π)
+  _updateSeamThumb();
+  _redraw();
+}
+
 // ── Mouse handling ──────────────────────────────────────────────────────────
 function _updateCursor(insidePlot, eta, phi) {
   if (!_canvas) return;
@@ -362,16 +473,16 @@ function _onMouseDown(ev) {
   if (ev.button !== 0) return;
   ev.preventDefault();
   const { x, y } = _clientToCanvas(ev);
-  const area = _plotArea();
+  const area      = _plotArea();
   if (x < area.x0 || x > area.x1 || y < area.y0 || y > area.y1) return;
   const eta = _xToEta(x, area);
   const phi = _yToPhi(y, area);
 
   const hitIdx = _hitRectAt(eta, phi);
   if (hitIdx >= 0) {
-    _mouseState = 'maybe-pan';
+    _mouseState    = 'maybe-pan';
     _activeRectIdx = hitIdx;
-    const r = _rects[hitIdx];
+    const r  = _rects[hitIdx];
     const cx = (r.etaMin + r.etaMax) / 2;
     const cy = (r.phiMin + r.phiMax) / 2;
     _dragAnchor = { dEta: eta - cx, dPhi: phi - cy, x, y };
@@ -387,11 +498,11 @@ function _onMouseDown(ev) {
 function _onMouseMove(ev) {
   if (_mouseState === 'idle') return;
   const { x, y } = _clientToCanvas(ev);
-  const area = _plotArea();
-  const cx = Math.max(area.x0, Math.min(area.x1, x));
-  const cy = Math.max(area.y0, Math.min(area.y1, y));
-  const eta = _xToEta(cx, area);
-  const phi = _yToPhi(cy, area);
+  const area      = _plotArea();
+  const cx        = Math.max(area.x0, Math.min(area.x1, x));
+  const cy        = Math.max(area.y0, Math.min(area.y1, y));
+  const eta       = _xToEta(cx, area);
+  const phi       = _yToPhi(cy, area);
 
   if (_mouseState === 'maybe-draw') {
     const ddx = x - _dragAnchor.x;
@@ -429,19 +540,19 @@ function _onMouseMove(ev) {
     const ddx = x - _dragAnchor.x;
     const ddy = y - _dragAnchor.y;
     if (Math.hypot(ddx, ddy) >= DRAG_THRESHOLD_PX) {
-      _mouseState = 'panning';
+      _mouseState          = 'panning';
       _canvas.style.cursor = 'grabbing';
     }
   }
 
   if (_mouseState === 'panning') {
-    const r = _rects[_activeRectIdx];
+    const r     = _rects[_activeRectIdx];
     const halfE = (r.etaMax - r.etaMin) / 2;
     const halfP = (r.phiMax - r.phiMin) / 2;
-    const ncx = eta - _dragAnchor.dEta;
-    const ncy = phi - _dragAnchor.dPhi;
-    const cE = Math.max(ETA_MIN + halfE, Math.min(ETA_MAX - halfE, ncx));
-    const cP = Math.max(PHI_MIN + halfP, Math.min(PHI_MAX - halfP, ncy));
+    const ncx   = eta - _dragAnchor.dEta;
+    const ncy   = phi - _dragAnchor.dPhi;
+    const cE    = Math.max(ETA_MIN + halfE, Math.min(ETA_MAX - halfE, ncx));
+    const cP    = Math.max(PHI_MIN + halfP, Math.min(PHI_MAX - halfP, ncy));
     _rects[_activeRectIdx] = {
       etaMin: cE - halfE,
       etaMax: cE + halfE,
@@ -474,8 +585,8 @@ function _onMouseUp(ev) {
   }
   // 'maybe-draw' (click on empty space) → no-op, no rect added.
 
-  _mouseState = 'idle';
-  _dragAnchor = null;
+  _mouseState    = 'idle';
+  _dragAnchor    = null;
   _activeRectIdx = -1;
   if (_canvas) _canvas.style.cursor = '';
 }
@@ -483,8 +594,9 @@ function _onMouseUp(ev) {
 function _onMouseMoveHover(ev) {
   if (_mouseState !== 'idle') return;
   const { x, y } = _clientToCanvas(ev);
-  const area = _plotArea();
-  const insidePlot = x >= area.x0 && x <= area.x1 && y >= area.y0 && y <= area.y1;
+  const area      = _plotArea();
+  const insidePlot =
+    x >= area.x0 && x <= area.x1 && y >= area.y0 && y <= area.y1;
   if (!insidePlot) {
     _canvas.style.cursor = 'default';
     return;
@@ -495,23 +607,68 @@ function _onMouseMoveHover(ev) {
 // ── Public API ──────────────────────────────────────────────────────────────
 export function initMinimap() {
   if (_canvas) return { redraw: _redraw };
-  _canvas = document.createElement('canvas');
+
+  // ── Outer wrapper ──────────────────────────────────────────────────────────
+  _wrapEl    = document.createElement('div');
+  _wrapEl.id = 'minimap-wrap';
+
+  // ── φ seam slider pane (left side) ────────────────────────────────────────
+  const pane    = document.createElement('div');
+  pane.id       = 'minimap-phi-pane';
+
+  _seamTrackEl           = document.createElement('div');
+  _seamTrackEl.id        = 'minimap-phi-track';
+  _seamTrackEl.className = 'strak';
+  _seamTrackEl.title     =
+    'φ seam — drag to rotate the display cut (dbl-click to reset)';
+  // Cyclic gradient: fades at both ends to hint at the wrap-around nature
+  _seamTrackEl.style.background =
+    'linear-gradient(to top, ' +
+    'rgba(80,130,210,0.12) 0%, rgba(80,130,210,0.48) 50%, rgba(80,130,210,0.12) 100%)';
+
+  _seamThumbEl           = document.createElement('div');
+  _seamThumbEl.className = 'sthumb';
+  _seamTrackEl.appendChild(_seamThumbEl);
+
+  const lbl       = document.createElement('div');
+  lbl.id          = 'minimap-phi-lbl';
+  lbl.textContent = 'φ cut';
+
+  pane.appendChild(_seamTrackEl);
+  pane.appendChild(lbl);
+  _wrapEl.appendChild(pane);
+
+  // ── Canvas ────────────────────────────────────────────────────────────────
+  _canvas    = document.createElement('canvas');
   _canvas.id = 'minimap';
   _canvas.setAttribute('aria-label', 'η × φ energy heatmap');
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  _canvas.width = W * dpr;
-  _canvas.height = H * dpr;
-  _canvas.style.width = W + 'px';
+  const dpr        = Math.min(window.devicePixelRatio || 1, 2);
+  _canvas.width    = W * dpr;
+  _canvas.height   = H * dpr;
+  _canvas.style.width  = W + 'px';
   _canvas.style.height = H + 'px';
   _ctx = _canvas.getContext('2d');
   _ctx.scale(dpr, dpr);
-  _canvas.addEventListener('mousedown', _onMouseDown);
-  _canvas.addEventListener('mousemove', _onMouseMoveHover);
-  _canvas.addEventListener('mouseleave', () => {
+
+  _canvas.addEventListener('mousedown',    _onMouseDown);
+  _canvas.addEventListener('mousemove',    _onMouseMoveHover);
+  _canvas.addEventListener('mouseleave',   () => {
     if (_mouseState === 'idle') _canvas.style.cursor = '';
   });
-  _canvas.style.display = 'none';
-  document.body.appendChild(_canvas);
+  _wrapEl.appendChild(_canvas);
+
+  // ── Slider events ─────────────────────────────────────────────────────────
+  _seamTrackEl.addEventListener('pointerdown',   _onSeamPointerDown);
+  _seamTrackEl.addEventListener('pointermove',   _onSeamPointerMove);
+  _seamTrackEl.addEventListener('pointerup',     _onSeamPointerUp);
+  _seamTrackEl.addEventListener('pointercancel', _onSeamPointerUp);
+  _seamTrackEl.addEventListener('dblclick',      _onSeamDblClick);
+
+  _updateSeamThumb();
+
+  _wrapEl.style.display = 'none';
+  document.body.appendChild(_wrapEl);
+
   _redraw();
   return { redraw: _redraw };
 }
@@ -523,11 +680,11 @@ export function updateMinimap({ cells, fcal }) {
   let binsDirty = false;
   if (cells !== undefined) {
     _cellEntries = cells;
-    binsDirty = true;
+    binsDirty    = true;
   }
   if (fcal !== undefined) {
     _fcalEntries = fcal;
-    binsDirty = true;
+    binsDirty    = true;
   }
   if (binsDirty) _binCache = null;
   _redraw();
@@ -535,7 +692,7 @@ export function updateMinimap({ cells, fcal }) {
 
 export function setMinimapVisible(visible) {
   _enabled = !!visible;
-  if (_canvas) _canvas.style.display = _enabled ? '' : 'none';
+  if (_wrapEl) _wrapEl.style.display = _enabled ? '' : 'none';
   if (_enabled) {
     _redraw();
   }
