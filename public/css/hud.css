@@ -175,9 +175,9 @@ body.panel-unpinned #collision-hud {
 
   border: 1px solid var(--border-strong);
   border-radius: var(--r);
-  background: rgba(8, 14, 28, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(8, 14, 28, 0.68);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   box-shadow: var(--shadow-1);
   user-select: none;
   touch-action: none;
@@ -205,19 +205,33 @@ body.panel-unpinned #minimap-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* padding-top = INSET_T so track top aligns with the plot area */
-  /* symmetric horizontal padding keeps sthumb (7px overhang) inside pane */
-  padding: 10px 10px 4px 10px;
+  /* padding-top = INSET_T + LEGEND_BAR_M = 14px so track top aligns with legend bar */
+  padding: 14px 10px 4px 10px;
   gap: 3px;
   height: 220px;   /* = canvas H */
   box-sizing: border-box;
   flex-shrink: 0;
   border-right: 1px solid rgba(120, 150, 190, 0.2);
+  /* Raise above the canvas sibling so pointer events reach the slider */
+  position: relative;
+  z-index: 2;
 }
 
-/* Track height = H - INSET_T - INSET_B = 220 - 10 - 20 = 190px */
+/* Minimap thumb: centered within the 12px track, no wide overhang */
+#minimap-phi-track.strak .sthumb {
+  left: 2px;
+  right: 2px;
+  height: 5px;
+  border-radius: 3px;
+}
+
+/* Track height = H - INSET_T - INSET_B - 2*LEGEND_BAR_M = 220 - 10 - 20 - 8 = 182px.
+   Border matches the legend colour bar: same rgba and 1px stroke. */
 #minimap-phi-track.strak {
-  height: 190px;
+  height: 182px;
+  box-shadow:
+    inset 0 1px 6px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(120, 150, 190, 0.55);
 }
 
 #minimap-phi-lbl {
