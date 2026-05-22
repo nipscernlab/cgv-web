@@ -287,18 +287,29 @@ Point 1**, not on AFS. Chrysthofer has no P1 account, so the flow is:
 build here → hand the RPM to Luciano → Luciano drops it under his P1 home.
 
 ```bash
-RPM=~/rpmbuild/RPMS/noarch/cgv-web-1.0.5-1.el9.noarch.rpm
+VER=2.1.0
+RPM=~/rpmbuild/RPMS/noarch/cgv-web-$VER-1.el9.noarch.rpm
 
-# Give Luciano the file (e.g. via lxplus, then he copies it across to P1):
-ssh camaroaf@lxplus.cern.ch 'mkdir -p ~/public/cgv-web/1.0.5'
-scp "$RPM" camaroaf@lxplus.cern.ch:~/public/cgv-web/1.0.5/
+# Upload the RPM + spec to the AFS public folder (lxplus has /afs mounted).
+# This is the "for now" path; the P1 home below is preferred when available.
+ssh camaroaf@lxplus.cern.ch "mkdir -p ~/public/cgv-web/$VER"
+scp "$RPM"       camaroaf@lxplus.cern.ch:~/public/cgv-web/$VER/
+scp cgv-web.spec camaroaf@lxplus.cern.ch:~/public/cgv-web/$VER/
+# Make the folder world-readable so the sysadmins can fetch it:
 ssh camaroaf@lxplus.cern.ch 'fs setacl -dir ~/public -acl system:anyuser rl'
+ssh camaroaf@lxplus.cern.ch "ls -l ~/public/cgv-web/$VER"
+```
+
+The resulting public path to post on the ticket is:
+
+```
+/afs/cern.ch/user/c/camaroaf/public/cgv-web/2.1.0/cgv-web-2.1.0-1.el9.noarch.rpm
 ```
 
 Luciano (P1 account) then places it at:
 
 ```
-/atlas-home/0/lucianom/cgv-web-1.0.5-1.el9.noarch.rpm
+/atlas-home/0/lucianom/cgv-web-2.1.0-1.el9.noarch.rpm
 ```
 
 and posts that path on the ticket. AFS (`/afs/cern.ch/user/l/lucianom/public/`
