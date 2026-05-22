@@ -72,6 +72,7 @@ export function setupServerMode({
   let isPaused = false;
   let canPoll = false;
   let remoteMode = false;
+  let remoteProbing = false;
   let remoteFolderPath = null;
 
   const sec = document.getElementById('live-server-sec');
@@ -88,6 +89,7 @@ export function setupServerMode({
   const remoteApplyBtn = document.getElementById('server-folder-apply');
   const remoteCancelBtn = document.getElementById('server-folder-cancel');
   const remoteErrorEl = document.getElementById('server-folder-error');
+  const apiHintEl = document.getElementById('server-api-hint');
 
   function keyFor(f, rel) {
     return `${rel || f.name}|${f.size}|${f.lastModified}`;
@@ -305,6 +307,7 @@ export function setupServerMode({
         const handle = await window.showDirectoryPicker({ mode: 'read' });
         folderHandle = handle;
         inputFiles = null;
+        showApiHint(false);
         canPoll = true;
         isPaused = false;
         lastAutoLoadedKey = null;
@@ -330,6 +333,7 @@ export function setupServerMode({
     if (!files.length) return;
     folderHandle = null;
     inputFiles = files;
+    showApiHint(false);
     canPoll = false;
     isPaused = false;
     lastAutoLoadedKey = null;
@@ -390,6 +394,7 @@ export function setupServerMode({
     if (!out.length) return;
     folderHandle = null;
     inputFiles = out.map((o) => o.file);
+    showApiHint(false);
     canPoll = false;
     isPaused = false;
     lastAutoLoadedKey = null;
@@ -402,6 +407,10 @@ export function setupServerMode({
   function setActive(b) {
     isActive = !!b;
     if (isActive) {
+      // Re-probe each time the SERVER sub-tab is opened, so the remote bar
+      // appears without a page reload once the reverse proxy is fixed (the
+      // initial boot probe runs only once). No-op if already in remote mode.
+      if (!remoteMode) tryEnterRemoteMode();
       scheduleRefresh();
     } else {
       clearRefresh();
@@ -409,6 +418,21 @@ export function setupServerMode({
   }
 
   // ── Remote mode (server-side folder via /api/xml/*) ───────────────────
+  // Only nudge the operator about a dead backend where one is actually
+  // expected: localhost (dev) or a CERN host (the P1 deployment). On the
+  // public static demo (nipscern.com, *.pages.dev, …) there is deliberately
+  // no backend, so the SERVER mode is meant to be local-only and we stay
+  // silent.
+  function expectsBackend() {
+    if (typeof location === 'undefined') return false;
+    const h = location.hostname || '';
+    return h === 'localhost' || h === '127.0.0.1' || h === '::1' || h.endsWith('.cern.ch');
+  }
+
+  function showApiHint(show) {
+    if (apiHintEl) apiHintEl.hidden = !show;
+  }
+
   function updateRemoteFolderDisplay() {
     if (!remoteFolderText) return;
     remoteFolderText.textContent = remoteFolderPath || t('server-folder-not-set');
@@ -464,22 +488,34 @@ export function setupServerMode({
     }
   }
 
+  // When the probe fails, surface a subtle, non-blocking hint instead of just
+  // leaving the pencil hidden — but only on a backend-expecting host and only
+  // while no local folder is in use (the hint is about the SERVER capability).
+  function failRemote() {
+    if (!remoteMode && !folderHandle && !inputFiles) showApiHint(expectsBackend());
+    return false;
+  }
+
   async function tryEnterRemoteMode() {
+    if (remoteMode || remoteProbing) return remoteMode;
+    remoteProbing = true;
     try {
       const r = await fetch(`${REMOTE_API}/folder`, {
         cache: 'no-store',
         headers: { Accept: 'application/json' },
       });
-      if (!r.ok) return false;
-      // Guard against static hosts (Cloudflare Pages, etc.) that return a 200
-      // HTML 404 page on unknown routes — only accept a JSON body with `path`.
+      if (!r.ok) return failRemote();
+      // Guard against static hosts (Cloudflare Pages, etc.) and a reverse proxy
+      // that 404s /api/xml as a static lookup — both can return HTML, so only
+      // accept a JSON body with `path`.
       const ct = r.headers.get('content-type') || '';
-      if (!ct.toLowerCase().includes('json')) return false;
+      if (!ct.toLowerCase().includes('json')) return failRemote();
       const data = await r.json();
-      if (!data || typeof data !== 'object' || !('path' in data)) return false;
+      if (!data || typeof data !== 'object' || !('path' in data)) return failRemote();
       remoteMode = true;
       remoteFolderPath = data.path || null;
-      // Hide the local picker; show the remote bar.
+      // Hide the local picker and the hint; show the remote bar.
+      showApiHint(false);
       if (pickBtn) pickBtn.hidden = true;
       if (remoteBar) remoteBar.hidden = false;
       updateRemoteFolderDisplay();
@@ -489,7 +525,9 @@ export function setupServerMode({
       await reloadFromRemote();
       return true;
     } catch (_) {
-      return false;
+      return failRemote();
+    } finally {
+      remoteProbing = false;
     }
   }
 

@@ -1,6 +1,6 @@
 Name:           cgv-web
 Epoch:          1
-Version:        2.0.1
+Version:        2.1.0
 Release:        1%{?dist}
 Summary:        CGV Web -- 3D Calorimeter Event Display for ATLAS
 License:        NIPSCERN License
@@ -108,6 +108,15 @@ echo "------------------------------------------------------"
 %systemd_postun_with_restart cgv-web.service
 
 %changelog
+* Fri May 22 2026 Chrysthofer - 1:2.1.0-1
+- Frontend only; no change to the backend, the systemd unit or packaging.
+- LIVE > SERVER: when the /api/xml backend cannot be reached on a host where
+  one is expected (localhost or a *.cern.ch deployment), show a subtle,
+  non-blocking hint in the SERVER panel instead of silently hiding the folder
+  pencil. The public static demo stays silent (no backend there by design).
+- LIVE > SERVER: re-probe /api/xml when the SERVER sub-tab is opened, not only
+  once at page load, so the folder pencil appears without a page reload as
+  soon as the reverse proxy starts routing /api/xml to the backend.
 * Mon May 11 2026 Chrysthofer - 1:1.0.5-1
 - Add `Epoch: 1`. The package currently installed at P1 is versioned by
   date (cgv-web-04.28.26), which RPM considers *newer* than 1.0.x, so a
