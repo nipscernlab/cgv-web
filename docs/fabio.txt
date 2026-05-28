@@ -1,54 +1,43 @@
-Hi Diana, Fabio,
+Hi Fabio,
 
-Thanks for the feedback. Replying to note #41 point by point.
+Done, but with one extra change worth flagging before you install. While
+preparing the package we noticed that the previous backend kept a single
+process-wide watched folder, mutated by POST /api/xml/set-folder. That
+meant two operators on different PCs would step on each other's view:
+last writer wins, for everyone. Wrong shape for a desk tool.
 
-RPM location: understood, it should be inside P1, not on AFS. Luciano will
-put the build under /atlas-home/0/lucianom/ and post the exact path here.
+2.2.0 fixes that. The backend is now stateless: each request carries the
+folder it wants. The XML_FOLDER default is still honoured, but only as the
+prefill returned by GET /api/xml/default, which the UI uses on a first
+visit. Every browser/tab keeps its own choice in localStorage and can
+switch streams from the pencil, independently of every other client.
 
-Versioning: good catch. The package versioned by date (cgv-web-04.28.26)
-counts as newer than 1.0.x in RPM, so a plain dnf update / Puppet run won't
-move off it. The new build is cgv-web-1.0.5-1.el9 with Epoch: 1, so 1:1.0.5
-supersedes 0:04.28.26 cleanly. From now on the version only increases
-(1.0.5, 1.0.6, ...), no more dates, and upgrades are in-place (no
-remove/reinstall). 1.0.5 also supersedes the 1.0.4 from note #40: same fixes
-(no httpd conf shipped, no httpd reload in %post, httpd dropped from
-Requires) plus the epoch fix and a small frontend fix mentioned below.
+So, to your question: yes, /etc/sysconfig/cgv-web now ships
 
-The example Apache snippet: just to be clear, examples/apache-cgv-web.conf.example
-is reference-only and is not loaded by anything. It's a minimal illustration,
-not a description of your setup, and the package makes no assumptions about
-how pc-atlas-www and vm-calo-web-01 are wired together. All the application
-needs from the front-end host is: (1) the static files under public/ served
-at some prefix, and (2) <that prefix>/api/xml/ reverse-proxied to the backend
-on 127.0.0.1:8080 keeping the /api/xml/ sub-path. The backend only listens on
-localhost. Everything else (Apache / Puppet) is yours. If at some point it
-helps to see the actual cgv-web vhost so we can match the example to it, just
-say so.
+    XML_FOLDER=/atlas/EventDisplayEvents/physics_Main
 
-Related fix in 1.0.5: the frontend now resolves the /api/xml endpoint from
-the module's own URL rather than the page URL, so the LIVE > SERVER
-(live-folder) feature works regardless of the mount prefix and even if the
-page is opened without the trailing slash. That was behind the 404 on
-/api/xml/folder in note #36. The "pick the folder" action in the UI uses the
-same endpoint, so this fixes that too.
+active by default. The file remains %config(noreplace), so on upgrade an
+existing file is kept; if it was not modified locally, the new default
+takes effect, otherwise you will see cgv-web.rpmnew next to it.
 
-XML folder: nothing to change on the package side. The watched folder is
-picked at runtime from the UI (pencil icon next to the folder path), so the
-operator points it at /atlas/EventDisplayEvents (or wherever) without editing
-config. /etc/sysconfig/cgv-web has an optional XML_FOLDER for a boot-time
-default, commented out by design.
+RPM: /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.2.0/cgv-web-2.2.0-1.el9.noarch.rpm
+(Luciano will mirror it to /atlas-home/0/lucianom/ as agreed.)
 
-Authentication: the app is view-only. It reads and renders JiveXML, writes
-nothing, has no destructive action, so from our side it's fine for it to be
-reachable inside P1 without a login.
+API change to be aware of for your reverse proxy:
+ - GET /api/xml/default                         (always 200, JSON)
+ - GET /api/xml/list?path=<dir>                 (200 or 4xx)
+ - GET /api/xml/file?path=<dir>&name=<basename> (200 or 4xx)
+ - POST /api/xml/set-folder is gone. The proxy no longer needs to forward
+   POST for the SERVER feature; GET-only is enough.
 
-e-group: we'll create one for support and notifications and post the name
-here.
+Verify after install:
+    curl -s https://pc-atlas-www.cern.ch/cgv-web/api/xml/default
+        -> {"path": "/atlas/EventDisplayEvents/physics_Main"}
+    curl -s "https://pc-atlas-www.cern.ch/cgv-web/api/xml/list?path=/atlas/EventDisplayEvents/physics_Main"
+        -> JSON array of the newest .xml (during a run)
 
-Testing: once 1.0.5 is in place we're glad to check the
-live-folder mode against /atlas/EventDisplayEvents in the Control Room.
-
-Thanks again for the patience with this.
+Thanks again for the patience on this one; this version finally has the
+right shape both for P1 and for concurrent operators.
 
 Best regards,
 Chrysthofer

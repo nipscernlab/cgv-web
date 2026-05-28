@@ -213,14 +213,23 @@ if (( DO_INSTALL )); then
   systemctl is-active --quiet cgv-web && ok "cgv-web.service is active." \
     || warn "cgv-web.service not active -- check 'journalctl -u cgv-web'."
 
-  for url in /api/xml/folder /api/xml/list ; do
-    code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8080$url" || echo 000)
-    case "$code" in
-      200) ok "GET $url -> 200" ;;
-      503) ok "GET $url -> 503 (no folder configured -- expected)" ;;
-      *)   warn "GET $url -> $code  (unexpected)" ;;
-    esac
-  done
+  # Stateless API since 2.2.0: /default always 200; /list needs ?path=.
+  code=$(curl -s -o /dev/null -w '%{http_code}' \
+    "http://127.0.0.1:8080/api/xml/default" || echo 000)
+  [[ "$code" == "200" ]] \
+    && ok "GET /api/xml/default -> 200" \
+    || warn "GET /api/xml/default -> $code  (unexpected)"
+
+  SMOKE_DIR="/var/www/cgv-web/public/default_xml"
+  if [[ -d "$SMOKE_DIR" ]]; then
+    code=$(curl -s -o /dev/null -w '%{http_code}' \
+      "http://127.0.0.1:8080/api/xml/list?path=$SMOKE_DIR" || echo 000)
+    [[ "$code" == "200" ]] \
+      && ok "GET /api/xml/list?path=$SMOKE_DIR -> 200" \
+      || warn "GET /api/xml/list?path=$SMOKE_DIR -> $code  (unexpected)"
+  else
+    warn "$SMOKE_DIR not present, skipping list smoke test"
+  fi
 
   if ls /etc/httpd/conf.d/cgv-web.conf 2>/dev/null; then
     warn "/etc/httpd/conf.d/cgv-web.conf is present -- v1.0.4 should NOT ship this!"

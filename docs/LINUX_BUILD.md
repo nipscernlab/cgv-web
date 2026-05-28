@@ -168,10 +168,15 @@ XML_FOLDER="$PWD/public/default_xml" python3 serve.py
 Open `http://localhost:8080/` in a browser. You should see:
 
 - the calorimeter loading
-- the **SERVER** sub-mode auto-detecting the backend
-- the file list populating from `default_xml/`
+- the **SERVER** sub-mode auto-detecting the backend (probes
+  `GET /api/xml/default`)
+- the file list populating from `default_xml/` (which the prefill came from
+  via the `XML_FOLDER` env var)
 - the pencil icon next to the folder path opening the edit input
-- changing the path → list reloads (POST `/api/xml/set-folder`)
+- typing a new path and pressing Apply: the list reloads, scoped to that
+  client only (saved in `localStorage`, sent as
+  `GET /api/xml/list?path=<dir>`). Opening the same page in another browser
+  is unaffected — the backend is stateless.
 
 Stop with `Ctrl+C`.
 
@@ -260,11 +265,9 @@ ls /etc/httpd/conf.d/cgv-web.conf 2>/dev/null && echo 'BUG -- file should not ex
 ls /var/www/cgv-web/examples/
 
 # Backend should answer:
-curl -s http://127.0.0.1:8080/api/xml/folder        # {"path":null}
-echo '{"path":"/var/www/cgv-web/public/default_xml"}' \
-  | curl -s -X POST http://127.0.0.1:8080/api/xml/set-folder \
-         -H 'Content-Type: application/json' --data-binary @-
-curl -s http://127.0.0.1:8080/api/xml/list | head -c 400
+curl -s http://127.0.0.1:8080/api/xml/default       # {"path":"<XML_FOLDER or null>"}
+SAMPLE=/var/www/cgv-web/public/default_xml
+curl -s "http://127.0.0.1:8080/api/xml/list?path=$SAMPLE" | head -c 400
 echo
 
 # Logs (the systemd unit appends to /var/log/cgv-web.log too)
@@ -398,8 +401,9 @@ P1 home is not an option.
 | `cargo: command not found` after install | new shell didn't source `~/.cargo/env` — `. $HOME/.cargo/env` |
 | `wasm-pack` build fails on `wasm-opt` | rerun `cargo install wasm-pack`; clear `parser/target/` |
 | `fetch-geometry.mjs` fails with 404 | the `geometry-v4` release tag was renamed — bump `TAG` in the script |
-| Service starts but `curl /api/xml/folder` → connection refused | check `BIND` in `/etc/sysconfig/cgv-web` (default `127.0.0.1`) |
-| Service running but `/api/xml/list` → 503 | no `XML_FOLDER` configured — set via UI pencil or in `/etc/sysconfig/cgv-web` |
-| 404 from `https://pc-atlas-www.cern.ch/cgv-web/api/...` | host's Apache is missing the `<prefix>/api/xml/` → `127.0.0.1:8080/api/xml/` reverse-proxy (the `examples/` snippet shows a minimal version) |
+| Service starts but `curl /api/xml/default` → connection refused | check `BIND` in `/etc/sysconfig/cgv-web` (default `127.0.0.1`) |
+| `/api/xml/list` → 400 `path is required` | the list endpoint is stateless since 2.2.0 — pass the folder as `?path=<dir>` |
+| `/api/xml/list?path=...` → 404 `folder not found` or 403 `cannot read folder` | the configured stream sub-directory does not exist on the host (or is not readable by the backend user). At P1 the path must be a specific stream under `/atlas/EventDisplayEvents/`, e.g. `/atlas/EventDisplayEvents/physics_Main`, not the parent |
+| 404 from `https://pc-atlas-www.cern.ch/cgv-web/api/...` | host's Apache is missing the `<prefix>/api/xml/` → `127.0.0.1:8080/api/xml/` reverse-proxy (GET only since 2.2.0; the `examples/` snippet shows a minimal version) |
 | 404 from `https://pc-atlas-www.cern.ch/api/xml/...` (no `/cgv-web/`) | page was opened as `.../cgv-web` without the trailing slash and the host doesn't 301 to `.../cgv-web/`; fixed in 1.0.5 (API path resolved from the module URL), but the redirect is still good hygiene |
 | `dnf update` doesn't move off `cgv-web-04.28.26-1.el9` | needs the `Epoch: 1` build (1:1.0.5 ≥ 0:04.28.26); with an older non-epoch RPM, `sudo dnf remove cgv-web` then install, or `dnf install --allowerasing` |

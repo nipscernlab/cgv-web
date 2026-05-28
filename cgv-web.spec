@@ -1,6 +1,6 @@
 Name:           cgv-web
 Epoch:          1
-Version:        2.1.0
+Version:        2.2.0
 Release:        1%{?dist}
 Summary:        CGV Web -- 3D Calorimeter Event Display for ATLAS
 License:        NIPSCERN License
@@ -57,10 +57,11 @@ cat <<SYSCONFIG > %{buildroot}/etc/sysconfig/cgv-web
 # Edit this file then: systemctl restart cgv-web
 PORT=8080
 BIND=127.0.0.1
-# XML_FOLDER can also be set at runtime from the UI (pencil icon next to
-# the current folder path). Uncomment below to set a default folder
-# watched at boot. At P1 the recommended value is:
-# XML_FOLDER=/atlas/EventDisplayEvents
+# Default JiveXML stream surfaced by GET /api/xml/default. This only seeds
+# the folder bar on a client's first visit: every browser/tab keeps its own
+# choice in localStorage and can switch streams from the UI pencil at
+# runtime, independently of other clients. The backend itself is stateless.
+XML_FOLDER=/atlas/EventDisplayEvents/physics_Main
 SYSCONFIG
 
 cat <<APACHE > %{buildroot}/var/www/cgv-web/examples/apache-cgv-web.conf.example
@@ -108,6 +109,25 @@ echo "------------------------------------------------------"
 %systemd_postun_with_restart cgv-web.service
 
 %changelog
+* Thu May 28 2026 Chrysthofer - 1:2.2.0-1
+- Backend is now stateless: /api/xml/list and /api/xml/file take the
+  watched folder as a `?path=` query parameter on each request, so multiple
+  clients/tabs/PCs can browse different streams independently. Removes the
+  process-wide XmlState that, in 2.1.x, made the last POST set-folder win
+  for everyone.
+- New endpoint: GET /api/xml/default returns {"path": <XML_FOLDER>} from
+  /etc/sysconfig/cgv-web. The UI uses it only to prefill the folder bar on
+  a first visit; each client persists its own choice in localStorage.
+- POST /api/xml/set-folder is removed. The reverse proxy no longer needs to
+  forward POST for the SERVER feature; only GET is used.
+- /etc/sysconfig/cgv-web ships
+    XML_FOLDER=/atlas/EventDisplayEvents/physics_Main
+  as the default seed at P1 (was commented out in 2.1.x). The file remains
+  %config(noreplace): on upgrade an existing file is kept and a .rpmnew is
+  written alongside if it was locally modified.
+- Frontend SERVER mode stores the chosen folder per origin in localStorage
+  and sends it on every list/file call; switching folders no longer affects
+  other clients.
 * Fri May 22 2026 Chrysthofer - 1:2.1.0-1
 - Frontend only; no change to the backend, the systemd unit or packaging.
 - LIVE > SERVER: when the /api/xml backend cannot be reached on a host where
