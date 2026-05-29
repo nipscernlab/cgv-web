@@ -57,12 +57,16 @@ await cp(join(ROOT, 'public'), DEST, {
 });
 log.ok(`public/ → ${DEST}`);
 
-// ── Wipe + copy tools/twiki/ → library/cgvweb/twiki/ ─────────────────────────
-log.step('Wiping library/cgvweb/twiki and copying tools/twiki/…');
+// ── Wipe + copy public/twiki/ → library/cgvweb/twiki/ ────────────────────────
+// The TWiki source lives under public/twiki/ in this repo (also shipped in
+// the RPM and served at /cgv-web/twiki/ inside P1). The public site keeps
+// the canonical /library/cgvweb/twiki/ URL, so we mirror the same folder
+// there too.
+log.step('Wiping library/cgvweb/twiki and copying public/twiki/…');
 await rm(TWIKI_DEST, { recursive: true, force: true });
 await mkdir(join(NIPSCERN, 'library', 'cgvweb'), { recursive: true });
-await cp(join(ROOT, 'tools', 'twiki'), TWIKI_DEST, { recursive: true });
-log.ok(`tools/twiki/ → ${TWIKI_DEST}`);
+await cp(join(ROOT, 'public', 'twiki'), TWIKI_DEST, { recursive: true });
+log.ok(`public/twiki/ → ${TWIKI_DEST}`);
 
 // ── Summary ───────────────────────────────────────────────────────────────────
 log.step('Verifying…');

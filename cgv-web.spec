@@ -1,6 +1,6 @@
 Name:           cgv-web
 Epoch:          1
-Version:        2.2.0
+Version:        2.3.0
 Release:        1%{?dist}
 Summary:        CGV Web -- 3D Calorimeter Event Display for ATLAS
 License:        NIPSCERN License
@@ -19,6 +19,9 @@ The package ships:
     exposes /api/xml/* used by the LIVE -> SERVER mode of the UI to
     list and stream JiveXML files from a configured directory
     (e.g. /atlas/EventDisplayEvents at P1)
+  - the Technical TWiki bundle under /var/www/cgv-web/public/twiki/,
+    served alongside the viewer so the "Technical TWiki" sidebar link
+    works inside P1 with no external network access
   - an example Apache snippet under /var/www/cgv-web/examples/ -- this
     file is NOT loaded automatically. Apache configuration is left
     entirely to the host's administrator (Puppet at P1).
@@ -109,6 +112,19 @@ echo "------------------------------------------------------"
 %systemd_postun_with_restart cgv-web.service
 
 %changelog
+* Thu May 28 2026 Chrysthofer - 1:2.3.0-1
+- Ship the Technical TWiki bundle under /var/www/cgv-web/public/twiki/, so
+  the "Technical TWiki" link in the sidebar resolves to a local URL
+  (https://pc-atlas-www.cern.ch/cgv-web/twiki/) and works inside P1 with no
+  external network access. Apache configuration is unchanged: the existing
+  Alias /cgv-web/ already serves any subdirectory of public/, no proxy or
+  vhost edit is required from the host's side.
+- The TWiki source lives in this repository at public/twiki/ (HTML, CSS,
+  JS, .twiki sources). The build copies it verbatim into the RPM. The
+  project's deploy.mjs exports the same folder to nipscernweb for the
+  public site, but the source of truth is here.
+- index.html: the sidebar "Technical TWiki" link now points at the
+  relative path "twiki/" instead of https://nipscern.com/library/cgvweb/twiki.
 * Thu May 28 2026 Chrysthofer - 1:2.2.0-1
 - Backend is now stateless: /api/xml/list and /api/xml/file take the
   watched folder as a `?path=` query parameter on each request, so multiple

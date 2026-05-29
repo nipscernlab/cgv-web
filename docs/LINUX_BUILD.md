@@ -119,6 +119,11 @@ These power the **SAMPLE** sub-mode of the sidebar
 node tools/scripts/fetch-samples.mjs
 ```
 
+The Technical TWiki bundle lives directly in this repository under
+`public/twiki/` (source of truth here, exported to `nipscernweb` by the
+project's `deploy.mjs`) so there is nothing to fetch — it ships with the
+rest of the static site at `/cgv-web/twiki/`.
+
 ---
 
 ## 8. Build the Rust → WASM ATLAS-ID parser
@@ -218,6 +223,7 @@ cp -r public/js          "$PKG/public/"
 cp -r public/vendor      "$PKG/public/"
 cp -r public/default_xml "$PKG/public/"
 cp -r public/live_atlas  "$PKG/public/"
+cp -r public/twiki       "$PKG/public/"
 
 # Parser: only runtime files
 cp public/parser/pkg/atlas_id_parser.js      "$PKG/public/parser/pkg/"

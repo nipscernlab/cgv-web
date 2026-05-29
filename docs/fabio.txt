@@ -20,8 +20,10 @@ active by default. The file remains %config(noreplace), so on upgrade an
 existing file is kept; if it was not modified locally, the new default
 takes effect, otherwise you will see cgv-web.rpmnew next to it.
 
-RPM: /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.2.0/cgv-web-2.2.0-1.el9.noarch.rpm
-(Luciano will mirror it to /atlas-home/0/lucianom/ as agreed.)
+RPM:  /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.2.0/cgv-web-2.2.0-1.el9.noarch.rpm
+Spec: /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.2.0/cgv-web.spec
+SHA-256 of the RPM: 5e1704207aaddc3af825c68328936514ca1821f90e1be0e6d12cf9fb34ce884e
+(Luciano will mirror the RPM to /atlas-home/0/lucianom/ as agreed.)
 
 API change to be aware of for your reverse proxy:
  - GET /api/xml/default                         (always 200, JSON)
