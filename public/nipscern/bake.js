@@ -624,10 +624,36 @@ function bakeGhost(mesh){
   return { pos: posF32, idx };
 }
 
-// Atlas-prefixed meshes (muon spectrometer + structural envelopes) live in the
-// same GLB but the live app wraps them in a Group scaled by 10. We pre-apply
-// that same scale to the world matrix here so the baked vertices land in scene
-// coordinates (mm), consistent with every other baked geometry.
+// ── Muon spectrometer: chamber selection from hits ────────────────────────────
+// We do NOT draw scattered hit points. Instead the fired channels from the muon
+// collections (MDT/RPC/TGC/sTGC/MM) decide WHICH chamber volumes the event's
+// muons actually crossed; we then bake only those atlas-prefixed chamber meshes.
+// Hit positions are in cm in the ATLAS global frame: convert cm→mm (×10) and
+// mirror the scene convention (-x, -y, z) so they share the baked geometry's
+// frame (the live app wraps atlas meshes in a Group scaled by 10).
+const MUON_HIT_TAGS = ['MDT', 'RPC', 'TGC', 'STGC', 'MM', 'CSC'];
+function getMuonHitPoints(doc){
+  const out = [];
+  for(const tag of MUON_HIT_TAGS){
+    for(const el of doc.getElementsByTagName(tag)){
+      const xs = _readTextNums(el, 'x');
+      const ys = _readTextNums(el, 'y');
+      const zs = _readTextNums(el, 'z');
+      const n = Math.min(xs.length, ys.length, zs.length);
+      for(let i=0;i<n;i++){
+        if(!isFinite(xs[i]) || !isFinite(ys[i]) || !isFinite(zs[i])) continue;
+        out.push(new THREE.Vector3(-xs[i]*10, -ys[i]*10, zs[i]*10));
+      }
+    }
+  }
+  return out;
+}
+
+// Atlas-prefixed meshes (muon spectrometer chambers + structural envelopes) live
+// in the same GLB but the live app wraps them in a Group scaled by 10. We pre-
+// apply that scale to the world matrix so baked vertices land in scene mm,
+// consistent with every other baked geometry, and emit edges for the chamber
+// wireframe-lattice look.
 const _ATLAS_SCALE_MAT = new THREE.Matrix4().makeScale(10, 10, 10);
 function bakeAtlasMesh(mesh){
   mesh.updateWorldMatrix(true, false);
@@ -642,9 +668,25 @@ function bakeAtlasMesh(mesh){
   } else if(!(idx instanceof Uint32Array)){
     idx = new Uint32Array(idx);
   }
-  const posF32 = pos instanceof Float32Array ? pos : new Float32Array(pos);
-  g.dispose();
-  return { pos: posF32, idx };
+  const edgeGeo = new THREE.EdgesGeometry(g, 30);
+  const edge = edgeGeo.getAttribute('position').array;
+  const posF32  = pos  instanceof Float32Array ? pos  : new Float32Array(pos);
+  const edgeF32 = edge instanceof Float32Array ? edge : new Float32Array(edge);
+  g.dispose(); edgeGeo.dispose();
+  return { pos: posF32, idx, edge: edgeF32 };
+}
+
+// World-space AABB of an atlas chamber mesh (with the ×10 group scale applied),
+// expanded by a small margin so a hit lying on a chamber face still counts.
+function atlasMeshWorldBox(mesh){
+  mesh.updateWorldMatrix(true, false);
+  const worldWithScale = mesh.matrixWorld.clone().premultiply(_ATLAS_SCALE_MAT);
+  const geo = mesh.geometry;
+  if(!geo.boundingBox) geo.computeBoundingBox();
+  const box = geo.boundingBox.clone().applyMatrix4(worldWithScale);
+  const margin = box.getSize(new THREE.Vector3()).length() * 0.02;
+  box.expandByScalar(margin);
+  return box;
 }
 
 // ── Main bake routine ──────────────────────────────────────────────────────────
@@ -656,21 +698,16 @@ async function main(){
   log('Loading GLB...');
   const meshByKey  = new Map();
   const meshByName = new Map();
-  // Atlas-prefixed meshes are the muon spectrometer + structural envelopes
-  // (MUCH_1 on the C side, MUC1_2 on the A side, plus the toroid, ID volumes,
-  // solenoid, etc.). The live app hides them by default behind a toggle; here
-  // we bake every one so the preview shows the full apparatus around the
-  // event without any interactive UI.
+  // Atlas-prefixed meshes are the full muon spectrometer + structural envelopes
+  // (toroid, ID volumes, solenoid, chambers, etc.). We collect them so we can
+  // later bake ONLY the chambers actually crossed by the event's muon hits.
   const atlasMeshes = [];
   await new Promise((res, rej)=>{
     new GLTFLoader().load('../geometry_data/CaloGeometry.glb', ({scene:g}) => {
       g.updateMatrixWorld(true);
       g.traverse(o => {
         if(!o.isMesh) return;
-        if(o.name.split('→')[0] === 'atlas'){
-          atlasMeshes.push(o);
-          return;
-        }
+        if(o.name.split('→')[0] === 'atlas'){ atlasMeshes.push(o); return; }
         meshByName.set(o.name, o);
         const key = meshNameToKey(o.name);
         if(key !== null) meshByKey.set(key, o);
@@ -808,18 +845,31 @@ async function main(){
     ghostHeaders.push({ pos: pushChunk(pos), idx: pushChunk(idx) });
   }
 
-  log('Baking atlas / muon spectrometer meshes...');
-  const atlasHeaders = [];
-  let atlasBytes = 0;
-  for(const mesh of atlasMeshes){
-    const {pos, idx} = bakeAtlasMesh(mesh);
-    const posEntry = pushChunk(pos);
-    const idxEntry = pushChunk(idx);
-    atlasHeaders.push({ pos: posEntry, idx: idxEntry });
-    atlasBytes += posEntry[1] + idxEntry[1];
+  log('Selecting muon chambers actually crossed by the muon hits...');
+  const muonHits = getMuonHitPoints(doc);
+  log('  muon hits:', muonHits.length);
+  const muonChamberHeaders = [];
+  if(muonHits.length && atlasMeshes.length){
+    // Pre-compute world AABBs once, then test each hit against every chamber.
+    const boxes = atlasMeshes.map(atlasMeshWorldBox);
+    const wanted = new Set();
+    for(const h of muonHits){
+      for(let mi=0; mi<boxes.length; mi++){
+        if(wanted.has(mi)) continue;
+        if(boxes[mi].containsPoint(h)) wanted.add(mi);
+      }
+      if(wanted.size === atlasMeshes.length) break;
+    }
+    for(const mi of wanted){
+      const {pos, idx, edge} = bakeAtlasMesh(atlasMeshes[mi]);
+      muonChamberHeaders.push({
+        pos:  pushChunk(pos),
+        idx:  pushChunk(idx),
+        edge: pushChunk(edge),
+      });
+    }
   }
-  log('  atlas meshes baked:', atlasHeaders.length,
-      '  body bytes:', (atlasBytes/1024/1024).toFixed(2), 'MB');
+  log('  chambers baked (hit):', muonChamberHeaders.length, 'of', atlasMeshes.length);
 
   log('Packing tracks...');
   const trackHeaders = [];
@@ -898,10 +948,10 @@ async function main(){
   }
 
   const header = {
-    v: 5,
+    v: 7,
     cells:    cellHeaders,
     ghosts:   ghostHeaders,
-    atlas:    atlasHeaders,
+    muonChambers: muonChamberHeaders,
     tracks:   trackHeaders,
     clusters: clusterHeaders,
     jets:     jetHeaders,
@@ -935,7 +985,7 @@ async function main(){
   log('  header JSON:', (headerBytes.byteLength/1024).toFixed(1), 'KB');
   log('  body       :', (body.byteLength/1024/1024).toFixed(2), 'MB');
   log('  cells:', cellHeaders.length, ' ghosts:', ghostHeaders.length,
-      ' atlas:', atlasHeaders.length,
+      ' muonChambers:', muonChamberHeaders.length,
       ' tracks:', trackHeaders.length, ' clusters:', clusterHeaders.length,
       ' jets:', jetHeaders.length, ' taus:', tauHeaders.length,
       ' photons:', photonHeaders.length,

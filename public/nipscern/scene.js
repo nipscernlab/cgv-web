@@ -57,13 +57,6 @@ const tauMat         = new THREE.LineDashedMaterial({
 });
 const metShaftMat    = new THREE.LineBasicMaterial({color:0xff0066, transparent:true, opacity:0.95, depthTest:false, depthWrite:false});
 const metConeMat     = new THREE.MeshBasicMaterial({color:0xff0066, depthTest:false, depthWrite:false});
-// Atlas-prefixed meshes (muon spectrometer + toroid + ID volumes). Same
-// translucent grey as the calo ghosts but tinted slightly blue to read as
-// "outer structure" rather than "calo envelope". Two-sided so the inner
-// chamber faces aren't culled when the camera sits inside.
-const atlasMat       = new THREE.MeshBasicMaterial({
-  color:0x6076a0, transparent:true, opacity:0.05, depthWrite:false, side:THREE.DoubleSide,
-});
 const vertexMatPrimary   = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.95, depthTest:false, depthWrite:false});
 const vertexMatPileup    = new THREE.MeshBasicMaterial({color:0x88aaff, transparent:true, opacity:0.55, depthTest:false, depthWrite:false});
 const vertexMatSecondary = new THREE.MeshBasicMaterial({color:0x00ff88, transparent:true, opacity:0.95, depthTest:false, depthWrite:false});
@@ -306,23 +299,28 @@ async function main(){
     scene.add(mesh);
   }
 
-  // ── Atlas-prefixed meshes (muon spectrometer + structural envelopes) ─────────
-  if(header.atlas && header.atlas.length){
-    const atlasGroup = new THREE.Group();
-    atlasGroup.name = 'atlas-geo';
-    atlasGroup.renderOrder = 4;
-    for(const g of header.atlas){
-      const pos = f32(g.pos[0], g.pos[1]);
-      const idx = u32(g.idx[0], g.idx[1]);
+  // ── Muon spectrometer hits (only the cells actually hit) ─────────────────────
+  // One Points cloud per technology (MDT/RPC/TGC/sTGC/MM), colour-coded. These
+  // replace the full translucent spectrometer geometry: we draw just the fired
+  // channels at their real positions.
+  if(header.muonHits && header.muonHits.length){
+    const group = new THREE.Group();
+    group.name = 'muon-hits';
+    group.renderOrder = 7;
+    for(const h of header.muonHits){
+      const pts = f32(h.pts[0], h.pts[1]);
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      geo.setIndex(new THREE.BufferAttribute(idx, 1));
-      const mesh = new THREE.Mesh(geo, atlasMat);
-      mesh.matrixAutoUpdate = false;
-      mesh.frustumCulled = false;
-      atlasGroup.add(mesh);
+      geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+      const mat = new THREE.PointsMaterial({
+        color: new THREE.Color(h.rgb[0], h.rgb[1], h.rgb[2]),
+        size: 6, sizeAttenuation: false,
+        transparent: true, opacity: 0.95, depthWrite: false,
+      });
+      const points = new THREE.Points(geo, mat);
+      points.frustumCulled = false;
+      group.add(points);
     }
-    scene.add(atlasGroup);
+    scene.add(group);
   }
 
   // ── Tracks ───────────────────────────────────────────────────────────────────
