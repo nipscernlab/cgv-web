@@ -37,11 +37,12 @@
   pointer-events: none;
 }
 .ab-brand-mark {
-  font: 700 11px/1 var(--font);
-  letter-spacing: 0.16em;
-  color: var(--accent-text);
+  width: 32px;
+  height: 32px;
+  display: block;
+  object-fit: contain;
   background: var(--accent-soft);
-  padding: 5px 7px;
+  padding: 4px;
   border-radius: var(--r-sm);
   border: 1px solid var(--accent-edge);
 }
