@@ -300,6 +300,51 @@
   color: var(--dim);
 }
 
+/* ── Per-slider typed value box ─────────────────────────
+   Sits under each slider's min label. Lets the user type an exact threshold
+   (full decimal precision) instead of dragging — see wireSliderBox() in
+   detectorPanels.js. The jet slider hides its box (it shares the cluster
+   element); every other slider keeps one. */
+.sbox-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+}
+.sbox {
+  width: 56px;
+  padding: 3px 5px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--bright);
+  font: 500 11px var(--mono);
+  text-align: center;
+  letter-spacing: 0.02em;
+  -moz-appearance: textfield;
+  transition:
+    border-color var(--motion-fast),
+    background var(--motion-fast);
+}
+.sbox:hover {
+  border-color: var(--border-strong);
+}
+.sbox:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.sbox::placeholder {
+  color: var(--dim);
+}
+.sbox-unit {
+  font: 500 9px/1 var(--mono);
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 /* ─────────────────────────────────────────────────────────
    Jet collection dropdown — opens from #jet-coll-trigger
    inside #rpanel2; menu lives at <body> root for layering.

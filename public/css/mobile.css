@@ -338,6 +338,12 @@
     min-width: 32px;
     min-height: 32px;
   }
+  /* Comfortable tap target + a touch wider so typed values aren't clipped */
+  .sbox {
+    min-height: 30px;
+    width: 62px;
+    font-size: 12px;
+  }
 }
 
 /* ─────────────────────────────────────────────────────────

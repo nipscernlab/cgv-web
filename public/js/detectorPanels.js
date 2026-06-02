@@ -21,6 +21,58 @@ function parseMevInput(s) {
   return null;
 }
 
+// Box display: drop floating-point noise + trailing zeros but keep up to 3
+// decimals, so a value the user typed (e.g. 250.96) round-trips back into the
+// field unchanged instead of snapping to a coarser label like "251.0 MeV".
+function fmtBoxNum(v) {
+  return String(Number(v.toFixed(3)));
+}
+
+/**
+ * Wire the persistent numeric input that sits below a slider. The box mirrors
+ * the slider's current value (precise — see fmtBoxNum) and commits a typed
+ * value through the SAME parse path the dblclick popup uses, so dragging the
+ * thumb and typing a number are interchangeable. Mobile-friendly: inputmode
+ * brings up the numeric keypad and the box swallows pointerdown so a tap on it
+ * never starts a slider drag or a sidebar swipe underneath.
+ *
+ * @param {string} boxId            id of the <input class="sbox">
+ * @param {() => number} read       current value in the box's unit (non-finite → empty)
+ * @param {(raw: string) => void} commit  parse + apply the typed string
+ * @returns {{ sync: () => void, el: HTMLInputElement | null }}
+ */
+function wireSliderBox(boxId, read, commit) {
+  const box = /** @type {HTMLInputElement|null} */ (document.getElementById(boxId));
+  if (!box) return { sync: () => {}, el: null };
+  const render = () => {
+    const v = read();
+    box.value = isFinite(v) ? fmtBoxNum(v) : '';
+  };
+  // External value changes (drag, level switch, reload) re-render the box —
+  // but never while the user is mid-edit, or we'd clobber their keystrokes.
+  const sync = () => {
+    if (document.activeElement !== box) render();
+  };
+  box.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      box.blur();
+    } else if (e.key === 'Escape') {
+      render();
+      box.blur();
+    }
+  });
+  // `change` fires on Enter-driven blur and on focus loss with an edited value.
+  box.addEventListener('change', () => {
+    commit(box.value);
+    render();
+  });
+  box.addEventListener('pointerdown', (e) => e.stopPropagation());
+  render();
+  return { sync, el: box };
+}
+
 function ratioFromPtr(e, trackEl) {
   const rect = trackEl.getBoundingClientRect();
   return (
@@ -139,6 +191,7 @@ export function setupDetectorPanels({
     maxLblId,
     minLblId,
     onApply = applyThreshold,
+    boxId,
   ) {
     const track = document.getElementById(trackId);
     const thumb = document.getElementById(thumbId);
@@ -146,6 +199,8 @@ export function setupDetectorPanels({
     const minLbl = minLblId ? document.getElementById(minLblId) : null;
     let minMev = 0;
     let drag = false;
+    /** @type {{ sync: () => void, el: HTMLInputElement | null } | null} */
+    let box = null;
 
     // Slider semantics: bottom (ratio=0) snaps to -Infinity = "show all";
     // anywhere above the bottom maps linearly to [minMev, maxMev].
@@ -158,10 +213,11 @@ export function setupDetectorPanels({
           ? Math.max(0, Math.min(1, (mev - minMev) / span))
           : 0;
       thumb.style.top = (1 - ratio) * 100 + '%';
+      box?.sync();
     }
 
     // Pre-formatted threshold for the floating value tooltip — MeV with
-     // 'all' fallback for the bottom-snap (-Infinity) state.
+    // 'all' fallback for the bottom-snap (-Infinity) state.
     const fmtVal = () => {
       const v = getThr();
       return isFinite(v) ? fmtMev(v) : 'all';
@@ -202,26 +258,26 @@ export function setupDetectorPanels({
         if (!hover) _hideValTip();
       });
     });
+    // Shared by the dblclick popup and the persistent box below the slider.
+    function commitFromString(raw) {
+      const value = parseMevInput(raw);
+      if (value !== null) {
+        const clamped = value === -Infinity ? value : Math.max(minMev, Math.min(maxMev, value));
+        setThr(clamped);
+        onApply();
+        updateUI(getThr());
+      }
+    }
+
     // Double-click → open the shared float popup so the user can type the
     // threshold instead of dragging the slider for fine values.
     track.addEventListener('dblclick', () => {
       const cur = getThr();
       const display = isFinite(cur) && cur > minMev ? fmtMev(cur) : '';
-      openThrPopup(
-        track,
-        display,
-        (raw) => {
-          const value = parseMevInput(raw);
-          if (value !== null) {
-            const clamped = value === -Infinity ? value : Math.max(minMev, Math.min(maxMev, value));
-            setThr(clamped);
-            onApply();
-            updateUI(getThr());
-          }
-        },
-        t('thr-placeholder'),
-      );
+      openThrPopup(track, display, commitFromString, t('thr-placeholder'));
     });
+
+    box = wireSliderBox(boxId, getThr, commitFromString);
 
     function update(newMinMev, newMaxMev) {
       minMev = newMinMev;
@@ -234,12 +290,14 @@ export function setupDetectorPanels({
     return { updateUI, update };
   }
 
-  function makeTrackPtSlider(trackId, thumbId, maxLblId, minLblId) {
+  function makeTrackPtSlider(trackId, thumbId, maxLblId, minLblId, boxId) {
     const trackEl = document.getElementById(trackId);
     const thumbEl = document.getElementById(thumbId);
     const maxLblEl = document.getElementById(maxLblId);
     const minLblEl = document.getElementById(minLblId);
     let drag = false;
+    /** @type {{ sync: () => void, el: HTMLInputElement | null } | null} */
+    let box = null;
 
     function updateUI() {
       const span = state.getTrackPtMaxGev() - state.getTrackPtMinGev();
@@ -248,6 +306,7 @@ export function setupDetectorPanels({
           ? Math.max(0, Math.min(1, (state.getThrTrackGev() - state.getTrackPtMinGev()) / span))
           : 0;
       thumbEl.style.top = (1 - ratio) * 100 + '%';
+      box?.sync();
     }
 
     function setFromRatio(ratio) {
@@ -294,31 +353,31 @@ export function setupDetectorPanels({
         if (!hover) _hideValTip();
       });
     });
+    // Shared by the dblclick popup and the persistent box below the slider.
+    function commitFromString(raw) {
+      const value = raw.trim().toLowerCase();
+      if (!value || value === 'all') {
+        state.setThrTrackGev(state.getTrackPtMinGev());
+      } else {
+        const gev = value.match(/^([\d.]+)\s*gev$/i);
+        const parsed = gev ? parseFloat(gev[1]) : parseFloat(value);
+        if (isFinite(parsed)) {
+          state.setThrTrackGev(
+            Math.max(state.getTrackPtMinGev(), Math.min(state.getTrackPtMaxGev(), parsed)),
+          );
+        }
+      }
+      updateUI();
+      applyTrackThreshold();
+    }
+
     trackEl.addEventListener('dblclick', () => {
       const cur = state.getThrTrackGev();
       const display = cur > state.getTrackPtMinGev() + 1e-9 ? fmtGev(cur) : '';
-      openThrPopup(
-        trackEl,
-        display,
-        (raw) => {
-          const value = raw.trim().toLowerCase();
-          if (!value || value === 'all') {
-            state.setThrTrackGev(state.getTrackPtMinGev());
-          } else {
-            const gev = value.match(/^([\d.]+)\s*gev$/i);
-            const parsed = gev ? parseFloat(gev[1]) : parseFloat(value);
-            if (isFinite(parsed)) {
-              state.setThrTrackGev(
-                Math.max(state.getTrackPtMinGev(), Math.min(state.getTrackPtMaxGev(), parsed)),
-              );
-            }
-          }
-          updateUI();
-          applyTrackThreshold();
-        },
-        t('thr-placeholder-gev'),
-      );
+      openThrPopup(trackEl, display, commitFromString, t('thr-placeholder-gev'));
     });
+
+    box = wireSliderBox(boxId, state.getThrTrackGev, commitFromString);
 
     function update(minGev, maxGev) {
       state.setTrackPtMinGev(minGev);
@@ -331,12 +390,14 @@ export function setupDetectorPanels({
     return { updateUI, update };
   }
 
-  function makeClusterEtSlider(trackId, thumbId, maxLblId, minLblId) {
+  function makeClusterEtSlider(trackId, thumbId, maxLblId, minLblId, boxId) {
     const trackEl = document.getElementById(trackId);
     const thumbEl = document.getElementById(thumbId);
     const maxLblEl = document.getElementById(maxLblId);
     const minLblEl = document.getElementById(minLblId);
     let drag = false;
+    /** @type {{ sync: () => void, el: HTMLInputElement | null } | null} */
+    let box = null;
 
     // Polymorphic ops bundle: cluster mode at level 2, jet mode at level 3.
     // Returns the same shape so updateUI / setFromRatio / blur logic works
@@ -368,6 +429,7 @@ export function setupDetectorPanels({
       thumbEl.style.top = (1 - ratio) * 100 + '%';
       if (maxLblEl) maxLblEl.textContent = fmtGev(max);
       if (minLblEl) minLblEl.textContent = fmtGev(min);
+      box?.sync();
     }
 
     function setFromRatio(ratio) {
@@ -414,34 +476,46 @@ export function setupDetectorPanels({
         if (!hover) _hideValTip();
       });
     });
+    // Shared by the dblclick popup and the persistent box below the slider.
+    // Reads currentOps() live so it always targets the active mode (cluster at
+    // L2, jet at L3) — though the box itself is hidden in jet mode (see below).
+    function commitFromString(raw) {
+      const opsLive = currentOps();
+      const value = raw.trim().toLowerCase();
+      if (!value || value === 'all') {
+        opsLive.setThr(opsLive.getMin());
+      } else {
+        const gev = value.match(/^([\d.]+)\s*gev$/i);
+        const parsed = gev ? parseFloat(gev[1]) : parseFloat(value);
+        if (isFinite(parsed)) {
+          opsLive.setThr(Math.max(opsLive.getMin(), Math.min(opsLive.getMax(), parsed)));
+        }
+      }
+      updateUI();
+      opsLive.apply();
+    }
+
     trackEl.addEventListener('dblclick', () => {
       const ops = currentOps();
       const cur = ops.getThr();
       const display = cur > ops.getMin() + 1e-9 ? fmtGev(cur) : '';
-      openThrPopup(
-        trackEl,
-        display,
-        (raw) => {
-          const opsLive = currentOps();
-          const value = raw.trim().toLowerCase();
-          if (!value || value === 'all') {
-            opsLive.setThr(opsLive.getMin());
-          } else {
-            const gev = value.match(/^([\d.]+)\s*gev$/i);
-            const parsed = gev ? parseFloat(gev[1]) : parseFloat(value);
-            if (isFinite(parsed)) {
-              opsLive.setThr(Math.max(opsLive.getMin(), Math.min(opsLive.getMax(), parsed)));
-            }
-          }
-          updateUI();
-          opsLive.apply();
-        },
-        t('thr-placeholder-gev'),
-      );
+      openThrPopup(trackEl, display, commitFromString, t('thr-placeholder-gev'));
     });
 
+    box = wireSliderBox(boxId, () => currentOps().getThr(), commitFromString);
+    // The jet slider deliberately has no typed box — it shares this element
+    // with the cluster slider, so hide the box whenever we're in jet mode (L3).
+    function syncBoxVisibility() {
+      const row = box?.el?.closest('.sbox-row');
+      if (row) row.style.display = getViewLevel() === 3 ? 'none' : '';
+    }
+    syncBoxVisibility();
+
     // Level switch: redraw the slider against the new mode's bounds + value.
-    onViewLevelChange(updateUI);
+    onViewLevelChange(() => {
+      updateUI();
+      syncBoxVisibility();
+    });
     // Active jet collection changed (new event or user picked another from the
     // dropdown): recompute jet ET min/max from the active list AND from τ
     // candidates (they share this slider — see applyTauPtThreshold), then
@@ -491,6 +565,8 @@ export function setupDetectorPanels({
     TILE_SCALE,
     'tile-sval-max',
     'tile-sval-min',
+    applyThreshold,
+    'tile-sbox',
   );
   const larSlider = makeDetSlider(
     'lar-strak',
@@ -500,6 +576,8 @@ export function setupDetectorPanels({
     LAR_SCALE,
     'lar-sval-max',
     'lar-sval-min',
+    applyThreshold,
+    'lar-sbox',
   );
   const fcalSlider = makeDetSlider(
     'fcal-strak',
@@ -510,6 +588,7 @@ export function setupDetectorPanels({
     'fcal-sval-max',
     'fcal-sval-min',
     applyFcalThreshold,
+    'fcal-sbox',
   );
   const hecSlider = makeDetSlider(
     'hec-strak',
@@ -519,18 +598,22 @@ export function setupDetectorPanels({
     HEC_SCALE,
     'hec-sval-max',
     'hec-sval-min',
+    applyThreshold,
+    'hec-sbox',
   );
   const trackPtSlider = makeTrackPtSlider(
     'track-strak',
     'track-sthumb',
     'track-sval-max',
     'track-sval-min',
+    'track-sbox',
   );
   const clusterEtSlider = makeClusterEtSlider(
     'cluster-strak',
     'cluster-sthumb',
     'cluster-sval-max',
     'cluster-sval-min',
+    'cluster-sbox',
   );
 
   // ── Cell-metric (E vs E_T) ───────────────────────────────────────────────
