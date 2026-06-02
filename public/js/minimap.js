@@ -74,6 +74,19 @@ let _binCache = null;
 /** @type {Array<{etaMin:number, etaMax:number, phiMin:number, phiMax:number}>} */
 let _rects = [];
 
+// Reconstructed clusters above the active ET threshold, fed from the
+// visibility pipeline. Drawn as soft ΔR≈0.4 region markers so energetic
+// clusters read as broad highlighted areas, not a couple of hot pixels.
+/** @type {Array<{eta:number, phi:number, etGev:number}>} */
+let _clusters = [];
+// η-φ footprint radius of a cluster marker — the ATLAS jet / topo-cluster cone
+// scale, so the highlighted region matches the physical reconstruction cone
+// rather than an arbitrary glow.
+const CLUSTER_DR = 0.4;
+// Cap drawn markers so a low ET threshold (many clusters passing) can't bury
+// the heatmap; the most energetic ones are kept.
+const CLUSTER_MAX_DRAW = 50;
+
 // Mouse / pointer state machine.
 let _mouseState     = 'idle';
 let _dragAnchor     = null;
@@ -458,12 +471,81 @@ function _drawRects() {
   ctx.restore();
 }
 
+// Draw one cluster region marker: a faint cyan ΔR-footprint disc, a glowing
+// white ring, and a crisp centre dot. Energy `t` (0..1, log-normalized) drives
+// opacity + glow so the leading clusters dominate. White/cyan keeps it clearly
+// distinct from the red/yellow heatmap and the magenta rect bands underneath.
+function _drawClusterMark(ctx, cx, cy, rx, ry, t) {
+  const fillA = 0.1 + 0.16 * t;
+  const ringA = 0.55 + 0.4 * t;
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(120, 220, 255, ${fillA})`;
+  ctx.fill();
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(120, 225, 255, 0.9)';
+  ctx.shadowBlur  = 6 + 8 * t;
+  ctx.lineWidth   = 1.6;
+  ctx.strokeStyle = `rgba(235, 250, 255, ${ringA})`;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 1.6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+  ctx.fill();
+}
+
+// Cluster region overlay. Each cluster becomes a ΔR≈0.4 ellipse (ΔR is round
+// in η-φ but the canvas axes scale differently, so it's an ellipse on screen —
+// the honest mapping of a round cone). Capped + sorted by ET, energy → opacity,
+// drawn across the φ seam so a cluster on the cut shows on both edges.
+function _drawClusters() {
+  if (!_clusters.length) return;
+  const ctx   = _ctx;
+  const area  = _plotArea();
+  const plotW = area.x1 - area.x0;
+  const plotH = area.y1 - area.y0;
+
+  const [etaLo, etaHi] = _viewEtaFrac();
+  const [phiLo, phiHi] = _viewPhiFrac();
+  const rx = (CLUSTER_DR * plotW) / Math.max(1e-6, (etaHi - etaLo) * (ETA_MAX - ETA_MIN));
+  const ry = (CLUSTER_DR * plotH) / Math.max(1e-6, (phiHi - phiLo) * TWO_PI);
+
+  let maxEt = 0;
+  for (const c of _clusters) if (c.etGev > maxEt) maxEt = c.etGev;
+  const logMax = Math.log10(Math.max(maxEt, 1));
+  const list = [..._clusters].sort((a, b) => b.etGev - a.etGev).slice(0, CLUSTER_MAX_DRAW);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(area.x0, area.y0, plotW, plotH);
+  ctx.clip();
+
+  for (const c of list) {
+    const cx = _etaToX(c.eta, area);
+    if (cx < area.x0 - rx || cx > area.x1 + rx) continue;
+    const t = logMax > 0 ? Math.max(0, Math.min(1, Math.log10(Math.max(c.etGev, 1)) / logMax)) : 1;
+    const cyBase = _phiToY(c.phi, area);
+    for (const cy of [cyBase, cyBase - plotH, cyBase + plotH]) {
+      if (cy < area.y0 - ry || cy > area.y1 + ry) continue;
+      _drawClusterMark(ctx, cx, cy, rx, ry, t);
+    }
+  }
+  ctx.restore();
+}
+
 function _redraw() {
   if (!_ctx || !_enabled) return;
   _drawFrame();
   _drawHeatmap();
   _drawAxes();
   _drawLegend();
+  _drawClusters();
   _drawRects();
 }
 
@@ -804,6 +886,17 @@ export function updateMinimap({ cells, fcal }) {
   if (cells !== undefined) { _cellEntries = cells; binsDirty = true; }
   if (fcal  !== undefined) { _fcalEntries = fcal;  binsDirty = true; }
   if (binsDirty) _binCache = null;
+  _redraw();
+}
+
+/**
+ * Reconstructed clusters above the active ET threshold, drawn as region
+ * markers over the heatmap. Pass [] (or omit) to clear them.
+ *
+ * @param {Array<{eta:number, phi:number, etGev:number}>} clusters
+ */
+export function setMinimapClusters(clusters) {
+  _clusters = Array.isArray(clusters) ? clusters : [];
   _redraw();
 }
 

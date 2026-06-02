@@ -223,6 +223,33 @@ function _notifyHeatmap() {
   if (_heatmapListener) _heatmapListener(_visibleForHeatmap, _fcalVisibleForHeatmap);
 }
 
+// Reconstructed-cluster feed for the minimap overlay. Mirrors the heatmap
+// listener: fires whenever cluster visibility settles (load, ET slider,
+// region, view-level) so the minimap markers track the 3-D scene. We emit
+// every cluster above the current ET threshold (ignoring the η×φ region gate,
+// which is a user selection layered on top — the minimap heatmap is likewise
+// drawn pre-region so the overview stays complete).
+/** @type {((clusters: Array<{eta:number, phi:number, etGev:number}>) => void) | null} */
+let _clusterListener = null;
+/** @param {((clusters: Array<{eta:number, phi:number, etGev:number}>) => void) | null} cb */
+export function setClusterListener(cb) {
+  _clusterListener = typeof cb === 'function' ? cb : null;
+}
+function _notifyClusters() {
+  if (!_clusterListener) return;
+  const g = getClusterGroup();
+  const out = [];
+  if (g) {
+    for (const child of g.children ?? []) {
+      const ud = child.userData || {};
+      if (!Number.isFinite(ud.eta) || !Number.isFinite(ud.phi)) continue;
+      if ((ud.etGev ?? 0) < thrClusterEtGev) continue;
+      out.push({ eta: ud.eta, phi: ud.phi, etGev: ud.etGev });
+    }
+  }
+  _clusterListener(out);
+}
+
 /** @param {Array<{eta:number, phi:number, energyMev:number}> | null} entries */
 export function setFcalHeatmapEntries(entries) {
   _fcalVisibleForHeatmap = entries || [];
@@ -436,6 +463,7 @@ export function applyClusterThreshold() {
     applyThreshold();
     applyFcalThreshold();
   });
+  _notifyClusters();
 }
 
 // ── Jet threshold ─────────────────────────────────────────────────────────────
