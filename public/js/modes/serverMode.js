@@ -15,6 +15,69 @@ const HAS_FSA = typeof window !== 'undefined' && 'showDirectoryPicker' in window
 // localStorage key for the per-origin remote folder choice. Each browser
 // (each tab/PC) keeps its own; the backend no longer holds shared state.
 const STORAGE_KEY = 'cgv-server-folder';
+// Quick-set folder buttons (control-room one-tap stream switch). Defaults are
+// the ATLAS P1 stream folders, which all live as siblings inside the same
+// EventDisplayEvent directory as physics_Main — so a bare folder name is
+// resolved against the parent of the current folder. The gear lets the
+// operator rename buttons or paste full absolute paths; saved per-browser.
+const QUICK_STORAGE_KEY = 'cgv-server-quickpaths';
+const QUICK_SLOTS = 4;
+const DEFAULT_QUICK_SLOTS = [
+  { label: 'physics_Main', path: 'physics_Main' },
+  { label: 'express_express', path: 'express_express' },
+  { label: 'physics_CosmicMuons', path: 'physics_CosmicMuons' },
+  { label: 'Public', path: 'Public' },
+];
+
+function cloneDefaultQuickSlots() {
+  return DEFAULT_QUICK_SLOTS.map((s) => ({ ...s }));
+}
+
+function readQuickSlots() {
+  try {
+    const raw = localStorage.getItem(QUICK_STORAGE_KEY);
+    if (!raw) return cloneDefaultQuickSlots();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || !arr.length) return cloneDefaultQuickSlots();
+    return Array.from({ length: QUICK_SLOTS }, (_, i) => {
+      const s = arr[i] || {};
+      const path = typeof s.path === 'string' ? s.path.trim() : '';
+      const label =
+        (typeof s.label === 'string' && s.label.trim()) ||
+        path ||
+        DEFAULT_QUICK_SLOTS[i]?.label ||
+        `Folder ${i + 1}`;
+      return { label, path };
+    });
+  } catch (_) {
+    return cloneDefaultQuickSlots();
+  }
+}
+
+function writeQuickSlots(slots) {
+  try {
+    localStorage.setItem(QUICK_STORAGE_KEY, JSON.stringify(slots));
+  } catch (_) {}
+}
+
+// Path helpers that tolerate both POSIX ('/') and Windows ('\') separators —
+// P1 is Linux but a dev laptop may not be.
+function stripTrailingSep(p) {
+  return String(p || '').replace(/[\\/]+$/, '');
+}
+function parentDir(p) {
+  const s = stripTrailingSep(p);
+  const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+  return i >= 0 ? s.slice(0, i) : '';
+}
+function isAbsolutePath(p) {
+  return /^([/\\]|[A-Za-z]:[\\/])/.test(p || '');
+}
+function joinPath(base, name) {
+  if (!base) return name;
+  const sep = base.includes('\\') && !base.includes('/') ? '\\' : '/';
+  return stripTrailingSep(base) + sep + name;
+}
 
 function fmtTime(ts) {
   if (!Number.isFinite(ts)) return '';
@@ -92,6 +155,8 @@ export function setupServerMode({
   let remoteMode = false;
   let remoteProbing = false;
   let remoteFolderPath = null;
+  let remoteDefaultPath = null;
+  let quickSlots = readQuickSlots();
 
   const sec = document.getElementById('live-server-sec');
   const listEl = document.getElementById('server-list');
@@ -108,6 +173,13 @@ export function setupServerMode({
   const remoteCancelBtn = document.getElementById('server-folder-cancel');
   const remoteErrorEl = document.getElementById('server-folder-error');
   const apiHintEl = document.getElementById('server-api-hint');
+  const quickWrap = document.getElementById('server-quick');
+  const quickBtnsEl = document.getElementById('server-quick-btns');
+  const quickGearBtn = document.getElementById('server-quick-gear');
+  const quickEditEl = document.getElementById('server-quick-edit');
+  const quickRowsEl = document.getElementById('server-quick-rows');
+  const quickSaveBtn = document.getElementById('server-quick-save');
+  const quickResetBtn = document.getElementById('server-quick-reset');
 
   function keyFor(f, rel) {
     return `${rel || f.name}|${f.size}|${f.lastModified}`;
@@ -503,9 +575,12 @@ export function setupServerMode({
     showRemoteError('');
   }
 
-  async function applyFolderEdit() {
-    const path = (remoteEditInput?.value || '').trim();
-    if (!path) return;
+  // Core folder switch shared by the pencil edit and the quick-set buttons.
+  // Validates by listing; on success it becomes the active folder and the
+  // list/poll restart. Returns true on success, false on a (shown) error.
+  async function applyFolder(rawPath) {
+    const path = (rawPath || '').trim();
+    if (!path) return false;
     showRemoteError('');
     try {
       // Validate by listing. The backend returns 4xx if the path is
@@ -521,6 +596,7 @@ export function setupServerMode({
       remoteFolderPath = path;
       writeSavedPath(path);
       updateRemoteFolderDisplay();
+      renderQuickButtons();
       lastAutoLoadedKey = null;
       currentKey = null;
       closeFolderEdit();
@@ -528,9 +604,117 @@ export function setupServerMode({
       updateEntries(out);
       syncRefreshBtn();
       scheduleRefresh();
+      return true;
     } catch (err) {
       showRemoteError(err.message || String(err));
+      return false;
     }
+  }
+
+  function applyFolderEdit() {
+    return applyFolder(remoteEditInput?.value || '');
+  }
+
+  // ── Quick-set folder buttons (control-room one-tap stream switch) ───────
+  // Base directory the bare folder names resolve against: the parent of the
+  // folder the operator is currently on (or the backend default). For the P1
+  // layout every stream is a sibling inside EventDisplayEvent, so the parent
+  // of physics_Main resolves express_express, physics_CosmicMuons, Public too.
+  // A slot whose value is an absolute path is used verbatim instead.
+  function quickBase() {
+    return parentDir(remoteFolderPath || remoteDefaultPath || '');
+  }
+  function resolveQuickPath(slotPath) {
+    const p = (slotPath || '').trim();
+    if (!p) return null;
+    if (isAbsolutePath(p)) return p;
+    const base = quickBase();
+    return base ? joinPath(base, p) : p;
+  }
+  function renderQuickButtons() {
+    if (!quickBtnsEl) return;
+    quickBtnsEl.innerHTML = '';
+    const cur = stripTrailingSep(remoteFolderPath);
+    quickSlots.forEach((slot, idx) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'server-quick-btn';
+      btn.textContent = slot.label || slot.path || `#${idx + 1}`;
+      const resolved = resolveQuickPath(slot.path);
+      btn.title = resolved || slot.label || '';
+      if (!resolved) {
+        btn.disabled = true;
+      } else {
+        if (stripTrailingSep(resolved) === cur) btn.classList.add('cur');
+        btn.addEventListener('click', () => applyFolder(resolved));
+      }
+      quickBtnsEl.appendChild(btn);
+    });
+  }
+  function updateQuickVisible() {
+    if (quickWrap) quickWrap.hidden = !remoteMode;
+  }
+  function renderQuickEditRows() {
+    if (!quickRowsEl) return;
+    quickRowsEl.innerHTML = '';
+    for (let i = 0; i < QUICK_SLOTS; i++) {
+      const slot = quickSlots[i] || { label: '', path: '' };
+      const row = document.createElement('div');
+      row.className = 'server-quick-erow';
+
+      const num = document.createElement('span');
+      num.className = 'server-quick-erow-num';
+      num.textContent = String(i + 1);
+
+      const lab = document.createElement('input');
+      lab.type = 'text';
+      lab.className = 'qe-label';
+      lab.value = slot.label || '';
+      lab.placeholder = t('quick-ph-label');
+      lab.dataset.i18nPh = 'quick-ph-label';
+
+      const pth = document.createElement('input');
+      pth.type = 'text';
+      pth.className = 'qe-path';
+      pth.value = slot.path || '';
+      pth.placeholder = t('quick-ph-path');
+      pth.dataset.i18nPh = 'quick-ph-path';
+
+      row.append(num, lab, pth);
+      quickRowsEl.appendChild(row);
+    }
+  }
+  function openQuickEdit() {
+    renderQuickEditRows();
+    if (quickEditEl) quickEditEl.hidden = false;
+    quickGearBtn?.classList.add('on');
+  }
+  function closeQuickEdit() {
+    if (quickEditEl) quickEditEl.hidden = true;
+    quickGearBtn?.classList.remove('on');
+  }
+  function toggleQuickEdit() {
+    if (quickEditEl && quickEditEl.hidden) openQuickEdit();
+    else closeQuickEdit();
+  }
+  function saveQuickEdit() {
+    if (!quickRowsEl) return;
+    const rows = [...quickRowsEl.querySelectorAll('.server-quick-erow')];
+    quickSlots = rows.map((row, i) => {
+      const path = (row.querySelector('.qe-path')?.value || '').trim();
+      const label =
+        (row.querySelector('.qe-label')?.value || '').trim() || path || `Folder ${i + 1}`;
+      return { label, path };
+    });
+    writeQuickSlots(quickSlots);
+    renderQuickButtons();
+    closeQuickEdit();
+  }
+  function resetQuickEdit() {
+    quickSlots = cloneDefaultQuickSlots();
+    writeQuickSlots(quickSlots);
+    renderQuickEditRows();
+    renderQuickButtons();
   }
 
   // When the probe fails, surface a subtle, non-blocking hint instead of just
@@ -558,6 +742,7 @@ export function setupServerMode({
       const data = await r.json();
       if (!data || typeof data !== 'object' || !('path' in data)) return failRemote();
       remoteMode = true;
+      remoteDefaultPath = typeof data.path === 'string' ? data.path : null;
       // Prefer this client's previously chosen path (per-origin localStorage);
       // fall back to the backend-supplied default for first-time visits.
       const saved = readSavedPath();
@@ -567,6 +752,8 @@ export function setupServerMode({
       if (pickBtn) pickBtn.hidden = true;
       if (remoteBar) remoteBar.hidden = false;
       updateRemoteFolderDisplay();
+      updateQuickVisible();
+      renderQuickButtons();
       canPoll = true;
       isPaused = false;
       syncRefreshBtn();
@@ -594,6 +781,12 @@ export function setupServerMode({
       }
     });
   }
+
+  if (quickGearBtn) quickGearBtn.addEventListener('click', toggleQuickEdit);
+  if (quickSaveBtn) quickSaveBtn.addEventListener('click', saveQuickEdit);
+  if (quickResetBtn) quickResetBtn.addEventListener('click', resetQuickEdit);
+  renderQuickButtons();
+  updateQuickVisible();
 
   syncRefreshBtn();
   tryEnterRemoteMode();

@@ -29,7 +29,6 @@ export function setupCinemaControls({
   const fallbackTgtCurve = _fallback.tgtCurve;
   let tourPosCurve = fallbackPosCurve;
   let tourTgtCurve = fallbackTgtCurve;
-  let _isAdaptive = false;
   let _lastFingerprint = '';
 
   // Cached inputs that drive curve rebuilds. Each notifier slots its own
@@ -58,46 +57,69 @@ export function setupCinemaControls({
   const PATH_DEBOUNCE_MS = 250;
   let _pathDebounceTimer = null;
 
-  // Total tour duration in arc-length space. Camera moves at constant
-  // linear speed along the curve (via getPointAt) so this scales 1:1 with
-  // perceived velocity regardless of how the control points are spaced.
-  const TOUR_TOTAL_DURATION = 60_000;
-  const TOUR_BLEND_MS = 2200;
+  // ── Continuous camera follower ─────────────────────────────────────────────
+  // The whole point of the rewrite: there are NO discrete blends or state
+  // machines any more. A critically-damped follower (Unity-style SmoothDamp)
+  // chases a "lead point" that advances along the active curves at constant
+  // arc-length speed. Because SmoothDamp is C1-continuous (position AND
+  // velocity), every change — entering cinema, a new XML, a 1/2/3 mode switch,
+  // Et↔Energy, a slider drag, slicer/minimap edits — is handled by simply
+  // re-aiming the lead point. The camera eases to the new path from wherever
+  // it currently is, at whatever velocity it currently has, so there is never
+  // a jump or a velocity discontinuity (the old "solavanco").
+  //
+  // TOUR_LOOP_MS is how long one full loop of the curve takes; the lead point
+  // is sampled by arc length (getPointAt) so the speed is uniform regardless
+  // of how the control points are spaced. FOLLOW_SMOOTH is the follower's
+  // time constant: larger = smoother / more cinematic lag, smaller = tighter
+  // tracking. ~0.8 s gives a luxurious but responsive feel.
+  const TOUR_LOOP_MS = 60_000;
+  const FOLLOW_SMOOTH = 0.8;
   const TOUR_EXIT_DURATION = 1400;
+  // Clamp per-frame dt so a long stall (hidden tab, GC pause) can't teleport
+  // the lead point or blow up the follower on the first frame back.
+  const MAX_DT = 0.05;
+
+  let _phase = 0; // lead-point parameter u ∈ [0,1) along the active curves
+  let _lastTickT = 0;
+  const _camPos = new THREE.Vector3(); // smoothed camera position
+  const _camVel = new THREE.Vector3(); // its velocity (units / s)
+  const _tgtPos = new THREE.Vector3(); // smoothed look-at target
+  const _tgtVel = new THREE.Vector3();
+  const _spPos = new THREE.Vector3(); // current lead point (position curve)
+  const _spTgt = new THREE.Vector3(); // current lead point (target curve)
 
   let tourExiting = false;
   let tourExitT0 = 0;
-  const tourPrevPos = new THREE.Vector3();
-  const tourPrevTgt = new THREE.Vector3();
-  const tourVelPos = new THREE.Vector3();
-  const tourVelTgt = new THREE.Vector3();
-  let tourPrevT = 0;
 
-  let tourT0 = 0;
-  let tourU0 = 0;
-  let tourBlending = false;
-  let tourBlendT0 = 0;
-  const tourBlendFromPos = new THREE.Vector3();
-  const tourBlendFromTgt = new THREE.Vector3();
-  const tourTmpPos = new THREE.Vector3();
-  const tourTmpTgt = new THREE.Vector3();
-
-  function tourEase(t) {
-    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  // Critically-damped smoothing toward a (possibly moving) target. Mutates
+  // `current` and `vel` in place; C1 across target changes. Per-component so
+  // there are no per-frame Vector3 allocations.
+  function _smoothDamp(current, target, vel, smoothTime, dt) {
+    const st = Math.max(1e-4, smoothTime);
+    const omega = 2 / st;
+    const x = omega * dt;
+    const exp = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+    for (const k of ['x', 'y', 'z']) {
+      const change = current[k] - target[k];
+      const temp = (vel[k] + omega * change) * dt;
+      vel[k] = (vel[k] - omega * temp) * exp;
+      current[k] = target[k] + (change + temp) * exp;
+    }
   }
 
-  // Arc-length nearest-U: scans the curve at uniform ARC-LENGTH positions
-  // (not parameter positions) so the resolution is the same everywhere
-  // regardless of how the control points are spaced. Returns u in [0, 1]
-  // where 0 is the curve start and 1 is the closed loop's wrap-around.
-  function tourNearestU(v) {
+  // Arc-length nearest-U: scans the active position curve at uniform
+  // ARC-LENGTH positions and returns the u of the closest sample to `v`. Used
+  // to seed the lead point near the current camera on entry and on every curve
+  // swap, so the lead point never jumps far from where the camera already is.
+  function _nearestU(v) {
     const samples = 240;
     let bestU = 0;
     let bestD = Infinity;
     for (let i = 0; i < samples; i++) {
       const u = i / samples;
-      tourPosCurve.getPointAt(u, tourTmpPos);
-      const d = tourTmpPos.distanceToSquared(v);
+      tourPosCurve.getPointAt(u, _spPos);
+      const d = _spPos.distanceToSquared(v);
       if (d < bestD) {
         bestD = d;
         bestU = u;
@@ -106,32 +128,15 @@ export function setupCinemaControls({
     return bestU;
   }
 
-  // Sample by arc length so the camera moves at constant linear speed along
-  // the curve — no dwelling on densely-spaced waypoints, no zooming through
-  // long segments. Both curves share the same u so position and target stay
-  // in sync; they have similar arc-length-to-parameter mappings since they
-  // were built from the same POIs.
-  function tourSampleU(u) {
-    u = ((u % 1) + 1) % 1;
-    tourPosCurve.getPointAt(u, tourTmpPos);
-    tourTgtCurve.getPointAt(u, tourTmpTgt);
-  }
-
-  // Two blends drive the inner-detector camera overrides:
-  //
-  // 1. TARGET blend (x/y based): the on-axis corridor in xy where the
-  //    camera's curve target gets replaced by a far ±Z point so the look
-  //    direction is forced parallel to the beam axis. Sign flips abruptly
-  //    at z=0, in/out fades smoothly so the entry/exit of the corridor
-  //    doesn't itself jump.
-  //
-  // 2. ROLL blend (z based): the screen rolls 90° around the beam axis
-  //    while the camera is INSIDE the cylinder. We tie this to the z
-  //    position relative to the calo outer envelope (half-length 6 m,
-  //    matching CLUSTER_CYL_OUT_HALF_H in particles.js). Roll starts at
-  //    the cylinder edge and finishes 1.5 m further in — same on the way
-  //    out — so the rotation feels gradual instead of snapping to fully
-  //    rolled the moment the camera enters the on-axis corridor.
+  // ── Inner-detector look overrides (kept from the original design) ───────────
+  // When a curve dips into the on-axis corridor (camera x/y near the beam
+  // line) the look direction is forced parallel to ±Z and the screen rolls 90°
+  // around the beam axis, so traversing the calo reads as "flying down the
+  // beam pipe" rather than staring at the inner wall. The safe-envelope curves
+  // normally stay on the r = 14 m cylinder where these gates evaluate to 0, so
+  // this is inert for the default tour — it only kicks in if a future curve
+  // actually approaches the axis. All gates are smoothstep (C1), so even then
+  // there is no discontinuity.
   const TRAVERSAL_X_FULL = 100;
   const TRAVERSAL_X_OFF = 800;
   const TRAVERSAL_Y_FULL = 50;
@@ -153,32 +158,33 @@ export function setupCinemaControls({
     if (az >= ROLL_CYL_HALF_LEN_MM) return 0;
     if (az <= ROLL_CYL_HALF_LEN_MM - ROLL_RAMP_MM) return 1;
     const t = (ROLL_CYL_HALF_LEN_MM - az) / ROLL_RAMP_MM;
-    return t * t * (3 - 2 * t); // smoothstep 0 → 1 over the ramp
+    return t * t * (3 - 2 * t);
   }
-  function _maybeOverrideTraversalTarget() {
-    // On-axis gate (xy): both target override and roll are only meaningful
-    // while the camera is in the on-axis corridor. Outside waypoints can
-    // also cross z=0 — without this gate the roll would fire there too.
-    const xBlend = _smoothBlend01(Math.abs(tourTmpPos.x), TRAVERSAL_X_FULL, TRAVERSAL_X_OFF);
-    const yBlend = _smoothBlend01(tourTmpPos.y, TRAVERSAL_Y_FULL, TRAVERSAL_Y_OFF);
+  // Gates are evaluated on the SMOOTHED camera position (posVec) so they stay
+  // continuous across curve swaps; the (possibly overridden) look target is
+  // written into tgtVec, which the follower then eases toward.
+  function _applyTraversalOverride(posVec, tgtVec) {
+    const xBlend = _smoothBlend01(Math.abs(posVec.x), TRAVERSAL_X_FULL, TRAVERSAL_X_OFF);
+    const yBlend = _smoothBlend01(posVec.y, TRAVERSAL_Y_FULL, TRAVERSAL_Y_OFF);
     const onAxisBlend = xBlend * yBlend;
 
-    // Up vector: gated by on-axis AND ramped on z so the 90° roll fades
-    // over the first 1.5 m inside the cylinder (and unwinds on the way
-    // out). Outside the corridor → up stays at world +Y.
-    const rollBlend = _zRollBlend(tourTmpPos.z) * onAxisBlend;
+    const rollBlend = _zRollBlend(posVec.z) * onAxisBlend;
     camera.up.lerpVectors(_UP_OUTSIDE, _UP_INSIDE, rollBlend).normalize();
 
-    // Target override: same gate, no z ramp.
     if (onAxisBlend <= 0) return;
-    const sign = tourTmpPos.z >= 0 ? -1 : 1;
+    const sign = posVec.z >= 0 ? -1 : 1;
     _tourOverrideTgt.set(0, 0, sign * TRAVERSAL_TARGET_FAR);
-    tourTmpTgt.lerp(_tourOverrideTgt, onAxisBlend);
+    tgtVec.lerp(_tourOverrideTgt, onAxisBlend);
   }
 
   function tick() {
     const now = performance.now();
+    const dt = Math.min(MAX_DT, Math.max(1e-4, (now - _lastTickT) / 1000));
+    _lastTickT = now;
 
+    // Exit: let the camera coast on its last follower velocity, decaying to a
+    // stop, then hand control back to OrbitControls. Continuous with the tour
+    // motion because _camVel/_tgtVel carry the live velocity at exit time.
     if (tourExiting) {
       const et = now - tourExitT0;
       if (et >= TOUR_EXIT_DURATION) {
@@ -186,94 +192,56 @@ export function setupCinemaControls({
         return;
       }
       const decay = Math.pow(1 - et / TOUR_EXIT_DURATION, 2);
-      const dtSec = Math.max(0.001, (now - tourPrevT) / 1000);
-      camera.position.addScaledVector(tourVelPos, decay * dtSec);
-      controls.target.addScaledVector(tourVelTgt, decay * dtSec);
+      camera.position.addScaledVector(_camVel, decay * dt);
+      controls.target.addScaledVector(_tgtVel, decay * dt);
       controls.update();
       markDirty();
-      tourPrevT = now;
       return;
     }
 
     if (!cinemaMode || !tourMode) return;
 
-    if (tourBlending) {
-      const bt = now - tourBlendT0;
-      const k = Math.min(1, bt / TOUR_BLEND_MS);
-      const eased = tourEase(k);
-      tourSampleU(tourU0);
-      _maybeOverrideTraversalTarget();
-      camera.position.lerpVectors(tourBlendFromPos, tourTmpPos, eased);
-      controls.target.lerpVectors(tourBlendFromTgt, tourTmpTgt, eased);
-      controls.update();
-      markDirty();
+    // Advance the lead point by arc length at constant speed.
+    _phase = (_phase + (dt * 1000) / TOUR_LOOP_MS) % 1;
+    tourPosCurve.getPointAt(_phase, _spPos);
+    tourTgtCurve.getPointAt(_phase, _spTgt);
 
-      const dtSec = Math.max(0.001, (now - tourPrevT) / 1000);
-      tourVelPos.subVectors(camera.position, tourPrevPos).divideScalar(dtSec);
-      tourVelTgt.subVectors(controls.target, tourPrevTgt).divideScalar(dtSec);
-      tourPrevPos.copy(camera.position);
-      tourPrevTgt.copy(controls.target);
-      tourPrevT = now;
+    // Follow position, then gate the look-target override on the smoothed
+    // position, then follow the target. This ordering keeps the up-vector and
+    // target override continuous even across a curve swap.
+    _smoothDamp(_camPos, _spPos, _camVel, FOLLOW_SMOOTH, dt);
+    _applyTraversalOverride(_camPos, _spTgt);
+    _smoothDamp(_tgtPos, _spTgt, _tgtVel, FOLLOW_SMOOTH, dt);
 
-      if (k >= 1) {
-        tourBlending = false;
-        tourT0 = now;
-      }
-      return;
-    }
-
-    const u = (tourU0 + (now - tourT0) / TOUR_TOTAL_DURATION) % 1;
-    tourSampleU(u);
-    _maybeOverrideTraversalTarget();
-    camera.position.copy(tourTmpPos);
-    controls.target.copy(tourTmpTgt);
+    camera.position.copy(_camPos);
+    controls.target.copy(_tgtPos);
     controls.update();
     markDirty();
-
-    const dtSec = Math.max(0.001, (now - tourPrevT) / 1000);
-    tourVelPos.subVectors(camera.position, tourPrevPos).divideScalar(dtSec);
-    tourVelTgt.subVectors(controls.target, tourPrevTgt).divideScalar(dtSec);
-    tourPrevPos.copy(camera.position);
-    tourPrevTgt.copy(controls.target);
-    tourPrevT = now;
   }
 
-  // Shared blend setup: snapshot camera state and target the nearest point on
-  // whatever curves are currently active. Used both by startTour (entering
-  // cinema) and _applyNewCurves (live path swap when a new event arrives).
-  function _startBlendToCurves() {
-    const now = performance.now();
-    tourU0 = tourNearestU(camera.position);
-    tourBlending = true;
-    tourBlendT0 = now;
-    tourT0 = now;
-    tourBlendFromPos.copy(camera.position);
-    tourBlendFromTgt.copy(controls.target);
-    tourPrevPos.copy(camera.position);
-    tourPrevTgt.copy(controls.target);
-    tourVelPos.set(0, 0, 0);
-    tourVelTgt.set(0, 0, 0);
-    tourPrevT = now;
+  // Seed the follower from the camera's current pose and aim the lead point at
+  // the nearest point on the active curve. The follower then eases in from
+  // exactly where the user left the camera — no jump on entry, and the same
+  // routine re-seeds after a curve swap so live path changes are seamless too.
+  function _seedFollower() {
+    _camPos.copy(camera.position);
+    _tgtPos.copy(controls.target);
+    _camVel.set(0, 0, 0);
+    _tgtVel.set(0, 0, 0);
+    _phase = _nearestU(camera.position);
+    _lastTickT = performance.now();
     tourExiting = false;
   }
 
-  function startTour() {
-    _startBlendToCurves();
-    controls.autoRotate = false;
-  }
-
-  // Live curve swap. If the user is currently in the tour, the existing
-  // blend machinery interpolates from where the camera is RIGHT NOW (which
-  // may itself be mid-blend) to the nearest point on the new curves over
-  // TOUR_BLEND_MS — same easing the cinema entry uses, so the visual feel
-  // is consistent. Outside cinema (or with tour mode off) we just replace
-  // the curves silently; the next enterCinema() picks them up.
-  function _applyNewCurves(newPosCurve, newTgtCurve, isAdaptive) {
+  // Curve swap: keep the follower's live position/velocity, just re-aim the
+  // lead point at the nearest point on the NEW curve. Because nearest-U is, by
+  // definition, close to where the camera already is, the lead point barely
+  // moves and the follower carries on smoothly — no blend needed.
+  function _applyNewCurves(newPosCurve, newTgtCurve) {
     tourPosCurve = newPosCurve;
     tourTgtCurve = newTgtCurve;
-    _isAdaptive = !!isAdaptive;
     if (cinemaMode && tourMode) {
-      _startBlendToCurves();
+      _phase = _nearestU(_camPos.lengthSq() > 0 ? _camPos : camera.position);
     }
   }
 
@@ -307,12 +275,23 @@ export function setupCinemaControls({
 
     const built = pois.length >= 2 ? buildTourCurves(pois) : null;
     if (built) {
-      _applyNewCurves(built.posCurve, built.tgtCurve, true);
-    } else if (_isAdaptive) {
-      // No usable POIs — restore the safe-envelope fallback so the tour
-      // keeps moving.
-      _applyNewCurves(fallbackPosCurve, fallbackTgtCurve, false);
+      _applyNewCurves(built.posCurve, built.tgtCurve);
+    } else {
+      // No usable POIs — use the safe-envelope fallback so the tour keeps
+      // moving (and so a freshly-entered cinema on an empty scene still orbits).
+      _applyNewCurves(fallbackPosCurve, fallbackTgtCurve);
     }
+  }
+
+  // Force the curves to reflect the current inputs RIGHT NOW (used on entry so
+  // we never start on the fallback and swap a frame later). Cancels any pending
+  // debounce and rebuilds synchronously; a no-op if the fingerprint is current.
+  function _rebuildSyncForEntry() {
+    if (_pathDebounceTimer) {
+      clearTimeout(_pathDebounceTimer);
+      _pathDebounceTimer = null;
+    }
+    _rebuildNow();
   }
 
   /**
@@ -370,6 +349,12 @@ export function setupCinemaControls({
     _scheduleRebuild();
   }
 
+  function startTour() {
+    _rebuildSyncForEntry();
+    controls.autoRotate = false;
+    _seedFollower();
+  }
+
   function enterCinema() {
     cinemaMode = true;
     document.body.classList.add('cinema');
@@ -400,7 +385,7 @@ export function setupCinemaControls({
     if (wasTour) {
       tourExiting = true;
       tourExitT0 = performance.now();
-      tourPrevT = tourExitT0;
+      _lastTickT = tourExitT0;
     }
   }
 
@@ -415,7 +400,6 @@ export function setupCinemaControls({
     tourMode = false;
     if (cinemaMode) {
       tourExiting = false;
-      tourBlending = false;
       camera.up.set(0, 1, 0);
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.55;

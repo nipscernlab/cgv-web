@@ -206,6 +206,131 @@ export function setupSidebarControls({
     tapOpener(rpanelEdge, () => setPinnedR(true));
   })();
 
+  // ── Swipe-to-collapse / swipe-to-open the left sidebar (mobile) ─────────
+  // A finger drawer: the panel follows the finger 1:1 (transition off) and
+  // snaps open or closed on release based on travel + fling velocity. Two
+  // entry points — drag left on the open panel to close it, drag right from
+  // the left edge strip to open it. Vertical-dominant gestures fall through
+  // so the panel's own content keeps scrolling.
+  (function setupPanelSwipe() {
+    const SWIPE_AXIS_PX = 8; // movement before we commit to an axis
+    const SNAP_FRACTION = 0.35; // travel past this fraction of width = snap
+    const FLING_PX_PER_MS = 0.45; // velocity that snaps regardless of travel
+
+    let startX = 0;
+    let startY = 0;
+    let lastX = 0;
+    let lastT = 0;
+    let vx = 0;
+    let active = false; // a touch is being tracked
+    let decided = false; // axis committed
+    let dragging = false; // committed to a horizontal drawer drag
+    let fromOpen = false; // started on the open panel (close) vs the edge (open)
+
+    const panelW = () => panelEl.getBoundingClientRect().width || 240;
+
+    function onStart(e, openStart) {
+      if (!mobileMQ.matches || e.touches.length !== 1) return;
+      const t0 = e.touches[0];
+      startX = lastX = t0.clientX;
+      startY = t0.clientY;
+      lastT = performance.now();
+      vx = 0;
+      active = true;
+      decided = false;
+      dragging = false;
+      fromOpen = openStart;
+    }
+
+    function onMove(e) {
+      if (!active) return;
+      const t0 = e.touches[0];
+      const dx = t0.clientX - startX;
+      const dy = t0.clientY - startY;
+      const now = performance.now();
+      if (now > lastT) vx = (t0.clientX - lastX) / (now - lastT);
+      lastX = t0.clientX;
+      lastT = now;
+
+      if (!decided) {
+        if (Math.abs(dx) < SWIPE_AXIS_PX && Math.abs(dy) < SWIPE_AXIS_PX) return;
+        decided = true;
+        const horizontal = Math.abs(dx) > Math.abs(dy);
+        const rightDir = fromOpen ? dx < 0 : dx > 0; // expected direction
+        if (!horizontal || !rightDir) {
+          active = false; // vertical / wrong-way → let the content scroll
+          return;
+        }
+        dragging = true;
+        panelEl.style.transition = 'none';
+      }
+      if (!dragging) return;
+      e.preventDefault(); // own the gesture; block page/content scroll
+      const w = panelW();
+      const off = fromOpen
+        ? Math.max(-w, Math.min(0, dx)) // open(0) → closed(-w)
+        : Math.max(-w, Math.min(0, -w + dx)); // closed(-w) → open(0)
+      panelEl.style.transform = `translateX(${off}px)`;
+    }
+
+    function onEnd() {
+      if (!active) return;
+      active = false;
+      if (!dragging) return;
+      dragging = false;
+
+      const w = panelW();
+      const dx = lastX - startX;
+      const flung = Math.abs(vx) > FLING_PX_PER_MS;
+      const open = fromOpen
+        ? !(dx < -w * SNAP_FRACTION || (flung && vx < 0))
+        : dx > w * SNAP_FRACTION || (flung && vx > 0);
+
+      // Restore the CSS transition, commit the dragged position as the
+      // animation start (reflow), then let the class transform take over so
+      // the snap animates smoothly from where the finger left it.
+      panelEl.style.transition = '';
+      void panelEl.offsetWidth;
+      setPinned(open);
+      panelEl.style.transform = '';
+
+      // A horizontal drag across the panel content (e.g. the event list) would
+      // otherwise emit a synthesized click on release and load an event by
+      // accident. Swallow the next click in the capture phase, before any row
+      // handler sees it.
+      const swallow = (ev) => {
+        ev.stopPropagation();
+        ev.preventDefault();
+      };
+      document.addEventListener('click', swallow, { capture: true, once: true });
+      setTimeout(() => document.removeEventListener('click', swallow, { capture: true }), 400);
+    }
+
+    panelEl.addEventListener(
+      'touchstart',
+      (e) => {
+        if (panelPinned) onStart(e, true);
+      },
+      {
+        passive: true,
+      },
+    );
+    panelEdge.addEventListener(
+      'touchstart',
+      (e) => {
+        if (!panelPinned) onStart(e, false);
+      },
+      {
+        passive: true,
+      },
+    );
+    for (const el of [panelEl, panelEdge]) {
+      el.addEventListener('touchmove', onMove, { passive: false });
+      el.addEventListener('touchend', onEnd);
+      el.addEventListener('touchcancel', onEnd);
+    }
+  })();
+
   btnSettings.addEventListener('click', (e) => {
     e.stopPropagation();
     settingsPanelOpen ? closeSettingsPanel() : openSettingsPanel();

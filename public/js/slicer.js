@@ -185,8 +185,9 @@ export function createSlicerController({
     g.add(sph);
     g.userData.handleMouse = sph;
 
-    // Invisible larger hit-area so touch input on mobile (where the visual
-    // sphere is only a few pixels wide) doesn't have to land on the dot exactly.
+    // Invisible larger hit-area so pointer input doesn't have to land on the
+    // visual dot exactly. Used for BOTH mouse and touch (see pickHandle) — the
+    // visible sphere stays small (sphR) while the grabbable region is this big.
     const hitR = 500;
     const hitGeo = new THREE.SphereGeometry(hitR, 12, 8);
     const hitMat = new THREE.MeshBasicMaterial({
@@ -204,10 +205,12 @@ export function createSlicerController({
     return g;
   }
 
-  function pickHandle(e) {
-    return e.pointerType === 'touch'
-      ? slicerGroup.userData.handleTouch
-      : slicerGroup.userData.handleMouse;
+  // Always pick against the large invisible hit sphere — for mouse and touch
+  // alike — so the central dot is easy to grab even though it stays visually
+  // tiny. handleMouse (the visible sphere) is kept only for rendering and the
+  // hover highlight.
+  function pickHandle(_e) {
+    return slicerGroup.userData.handleTouch;
   }
 
   function updateBasis() {
@@ -531,7 +534,7 @@ export function createSlicerController({
       if (!slicerActive || !slicerGroup) return;
       const pt = pointerXY(e);
       dragRay.setFromCamera(pt, camera);
-      const hits = dragRay.intersectObject(slicerGroup.userData.handleMouse, false);
+      const hits = dragRay.intersectObject(slicerGroup.userData.handleTouch, false);
       if (hits.length) e.preventDefault();
     });
   })();
