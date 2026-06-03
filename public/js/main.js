@@ -49,7 +49,6 @@ import {
   refreshSceneVisibility,
   setEtaPhiRegion,
   setHeatmapListener,
-  setClusterListener,
   getTrackGroup,
 } from './visibility.js';
 import { createDownloadProgressController } from './downloadProgress.js';
@@ -69,7 +68,6 @@ import {
   initMinimap,
   setMinimapVisible,
   setMinimapRegionListener,
-  setMinimapClusters,
   updateMinimap,
 } from './minimap.js';
 import {
@@ -114,10 +112,6 @@ setHeatmapListener((cells, fcal) => {
   updateMinimap({ cells, fcal });
   cinema.updateTourFromEvent({ cells, fcal });
 });
-// Reconstructed clusters above the ET threshold → minimap region markers.
-// Fires from the visibility pipeline on load / ET slider / region / view-level,
-// so the highlighted regions always match the 3-D scene.
-setClusterListener((clusters) => setMinimapClusters(clusters));
 
 let sidebarControls = null;
 
