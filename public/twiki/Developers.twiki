@@ -12,24 +12,30 @@ needs no install.
 
 ---++ Just run the viewer
 
-The repository ships all compiled assets (=public/geometry_data/CaloGeometry.glb.gz=,
-=public/parser/pkg/*.wasm=), so a static HTTP server pointed at =public/= is
-enough to launch the full app:
+The repository does NOT ship the compiled geometry or the JiveXML
+samples; they live on the GitHub Release =geometry-v4= and are fetched
+by =npm run fetch:geometry= and =npm run fetch:samples=. The Rust
+parser WASM is committed under =public/parser/pkg/=.
+
+For a quick local run:
 
 <verbatim>
 git clone https://github.com/nipscernlab/cgv-web.git
 cd cgv-web
-python -m http.server 8080 -d public
+npm install --ignore-scripts
+npm run fetch:geometry     # downloads CaloGeometry.glb.gz (~5 MB)
+npm run fetch:samples      # downloads default_xml/*.xml
+python serve.py            # starts the backend on 127.0.0.1:8080
 </verbatim>
 
-Or, with Node:
+Open =http://localhost:8080/=. =serve.py= is a small ThreadingHTTPServer
+that serves =public/= and exposes =/api/xml/*= for the SERVER sub-mode.
+Setting =XML_FOLDER= before launching points the SERVER mode at a local
+folder for first-paint:
 
 <verbatim>
-npx serve public
+XML_FOLDER="$PWD/public/default_xml" python serve.py
 </verbatim>
-
-Open =http://localhost:8080/= and the viewer behaves exactly like the
-hosted deployment.
 
 ---++ Full build pipeline
 
@@ -135,34 +141,39 @@ needs administrative privileges to place =wasm-pack= on =PATH=.
 <verbatim>
 cgv-web/
 ├── public/                     everything served to the browser (deploy artifact)
-│   ├── index.html              entry point (HTML only)
-│   ├── css/                    modular stylesheets (base, panel-*, modes, hud, toolbar, dialogs, loading, floating, cinema, mobile)
-│   ├── js/main.js              viewer logic (Three.js, UI, i18n, networking)
-│   ├── assets/                 icons, fonts, images (incl. cgvweb_icon.svg)
-│   ├── vendor/                 vendored third-party libs (Three.js, fonts, icons)
-│   ├── default_xml/            bundled JiveXML samples + index.json
-│   ├── geometry_data/
-│   │   ├── CaloGeometry.root   source geometry (input)
-│   │   ├── CaloGeometry.glb    optimised glTF binary
-│   │   └── CaloGeometry.glb.gz gzip-compressed GLB shipped to clients
-│   ├── parser/pkg/             wasm-pack output (committed; loaded by the viewer)
-│   ├── nipscern/               lightweight standalone preview (pre-baked scene_data.bin)
-│   └── live_atlas/             optional live ATLANTIS bridge
+│   ├── index.html              entry point
+│   ├── css/                    modular stylesheets
+│   ├── js/                     viewer logic split by concern
+│   │   ├── main.js             top-level wiring
+│   │   ├── modes/              liveMode, serverMode, sampleMode
+│   │   ├── particles/          tracks, clusters, jets, photons, electrons, muons, taus
+│   │   ├── overlays/           hits, MET, vertex
+│   │   ├── parsers/            jet, muon, tau, hits, MET, vertex parsers
+│   │   ├── visibility/         per-class show / hide, FCAL renderer, layer gates
+│   │   ├── cinema/             scripted tour path
+│   │   ├── bootstrap/          UI wiring (topToolbar, layersPanel, helpersPanel, ...)
+│   │   ├── i18n/               translation tables (en, fr, pt, no)
+│   │   └── ...                 (minimap, slicer, screenshot, statusHud, etc.)
+│   ├── assets/                 icons, fonts, branding, images
+│   ├── vendor/                 Three.js, jsroot, icon fonts
+│   ├── default_xml/            JiveXML samples + index.json (fetched, not committed)
+│   ├── geometry_data/          CaloGeometry.glb.gz (fetched, not committed)
+│   ├── parser/pkg/             wasm-pack output (committed; loaded by main.js)
+│   ├── live_atlas/             ATLAS Live polling client
+│   └── twiki/                  this TWiki bundle, served at /cgv-web/twiki/
 ├── parser/                     Rust ATLAS-ID parser source
-│   ├── src/lib.rs              Rust source
+│   ├── src/                    lib.rs + xml_parser.rs
 │   └── Cargo.toml
-├── tests/                      Vitest unit tests (import from ../public/js/)
-├── docs/                       design notes & PDFs
-├── tools/                      offline-only tooling (not deployed)
-│   ├── const/                  CaloBuild.C, CaloGeoConst.h (ATLAS geometry constants)
-│   ├── setup/                  build pipeline scripts
-│   │   ├── setup.mjs           patches jsroot modules
-│   │   ├── root2scene.mjs      .root → .glb compiler
-│   │   ├── optimize_glb.mjs    GLB stripper / quantiser
-│   │   └── lib/                patched jsroot modules
-│   ├── scripts/                CI/deploy automation (fetch-geometry, fetch-samples)
-│   └── twiki/                  ATLAS TWiki user documentation (this folder)
-└── build.bat                   one-shot Windows full-build pipeline
+├── tests/                      Vitest unit tests
+├── docs/                       LINUX_BUILD.md, geo_decoder.pdf, ...
+├── tools/                      offline tooling, not deployed
+│   ├── setup/                  jsroot patches, root2scene compiler
+│   └── scripts/                fetch-geometry, fetch-samples, deploy
+├── server.py                   systemd-launched production wrapper
+├── serve.py                    HTTP server + /api/xml/* backend
+├── cgv-web.spec                RPM spec (Alma / Rocky / RHEL 9)
+├── build-rpm.sh                one-stop RPM build on Linux
+└── build.bat                   one-stop Windows frontend build
 </verbatim>
 
 ---++ Code conventions
@@ -175,17 +186,36 @@ cgv-web/
 
 ---++ Previewing the TWiki locally
 
-The =tools/twiki/= folder is a self-contained preview of the published ATLAS
-TWiki pages. From =tools/twiki/=:
+The TWiki bundle is shipped inside the runtime at =public/twiki/=. The
+"Technical TWiki" link in the sidebar of the viewer resolves to this
+folder, so any local =serve.py= or static HTTP server pointed at =public/=
+also serves the TWiki at =/twiki/=. See =public/twiki/PUBLISHING.txt= for
+the procedure to copy each =.twiki= file into the CERN ATLAS TWiki.
+
+---++ Building the RPM (Alma / Rocky / RHEL 9)
+
+A =build-rpm.sh= at the repository root drives the full pipeline on
+Linux: it installs system packages, Node.js, Rust + wasm-pack, downloads
+geometry and samples, builds the WASM parser, stages a runtime-only tree
+(no =node_modules=, no =.root= inputs, no =tools/=, no =nipscern/= baker)
+and runs =rpmbuild=. Interactive version prompt, or pass the version on
+the CLI:
 
 <verbatim>
-python -m http.server 8080
+./build-rpm.sh                  # interactive, builds only
+./build-rpm.sh 2.3.0            # non-interactive
+./build-rpm.sh 2.3.0 --install  # build + install locally + smoke test
 </verbatim>
 
-Open =http://localhost:8080/=. The local shell (=index.html=, =app.js=,
-=twiki-parser.js=, =style.css=) is a client-side Foswiki renderer styled
-to match the ATLAS Pattern skin. See =tools/twiki/PUBLISHING.txt= for the
-procedure to copy each =.twiki= file into the CERN ATLAS TWiki.
+The Apache configuration is owned by the host (Puppet at P1); the RPM
+does not ship =/etc/httpd/conf.d/cgv-web.conf= and does not touch
+=httpd= in =%post=. A reference snippet ships at
+=/var/www/cgv-web/examples/apache-cgv-web.conf.example= for comparison
+with the host's setup.
+
+See =docs/LINUX_BUILD.md= for the manual fallback (every command from a
+fresh box to the upload on lxplus and the message template for the P1
+sysadmins).
 
 ---++ Opening an issue / contributing
 

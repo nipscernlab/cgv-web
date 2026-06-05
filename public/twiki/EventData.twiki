@@ -7,7 +7,7 @@
 
 JiveXML is the ATLAS XML event-display interchange format. It is
 produced by ATHENA's =JiveXML= algorithm at reconstruction time and
-consumed by both the legacy Java ATLANTIS client and, now, CGV Web.
+consumed by both the Java ATLANTIS client and CGV Web.
 A typical event carries the calorimeter cells, reconstructed
 inner-detector tracks and clusters, run and event numbers and a short
 summary block:
@@ -84,17 +84,28 @@ Image credit: figure adapted from
 [[https://www.researchgate.net/figure/sualization-of-the-ATLAS-calorimeter-readout-geometry-The-three-subsystems-Tile-Liquid_fig1_346904471][_Visualization of the ATLAS calorimeter readout geometry_ on ResearchGate]].
 </div>
 
----++ Tracks and clusters
+---++ Reconstructed objects parsed from JiveXML
 
-_Tracks_ come from the ATLAS inner-detector reconstruction chain and
-are drawn as thin solid lines coloured by the Track accent =#ffea00=.
-The Track tab in the [[EnergyThresholds][threshold panel]] exposes a
-=p_{T}= floor.
+CGV Web parses, beyond the per-sub-detector cell arrays, the following
+top-level JiveXML elements. Each one is mapped to its drawing class in
+[[Particles][Particles]].
 
-_Topological clusters_ come from the =CaloTopoCluster= algorithm and
-are drawn as dashed red outlines (=#ff4400=) around the cells that form
-the cluster. The Cluster right-panel tab exposes a min-=E_{T}= filter,
-and the =Shift+K= shortcut toggles the filter on/off entirely.
+| *JiveXML tag*          | *Drawn as*                              |
+| =<Track>=              | Thin yellow polylines                   |
+| =<Cluster>=            | Red-orange dashed &eta;/&phi; lines     |
+| =<Jet>= (per collection) | Orange dashed &eta;/&phi; lines      |
+| =<Photon>=             | Yellow Feynman-style springs            |
+| =<Electron>=           | Track repaint + e&minus; / e+ sprite    |
+| =<Muon>=               | Track repaint + &mu;&minus; / &mu;+ sprite |
+| =<TauJet>=             | Purple dashed lines + per-daughter sprite |
+| =<MissingET>=          | Hot pink arrow + &nu; sprite            |
+| =<Vertex>= (primary, pileup, secondary) | Small spheres at fixed pixel size |
+| Inner-detector hits attached to a track | Per-hover hit overlay      |
+
+The viewer is robust to optional fields. A missing =charge= for muons
+falls back to a plain =&mu;= label; a missing =mass= or =pt= for a jet
+is tolerated by the threshold tooltip; a missing =Vertex= block hides
+the vertex overlay without affecting the rest of the event.
 
 ---++ Provenance in the UI
 

@@ -9,15 +9,21 @@ $ *ATLAS*: A Toroidal LHC ApparatuS. One of the two general-purpose experiments 
 
 $ *ATHENA*: ATLAS' offline software framework (Gaudi-based). Produces the JiveXML that CGV Web reads.
 
-$ *ATLANTIS*: The legacy Java event display. Still the source of the live event feed consumed by CGV Web (=atlas-live.cern.ch=).
+$ *ATLANTIS*: The Java event display. Source of the live event feed consumed by CGV Web (=atlas-live.cern.ch=).
 
 $ *ATLAS-ID (compact)*: A 32-bit integer packing =(subDet, side, sampling, η-bin, φ-bin)= for every calorimeter cell. Decoded by CGV Web's WASM parser.
+
+$ *Anti-k_t*: The standard ATLAS jet clustering algorithm. Jet collections like =AntiKt4EMTopoJets_xAOD= use it.
 
 $ *Cell*: A single readout channel of a calorimeter sampling.
 
 $ *Cinema mode*: CGV Web display state (=C= hotkey) that hides the UI and rotates the camera around the detector; with _Guided tour_ enabled, the rotation is replaced by a scripted fly-through.
 
 $ *Cluster*: A topological grouping of adjacent cells produced by ATHENA's =CaloTopoCluster=. Drawn as dashed red outlines.
+
+$ *Electron*: Charged-lepton candidate. Matched track is recoloured red (e&minus;) or green (e+); a sprite floats halfway along the track.
+
+$ *Jet*: Anti-k_t reconstructed jet from a configurable collection. Drawn as a dashed orange &eta;/&phi; line.
 
 $ *Collision HUD*: Top-left overlay that mirrors the left-panel collision footer (run, event, lumi block, timestamp, version). Auto-visible when the sidebar is unpinned or cinema mode is active.
 
@@ -37,15 +43,31 @@ $ *HEC*: Hadronic End-Cap calorimeter (LAr-based, 4 wheels).
 
 $ *JiveXML*: XML event format used by ATLANTIS and CGV Web. See [[EventData]].
 
+$ *MET*: Missing transverse energy. Drawn as a hot pink arrow in the (x, y) plane, with a =&nu;= label past the cone.
+
+$ *Minimap*: The 2D &eta; / &phi; heatmap (top-left of the canvas, =Shift+M=). Doubles as a region picker. See [[Minimap]].
+
+$ *Muon*: Charged-lepton candidate from the muon spectrometer. Matched =CombinedMuonTrack= is recoloured blue; a =&mu;&minus;= / =&mu;+= sprite sits at the outer end of the track.
+
 $ *P97*: The 97th percentile of the current event's cell energies for a given sub-detector. Used as the auto ceiling of each threshold slider.
+
+$ *Photon*: Neutral candidate drawn as a Feynman-style yellow spring landing on the first visible cell along the photon's path.
 
 $ *Sampling*: A depth layer inside a calorimeter (=EMB1=, =EMB2=, =TileA=, etc.).
 
+$ *Seam (&phi;)*: The minimap's vertical line that marks where the &phi; cylinder is cut. Slide it away from a cluster that straddles &plusmn;&pi; to centre the cluster in one region rectangle.
+
 $ *Slicer*: A cylindrical-wedge carve gizmo (=Shift+S=). Hides every cell whose centre lies inside the cut volume without removing the sub-detector from the scene.
+
+$ *Tau*: Hadronic tau candidate. Drawn as a purple dashed &eta;/&phi; line; one =&tau;= sprite per matched daughter track (three for three-prong taus).
 
 $ *Tile*: Scintillating-tile hadronic calorimeter forming the central barrel of ATLAS.
 
-$ *Track*: Inner-detector reconstructed trajectory. Drawn as thin yellow lines.
+$ *Track*: Inner-detector reconstructed trajectory. Drawn as thin yellow lines (recoloured red / green / blue / purple if matched to an electron / muon / tau).
+
+$ *Vertex*: Primary, pile-up or secondary (b-tag) interaction point. Drawn as a small sphere at fixed pixel size on screen.
+
+$ *View level (L1 / L2 / L3)*: Three-tier detail selector. L1 = cells + raw tracks; L2 = + clusters; L3 = + particles (default).
 
 $ *WASM*: WebAssembly &mdash; low-level bytecode format used by the Rust ATLAS-ID parser shipped in =parser/pkg/=.
 

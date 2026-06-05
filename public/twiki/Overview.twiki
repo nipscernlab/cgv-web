@@ -22,13 +22,30 @@ are sub-second.
 
 ---++ What it renders
 
-   * Tile Calorimeter &mdash; long barrel (LB) and the two extended barrels (EB&plusmn;).
-   * LAr EM &mdash; barrel (EMB) and end-caps (EMEC&plusmn;).
-   * HEC &mdash; four-wheel hadronic end-cap.
-   * FCAL &mdash; three forward modules (FCAL1 / FCAL2 / FCAL3).
-   * ATLAS Ghost &mdash; nine inactive-material envelopes for spatial context (cryostats, supports, interfaces).
-   * Reconstructed tracks from the ATLAS inner-detector chain.
+Calorimeter cells:
+
+   * Tile Calorimeter, long barrel (LB) and the two extended barrels (EB&plusmn;).
+   * LAr EM, barrel (EMB) and end-caps (EMEC&plusmn;).
+   * HEC, four-wheel hadronic end-cap.
+   * FCAL, three forward modules (FCAL1 / FCAL2 / FCAL3).
+   * ATLAS Ghost, nine inactive-material envelopes for spatial context (cryostats, supports, interfaces).
+
+Reconstructed objects overlaid on the geometry:
+
+   * Inner-detector tracks, drawn as thin solid yellow lines.
    * Topological clusters from the =CaloTopoCluster= algorithm.
+   * Anti-k_t jets, with a per-event collection picker and a min =E_{T}= slider.
+   * Photons, drawn as Feynman-style yellow springs landing on the first visible cell.
+   * Electrons and positrons, with red / green floating sprites on the matched track.
+   * Muons, with blue floating sprites at the muon-spectrometer edge.
+   * Hadronic taus, with purple dashed lines and one sprite per matched daughter track.
+   * Missing transverse energy, drawn as a hot pink arrow with a =&nu;= label.
+   * Primary, pile-up and secondary (b-tag) vertices, kept at fixed pixel size at any zoom.
+   * Per-track hit overlay (Pixel, SCT, TRT and muon-chamber hits) on cursor hover.
+
+The view-level switcher in the bottom toolbar (=L1 / L2 / L3=) controls
+how much of this stack is shown at once. See [[Particles][Particles]]
+for the per-class breakdown.
 
 ---++ Colour convention
 

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>CGV — ATLAS Calorimeter Viewer</title>
+    <title>CGV | ATLAS Calorimeter Viewer</title>
     <link rel="icon" type="image/svg+xml" href="./assets/icons/cgvweb_icon.svg" />
 
     <link
@@ -1321,6 +1321,9 @@
          ───────────────────────────────────────────────────────── -->
     <div id="about-overlay">
       <div class="about-card">
+        <button class="about-close" id="btn-about-close" aria-label="Close">
+          <svg class="ic"><use href="#i-x" /></svg>
+        </button>
         <div class="about-title-row">
           <div class="about-title" data-i18n="about-title">Calorimeter Geometry Viewer</div>
           <!-- ============================================================
@@ -1329,7 +1332,7 @@
                .rpm for ATLAS Point 1. The element id stays stable so the
                build script (or grep) can find it without ambiguity.
                ============================================================ -->
-          <span id="cgv-version" class="about-version">v2.0.1</span>
+          <span id="cgv-version" class="about-version">v2.3.0</span>
         </div>
         <div class="about-sub" data-i18n="about-sub">ATLAS · TileCal · NIPSCERN</div>
         <div class="about-body">
@@ -1397,10 +1400,6 @@
             />
           </div>
         </div>
-        <button class="about-close" id="btn-about-close">
-          <svg class="ic"><use href="#i-x" /></svg>
-          <span data-i18n="about-close">Close</span>
-        </button>
         <div id="about-watermark">
           <img src="./assets/icons/cgvweb_icon.svg" id="wm-cgv" alt="" />
           <img src="./assets/icons/eye.svg" id="wm-eye" alt="" />

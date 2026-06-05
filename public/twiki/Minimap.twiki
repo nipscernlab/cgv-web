@@ -1,0 +1,84 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ Minimap
+
+%TOC%
+
+The minimap is a 2D heatmap of the current event's calorimeter activity,
+projected onto the standard ATLAS &eta; / &phi; grid (=&Delta;&eta; =
+&Delta;&phi; = 0.1=). It sits in the top-left of the canvas and serves
+two roles: a quick visual summary of where the energy went in the event
+(independent of camera angle), and a region picker. Rectangles drawn on
+the heatmap restrict the 3D scene to cells whose centre falls inside any
+drawn region.
+
+Toggle the widget with =Shift+M= or with the minimap toolbar button.
+
+<img src="images/minimap.png" alt="Minimap widget showing event heatmap, seam slider on the left, energy ramp on the right, and a region rectangle drawn over the heatmap" style="width:100%;max-width:560px;height:auto;display:block;" />
+
+The widget is 342 &times; 220 px and reads, from left to right:
+
+   1 _Seam slider_, the thin vertical strip on the left. Drag it up or down to rotate where the cylindrical &phi; cut falls. The default value is =&minus;&pi;=; a double-click resets it. The seam exists to handle objects that cross the =&plusmn;&pi;= discontinuity. A wide cluster sitting at =&phi; &asymp; &pi;= is naturally split between the top and the bottom of the plot, and a single rectangle cannot cover it cleanly. Sliding the seam away from the object brings both halves into the same continuous band, where one rectangle picks the whole shape in one stroke.
+   1 _Plot area_, the central heatmap. Horizontal axis: &eta; from =&minus;4.9= to =+4.9=. Vertical axis: &phi; from =&minus;&pi;= to =+&pi;=, wrapped around the seam. Each pixel is coloured by the summed energy of every cell that falls in its (&eta;, &phi;) bin.
+   1 _Legend_, the vertical ramp on the right. The colour scale runs from near-black at the floor through deep blue, cyan, yellow and red at the ceiling. The ramp is independent of the right-panel threshold sliders, so the minimap shows the full event and lets the operator decide where to place a region rectangle without committing to a threshold first.
+
+---++ Drawing and editing region rectangles
+
+The user draws zero or more rectangles directly on the plot. Gestures
+inside the heatmap:
+
+| *Gesture*                          | *Effect*                                                             |
+| Mousedown + drag on empty area     | Draws a new rectangle. Anything released below =&Delta;&eta; = &Delta;&phi; = 0.05= is discarded as a click. |
+| Mousedown + drag on existing rect  | Translates that rectangle. Wraps around the &phi; seam if it crosses it. |
+| Click on existing rectangle        | Removes that rectangle.                                              |
+| Click on empty area                | No-op.                                                               |
+
+Multiple rectangles may overlap. The 3D scene shows the _union_ of the
+rectangles. A rectangle is preserved across events: drawing one around
+=&eta; &asymp; 0= and waiting for the next live event keeps the 3D
+scene restricted to that region. Clear all rectangles to return to the
+unfiltered view.
+
+The image above shows one such rectangle drawn over the heatmap. The 3D
+scene behind the minimap renders only the cells that fall inside the
+rectangle; everything outside it is culled at the visibility stage, not
+just hidden by the threshold slider.
+
+---++ Zoom
+
+The minimap viewport zooms over the _data_, not the widget. The CSS box
+stays 342 &times; 220 px; the &eta; / &phi; range under it shrinks or
+expands.
+
+| *Gesture / key*                            | *Effect*                              |
+| Scroll wheel over the plot                 | Zoom in / out, centred on the cursor. |
+| =+=, === or =&minus;= while hovered        | Zoom in / out from the keyboard.      |
+| =0= while hovered                          | Reset the zoom to the full event.     |
+
+Zoom does not move the rectangles. A region drawn at one zoom level
+keeps its absolute &eta; / &phi; coordinates and follows the viewport
+when zooming in or out.
+
+---++ How the rectangles compose with the rest of the visibility chain
+
+The minimap rectangles and the right-panel threshold sliders are
+independent filters. The 3D scene shows a cell only if all three
+conditions pass:
+
+   1 The cell's sub-detector is enabled in the Layers popover.
+   1 The cell energy is at or above the threshold floor of its sub-detector tab.
+   1 The cell's (&eta;, &phi;) falls inside the union of the minimap rectangles, or no rectangles are drawn.
+
+This composition is also honoured by the slicer carve, and by the
+calo-bound particle endpoints (photon springs, jet and tau lines), so
+hiding a sub-detector or shrinking a region also moves the spring tips
+and line ends to whatever cell is now first along the path.
+
+---++ Use cases
+
+   * Inspect one wedge of the calorimeter without losing the threshold settings: draw a thin &phi;-band, ignore the rest.
+   * Compare a hot region across two events at the same threshold: draw a rectangle once, switch events, the rectangle stays.
+   * Find the seed of a cluster that straddles the &phi; seam: slide the seam away from =&plusmn;&pi;=, draw one rectangle, the seed appears as a single continuous patch.
+   * Capture a single jet in a screenshot: place the rectangle around the jet's &eta; / &phi;, press =P=, and only that wedge of the detector renders in the output.
+
+%BR% %BR%
+<em>Next: [[EventData][Event Data &rarr;]]</em>

@@ -1,0 +1,239 @@
+%META:TOPICPARENT{name="WebHome"}%
+---+ Particles
+
+%TOC%
+
+CGV Web does not stop at calorimeter cells. The current build also draws
+reconstructed tracks, topological clusters, jets, photons, electrons,
+muons, taus, the missing transverse energy vector and the primary /
+pile-up / secondary vertices, all from the JiveXML payload of a single
+event. Each object has its own shape, colour and threshold so they can
+coexist on the same canvas without becoming a soup.
+
+This page documents every drawable object class. For cells see
+[[Geometry][Geometry]]; for the threshold sliders that filter them see
+[[EnergyThresholds][Energy Thresholds]].
+
+---++ View levels
+
+The viewer exposes three increasing levels of detail, selected from the
+bottom toolbar:
+
+   1 _Hits_ (L1): cells plus the raw track polylines.
+   1 _Clusters_ (L2): everything from L1, plus the topological cluster &eta;/&phi; lines.
+   1 _Particles_ (L3, default): everything from L2, plus jets, photons, electrons, muons and taus, with their floating labels and the MET arrow.
+
+Level switching is non-destructive: every object stays in memory and is
+hidden by group, not rebuilt. Moving from L3 back to L1 is instant and
+loses no state.
+
+The Particles popover (anchored to the Cluster toolbar button at L3)
+gives a checkbox per class so the shifter can hide, for example, photon
+springs while keeping jets and tracks visible. The button "on" indicator
+reflects whether at least one class is enabled.
+
+---++ Tracks
+
+Reconstructed inner-detector tracks, drawn as thin solid lines, default
+colour yellow =#ffea00=. The polyline samples the helix at every
+inner-detector station so the line follows the field bending.
+
+   * Per-track tooltip on hover: =p_{T}=, &eta;, &phi;, charge, number of hits, store-gate key.
+   * Tracks matched to an electron, muon, jet or tau get recoloured by the match (see _Lepton matching_ below). Unmatched tracks stay yellow.
+   * The =J= shortcut and the Tracks toolbar button toggle the whole group.
+   * The Track tab in [[EnergyThresholds][the threshold panel]] filters by =p_{T}=.
+
+When the cursor hovers a track, a per-hit overlay can appear (one small
+sphere per inner-detector hit and per matched muon-chamber hit, sized to
+stay readable at any zoom). The overlay is part of the
+[[#Hits_overlay][Hits overlay]] feature.
+
+---++ Topological clusters
+
+Topo-clusters from the =CaloTopoCluster= algorithm. Drawn as red-orange
+dashed &eta;/&phi; lines (=#ff4400=) that point from the interaction
+region to the first visible calorimeter cell on the cluster axis.
+
+   * The Cluster tab in the threshold panel filters by =E_{T}= (GeV).
+   * =Shift+K= toggles the threshold itself on/off (useful when looking at sub-GeV activity around a jet).
+   * The =K= shortcut shows / hides all clusters regardless of the threshold.
+
+Clusters at L2 are the only particle class present, so the popover at L2
+collapses to a simple show / hide toggle.
+
+---++ Jets
+
+Anti-k_t jets from the parsed jet collections. Drawn as dashed orange
+&eta;/&phi; lines (=#ff8800=), wider than clusters so they read as a
+distinct class.
+
+<img src="images/particles-jets.png" alt="Event with multiple jets drawn as orange dashed eta/phi lines" style="width:100%;max-width:880px;height:auto;display:block;" />
+
+The viewer can hold multiple jet collections per event. The active
+collection is picked by the following rule, in order:
+
+   1 =AntiKt4EMTopoJets_xAOD=, if present and non-empty (preferred default).
+   1 First non-empty collection found in the XML otherwise.
+   1 None if the event has no jets.
+
+A dropdown next to the Jet tab in the threshold panel switches the
+active collection without re-parsing the XML. Per-jet tooltip on hover:
+=E_{T}=, =p_{T}=, energy, mass, &eta;, &phi;, store-gate key.
+
+The Jet tab in [[EnergyThresholds][Energy Thresholds]] exposes a min
+=E_{T}= filter; the slider is the only way to cull low-energy jets from
+the scene. Jets carry the same calo-bound refresh logic as photons
+and taus: when cell visibility changes (slider, slicer, sub-detector
+toggle), the jet line endpoints are rewritten in place so they keep
+landing on a visible cell.
+
+---++ Photons
+
+Photon candidates drawn as Feynman-style wavy springs. The spring spans
+the last 40 cm before the photon hits the inner calorimeter cylinder.
+Colour is yellow =#ffcc00=, distinct from the track yellow by the
+helical shape.
+
+<img src="images/particles-photons.png" alt="Photon springs reaching the inner calorimeter face" style="width:100%;max-width:880px;height:auto;display:block;" />
+
+   * Spring radius: 20 mm, ~14 coils per metre.
+   * The visible tip lands exactly on the first visible cell of the photon's path (the spring tapers off in the last 15&nbsp;% of its length so the geometry closes cleanly on the endpoint).
+   * Toggle via the Particles popover or by hiding photons individually at L3.
+
+Photons follow the calo-bound refresh: hiding a sub-detector or pushing
+the energy threshold up causes the spring endpoint to migrate to
+whatever cell is now first along the path.
+
+---++ Electrons and positrons
+
+Electron and positron candidates. The matched inner-detector track is
+recoloured by the match (red =#ff3030= for e&minus;, green =#33dd55= for
+e+); a small floating sprite (=e&minus;= or =e+=) sits halfway down the
+track polyline inside the inner detector, away from the cell soup near
+the calorimeter face.
+
+<img src="images/particles-electrons.png" alt="Electron candidate with recoloured track and e± sprite" style="width:100%;max-width:880px;height:auto;display:block;" />
+
+   * Charge is read from the matched track's PDG id.
+   * The sprite is built once per event and never recreated by view-level toggles; only its visibility flips.
+   * The match runs at L3 only. Leaving L3 reverts the track colour to the regular yellow.
+   * The popover at L3 has an _Unmatched e_ toggle that hides electron candidates whose track could not be matched.
+
+---++ Muons
+
+Muon candidates. The matched =CombinedMuonTrack= polyline is repainted
+blue =#4a90d9= by the muon-chamber-hit raycast; a small floating
+=&mu;&minus;= / =&mu;+= sprite sits at the outer end of the polyline,
+roughly at the muon-spectrometer edge (~9-10 m from the interaction
+point), where the track is most isolated.
+
+<img src="images/particles-muons.png" alt="Muon track repainted blue with μ sprite at the spectrometer edge" style="width:100%;max-width:880px;height:auto;display:block;" />
+
+   * Charge is read from the track PDG id; older XMLs that drop the field render a plain =&mu;= label.
+   * The sprite is part of the muon-label group; the Particles popover toggles it together with the track repaint.
+   * The popover also has an _Unmatched &mu;_ toggle for muon candidates without a matching track.
+
+Muon visibility is also coupled to the ATLAS-Ghost envelopes: enabling
+the MS-side ghost reveals the muon-chamber bounding shells; the
+muonAliases module keeps the sub-detector switches consistent so a hit
+in the MS does not vanish when only the TileCal envelope is on.
+
+---++ Taus
+
+Hadronic tau candidates. Each candidate is drawn as a purple dashed
+&eta;/&phi; line (=#b366ff=); for matched candidates one =&tau;&minus;=,
+=&tau;+= or =&tau;= sprite is anchored on each matched daughter track at
+the calo face. For three-prong taus this produces three labels that
+remain readable because the daughters have separated by then.
+
+<img src="images/particles-taus.png" alt="Hadronic tau candidate with purple dashed line and τ sprites on daughter tracks" style="width:100%;max-width:880px;height:auto;display:block;" />
+
+   * Charge from the JiveXML =<charge>= sum. Values other than &plusmn;1 mark "unmatched" candidates that the popover can hide.
+   * Tau labels respect a priority chain. If a daughter track is already claimed by a higher-priority match (electron, muon, jet), the tau label on that track is suppressed.
+   * The Tau =p_{T}= threshold is in the Cluster popover at L3.
+
+---++ Missing transverse energy
+
+A hot pink (=#ff0066=) arrow drawn in the (x, y) plane at z = 0, pointing
+in the direction of the MET vector. Length scales linearly with
+magnitude (50 mm per GeV) and is clamped to stay readable across the
+physics range:
+
+   * Floor: 400 mm (visible at the lowest MET).
+   * Ceiling: 6 m (does not overflow the calo envelope for high MET).
+   * Arrowhead height: rescaled per frame to stay at a fixed pixel size, so direction is always readable regardless of zoom.
+
+A small =&nu;= sprite sits past the cone, marking the direction the
+missing momentum points (interpreted as the direction the undetected
+neutrinos escaped).
+
+The MET arrow is part of the Particles popover at L3.
+
+---++ Vertices
+
+Primary, pile-up and secondary vertices, drawn as small spheres very
+close to the origin. Per-frame scaling keeps each marker at a fixed
+pixel size on screen up to a world-size cap, so they stay visible at any
+zoom without growing into centimetre-sized blobs.
+
+| *Vertex* | *Colour*   | *Hex*     | *Size on screen* |
+| Primary  | white      | =#ffffff= | 8 px             |
+| Pile-up  | soft blue  | =#88aaff= | 4 px             |
+| Secondary (b-tag) | green | =#00ff88= | 6 px         |
+
+Vertices are stand-alone overlays: they have no threshold slider and
+are not gated by the view level.
+
+---++ Hits overlay
+
+When the cursor enters a track line, the inner-detector and muon-chamber
+hits attached to that track are revealed as small white spheres along
+the polyline. Three resolution paths:
+
+   1 Pixel and SCT hits: exact (x, y, z) from the parser.
+   1 TRT hits: interpolated along the polyline at the recorded =r= (barrel) or =z= (endcap).
+   1 Muon-chamber hits: kept only if within ~3 cm of the polyline; otherwise interpreted as a wire / chamber centre and dropped.
+
+The overlay disappears as soon as the cursor leaves the track or the
+canvas. Each hit stays at a constant 2 px radius on screen via per-frame
+rescaling, so the dots are readable at any zoom but never overpower the
+track they belong to.
+
+The hits overlay is always-on at L1; at L2 / L3 it follows the track
+hover regardless of which other classes are enabled.
+
+---++ Lepton matching
+
+The track-match module decides whether a reconstructed track belongs to
+an electron, muon, jet or tau, using a &Delta;R distance against each
+candidate. Multiple candidates can claim the same track; the priority
+chain is:
+
+   1 Electron
+   1 Muon
+   1 Jet (jet-tagged tracks lose their lepton label)
+   1 Tau
+
+The first match wins; lower-priority matches that lose the contest fall
+back to "unmatched" and are subject to the popover toggles
+(_Unmatched e_, _Unmatched &mu;_, _Unmatched &tau;_).
+
+A track that wins an electron / muon / tau match is repainted in the
+match colour (red / green / blue / purple). A track that wins a jet
+match keeps the yellow track colour but is excluded from the unmatched
+classes.
+
+---++ Floating labels
+
+Every label sprite (=e&minus;=, =e+=, =&mu;&minus;=, =&mu;+=, =&tau;=)
+sits at a fixed pixel size on screen via the same per-frame rescaling as
+the vertex markers. Labels never grow large when zooming in and never
+disappear when zooming out.
+
+The Particles popover at L3 also has a master _Track labels_ toggle to
+hide every label at once. The toggle is independent of the per-class
+visibility, so it can be used to make a clean screenshot of the
+tracks-and-cells layout without hiding the lepton tracks themselves.
+
+%BR% %BR%
+<em>Next: [[Minimap][Minimap &rarr;]]</em>

@@ -22,10 +22,17 @@ its threshold (hidden = hidden).
 | HEC       | LAr HEC cell          | GeV     | 0               | auto (P97)           |
 | Track     | Reconstructed track   | GeV     | 0.5             | &mdash;              |
 | Cluster   | Topological cluster   | GeV     | 0.5             | &mdash;              |
+| Jet       | Anti-k_t jet          | GeV     | 0               | &mdash;              |
 
 The _Cluster_ tab exposes an extra =Cluster Threshold= on/off switch
-(=Shift+K=): when off, all clusters render regardless of =E_{T}=
-&mdash; useful when inspecting sub-GeV activity around a jet.
+(=Shift+K=). When off, all clusters render regardless of =E_{T}=, useful
+when inspecting sub-GeV activity around a jet.
+
+The _Jet_ tab applies to the currently selected jet collection. The
+collection picker sits at the top of the tab as a small dropdown. The
+viewer preselects =AntiKt4EMTopoJets_xAOD= when present; otherwise the
+first non-empty collection in the event. Switching collection does not
+re-parse the XML, only flips which collection is drawn.
 
 ---++ P97 auto-scaling
 
@@ -97,4 +104,4 @@ carve a volume (independent of thresholds) use the
 [[UserInterface#Slicer_cylindrical_wedge][Slicer]].
 
 %BR% %BR%
-<em>Next: [[Geometry][Geometry &rarr;]]</em>
+<em>Next: [[Geometry][Geometry &rarr;]] &middot; or jump to [[Particles][Particles]] for the per-class objects.</em>

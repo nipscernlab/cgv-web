@@ -8,6 +8,8 @@ const TOPICS = [
   ["DataModes",        "Data Modes"],
   ["EnergyThresholds", "Energy Thresholds"],
   ["Geometry",         "Geometry"],
+  ["Particles",        "Particles"],
+  ["Minimap",          "Minimap"],
   ["EventData",        "Event Data"],
   ["KeyboardShortcuts","Keyboard Shortcuts"],
   ["Developers",       "Developers"],

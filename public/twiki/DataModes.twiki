@@ -66,6 +66,19 @@ directory where new JiveXML events are being deposited. CGV Web then:
    * re-walks the folder every 5 seconds to pick up new events;
    * automatically loads the newest event each time a brand-new file appears at the top of the list.
 
+<img src="images/server-mode-active.png" alt="SERVER sub-mode with the four control-room quick-folder buttons (physics_Main, express_express, physics_CosmicMuons, Public), the folder bar with the pencil-edit icon, and the event list populated below" style="display:block;max-width:380px;width:100%;height:auto;" />
+
+A row of four _quick-folder_ buttons sits directly below the folder
+bar: =physics_Main=, =express_express=, =physics_CosmicMuons= and
+=Public=. They are one-tap stream switches. Each button stores a path
+that is resolved as a sibling of the folder currently in the bar, so
+pointing the bar at =/atlas/EventDisplayEvents/physics_Main= once is
+enough for the other three buttons to land on the matching sibling
+streams. A gear icon next to the buttons opens a small editor where
+the labels and paths can be renamed or replaced with absolute paths.
+The choice is persisted per browser in =localStorage=, not on the
+server, so each operator can tune their own quick streams.
+
 The control to the right of =Select Folder= is a tri-state button:
 
    * _Spinning arrow_ (idle) &mdash; auto-refresh is active. The arrow completes a 360° rotation each time the folder is re-walked.
@@ -75,7 +88,7 @@ The control to the right of =Select Folder= is a tri-state button:
 Auto-refresh requires the [[https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API][File System Access API]],
 which is currently implemented by Chromium-based browsers (Chrome,
 Edge) on desktop and Android. Firefox, Safari and iOS fall back to the
-legacy =&lt;input webkitdirectory&gt;= picker, which only returns a
+fallback =&lt;input webkitdirectory&gt;= picker, which only returns a
 _snapshot_ of the folder at the time of the click. In that case CGV
 Web shows a subtle warning in the status bar; the shifter has to
 re-select the folder to refresh the list. The spinner and pause/play

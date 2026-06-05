@@ -66,7 +66,6 @@ export default {
   'about-lab1': 'NIPSCERN — Núcleo de Instrumentação e Processamento de Sinais - CERN',
   'about-lab2': 'Collaboration ATLAS · CERN, Genève',
   'about-supported-by': 'Soutenu par',
-  'about-close': 'Fermer',
   'tip-energy-key': 'Énergie',
   'tip-panel': 'Afficher/masquer le panneau latéral (M)',
   'tip-cinema': 'Mode cinéma — rotation automatique, UI masquée (C)',

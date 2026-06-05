@@ -3,73 +3,83 @@
 
 %TOC%
 
-All shortcuts are single-press, no modifier (except where =Shift= is
-noted). Typing into a text field (threshold input, event search,
-background-hex input) suppresses the hotkeys until focus leaves the
-field. Combinations with =Ctrl=, =Cmd= or =Alt= are reserved for the
-browser.
+All shortcuts are single-press unless =Shift= is noted. Typing into a
+text field (threshold input, event search, background hex input)
+suppresses the hotkeys until focus leaves the field. Combinations with
+=Ctrl=, =Cmd= or =Alt= are reserved for the browser.
 
----++ Camera
+The =Esc= key is overloaded by a small priority chain that closes
+whichever overlay is on top of the stack.
 
-| *Key*          | *Action*                                       |
-| Mouse drag     | Orbit camera                                   |
-| Scroll         | Zoom                                           |
-| Right-drag     | Pan                                            |
-| =R=            | Reset view to the default isometric            |
-| =1= / =2= / =3= | Top / side / isometric presets                |
+---++ Camera and view
 
----++ Panels
+| *Key*       | *Action*                                            |
+| Mouse drag  | Orbit camera                                        |
+| Scroll      | Zoom                                                |
+| Right-drag  | Pan                                                 |
+| =R=         | Reset view to the default isometric                 |
 
-| *Key*  | *Action*                                                |
-| =M=    | Pin / unpin the left (sidebar) panel                    |
-| =E=    | Pin / unpin the right (energy threshold) panel          |
-| =G=    | Open the ATLAS Ghost envelopes popover                  |
-| =S=    | Open the Settings panel                                 |
-| =?=    | Open the shortcuts cheat-sheet (inside Settings)        |
-| =Esc=  | Close the topmost overlay / exit cinema                 |
+---++ Panels and dialogs
+
+| *Key*    | *Action*                                              |
+| =M=      | Pin / unpin the left (data-source) panel              |
+| =E=      | Pin / unpin the right (energy threshold) panel        |
+| =S=      | Open the Settings panel                               |
+| =P=      | Open the Screenshot dialog                            |
+| =Shift+B= | Open the scene background colour picker              |
+| =Esc=    | Close the topmost overlay, exit cinema, exit slicer   |
+
+The =Esc= priority chain, in order: slicer active &rarr; cinema mode
+&rarr; settings panel &rarr; layers panel &rarr; right panel pinned
+&rarr; screenshot dialog &rarr; left panel pinned &rarr; about overlay.
 
 ---++ Scene toggles
 
-| *Key*     | *Action*                                                |
-| =T=       | Toggle TILE sub-detector                                |
-| =L= / =A= | Toggle LAr (EMB + EMEC)                                 |
-| =H=       | Toggle HEC                                              |
-| =F=       | Toggle FCAL                                             |
-| =J=       | Toggle reconstructed tracks                             |
-| =K=       | Toggle topological clusters                             |
-| =Shift+K= | Toggle the cluster-E_T threshold switch                 |
-| =I=       | Toggle cell-hover tooltip and outline                   |
-| =B=       | Toggle beam-axis indicator                              |
-| =V=       | Toggle *All cells* &mdash; fill detectors absent from the XML |
-| =Shift+B= | Open the scene-background colour picker                 |
-| =Shift+S= | Toggle the cylindrical-wedge slicer gizmo               |
-| =C=       | Cinema mode &mdash; hide UI, auto-rotate or guided tour |
+| *Key*       | *Action*                                                                |
+| =T=         | Toggle TILE sub-detector                                                |
+| =L= or =A=  | Toggle LAr (EMB + EMEC)                                                 |
+| =H=         | Toggle HEC                                                              |
+| =F=         | Toggle FCAL                                                             |
+| =G=         | Toggle the ATLAS Ghost envelopes                                        |
+| =J=         | Toggle reconstructed tracks                                             |
+| =K=         | Toggle topological clusters (or, at L3, the Particles popover)          |
+| =I=         | Toggle the cell-hover tooltip and outline                               |
+| =C=         | Enter or exit cinema mode                                               |
+| =Shift+S=   | Toggle the cylindrical-wedge slicer                                     |
+| =Shift+M=   | Toggle the &eta; / &phi; minimap                                        |
 
----++ Data source
-
-| *Key*          | *Action*                                       |
-| =&larr;= / =&rarr;= | Previous / next event in the current list |
-| =Space=        | Pause / resume live polling                    |
-
----++ Output
-
-| *Key*  | *Action*                                                |
-| =P=    | Screenshot &mdash; open resolution picker               |
-| =/=    | Focus the event-list search box                         |
+The =V= "All cells" toggle and the =B= beam-axis toggle are available
+via the toolbar; they are not bound to a keyboard shortcut in the
+current build.
 
 ---++ Slicer gestures
 
-When the slicer is active, the 3D handle at the origin accepts the
-following pointer gestures:
+When the slicer is active, the 3D handle at the origin accepts these
+pointer gestures:
 
-| *Gesture*            | *Effect*                                                   |
-| Left-drag &mdash; screen-Y | Sweep the wedge angle =θ= from 0 to 2π              |
-| Left-drag &mdash; screen-X | Scale the cylinder height (symmetric around anchor) |
-| Right-drag on handle       | Translate the cut volume along the =z= axis         |
-| Scroll over handle         | (reserved &mdash; no effect in the current build)   |
+| *Gesture*                  | *Effect*                                                    |
+| Left-drag, screen-Y        | Sweep the wedge angle &theta; from 0 to 2&pi;               |
+| Left-drag, screen-X        | Scale the cylinder height (symmetric around the anchor)     |
+| Right-drag on the handle   | Translate the cut volume in the world (y, z) plane          |
 
-See [[UserInterface][User Interface]] for the corresponding buttons,
-panels and the full slicer description.
+See [[UserInterface#Slicer_cylindrical_wedge][Slicer]] for the full
+description.
+
+---++ Minimap gestures
+
+When the minimap is open and the cursor is over the plot:
+
+| *Gesture / key*                          | *Effect*                                       |
+| Mousedown + drag on empty area           | Draw a new region rectangle                    |
+| Mousedown + drag on existing rectangle   | Translate the rectangle                        |
+| Click on existing rectangle              | Delete the rectangle                           |
+| Scroll wheel                             | Zoom the &eta; / &phi; viewport                |
+| =+= / === / =&minus;= while hovered      | Zoom in / out                                  |
+| =0= while hovered                        | Reset the zoom to the full event               |
+| Drag the seam slider (left strip)        | Rotate the &phi; cylinder cut                  |
+| Double-click the seam slider             | Reset the seam to =&minus;&pi;=                |
+
+See [[Minimap][Minimap]] for the full description.
 
 %BR% %BR%
 <em>Next: [[Troubleshooting][Troubleshooting &rarr;]]</em>

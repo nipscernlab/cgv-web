@@ -260,7 +260,7 @@ Any canvas click (without drag) exits cinema.
 The globe button in the toolbar switches the UI language live, without
 reloading the scene or re-fetching the geometry:
 
-   * English (EN) &mdash; default.
+   * English (EN), default.
    * Français (FR).
    * Português (PT).
    * Norsk (NO).
@@ -268,6 +268,53 @@ reloading the scene or re-fetching the geometry:
 Every label, tooltip, placeholder, status message and settings
 description is translated; the choice persists in =localStorage= under
 =cgv-lang=. The first visit auto-detects the browser's =navigator.language=.
+
+---++ View level selector
+
+A small =L1 / L2 / L3= switcher in the bottom toolbar sets how much
+detail the scene shows on top of the calorimeter cells.
+
+   * =L1=, Hits: cells and raw track polylines only.
+   * =L2=, Clusters: L1 plus the topological cluster &eta;/&phi; lines.
+   * =L3=, Particles (default): L2 plus jets, photons, electrons, muons, taus, the MET arrow and the floating particle labels.
+
+The view level is non-destructive: every object stays in memory and
+switching levels just toggles group visibility. Going from L3 back to
+L1 is instant and loses no state. The full per-class breakdown lives in
+[[Particles][Particles]].
+
+The Cluster toolbar button is level-aware:
+
+   * At L1 it is disabled (no clusters or particles to show).
+   * At L2 it toggles the cluster lines on / off.
+   * At L3 it opens the Particles popover with one checkbox per particle class (jets, photons, MET, electrons, muons, taus) and three unmatched-toggles (unmatched tracks, unmatched photons, unmatched &mu;).
+
+---++ Minimap
+
+A 2D &eta; / &phi; heatmap of the current event, anchored top-left on
+the canvas. Toggle with =Shift+M= or with the minimap toolbar button.
+The widget doubles as a region picker: drawing rectangles on the
+heatmap restricts the 3D scene to cells inside the rectangles.
+
+<img src="images/minimap.png" alt="Minimap widget on canvas" style="width:100%;max-width:560px;height:auto;display:block;" />
+
+The full description (gestures, zoom, seam slider, ramp) lives in the
+dedicated [[Minimap][Minimap]] topic.
+
+---++ Mobile
+
+CGV Web is fully usable on phones and tablets. Layout, gestures and
+screenshot resolutions adapt to the form factor.
+
+   * Portrait orientation triggers a "rotate your device" overlay; the viewer expects landscape.
+   * Landscape on a mobile screen (height &le; 520 px, width &gt; height) hides the toolbar by default and shows a pull-up pill at the bottom. Tap the pill to slide the toolbar in or out; the pill animates above the toolbar while it is open.
+   * The left and right side panels are swipe-from-edge. Drag from the left edge to pull the data-source sidebar in; drag from the right edge to pull the threshold panel in. The pin icons keep them open as on desktop.
+   * Slider interactions, threshold typing, mode bar and minimap all behave the same as on desktop; only the layout changes.
+   * Screenshot presets cap at 2K on mobile and 10K on desktop / laptop, as documented in the [[#Screenshot_dialog][Screenshot dialog]] section.
+
+<img src="images/mobile-portrait.png" alt="Mobile portrait showing the rotate-your-device overlay" style="width:100%;max-width:360px;height:auto;display:block;" />
+
+<img src="images/mobile-landscape.png" alt="Mobile landscape with the pull-up toolbar open" style="width:100%;max-width:720px;height:auto;display:block;" />
 
 %BR% %BR%
 <em>Next: [[DataModes][Data Modes &rarr;]]</em>

@@ -53,20 +53,19 @@ steps, geometry exporter, parser internals) see
 
 ---++ Lineage &mdash; from CGV to CGV Web
 
-CGV Web is the direct successor of the original _CGV_ (Calorimeter
-Geometry Viewer), developed by Prof. Dr. Luciano Manh&atilde;es de
-Andrade Filho as part of his doctoral thesis. The original CGV was
-built in =JSROOT=, ran on Linux in the ATLAS Control Room during the
-early days of the LHC in 2008 and served as the reference
-calorimeter-geometry event display for shifters of that era.
+CGV Web is the direct continuation of _CGV_ (Calorimeter Geometry
+Viewer), developed by Prof. Dr. Luciano Manh&atilde;es de Andrade Filho
+as part of his doctoral thesis. CGV was built in =JSROOT=, ran on Linux
+in the ATLAS Control Room during the early days of the LHC in 2008 and
+served as the reference calorimeter-geometry event display for shifters
+of that era.
 
 In 2026 the project was rebuilt from scratch at NIPSCERN as a modern
 web application: a WebGL2 renderer, WASM-based JiveXML parser, live
 feed ingestion, an entirely new UI with cinema mode, slicer, guided
-tour and multi-language support &mdash; and many more capabilities
-beyond what the original tool offered. CGV Web inherits the spirit of
-the original CGV while targeting a browser-first, Run&nbsp;3/Run&nbsp;4
-workflow.
+tour and multi-language support, plus many capabilities beyond the
+2008 scope. CGV Web carries the same purpose and the same name while
+targeting a browser-first, Run&nbsp;3/Run&nbsp;4 workflow.
 
 ---++ Status and roadmap
 
@@ -82,13 +81,15 @@ window.
 | *Topic*                         | *What you will find*                                                    |
 | [[Overview]]                    | Scope, sub-detectors rendered, colour convention                        |
 | [[GettingStarted]]              | Opening the viewer, loading an event, first interaction                 |
-| [[UserInterface]]               | Every panel, toolbar button, tooltip and keyboard shortcut              |
+| [[UserInterface]]               | Every panel, toolbar button, view levels, minimap, mobile               |
 | [[DataModes]]                   | Live (WEB / SERVER sub-modes) and bundled or user-supplied samples       |
-| [[EnergyThresholds]]            | Per-sub-detector threshold sliders, P97 auto-scaling, cluster min =E_{T}= |
+| [[EnergyThresholds]]            | Per-sub-detector and per-class sliders, P97 auto-scaling, jet collections |
 | [[Geometry]]                    | Active sub-detectors, ATLAS-Ghost envelope, GeoModel provenance         |
+| [[Particles]]                   | Tracks, clusters, jets, photons, electrons, muons, taus, MET, vertices, hits |
+| [[Minimap]]                     | &eta; / &phi; heatmap, region rectangles, seam slider, zoom              |
 | [[EventData]]                   | JiveXML layout, compact ATLAS-ID, WASM decoder, coordinate frame        |
 | [[KeyboardShortcuts]]           | Full hotkey reference                                                   |
-| [[Developers]]                  | Clone, install, =build.bat=, geometry rebuild, parser WASM              |
+| [[Developers]]                  | Clone, install, =build.bat=, geometry rebuild, parser WASM, RPM build   |
 | [[Troubleshooting]]             | Quick fixes for the issues shifters hit most often                      |
 | [[Glossary]]                    | ATLAS and calorimeter terminology                                       |
 | [[References]]                  | External links and source documents                                     |

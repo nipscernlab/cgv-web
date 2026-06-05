@@ -29,6 +29,7 @@
 }
 
 .about-card {
+  position: relative;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-lg);
@@ -136,29 +137,26 @@
 }
 
 .about-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin-top: 18px;
-  padding: 9px 22px;
-  background: var(--surface-3);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  color: var(--text);
-  font: 500 11.5px var(--font);
-  letter-spacing: 0.06em;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  color: var(--muted);
   cursor: pointer;
-  align-self: center;
   transition:
     color var(--motion-fast),
-    background var(--motion-fast),
-    border-color var(--motion-fast);
+    background var(--motion-fast);
 }
 .about-close:hover {
   color: var(--bright);
   background: var(--surface-hover);
-  border-color: var(--border-strong);
 }
 
 /* About watermark — tiny logo strip at the bottom of the card */

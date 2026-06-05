@@ -161,6 +161,7 @@ cp -r "$SCRIPT_DIR/public/js"           "$PKGDIR/public/"
 cp -r "$SCRIPT_DIR/public/vendor"       "$PKGDIR/public/"
 cp -r "$SCRIPT_DIR/public/default_xml"  "$PKGDIR/public/"   # sidebar SAMPLE mode
 cp -r "$SCRIPT_DIR/public/live_atlas"   "$PKGDIR/public/"   # main.js imports live_poller.js
+cp -r "$SCRIPT_DIR/public/twiki"        "$PKGDIR/public/"   # Technical TWiki bundle (2.3.0+)
 cp -r "$SCRIPT_DIR/public/twiki"        "$PKGDIR/public/"   # Technical TWiki bundle (lives in this repo)
 
 # parser/pkg: only the two runtime files (drop .d.ts and package.json -- dev only)
