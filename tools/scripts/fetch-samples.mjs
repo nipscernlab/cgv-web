@@ -35,6 +35,10 @@ const MANIFEST = [
     sha256: 'c876ca39824424c066907b15e5b28da4cbf0f1b23e5da1ea1b5fed5ca6cf6000',
   },
   {
+    name: 'JiveXML_520249_347152978.xml',
+    sha256: 'd386d5d55f2c3967027cbb702884e2daa95b176ed3986069642c60ebb4df9f36',
+  },
+  {
     name: 'JiveXML_520526_399935948.xml',
     sha256: '6e4b7a73e0bd97aa442881886dd6a6d2a1f7752861749881edb3c7290b97fd55',
   },
