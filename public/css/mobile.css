@@ -224,12 +224,9 @@
     left: calc(var(--pw) + 12px);
   }
 
-  /* η×φ minimap — the 342 px-wide widget is too large for a phone, so shrink
-     it. transform: scale() is safe: minimap.js maps pointer coordinates
-     through getBoundingClientRect(), so hit-testing follows the scale. */
+  /* η×φ minimap — shown at full size on phones, positioned just past the
+     activity bar. */
   #minimap-wrap {
-    transform: scale(0.78);
-    transform-origin: top left;
     left: calc(var(--ab-w) + 14px);
   }
   body:not(.panel-unpinned) #minimap-wrap {
