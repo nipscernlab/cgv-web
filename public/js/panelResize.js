@@ -2,7 +2,10 @@ export function setupPanelResize() {
   const panelEl = document.getElementById('panel');
   const panelResizer = document.getElementById('panel-resizer');
 
-  const savedPW = localStorage.getItem('cgv-panel-width');
+  let savedPW = null;
+  try {
+    savedPW = localStorage.getItem('cgv-panel-width');
+  } catch (_) {}
   if (savedPW) document.documentElement.style.setProperty('--pw', savedPW + 'px');
 
   let prDrag = false,
@@ -29,6 +32,8 @@ export function setupPanelResize() {
     const w = Math.round(
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pw')),
     );
-    localStorage.setItem('cgv-panel-width', w);
+    try {
+      localStorage.setItem('cgv-panel-width', w);
+    } catch (_) {}
   });
 }

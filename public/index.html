@@ -7,6 +7,133 @@
     <title>CGV | ATLAS Calorimeter Viewer</title>
     <link rel="icon" type="image/svg+xml" href="./assets/icons/cgvweb_icon.svg" />
 
+    <!--
+      Boot-recovery boundary.
+
+      A frozen loading screen in a normal Safari tab (while a private tab works)
+      almost always means leftover site data from an earlier visit is corrupt or
+      incompatible: our own localStorage "cgv-*" keys and/or the cached geometry
+      in OPFS. A private tab starts clean, which is exactly why it "just works".
+
+      If the app throws before it signals ready (see dismissLoadingScreen), we
+      wipe ONLY our own state once and reload; if it still fails, we replace the
+      endless spinner with an actionable card that shows the real error and lets
+      the user reset. Runs before the module so the listeners are armed in time.
+    -->
+    <script>
+      (function () {
+        'use strict';
+        var HEAL_KEY = 'cgv-boot-heal';
+        var handled = false;
+
+        // Remove only the state this app owns, never the whole origin.
+        function wipeAppState() {
+          try {
+            var doomed = [];
+            for (var i = 0; i < localStorage.length; i++) {
+              var k = localStorage.key(i);
+              if (k && k.lastIndexOf('cgv-', 0) === 0) doomed.push(k);
+            }
+            for (var j = 0; j < doomed.length; j++) localStorage.removeItem(doomed[j]);
+          } catch (e) {
+            /* localStorage may itself be unavailable — ignore */
+          }
+          try {
+            if (navigator.storage && navigator.storage.getDirectory) {
+              return navigator.storage
+                .getDirectory()
+                .then(function (root) {
+                  return Promise.all(
+                    ['CaloGeometry.glb.gz.bin', 'CaloGeometry.glb.meta'].map(function (name) {
+                      return root.removeEntry(name).catch(function () {});
+                    }),
+                  );
+                })
+                .catch(function () {});
+            }
+          } catch (e) {
+            /* OPFS unavailable — ignore */
+          }
+          return Promise.resolve();
+        }
+
+        function showRecovery(detail) {
+          var overlay = document.getElementById('loading-overlay');
+          if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'loading-overlay';
+            (document.body || document.documentElement).appendChild(overlay);
+          }
+          overlay.classList.remove('done');
+          overlay.innerHTML =
+            '<div class="loading-card" style="max-width:440px;text-align:center">' +
+            '<div class="loading-title">CGV</div>' +
+            '<div class="loading-sub" style="margin-bottom:14px">Could not start in this tab</div>' +
+            '<div class="loading-lab" style="line-height:1.55;opacity:.85;margin-bottom:18px">' +
+            'Leftover site data looks corrupt. Tap reset to clear it and reload. ' +
+            'If it keeps failing, clear this site’s data in ' +
+            'Settings › Safari › Advanced › Website Data.' +
+            '</div>' +
+            '<button id="cgv-reset-btn" type="button" ' +
+            'style="font:inherit;cursor:pointer;border:0;border-radius:8px;' +
+            'padding:10px 20px;background:#4a90d9;color:#fff">Reset &amp; reload</button>' +
+            (detail
+              ? '<pre style="margin-top:16px;max-height:120px;overflow:auto;font-size:11px;' +
+                'text-align:left;opacity:.6;white-space:pre-wrap;word-break:break-word">' +
+                String(detail).replace(/[<&]/g, function (c) {
+                  return c === '<' ? '&lt;' : '&amp;';
+                }) +
+                '</pre>'
+              : '') +
+            '</div>';
+          var btn = document.getElementById('cgv-reset-btn');
+          if (btn) {
+            btn.addEventListener('click', function () {
+              btn.disabled = true;
+              btn.textContent = 'Resetting…';
+              wipeAppState().then(function () {
+                try {
+                  sessionStorage.removeItem(HEAL_KEY);
+                } catch (e) {}
+                location.reload();
+              });
+            });
+          }
+        }
+
+        function onBootError(detail) {
+          if (window.__cgvReady || handled) return;
+          handled = true;
+          var alreadyTried = false;
+          try {
+            alreadyTried = sessionStorage.getItem(HEAL_KEY) === '1';
+          } catch (e) {}
+          if (alreadyTried) {
+            // Self-heal already attempted this session and still failing —
+            // hand off to the user instead of looping.
+            showRecovery(detail);
+            return;
+          }
+          try {
+            sessionStorage.setItem(HEAL_KEY, '1');
+          } catch (e) {}
+          wipeAppState().then(function () {
+            location.reload();
+          });
+        }
+
+        window.addEventListener('error', function (e) {
+          if (window.__cgvReady) return;
+          onBootError((e && e.message) || 'Script error during startup');
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          if (window.__cgvReady) return;
+          var r = e && e.reason;
+          onBootError((r && (r.message || r)) || 'Unhandled error during startup');
+        });
+      })();
+    </script>
+
     <link
       rel="preload"
       href="./assets/images/background_enhenced.jpg"

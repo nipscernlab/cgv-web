@@ -31,6 +31,14 @@ export function setLoadProgress(pct, msg) {
 }
 
 export function dismissLoadingScreen() {
+  // Signal the boot-recovery boundary (inline in index.html) that the app
+  // started successfully, so it stops treating later errors as fatal boot
+  // failures and clears the one-shot self-heal flag for future sessions.
+  window.__cgvReady = true;
+  try {
+    sessionStorage.removeItem('cgv-boot-heal');
+  } catch (_) {}
+
   const overlay = document.getElementById('loading-overlay');
   if (!overlay) return;
   if (_barRafId !== null) cancelAnimationFrame(_barRafId);

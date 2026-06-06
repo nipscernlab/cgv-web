@@ -18,7 +18,10 @@ export function setupCinemaControls({
   updateCollisionHud,
 }) {
   let cinemaMode = false;
-  let tourMode = localStorage.getItem('cgv-tour-mode') !== '0';
+  let tourMode = true; // defaults ON; overridden by the saved preference below
+  try {
+    tourMode = localStorage.getItem('cgv-tour-mode') !== '0';
+  } catch (_) {}
 
   // Safe-envelope fallback orbit: lives on r = 14 m at all azimuths, gentle
   // z-wave so the camera doesn't sit on the equator forever. Used until an

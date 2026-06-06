@@ -354,7 +354,9 @@ export function setupSidebarControls({
     syncTourUi();
     tourToggle.addEventListener('click', () => {
       const next = !getTourMode();
-      localStorage.setItem('cgv-tour-mode', next ? '1' : '0');
+      try {
+        localStorage.setItem('cgv-tour-mode', next ? '1' : '0');
+      } catch (_) {}
       if (next) onEnableTourMode();
       else onDisableTourMode();
       syncTourUi();

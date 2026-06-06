@@ -110,7 +110,11 @@ export function setupColorPicker() {
     _paintSvBackground();
     _positionCursors();
     _markActivePreset(hex);
-    if (save) localStorage.setItem('cgv-bg-color', hex);
+    if (save) {
+      try {
+        localStorage.setItem('cgv-bg-color', hex);
+      } catch (_) {}
+    }
     markDirty();
   }
 
@@ -257,7 +261,10 @@ export function setupColorPicker() {
   window.__cgvToggleBgPicker = () => (open ? closePop() : openPop());
 
   // ── Initial color ──────────────────────────────────────────────────
-  const saved = localStorage.getItem('cgv-bg-color');
+  let saved = null;
+  try {
+    saved = localStorage.getItem('cgv-bg-color');
+  } catch (_) {}
   const initial = saved && /^#[0-9a-f]{6}$/i.test(saved) ? saved : DEFAULT_BG_HEX;
   applyColor(initial, { save: false, syncCursors: true });
 }

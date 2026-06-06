@@ -31,11 +31,16 @@ function applyLang(lang) {
     .querySelectorAll('.lang-opt')
     .forEach((o) => o.classList.toggle('on', o.dataset.lang === lang));
 
-  localStorage.setItem('cgv-lang', lang);
+  try {
+    localStorage.setItem('cgv-lang', lang);
+  } catch (_) {}
 }
 
 export function initLanguage() {
-  const saved = localStorage.getItem('cgv-lang');
+  let saved = null;
+  try {
+    saved = localStorage.getItem('cgv-lang');
+  } catch (_) {}
   const browser = (navigator.language ?? 'en')
     .split('-')[0]
     .replace('nb', 'no')
