@@ -34,7 +34,8 @@ export function dismissLoadingScreen() {
   // Signal the boot-recovery boundary (inline in index.html) that the app
   // started successfully, so it stops treating later errors as fatal boot
   // failures and clears the one-shot self-heal flag for future sessions.
-  window.__cgvReady = true;
+  // Cast: __cgvReady is an ad-hoc cross-script flag, not a typed Window member.
+  /** @type {any} */ (window).__cgvReady = true;
   try {
     sessionStorage.removeItem('cgv-boot-heal');
   } catch (_) {}

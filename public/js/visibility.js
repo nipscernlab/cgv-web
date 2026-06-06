@@ -188,7 +188,7 @@ function _inEtaPhiRegion(eta, phi) {
     if (eta < r.etaMin || eta > r.etaMax) return false;
     const w = r.phiMax - r.phiMin;
     if (w >= TWO_PI - 1e-9) return true;
-    const d = ((phi - r.phiMin) % TWO_PI + TWO_PI) % TWO_PI;
+    const d = (((phi - r.phiMin) % TWO_PI) + TWO_PI) % TWO_PI;
     return d <= w;
   });
 }

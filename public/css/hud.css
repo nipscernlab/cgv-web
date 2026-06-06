@@ -204,7 +204,7 @@ body.panel-unpinned #minimap-wrap {
   gap: 3px;
   /* Width = INSET_L so the slider sits in the canvas left margin, not in a separate column. */
   width: 26px;
-  height: 220px;   /* = canvas H */
+  height: 220px; /* = canvas H */
   box-sizing: border-box;
   overflow: hidden;
   background: transparent;
@@ -227,9 +227,9 @@ body.panel-unpinned #minimap-wrap {
    Border matches the legend colour bar on the right edge of the canvas
    exactly: same 182px height, same single 1px rgba(120,150,190,0.30) stroke. */
 #minimap-phi-track.strak {
-  width: 8px;   /* narrower to fit the 26px INSET_L overlay */
+  width: 8px; /* narrower to fit the 26px INSET_L overlay */
   height: 182px;
-  border: 1px solid rgba(120, 150, 190, 0.30);
+  border: 1px solid rgba(120, 150, 190, 0.3);
   border-radius: 0;
   box-shadow: none;
   background: transparent;
@@ -238,7 +238,7 @@ body.panel-unpinned #minimap-wrap {
 #minimap-phi-lbl {
   width: 100%;
   font: 400 8px/1 var(--font);
-  letter-spacing: 0.10em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
   text-align: center;

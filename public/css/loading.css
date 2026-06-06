@@ -29,24 +29,24 @@
       ellipse 80% 38% at 50% 102%,
       rgba(130, 175, 255, 0.38) 0%,
       rgba(80, 120, 230, 0.22) 35%,
-      rgba(30,  60, 140, 0.08) 60%,
+      rgba(30, 60, 140, 0.08) 60%,
       transparent 75%
     ),
     /* esmagamento do topo — moderado */
     linear-gradient(
-      180deg,
-      rgba(0, 0, 0, 0.62) 0%,
-      rgba(0, 0, 0, 0.38) 20%,
-      rgba(0, 0, 0, 0.10) 45%,
-      rgba(0, 0, 0, 0.00) 100%
-    ),
+        180deg,
+        rgba(0, 0, 0, 0.62) 0%,
+        rgba(0, 0, 0, 0.38) 20%,
+        rgba(0, 0, 0, 0.1) 45%,
+        rgba(0, 0, 0, 0) 100%
+      ),
     /* vinheta lateral suave */
     radial-gradient(
-      ellipse 120% 100% at 50% 50%,
-      transparent 48%,
-      rgba(0, 0, 0, 0.35) 80%,
-      rgba(0, 0, 0, 0.58) 100%
-    );
+        ellipse 120% 100% at 50% 50%,
+        transparent 48%,
+        rgba(0, 0, 0, 0.35) 80%,
+        rgba(0, 0, 0, 0.58) 100%
+      );
 }
 
 /* Layer 2 — arc shimmer: animated sweep along the bottom light arc */
@@ -67,8 +67,15 @@
   animation: arc-pulse 4s ease-in-out infinite;
 }
 @keyframes arc-pulse {
-  0%,  100% { opacity: 0.6; transform: scaleX(1.00); }
-  50%        { opacity: 1.0; transform: scaleX(1.06); }
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scaleX(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1.06);
+  }
 }
 
 #loading-overlay.done {
@@ -90,7 +97,7 @@
   background: rgba(2, 10, 24, 0.28);
   backdrop-filter: blur(10px) saturate(1.2);
   -webkit-backdrop-filter: blur(10px) saturate(1.2);
-  border: 1px solid rgba(130, 175, 255, 0.10);
+  border: 1px solid rgba(130, 175, 255, 0.1);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.3),
     0 24px 64px rgba(0, 0, 0, 0.55),
@@ -101,14 +108,13 @@
   width: 58px;
   height: 58px;
   margin-bottom: 20px;
-  filter:
-    drop-shadow(0 0 12px rgba(130, 175, 255, 0.55))
+  filter: drop-shadow(0 0 12px rgba(130, 175, 255, 0.55))
     drop-shadow(0 4px 20px rgba(99, 152, 255, 0.28));
 }
 .loading-title {
   font: 700 38px/1 var(--font);
   color: var(--bright);
-  letter-spacing: 0.20em;
+  letter-spacing: 0.2em;
   margin-bottom: 7px;
   text-shadow:
     0 0 24px rgba(130, 175, 255, 0.45),
@@ -116,15 +122,15 @@
 }
 .loading-sub {
   font: 400 12px/1 var(--font);
-  color: rgba(211, 215, 222, 0.80);
+  color: rgba(211, 215, 222, 0.8);
   letter-spacing: 0.08em;
   margin-bottom: 4px;
   text-shadow: 0 1px 8px rgba(0, 6, 18, 0.7);
 }
 .loading-lab {
   font: 500 9.5px/1 var(--font);
-  color: rgba(130, 138, 150, 0.70);
-  letter-spacing: 0.20em;
+  color: rgba(130, 138, 150, 0.7);
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   margin-bottom: 36px;
   text-shadow: 0 1px 8px rgba(0, 6, 18, 0.7);
@@ -146,16 +152,9 @@
   height: 100%;
   width: 0%;
   border-radius: 6px;
-  background: linear-gradient(
-    90deg,
-    #2d5fd4 0%,
-    #4d83ee 35%,
-    #6398ff 65%,
-    #93b6ff 100%
-  );
+  background: linear-gradient(90deg, #2d5fd4 0%, #4d83ee 35%, #6398ff 65%, #93b6ff 100%);
   position: relative;
 }
-
 
 .loading-msg {
   font: 400 10.5px var(--mono);

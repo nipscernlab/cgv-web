@@ -27,7 +27,7 @@ const ETA_MIN = -4.9;
 const ETA_MAX = 4.9;
 const PHI_MIN = -Math.PI;
 const PHI_MAX = Math.PI;
-const TWO_PI  = PHI_MAX - PHI_MIN;   // 2π
+const TWO_PI = PHI_MAX - PHI_MIN; // 2π
 
 const BIN_ETA = 0.1;
 const BIN_PHI = 0.1;
@@ -58,10 +58,10 @@ const RAMP = [
   [255, 20, 0],
 ];
 
-let _canvas  = null;
-let _ctx     = null;
+let _canvas = null;
+let _ctx = null;
 let _enabled = false;
-let _wrapEl  = null;
+let _wrapEl = null;
 
 /** @type {Array<{eta:number, phi:number, energyMev:number}>} */
 let _cellEntries = [];
@@ -75,9 +75,9 @@ let _binCache = null;
 let _rects = [];
 
 // Mouse / pointer state machine.
-let _mouseState     = 'idle';
-let _dragAnchor     = null;
-let _activeRectIdx  = -1;
+let _mouseState = 'idle';
+let _dragAnchor = null;
+let _activeRectIdx = -1;
 let _activePointerId = -1;
 const DRAG_THRESHOLD_PX = 3;
 const MIN_RECT_ETA = 0.05;
@@ -86,19 +86,19 @@ const MIN_RECT_PHI = 0.05;
 let _regionListener = null;
 
 // ── φ seam (cylinder-cut) state ─────────────────────────────────────────────
-let _phiSeam      = PHI_MIN;
-let _seamTrackEl  = null;
-let _seamThumbEl  = null;
-let _seamLblEl    = null;
-let _seamPaneEl   = null;
+let _phiSeam = PHI_MIN;
+let _seamTrackEl = null;
+let _seamThumbEl = null;
+let _seamLblEl = null;
+let _seamPaneEl = null;
 let _seamDragging = false;
 
 // ── Zoom state ───────────────────────────────────────────────────────────────
 // Zoom acts on the canvas DATA viewport (η × display-φ), not the CSS widget.
 // Center is set at scroll time and stays fixed until the next scroll.
-let _zoomFactor    = 1.0;
-let _zoomEtaCenter = 0.5;   // fraction [0,1] of full η range
-let _zoomPhiCenter = 0.5;   // fraction [0,1] of full display-φ range
+let _zoomFactor = 1.0;
+let _zoomEtaCenter = 0.5; // fraction [0,1] of full η range
+let _zoomPhiCenter = 0.5; // fraction [0,1] of full display-φ range
 
 // ── Coordinate helpers ──────────────────────────────────────────────────────
 function _plotArea() {
@@ -130,12 +130,12 @@ function _updateZoomCenter(canvasX, canvasY) {
 function _etaToX(eta, area) {
   const [lo, hi] = _viewEtaFrac();
   const frac = (eta - ETA_MIN) / (ETA_MAX - ETA_MIN);
-  const t    = (frac - lo) / (hi - lo);
+  const t = (frac - lo) / (hi - lo);
   return area.x0 + t * (area.x1 - area.x0);
 }
 // Maps φ → canvas Y, respecting seam + zoom.
 function _phiToY(phi, area) {
-  const disp = ((phi - _phiSeam) % TWO_PI + TWO_PI) % TWO_PI;
+  const disp = (((phi - _phiSeam) % TWO_PI) + TWO_PI) % TWO_PI;
   const frac = disp / TWO_PI;
   const [lo, hi] = _viewPhiFrac();
   const t = (frac - lo) / (hi - lo);
@@ -143,17 +143,17 @@ function _phiToY(phi, area) {
 }
 function _xToEta(x, area) {
   const [lo, hi] = _viewEtaFrac();
-  const t    = (x - area.x0) / (area.x1 - area.x0);
+  const t = (x - area.x0) / (area.x1 - area.x0);
   const frac = lo + t * (hi - lo);
   return ETA_MIN + frac * (ETA_MAX - ETA_MIN);
 }
 // Inverse of _phiToY — wraps result to [−π, +π].
 function _yToPhi(y, area) {
   const [lo, hi] = _viewPhiFrac();
-  const t    = (area.y1 - y) / (area.y1 - area.y0);
+  const t = (area.y1 - y) / (area.y1 - area.y0);
   const frac = lo + t * (hi - lo);
-  const phi  = _phiSeam + frac * TWO_PI;
-  return ((phi + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
+  const phi = _phiSeam + frac * TWO_PI;
+  return ((((phi + Math.PI) % TWO_PI) + TWO_PI) % TWO_PI) - Math.PI;
 }
 // φ at canvas Y as a CONTINUOUS value (NO ±π wrap). Used while drawing a rect
 // so the swept φ-arc stays contiguous even when the seam puts ±π mid-plot —
@@ -161,9 +161,9 @@ function _yToPhi(y, area) {
 // complement. Y is clamped 1 px below the top so the arc never reaches a full
 // 2π (which would alias to a zero-width display row).
 function _yToPhiCont(y, area) {
-  const cy   = Math.max(area.y0 + 1, Math.min(area.y1, y));
+  const cy = Math.max(area.y0 + 1, Math.min(area.y1, y));
   const [lo, hi] = _viewPhiFrac();
-  const t    = (area.y1 - cy) / (area.y1 - area.y0);
+  const t = (area.y1 - cy) / (area.y1 - area.y0);
   const frac = lo + t * (hi - lo);
   return _phiSeam + frac * TWO_PI;
 }
@@ -173,25 +173,25 @@ function _clientToCanvas(ev) {
   const r = _canvas.getBoundingClientRect();
   return {
     x: (ev.clientX - r.left) * (W / r.width),
-    y: (ev.clientY - r.top)  * (H / r.height),
+    y: (ev.clientY - r.top) * (H / r.height),
   };
 }
 
 function _ramp(t) {
   t = Math.max(0, Math.min(1, t));
   const seg = t * (RAMP.length - 1);
-  const i   = Math.min(RAMP.length - 2, Math.floor(seg));
-  const f   = seg - i;
-  const a   = RAMP[i];
-  const b   = RAMP[i + 1];
+  const i = Math.min(RAMP.length - 2, Math.floor(seg));
+  const f = seg - i;
+  const a = RAMP[i];
+  const b = RAMP[i + 1];
   return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
 }
 
 // Formats a φ value (radians) as a compact π-fraction string.
 function _phiLabel(phi) {
-  phi = ((phi + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
-  if (Math.abs(phi) < 0.02)                         return '0';
-  if (Math.abs(Math.abs(phi) - Math.PI) < 0.02)     return phi > 0 ? '+π' : '-π';
+  phi = ((((phi + Math.PI) % TWO_PI) + TWO_PI) % TWO_PI) - Math.PI;
+  if (Math.abs(phi) < 0.02) return '0';
+  if (Math.abs(Math.abs(phi) - Math.PI) < 0.02) return phi > 0 ? '+π' : '-π';
   if (Math.abs(Math.abs(phi) - Math.PI / 2) < 0.02) return phi > 0 ? '+π/2' : '-π/2';
   const sign = phi > 0 ? '+' : '-';
   return sign + (Math.abs(phi) / Math.PI).toFixed(2) + 'π';
@@ -246,7 +246,7 @@ function _drawFrame() {
 }
 
 function _drawAxes() {
-  const ctx  = _ctx;
+  const ctx = _ctx;
   const area = _plotArea();
 
   // Vertical η grid lines
@@ -263,8 +263,8 @@ function _drawAxes() {
   }
 
   // Horizontal φ reference lines — skip those too close to the seam edges.
-  const EDGE_PX  = 5;
-  const phiRefs  = [Math.PI / 2, 0, -Math.PI / 2, -Math.PI];
+  const EDGE_PX = 5;
+  const phiRefs = [Math.PI / 2, 0, -Math.PI / 2, -Math.PI];
   const phiRefLb = ['+π/2', '0', '-π/2', '-π'];
   for (const phi of phiRefs) {
     const y = _phiToY(phi, area);
@@ -278,7 +278,7 @@ function _drawAxes() {
 
   // ── Labels ────────────────────────────────────────────────────────────────
   ctx.fillStyle = 'rgba(170, 195, 225, 0.78)';
-  ctx.font      = '9px ui-monospace, monospace';
+  ctx.font = '9px ui-monospace, monospace';
 
   // η axis labels (bottom) — reflect the zoomed η range
   const [etaVlo, etaVhi] = _viewEtaFrac();
@@ -287,7 +287,7 @@ function _drawAxes() {
   const viewEtaMid = (viewEtaMin + viewEtaMax) / 2;
   const fmtEta = (v) => (v >= 0 ? '+' : '') + v.toFixed(1);
   ctx.textBaseline = 'top';
-  ctx.textAlign    = 'center';
+  ctx.textAlign = 'center';
   ctx.fillText('η', (area.x0 + area.x1) / 2, area.y1 + 3);
   ctx.textAlign = 'left';
   ctx.fillText(fmtEta(viewEtaMin), area.x0, area.y1 + 3);
@@ -298,7 +298,7 @@ function _drawAxes() {
 
   // φ notable-value labels (left side, interior)
   ctx.textBaseline = 'middle';
-  ctx.textAlign    = 'right';
+  ctx.textAlign = 'right';
   for (let i = 0; i < phiRefs.length; i++) {
     const y = _phiToY(phiRefs[i], area);
     if (y <= area.y0 + EDGE_PX || y >= area.y1 - EDGE_PX) continue;
@@ -309,20 +309,20 @@ function _drawAxes() {
   ctx.save();
   ctx.translate(8, (area.y0 + area.y1) / 2);
   ctx.rotate(-Math.PI / 2);
-  ctx.textAlign    = 'center';
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('φ', 0, 0);
   ctx.restore();
 }
 
 function _drawHeatmap() {
-  const ctx  = _ctx;
+  const ctx = _ctx;
   const area = _plotArea();
   const { grid, min, max } = _buildBins();
   if (max <= 0) return;
   const logMin = Math.log10(Math.max(min, 1e-3));
   const logMax = Math.log10(Math.max(max, logMin + 1e-3));
-  const denom  = Math.max(1e-6, logMax - logMin);
+  const denom = Math.max(1e-6, logMax - logMin);
 
   const plotW = area.x1 - area.x0;
   const plotH = area.y1 - area.y0;
@@ -385,10 +385,10 @@ function _drawHeatmap() {
 }
 
 function _drawLegend() {
-  const ctx  = _ctx;
+  const ctx = _ctx;
   const area = _plotArea();
 
-  const xL   = area.x1 + LEGEND_GAP;
+  const xL = area.x1 + LEGEND_GAP;
   const yTop = area.y0 + LEGEND_BAR_M;
   const yBot = area.y1 - LEGEND_BAR_M;
   const barH = yBot - yTop;
@@ -399,7 +399,7 @@ function _drawLegend() {
     ctx.fillRect(xL, yTop + i, LEGEND_W, 1);
   }
   ctx.strokeStyle = 'rgba(120, 150, 190, 0.55)';
-  ctx.lineWidth   = 1;
+  ctx.lineWidth = 1;
   ctx.strokeRect(xL + 0.5, yTop + 0.5, LEGEND_W, barH);
 }
 
@@ -412,20 +412,20 @@ function _drawRectBand(ctx, x, y, w, h) {
 
   ctx.save();
   ctx.shadowColor = 'rgba(255, 80, 220, 0.85)';
-  ctx.shadowBlur  = 8;
+  ctx.shadowBlur = 8;
   ctx.strokeStyle = 'rgba(255, 80, 220, 1)';
-  ctx.lineWidth   = 2.5;
+  ctx.lineWidth = 2.5;
   ctx.strokeRect(x + 1.25, y + 1.25, Math.max(0, w - 2.5), Math.max(0, h - 2.5));
   ctx.restore();
 
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-  ctx.lineWidth   = 1;
+  ctx.lineWidth = 1;
   ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
 }
 
 function _drawRects() {
   if (!_rects.length) return;
-  const ctx  = _ctx;
+  const ctx = _ctx;
   const area = _plotArea();
 
   ctx.save();
@@ -434,12 +434,12 @@ function _drawRects() {
   ctx.clip();
 
   for (const rect of _rects) {
-    const x  = Math.min(_etaToX(rect.etaMin, area), _etaToX(rect.etaMax, area));
+    const x = Math.min(_etaToX(rect.etaMin, area), _etaToX(rect.etaMax, area));
     const rw = Math.abs(_etaToX(rect.etaMax, area) - _etaToX(rect.etaMin, area));
 
     // Display-φ fractions (0 = bottom seam, 1 = top seam)
-    const phiMinD = ((rect.phiMin - _phiSeam) % TWO_PI + TWO_PI) % TWO_PI / TWO_PI;
-    const phiMaxD = ((rect.phiMax - _phiSeam) % TWO_PI + TWO_PI) % TWO_PI / TWO_PI;
+    const phiMinD = ((((rect.phiMin - _phiSeam) % TWO_PI) + TWO_PI) % TWO_PI) / TWO_PI;
+    const phiMaxD = ((((rect.phiMax - _phiSeam) % TWO_PI) + TWO_PI) % TWO_PI) / TWO_PI;
 
     if (phiMaxD >= phiMinD) {
       // Seam outside rect — one contiguous band
@@ -484,7 +484,7 @@ function _notifyRegion() {
 function _phiInArc(phi, phiMin, phiMax) {
   const w = phiMax - phiMin;
   if (w >= TWO_PI - 1e-9) return true;
-  const d = ((phi - phiMin) % TWO_PI + TWO_PI) % TWO_PI;
+  const d = (((phi - phiMin) % TWO_PI) + TWO_PI) % TWO_PI;
   return d <= w;
 }
 
@@ -502,7 +502,7 @@ function _hitRectAt(eta, phi) {
 // ── φ seam slider ────────────────────────────────────────────────────────────
 function _updateSeamThumb() {
   if (!_seamThumbEl) return;
-  const ratio   = (_phiSeam - PHI_MIN) / TWO_PI;   // 0 = −π (bottom), 1 = +π (top)
+  const ratio = (_phiSeam - PHI_MIN) / TWO_PI; // 0 = −π (bottom), 1 = +π (top)
   // Pixel formula to match the 182 px CSS track height (= H-INSET_T-INSET_B-2*LEGEND_BAR_M)
   const TRACK_H = H - INSET_T - INSET_B - 2 * LEGEND_BAR_M;
   const THUMB_H = 5;
@@ -511,9 +511,9 @@ function _updateSeamThumb() {
 }
 
 function _applySeamFromPointer(ev) {
-  const rect  = _seamTrackEl.getBoundingClientRect();
+  const rect = _seamTrackEl.getBoundingClientRect();
   const ratio = 1 - Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height));
-  _phiSeam    = PHI_MIN + ratio * TWO_PI;
+  _phiSeam = PHI_MIN + ratio * TWO_PI;
   _updateSeamThumb();
   _redraw();
 }
@@ -548,12 +548,24 @@ function _onZoomKey(ev) {
   const k = ev.key;
   if (k === '+' || k === '=' || k === 'Add') {
     const nf = Math.min(6.0, _zoomFactor * 1.25);
-    if (nf !== _zoomFactor) { ev.preventDefault(); _zoomFactor = nf; _redraw(); }
+    if (nf !== _zoomFactor) {
+      ev.preventDefault();
+      _zoomFactor = nf;
+      _redraw();
+    }
   } else if (k === '-' || k === 'Subtract') {
     const nf = Math.max(1.0, _zoomFactor / 1.25);
-    if (nf !== _zoomFactor) { ev.preventDefault(); _zoomFactor = nf; _redraw(); }
+    if (nf !== _zoomFactor) {
+      ev.preventDefault();
+      _zoomFactor = nf;
+      _redraw();
+    }
   } else if (k === '0') {
-    if (_zoomFactor !== 1.0) { ev.preventDefault(); _zoomFactor = 1.0; _redraw(); }
+    if (_zoomFactor !== 1.0) {
+      ev.preventDefault();
+      _zoomFactor = 1.0;
+      _redraw();
+    }
   }
 }
 
@@ -561,9 +573,9 @@ function _onWheelZoom(ev) {
   ev.preventDefault();
   // Pin zoom center to where the mouse is — only at scroll time, not on hover.
   if (_canvas) {
-    const r    = _canvas.getBoundingClientRect();
-    const cx   = ev.clientX - r.left;
-    const cy   = ev.clientY - r.top;
+    const r = _canvas.getBoundingClientRect();
+    const cx = ev.clientX - r.left;
+    const cy = ev.clientY - r.top;
     const area = _plotArea();
     if (cx >= area.x0 && cx <= area.x1 && cy >= area.y0 && cy <= area.y1) {
       _updateZoomCenter(cx, cy);
@@ -571,21 +583,34 @@ function _onWheelZoom(ev) {
   }
   if (ev.deltaY < 0) {
     const nf = Math.min(6.0, _zoomFactor * 1.25);
-    if (nf !== _zoomFactor) { _zoomFactor = nf; _redraw(); }
+    if (nf !== _zoomFactor) {
+      _zoomFactor = nf;
+      _redraw();
+    }
   } else {
     const nf = Math.max(1.0, _zoomFactor / 1.25);
-    if (nf !== _zoomFactor) { _zoomFactor = nf; _redraw(); }
+    if (nf !== _zoomFactor) {
+      _zoomFactor = nf;
+      _redraw();
+    }
   }
 }
 
 // ── Mouse handling ──────────────────────────────────────────────────────────
 function _updateCursor(insidePlot, eta, phi) {
   if (!_canvas) return;
-  if (_mouseState === 'panning') { _canvas.style.cursor = 'grabbing'; return; }
-  if (_mouseState === 'drawing' || _mouseState === 'maybe-draw') {
-    _canvas.style.cursor = 'crosshair'; return;
+  if (_mouseState === 'panning') {
+    _canvas.style.cursor = 'grabbing';
+    return;
   }
-  if (!insidePlot) { _canvas.style.cursor = 'default'; return; }
+  if (_mouseState === 'drawing' || _mouseState === 'maybe-draw') {
+    _canvas.style.cursor = 'crosshair';
+    return;
+  }
+  if (!insidePlot) {
+    _canvas.style.cursor = 'default';
+    return;
+  }
   _canvas.style.cursor = _hitRectAt(eta, phi) >= 0 ? 'grab' : 'crosshair';
 }
 
@@ -593,20 +618,20 @@ function _onMouseDown(ev) {
   if (ev.button !== 0) return;
   ev.preventDefault();
   const { x, y } = _clientToCanvas(ev);
-  const area      = _plotArea();
+  const area = _plotArea();
   if (x < area.x0 || x > area.x1 || y < area.y0 || y > area.y1) return;
   const eta = _xToEta(x, area);
   const phi = _yToPhi(y, area);
 
   const hitIdx = _hitRectAt(eta, phi);
   if (hitIdx >= 0) {
-    _mouseState    = 'maybe-pan';
+    _mouseState = 'maybe-pan';
     _activeRectIdx = hitIdx;
-    const r  = _rects[hitIdx];
+    const r = _rects[hitIdx];
     const cx = (r.etaMin + r.etaMax) / 2;
     const cy = (r.phiMin + r.phiMax) / 2;
     // phi0Display: center in display-φ [0, 2π) — avoids modulo discontinuities on pan.
-    const phi0Display = ((cy - _phiSeam) % TWO_PI + TWO_PI) % TWO_PI;
+    const phi0Display = (((cy - _phiSeam) % TWO_PI) + TWO_PI) % TWO_PI;
     _dragAnchor = { dEta: eta - cx, x, y, phi0Display, halfP: (r.phiMax - r.phiMin) / 2 };
   } else {
     _mouseState = 'maybe-draw';
@@ -617,24 +642,32 @@ function _onMouseDown(ev) {
   }
   _updateCursor(true, eta, phi);
   _activePointerId = ev.pointerId;
-  try { _canvas.setPointerCapture(ev.pointerId); } catch (_) { /* no-op */ }
+  try {
+    _canvas.setPointerCapture(ev.pointerId);
+  } catch (_) {
+    /* no-op */
+  }
 }
 
 function _onMouseMove(ev) {
   if (_mouseState === 'idle') return;
   const { x, y } = _clientToCanvas(ev);
-  const area      = _plotArea();
-  const cx        = Math.max(area.x0, Math.min(area.x1, x));
-  const cy        = Math.max(area.y0, Math.min(area.y1, y));
-  const eta       = _xToEta(cx, area);
+  const area = _plotArea();
+  const cx = Math.max(area.x0, Math.min(area.x1, x));
+  const cy = Math.max(area.y0, Math.min(area.y1, y));
+  const eta = _xToEta(cx, area);
 
   if (_mouseState === 'maybe-draw') {
     if (Math.hypot(x - _dragAnchor.x, y - _dragAnchor.y) >= DRAG_THRESHOLD_PX) {
       _mouseState = 'drawing';
-      _rects.push(_normalizeRect({
-        etaMin: _dragAnchor.eta, etaMax: eta,
-        phiMin: _dragAnchor.phi, phiMax: _yToPhiCont(cy, area),
-      }));
+      _rects.push(
+        _normalizeRect({
+          etaMin: _dragAnchor.eta,
+          etaMax: eta,
+          phiMin: _dragAnchor.phi,
+          phiMax: _yToPhiCont(cy, area),
+        }),
+      );
       _notifyRegion();
       _redraw();
     }
@@ -645,8 +678,10 @@ function _onMouseMove(ev) {
     // Both φ endpoints are CONTINUOUS — the rect is exactly the arc swept by
     // the pointer, never the ±π complement, at any seam rotation.
     _rects[_rects.length - 1] = _normalizeRect({
-      etaMin: _dragAnchor.eta, etaMax: eta,
-      phiMin: _dragAnchor.phi, phiMax: _yToPhiCont(cy, area),
+      etaMin: _dragAnchor.eta,
+      etaMax: eta,
+      phiMin: _dragAnchor.phi,
+      phiMax: _yToPhiCont(cy, area),
     });
     _notifyRegion();
     _redraw();
@@ -655,32 +690,34 @@ function _onMouseMove(ev) {
 
   if (_mouseState === 'maybe-pan') {
     if (Math.hypot(x - _dragAnchor.x, y - _dragAnchor.y) >= DRAG_THRESHOLD_PX) {
-      _mouseState          = 'panning';
+      _mouseState = 'panning';
       _canvas.style.cursor = 'grabbing';
     }
   }
 
   if (_mouseState === 'panning') {
-    const r    = _rects[_activeRectIdx];
+    const r = _rects[_activeRectIdx];
     const halfE = (r.etaMax - r.etaMin) / 2;
     const halfP = _dragAnchor.halfP;
 
     // η: use zoom-aware _xToEta directly
     const ncx = eta - _dragAnchor.dEta;
-    const cE  = Math.max(ETA_MIN + halfE, Math.min(ETA_MAX - halfE, ncx));
+    const cE = Math.max(ETA_MIN + halfE, Math.min(ETA_MAX - halfE, ncx));
 
     // φ: accumulate delta in display-φ [0,2π) space — no modulo, no teleport.
     // Scale pixel delta by visible φ range so panning feels 1:1 at any zoom level.
     const [phiLo, phiHi] = _viewPhiFrac();
-    const deltaDispPhi   = (_dragAnchor.y - cy) / (area.y1 - area.y0) * (phiHi - phiLo) * TWO_PI;
-    const newDispPhi     = _dragAnchor.phi0Display + deltaDispPhi;
-    const clampedDisp    = Math.max(halfP, Math.min(TWO_PI - halfP, newDispPhi));
-    const cP_cont        = _phiSeam + clampedDisp;
-    const cP             = ((cP_cont + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
+    const deltaDispPhi = ((_dragAnchor.y - cy) / (area.y1 - area.y0)) * (phiHi - phiLo) * TWO_PI;
+    const newDispPhi = _dragAnchor.phi0Display + deltaDispPhi;
+    const clampedDisp = Math.max(halfP, Math.min(TWO_PI - halfP, newDispPhi));
+    const cP_cont = _phiSeam + clampedDisp;
+    const cP = ((((cP_cont + Math.PI) % TWO_PI) + TWO_PI) % TWO_PI) - Math.PI;
 
     _rects[_activeRectIdx] = {
-      etaMin: cE - halfE, etaMax: cE + halfE,
-      phiMin: cP - halfP, phiMax: cP + halfP,
+      etaMin: cE - halfE,
+      etaMax: cE + halfE,
+      phiMin: cP - halfP,
+      phiMax: cP + halfP,
     };
     _notifyRegion();
     _redraw();
@@ -689,7 +726,11 @@ function _onMouseMove(ev) {
 
 function _onMouseUp(ev) {
   if (ev.pointerId !== _activePointerId) return;
-  try { _canvas.releasePointerCapture(ev.pointerId); } catch (_) { /* no-op */ }
+  try {
+    _canvas.releasePointerCapture(ev.pointerId);
+  } catch (_) {
+    /* no-op */
+  }
   _activePointerId = -1;
 
   if (_mouseState === 'maybe-pan') {
@@ -705,8 +746,8 @@ function _onMouseUp(ev) {
     }
   }
 
-  _mouseState    = 'idle';
-  _dragAnchor    = null;
+  _mouseState = 'idle';
+  _dragAnchor = null;
   _activeRectIdx = -1;
   if (_canvas) _canvas.style.cursor = '';
 }
@@ -714,9 +755,12 @@ function _onMouseUp(ev) {
 function _onMouseMoveHover(ev) {
   if (_mouseState !== 'idle') return;
   const { x, y } = _clientToCanvas(ev);
-  const area      = _plotArea();
+  const area = _plotArea();
   const insidePlot = x >= area.x0 && x <= area.x1 && y >= area.y0 && y <= area.y1;
-  if (!insidePlot) { _canvas.style.cursor = 'default'; return; }
+  if (!insidePlot) {
+    _canvas.style.cursor = 'default';
+    return;
+  }
   _updateCursor(true, _xToEta(x, area), _yToPhi(y, area));
 }
 
@@ -724,40 +768,40 @@ function _onMouseMoveHover(ev) {
 export function initMinimap() {
   if (_canvas) return { redraw: _redraw };
 
-  _wrapEl    = document.createElement('div');
+  _wrapEl = document.createElement('div');
   _wrapEl.id = 'minimap-wrap';
 
   // ── φ seam slider pane (left side) ────────────────────────────────────────
-  const pane     = document.createElement('div');
+  const pane = document.createElement('div');
   pane.className = 'minimap-phi-pane';
-  _seamPaneEl    = pane;
+  _seamPaneEl = pane;
 
-  _seamTrackEl           = document.createElement('div');
-  _seamTrackEl.id        = 'minimap-phi-track';
+  _seamTrackEl = document.createElement('div');
+  _seamTrackEl.id = 'minimap-phi-track';
   _seamTrackEl.className = 'strak';
-  _seamTrackEl.title     = 'φ seam — drag to rotate the display cut (dbl-click to reset)';
+  _seamTrackEl.title = 'φ seam — drag to rotate the display cut (dbl-click to reset)';
 
-  _seamThumbEl           = document.createElement('div');
+  _seamThumbEl = document.createElement('div');
   _seamThumbEl.className = 'sthumb';
   _seamTrackEl.appendChild(_seamThumbEl);
 
-  const lbl       = document.createElement('div');
-  lbl.id          = 'minimap-phi-lbl';
+  const lbl = document.createElement('div');
+  lbl.id = 'minimap-phi-lbl';
   lbl.textContent = _phiLabel(_phiSeam);
-  _seamLblEl      = lbl;
+  _seamLblEl = lbl;
 
   pane.appendChild(_seamTrackEl);
   pane.appendChild(lbl);
   _wrapEl.appendChild(pane);
 
   // ── Canvas ────────────────────────────────────────────────────────────────
-  _canvas    = document.createElement('canvas');
+  _canvas = document.createElement('canvas');
   _canvas.id = 'minimap';
   _canvas.setAttribute('aria-label', 'η × φ energy heatmap');
-  const dpr        = Math.min(window.devicePixelRatio || 1, 2);
-  _canvas.width    = W * dpr;
-  _canvas.height   = H * dpr;
-  _canvas.style.width  = W + 'px';
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  _canvas.width = W * dpr;
+  _canvas.height = H * dpr;
+  _canvas.style.width = W + 'px';
   _canvas.style.height = H + 'px';
   _ctx = _canvas.getContext('2d');
   _ctx.scale(dpr, dpr);
@@ -765,10 +809,10 @@ export function initMinimap() {
   // Pointer events (not mouse) so draw / pan / delete work with touch on
   // mobile. Pointer capture keeps the drag alive even past the canvas edge,
   // so no window-level listeners are needed.
-  _canvas.addEventListener('pointerdown',   _onMouseDown);
-  _canvas.addEventListener('pointermove',   _onMouseMoveHover);
-  _canvas.addEventListener('pointermove',   _onMouseMove);
-  _canvas.addEventListener('pointerup',     _onMouseUp);
+  _canvas.addEventListener('pointerdown', _onMouseDown);
+  _canvas.addEventListener('pointermove', _onMouseMoveHover);
+  _canvas.addEventListener('pointermove', _onMouseMove);
+  _canvas.addEventListener('pointerup', _onMouseUp);
   _canvas.addEventListener('pointercancel', _onMouseUp);
   _canvas.addEventListener('pointerleave', () => {
     if (_mouseState === 'idle') _canvas.style.cursor = '';
@@ -776,14 +820,14 @@ export function initMinimap() {
   _wrapEl.appendChild(_canvas);
 
   // ── Slider events ─────────────────────────────────────────────────────────
-  _seamPaneEl.addEventListener('pointerdown',   _onSeamPointerDown);
-  _seamPaneEl.addEventListener('pointermove',   _onSeamPointerMove);
-  _seamPaneEl.addEventListener('pointerup',     _onSeamPointerUp);
+  _seamPaneEl.addEventListener('pointerdown', _onSeamPointerDown);
+  _seamPaneEl.addEventListener('pointermove', _onSeamPointerMove);
+  _seamPaneEl.addEventListener('pointerup', _onSeamPointerUp);
   _seamPaneEl.addEventListener('pointercancel', _onSeamPointerUp);
-  _seamPaneEl.addEventListener('dblclick',      _onSeamDblClick);
+  _seamPaneEl.addEventListener('dblclick', _onSeamDblClick);
 
   // ── Zoom: keyboard while hovered; scroll wheel on the minimap ─────────────
-  _wrapEl.addEventListener('mouseenter', () => window.addEventListener('keydown',    _onZoomKey));
+  _wrapEl.addEventListener('mouseenter', () => window.addEventListener('keydown', _onZoomKey));
   _wrapEl.addEventListener('mouseleave', () => window.removeEventListener('keydown', _onZoomKey));
   _wrapEl.addEventListener('wheel', _onWheelZoom, { passive: false });
 
@@ -801,8 +845,14 @@ export function initMinimap() {
  */
 export function updateMinimap({ cells, fcal }) {
   let binsDirty = false;
-  if (cells !== undefined) { _cellEntries = cells; binsDirty = true; }
-  if (fcal  !== undefined) { _fcalEntries = fcal;  binsDirty = true; }
+  if (cells !== undefined) {
+    _cellEntries = cells;
+    binsDirty = true;
+  }
+  if (fcal !== undefined) {
+    _fcalEntries = fcal;
+    binsDirty = true;
+  }
   if (binsDirty) _binCache = null;
   _redraw();
 }
