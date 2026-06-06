@@ -8,8 +8,14 @@ export function setupMobileToolbar() {
   const btn = document.getElementById('btn-toolbar-toggle');
   const closeBtn = document.getElementById('btn-toolbar-close');
 
-  const isLandscapeMobile = () =>
-    window.innerHeight <= 520 && window.innerWidth > window.innerHeight;
+  // Switch on the SAME media query the CSS uses to turn the toolbar into a
+  // bottom dock and reveal the pill. Deriving the JS state from a separate
+  // innerWidth/innerHeight test let the two desync (e.g. while the iOS address
+  // bar resizes the viewport): the CSS would show the dock while the JS kept
+  // tb-visible set without tb-open, so the pill rendered on top of the dock
+  // instead of below it. matchMedia keeps JS and CSS in lockstep.
+  const dockMode = window.matchMedia('(orientation: landscape) and (max-height: 520px)');
+  const isLandscapeMobile = () => dockMode.matches;
   let tbVisible = !isLandscapeMobile();
 
   function apply() {
@@ -47,10 +53,15 @@ export function setupMobileToolbar() {
       }
     });
 
-  window.addEventListener('resize', () => {
-    if (!isLandscapeMobile()) {
-      tbVisible = true;
-      apply();
-    }
-  });
+  // Re-establish the clean default whenever we cross the dock-mode boundary
+  // (rotation, or the viewport height crossing 520 as the iOS bars show/hide):
+  // dock starts hidden in landscape-mobile (pill alone at the bottom), toolbar
+  // stays visible everywhere else. This fires on entering AND leaving the mode,
+  // so the dock and the pill can never get stuck half-open and overlapping.
+  const onModeChange = () => {
+    tbVisible = !isLandscapeMobile();
+    apply();
+  };
+  if (dockMode.addEventListener) dockMode.addEventListener('change', onModeChange);
+  else dockMode.addListener(onModeChange); // Safari < 14
 }
