@@ -104,7 +104,7 @@ async function fetchOne(entry) {
     const have = await sha256OfFile(dest);
     if (have === entry.sha256) {
       console.log(`${C.dim}✓ ${label} cached${C.reset}`);
-      return;
+      return true;
     }
     console.log(`${C.yellow}↻ ${label} stale, re-downloading${C.reset}`);
     await unlink(dest);
@@ -112,7 +112,21 @@ async function fetchOne(entry) {
 
   process.stdout.write(`${C.dim}↓${C.reset} ${label} `);
   const url = `${BASE_URL}/${entry.name}`;
-  const res = await fetchWithRetry(url);
+  let res;
+  try {
+    res = await fetchWithRetry(url);
+  } catch (err) {
+    // An entry listed in the manifest but not (yet) uploaded to the release
+    // answers 404. Don't let one missing sample abort the entire deploy:
+    // skip it with a warning and leave it out of index.json. It reappears
+    // automatically once the asset is uploaded. Genuine failures (checksum
+    // mismatch, network, other HTTP codes) still fail the build below.
+    if (/HTTP 404\b/.test(err.message)) {
+      console.log(`${C.yellow}missing in release — skipped${C.reset}`);
+      return false;
+    }
+    throw err;
+  }
   await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
 
   const got = await sha256OfFile(dest);
@@ -123,11 +137,11 @@ async function fetchOne(entry) {
     );
   }
   console.log(`${C.green}done${C.reset}`);
+  return true;
 }
 
-async function writeIndex() {
+async function writeIndex(names) {
   const indexPath = join(OUT_DIR, 'index.json');
-  const names = MANIFEST.map((e) => e.name);
   await writeFile(indexPath, JSON.stringify(names) + '\n');
   console.log(`${C.dim}✓ index.json written (${names.length} entries)${C.reset}`);
 }
@@ -136,11 +150,22 @@ async function main() {
   console.log(`Fetching ${MANIFEST.length} sample(s) from release ${TAG} → ${OUT_DIR}`);
   await mkdir(OUT_DIR, { recursive: true });
 
+  const present = [];
+  const missing = [];
   for (const entry of MANIFEST) {
-    await fetchOne(entry);
+    if (await fetchOne(entry)) present.push(entry.name);
+    else missing.push(entry.name);
   }
 
-  await writeIndex();
+  // index.json only lists samples actually available, so the UI never offers a
+  // file the server can't deliver.
+  await writeIndex(present);
+
+  if (missing.length) {
+    console.log(
+      `${C.yellow}warning: ${missing.length} sample(s) not in release ${TAG}, omitted: ${missing.join(', ')}${C.reset}`,
+    );
+  }
 }
 
 main().catch((err) => {
