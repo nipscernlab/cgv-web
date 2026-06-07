@@ -1,3 +1,4 @@
+// @ts-check
 import {
   saveUserXml,
   overwriteUserXml,
@@ -7,6 +8,27 @@ import {
   clearUserXml,
 } from './userXmlStore.js';
 
+/**
+ * One row in the sample list. `source` carries exactly one of url (built-in
+ * test sample), opfsId (persisted user file) or file (in-session user file).
+ * @typedef {Object} SampleEntry
+ * @property {string} display
+ * @property {'test' | 'user'} kind
+ * @property {{ url?: string, file?: File, opfsId?: string }} source
+ * @property {string} key
+ */
+
+/**
+ * @param {{
+ *   advanceProgress: (stage: string) => void,
+ *   endProgress: () => void,
+ *   esc: (s: string) => string,
+ *   processXml: (xml: string) => void,
+ *   setStatus: (html: string) => void,
+ *   startProgress: () => void,
+ *   t: (key: string) => string,
+ * }} deps
+ */
 export function setupSampleMode({
   advanceProgress,
   endProgress,
@@ -17,20 +39,20 @@ export function setupSampleMode({
   t,
 }) {
   let sampleLoaded = false;
-  // Entries: { display, kind: 'test' | 'user', source: { url } | { file }, key }
+  /** @type {SampleEntry[]} */
   let entries = [];
+  /** @type {string | null} */
   let currentKey = null;
   let seq = 0;
 
-  const listEl = document.getElementById('sample-list');
-  const msgEl = document.getElementById('sample-list-msg');
-  const sec = document.getElementById('sample-sec');
-  const addBtn = document.getElementById('btn-sample-add');
-  const clearBtn = document.getElementById('btn-sample-clear');
-  const fileInput = document.getElementById('sample-file-in');
+  const listEl = /** @type {HTMLElement} */ (document.getElementById('sample-list'));
+  const msgEl = /** @type {HTMLElement} */ (document.getElementById('sample-list-msg'));
+  const sec = /** @type {HTMLElement} */ (document.getElementById('sample-sec'));
+  const addBtn = /** @type {HTMLElement} */ (document.getElementById('btn-sample-add'));
+  const clearBtn = /** @type {HTMLElement} */ (document.getElementById('btn-sample-clear'));
+  const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('sample-file-in'));
 
   function syncClearVisibility() {
-    if (!clearBtn) return;
     clearBtn.hidden = entries.length === 0;
   }
 
@@ -54,10 +76,10 @@ export function setupSampleMode({
           <svg class="ic" style="width:9px;height:9px;stroke-width:2.2"><use href="#i-x"/></svg>
         </button>`;
       btn.addEventListener('click', (ev) => {
-        if (ev.target.closest('.sample-item-x')) return;
+        if (/** @type {HTMLElement | null} */ (ev.target)?.closest('.sample-item-x')) return;
         load(entry, btn);
       });
-      btn.querySelector('.sample-item-x').addEventListener('click', (ev) => {
+      btn.querySelector('.sample-item-x')?.addEventListener('click', (ev) => {
         ev.stopPropagation();
         removeEntry(entry.key);
       });
@@ -66,6 +88,10 @@ export function setupSampleMode({
     syncClearVisibility();
   }
 
+  /**
+   * @param {SampleEntry} entry
+   * @param {HTMLElement} rowEl
+   */
   async function load(entry, rowEl) {
     document.querySelectorAll('.sample-item.cur').forEach((b) => b.classList.remove('cur'));
     rowEl.classList.add('cur');
@@ -74,7 +100,7 @@ export function setupSampleMode({
     startProgress();
     advanceProgress('request');
     try {
-      let xmlText;
+      let xmlText = '';
       if (entry.source.url) {
         const res = await fetch(entry.source.url);
         advanceProgress('download');
@@ -92,17 +118,20 @@ export function setupSampleMode({
       endProgress();
     } catch (err) {
       endProgress();
-      setStatus(`<span class="err">Error: ${esc(err.message)}</span>`);
+      setStatus(
+        `<span class="err">Error: ${esc(err instanceof Error ? err.message : String(err))}</span>`,
+      );
       rowEl.classList.remove('cur');
     }
   }
 
+  /** @param {string} key */
   function removeEntry(key) {
     const entry = entries.find((e) => e.key === key);
     entries = entries.filter((e) => e.key !== key);
     if (currentKey === key) currentKey = null;
     renderList();
-    if (entry?.source.opfsId) removeUserXml(entry.source.opfsId);
+    if (entry && entry.source.opfsId) removeUserXml(entry.source.opfsId);
   }
 
   function clearAll() {
@@ -116,6 +145,7 @@ export function setupSampleMode({
   // is unavailable, saveUserXml returns null and we keep the file in-session
   // only (the previous behaviour). async so callers await it sequentially,
   // which serialises the OPFS index read-modify-write.
+  /** @param {File} file */
   async function addUserFile(file) {
     if (!file || !file.name.toLowerCase().endsWith('.xml')) return;
     // Dedupe by name: re-adding a same-named file refreshes the existing
@@ -141,12 +171,15 @@ export function setupSampleMode({
     const metas = await listUserXml(); // most-recent first
     if (!metas.length) return;
     entries = entries.concat(
-      metas.map((m) => ({
-        display: m.name,
-        kind: 'user',
-        source: { opfsId: m.id },
-        key: `u:${m.id}`,
-      })),
+      metas.map(
+        (m) =>
+          /** @type {SampleEntry} */ ({
+            display: m.name,
+            kind: 'user',
+            source: { opfsId: m.id },
+            key: `u:${m.id}`,
+          }),
+      ),
     );
     renderList();
   }
@@ -159,19 +192,22 @@ export function setupSampleMode({
     try {
       const res = await fetch('./default_xml/index.json');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const names = await res.json();
+      const names = /** @type {string[]} */ (await res.json());
       msgEl.hidden = true;
       if (!names.length) {
         msgEl.textContent = t('sample-empty');
         msgEl.hidden = false;
         return;
       }
-      const testEntries = names.map((name) => ({
-        display: `test_${name}`,
-        kind: 'test',
-        source: { url: `./default_xml/${encodeURIComponent(name)}` },
-        key: `t:${name}`,
-      }));
+      const testEntries = names.map(
+        (name) =>
+          /** @type {SampleEntry} */ ({
+            display: `test_${name}`,
+            kind: 'test',
+            source: { url: `./default_xml/${encodeURIComponent(name)}` },
+            key: `t:${name}`,
+          }),
+      );
       entries = testEntries.concat(entries.filter((e) => e.kind === 'user'));
       renderList();
       sampleLoaded = true;
@@ -182,9 +218,9 @@ export function setupSampleMode({
   }
 
   addBtn.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', async (e) => {
-    const files = [...(e.target.files ?? [])];
-    e.target.value = '';
+  fileInput.addEventListener('change', async () => {
+    const files = [...(fileInput.files ?? [])];
+    fileInput.value = '';
     for (const f of files) await addUserFile(f);
   });
   clearBtn.addEventListener('click', clearAll);
@@ -194,7 +230,8 @@ export function setupSampleMode({
       e.preventDefault();
       e.stopPropagation();
       sec.classList.add('dragover');
-      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      const dt = /** @type {DragEvent} */ (e).dataTransfer;
+      if (dt) dt.dropEffect = 'copy';
     }),
   );
   ['dragleave', 'dragend'].forEach((ev) =>
