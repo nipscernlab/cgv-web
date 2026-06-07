@@ -28,6 +28,12 @@ import { setClusterLineOpacity } from '../particles/clusters.js';
 import { setJetLineOpacity } from '../particles/jets.js';
 import { setupAnchoredPopover } from './anchoredPopover.js';
 
+// Active-line accent colours, mirroring CLUSTER_MAT (clusters.js) and JET_MAT
+// (jets.js). Applied to the Lines row dot / switch and the opacity slider so
+// the UI colour matches whichever line type the current view level shows.
+const CLUSTER_LINE_COLOR = '#ff4400';
+const JET_LINE_COLOR = '#ff8800';
+
 /**
  * @param {{
  *   toggleAllGhosts: () => void,
@@ -54,6 +60,9 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
   const hrowLines = document.getElementById('hrow-lines');
   const linesNameEl = hrowLines?.querySelector('.layer-name') ?? null;
   const linesSubEl = hrowLines?.querySelector('.layer-sub') ?? null;
+  const linesDotEl = /** @type {HTMLElement | null} */ (
+    hrowLines?.querySelector('.layer-dot') ?? null
+  );
   const hrowLineOpacity = document.getElementById('hrow-line-opacity');
   const hLineOpacity = /** @type {HTMLInputElement | null} */ (
     document.getElementById('h-line-opacity')
@@ -84,6 +93,12 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     hrowLines.style.display = show ? '' : 'none';
     if (hrowLineOpacity) hrowLineOpacity.style.display = show ? '' : 'none';
     if (!show) return;
+    // Colour the row dot, switch and opacity slider to match the active line
+    // type: cluster red at L2, jet orange at L3.
+    const col = lvl === 2 ? CLUSTER_LINE_COLOR : JET_LINE_COLOR;
+    if (linesDotEl) linesDotEl.style.background = col;
+    hbtnLines?.style.setProperty('--gswitch-col', col);
+    hLineOpacity?.style.setProperty('accent-color', col);
     if (lvl === 2) {
       if (linesNameEl) linesNameEl.textContent = 'Cluster Lines';
       if (linesNameEl) linesNameEl.setAttribute('data-i18n', 'helpers-cluster-lines');
@@ -153,16 +168,44 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
   });
 
   // Line-opacity slider drives both cluster and jet line materials (the lines
-  // row toggles whichever is active for the current view level, but the slider
-  // applies to both so its value persists across an L2 ↔ L3 switch).
-  hLineOpacity?.addEventListener('input', () => {
-    const pct = Number(hLineOpacity?.value ?? '100');
-    const o = pct / 100;
-    setClusterLineOpacity(o);
-    setJetLineOpacity(o);
-    if (hLineOpacityVal) hLineOpacityVal.textContent = `${pct}%`;
+  // row toggles whichever is active for the current level, but the slider
+  // applies to both so its value survives an L2 ↔ L3 switch). The chosen value
+  // persists in localStorage; the accent colour tracks the active line type in
+  // syncLinesRow above.
+  const LINE_OPACITY_KEY = 'cgv-line-opacity';
+  /**
+   * @param {number} pct opacity percentage (0..100)
+   * @param {boolean} persist write the value to localStorage
+   */
+  function applyLineOpacity(pct, persist) {
+    const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+    setClusterLineOpacity(clamped / 100);
+    setJetLineOpacity(clamped / 100);
+    if (hLineOpacity) hLineOpacity.value = String(clamped);
+    if (hLineOpacityVal) hLineOpacityVal.textContent = `${clamped}%`;
+    if (persist) {
+      try {
+        localStorage.setItem(LINE_OPACITY_KEY, String(clamped));
+      } catch (_) {
+        /* storage unavailable — ignore */
+      }
+    }
     markDirty();
-  });
+  }
+  hLineOpacity?.addEventListener('input', () =>
+    applyLineOpacity(Number(hLineOpacity?.value ?? '100'), true),
+  );
+  // Restore the saved opacity (default 100% = fully opaque) at startup.
+  (function restoreLineOpacity() {
+    let pct = 100;
+    try {
+      const v = localStorage.getItem(LINE_OPACITY_KEY);
+      if (v !== null && Number.isFinite(Number(v))) pct = Number(v);
+    } catch (_) {
+      /* ignore */
+    }
+    applyLineOpacity(pct, false);
+  })();
 
   const popover = setupAnchoredPopover({
     panelId: 'helpers-panel',
