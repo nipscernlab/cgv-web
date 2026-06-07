@@ -69,8 +69,11 @@ objects at once:
 
 Pinned cards are anchored to their object in 3D, so they follow it as
 you orbit, zoom or pan, and hide while the object is behind the camera.
-Any number can be pinned at once, and the live hover tooltip keeps
-working independently alongside them.
+A card also disappears automatically when its object does — detector
+toggled off, filtered out by a threshold, hidden by a view-level or
+slicer change, or replaced when a new event loads. Any number can be
+pinned at once, and the live hover tooltip keeps working independently
+alongside them.
 
 ---++ Slicer gestures
 

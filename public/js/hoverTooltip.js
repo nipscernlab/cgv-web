@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { canvas, camera, controls, markDirty } from './renderer.js';
+import { canvas, camera, controls, scene, markDirty } from './renderer.js';
 import { active, rayTargets } from './state.js';
 import {
   fcalGroup,
@@ -29,13 +29,16 @@ const tipExtraEl = document.getElementById('tip-extra');
 
 // ── Pinned tooltips ──────────────────────────────────────────────────────────
 // A left-click pins the current hover tooltip as a standalone card, anchored to
-// the 3D world point under the cursor (hit.point). Pinned cards reproject to
-// screen on every camera change — so they keep tracking their cell while you
-// orbit — and are all cleared at once with Esc (see the Escape branch in
-// viewerShortcuts.js, which calls clearPins()).
-const _pins = []; // [{ el: HTMLElement, key: string, anchor: THREE.Vector3 }]
+// the 3D world point under the cursor (hit.point). updatePins() (driven once
+// per frame from the render loop) reprojects each card so it tracks its object
+// while you orbit AND prunes any card whose object has disappeared (detector
+// toggled off, threshold filtered it out, view-level change, slicer, new
+// event). Clearing a card: click it; clear all: Esc (see viewerShortcuts.js).
+// Each pin: { el, key, anchor: THREE.Vector3, alive: () => boolean }.
+const _pins = [];
 const _lastHoverAnchor = new THREE.Vector3(); // world point of the live hover hit
 let _lastHoverKey = ''; // stable identity of the live hover hit (drives pin toggle)
+let _lastHoverAlive = () => false; // predicate: is the live hover's object still shown?
 let _hasHoverAnchor = false; // is the live hover valid (a tooltip is showing)?
 
 // Renders the extra-rows block. Builder is in tooltipRows.js so the
@@ -71,10 +74,11 @@ function _dismissAll() {
 // Reproject one pinned card from its world anchor to screen space, hiding it
 // when the anchor falls behind the camera (project() wraps such points to the
 // wrong side of the viewport). Clamped to stay inside the canvas like the live
-// tooltip in showHit().
+// tooltip in showHit(). `rect` is the canvas rect, read once per updatePins()
+// pass so repositioning many cards doesn't thrash layout.
 const _csPoint = new THREE.Vector3();
 const _ndc = new THREE.Vector3();
-function _positionPin(pin) {
+function _positionPin(pin, rect) {
   // View-space z >= 0 means the point is behind the camera (camera looks down -z).
   _csPoint.copy(pin.anchor).applyMatrix4(camera.matrixWorldInverse);
   if (_csPoint.z >= 0) {
@@ -83,20 +87,40 @@ function _positionPin(pin) {
   }
   pin.el.style.display = '';
   _ndc.copy(pin.anchor).project(camera);
-  const rect = canvas.getBoundingClientRect();
   const sx = rect.left + (_ndc.x * 0.5 + 0.5) * rect.width;
   const sy = rect.top + (-_ndc.y * 0.5 + 0.5) * rect.height;
   pin.el.style.left = Math.min(Math.max(sx + 14, rect.left + 4), rect.right - 210) + 'px';
   pin.el.style.top = Math.min(Math.max(sy + 14, rect.top + 4), rect.bottom - 90) + 'px';
 }
 
-// Reposition every pinned card. Wired to the OrbitControls 'change' event and
-// window resize in initHoverTooltip, so pins follow their cell during orbit /
-// zoom / pan and survive viewport changes.
-export function repositionPins() {
+// True while `o` is attached to the scene with no `.visible = false` anywhere up
+// its parent chain — i.e. the object is actually being rendered. Detector
+// toggles flip a group's .visible, threshold filters flip a line's .visible,
+// and rebuilding an event detaches old objects — all caught here.
+function _objVisible(o) {
+  for (let n = o; n; n = n.parent) {
+    if (n.visible === false) return false;
+    if (n === scene) return true;
+  }
+  return false; // walked to a detached root without reaching the scene
+}
+
+// Per-frame pin maintenance (called from the render loop): drop any card whose
+// object has disappeared, then reproject the survivors. Cheap and a no-op when
+// there are no pins.
+export function updatePins() {
   if (!_pins.length) return;
   camera.updateMatrixWorld();
-  for (const pin of _pins) _positionPin(pin);
+  const rect = canvas.getBoundingClientRect();
+  for (let i = _pins.length - 1; i >= 0; i--) {
+    const pin = _pins[i];
+    if (!pin.alive()) {
+      pin.el.remove();
+      _pins.splice(i, 1);
+      continue;
+    }
+    _positionPin(pin, rect);
+  }
 }
 
 // Clear all pinned cards. Returns true if any existed, so the Esc handler can
@@ -124,15 +148,16 @@ function _stripPinIds(el) {
 // per-hit `key` (cell handle / FCAL instance / object uuid), not the click
 // point, so clicking anywhere on the same object re-targets its existing card.
 // Removal is not done here — clicking the card itself dismisses it (_addPin).
-function _pinObject(key, anchor) {
+function _pinObject(key, anchor, alive) {
   const existing = _pins.find((p) => p.key === key);
   if (existing) {
     existing.anchor.copy(anchor);
+    existing.alive = alive;
     _refreshPinContent(existing);
-    _positionPin(existing);
+    _positionPin(existing, canvas.getBoundingClientRect());
     return;
   }
-  _addPin(key, anchor);
+  _addPin(key, anchor, alive);
 }
 
 // Remove the pin whose card element is `el`. Each card's own click handler
@@ -157,7 +182,7 @@ function _refreshPinContent(pin) {
 // cards are interactive (pointer-events:auto): clicking one dismisses it. The
 // trade-off is that hovering a card suppresses the transient hover tooltip and
 // a drag started on a card won't orbit — both fine for these small cards.
-function _addPin(key, anchor) {
+function _addPin(key, anchor, alive) {
   const el = tooltip.cloneNode(true);
   el.removeAttribute('id');
   el.classList.add('tip-pinned');
@@ -165,9 +190,9 @@ function _addPin(key, anchor) {
   _stripPinIds(el);
   el.addEventListener('click', () => _removePinEl(el));
   document.body.appendChild(el);
-  const pin = { el, key, anchor: anchor.clone() };
+  const pin = { el, key, anchor: anchor.clone(), alive };
   _pins.push(pin);
-  _positionPin(pin);
+  _positionPin(pin, canvas.getBoundingClientRect());
 }
 
 const raycast = new THREE.Raycaster();
@@ -233,12 +258,12 @@ export function initHoverTooltip({ getShowInfo, getCinemaMode, getDragging, t })
   canvas.addEventListener('click', (e) => {
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // was a drag
     doRaycast(e.clientX, e.clientY);
-    if (!tooltip.hidden && _hasHoverAnchor) _pinObject(_lastHoverKey, _lastHoverAnchor);
+    if (!tooltip.hidden && _hasHoverAnchor) {
+      _pinObject(_lastHoverKey, _lastHoverAnchor, _lastHoverAlive);
+    }
   });
-
-  // Keep pinned cards glued to their cells as the camera moves / window resizes.
-  controls.addEventListener('change', repositionPins);
-  window.addEventListener('resize', repositionPins);
+  // Repositioning + pruning of pins is driven once per frame by updatePins()
+  // from the render loop, which covers camera moves, view mutations and resize.
 }
 
 function doRaycast(clientX, clientY) {
@@ -360,17 +385,19 @@ function doRaycast(clientX, clientY) {
    *   trackHitsAction?: () => void,
    *   anchor?: THREE.Vector3,
    *   key?: string,
+   *   alive?: () => boolean,
    * }} opts
    */
-  function _finishHit({ showHitArgs, outlineAction, trackHitsAction, anchor, key }) {
+  function _finishHit({ showHitArgs, outlineAction, trackHitsAction, anchor, key, alive }) {
     (outlineAction ?? clearOutline)();
     (trackHitsAction ?? hideTrackHits)();
     showHit(showHitArgs);
-    // Remember the world hit point + identity so a click can pin / un-pin this
-    // tooltip (see _togglePin / _addPin).
+    // Remember the world hit point + identity + liveness so a click can pin
+    // this tooltip and updatePins() can later prune it (see _pinObject).
     if (anchor && !tooltip.hidden) {
       _lastHoverAnchor.copy(anchor);
       _lastHoverKey = key ?? '';
+      _lastHoverAlive = alive ?? (() => true);
       _hasHoverAnchor = true;
     }
   }
@@ -413,7 +440,8 @@ function doRaycast(clientX, clientY) {
       const valGev = isET ? data.etMev / 1000 : data.energyGev;
       _finishHit({
         anchor: cellHit.point,
-        key: `cell:${cellHandle}`,
+        key: `cell:${cellHandle.iMesh.uuid}:${cellHandle.instId}`,
+        alive: () => active.has(cellHandle) && cellHandle.visible,
         outlineAction: () => (wantTooltip ? showOutline(cellHandle) : clearOutline()),
         showHitArgs: {
           label: data.cellName,
@@ -441,6 +469,7 @@ function doRaycast(clientX, clientY) {
       _finishHit({
         anchor: fcalHit.point,
         key: `fcal:${iid}`,
+        alive: () => _objVisible(fcalGroup) && !!fcalVisibleMap[iid],
         outlineAction: () => (wantTooltip ? showFcalOutline(iid) : clearOutline()),
         showHitArgs: {
           label: `FCAL${cell.module} (${side}-side)`,
@@ -474,6 +503,7 @@ function doRaycast(clientX, clientY) {
       _finishHit({
         anchor: vHits[0].point,
         key: `obj:${v.uuid}`,
+        alive: () => _objVisible(v),
         showHitArgs: {
           label,
           coord: v.userData.vertexKey,
@@ -559,6 +589,7 @@ function doRaycast(clientX, clientY) {
       _finishHit({
         anchor: hits[0].point,
         key: `obj:${line.uuid}`,
+        alive: () => _objVisible(line),
         trackHitsAction: () => (isPhoton ? hideTrackHits() : showTrackHits(line)),
         showHitArgs: {
           label,
@@ -581,6 +612,7 @@ function doRaycast(clientX, clientY) {
       _finishHit({
         anchor: clusterHits[0].point,
         key: `obj:${line.uuid}`,
+        alive: () => _objVisible(line),
         showHitArgs: {
           label: 'Cluster',
           coord: line.userData.storeGateKey ?? '',
@@ -605,6 +637,7 @@ function doRaycast(clientX, clientY) {
       _finishHit({
         anchor: tauHits[0].point,
         key: `obj:${line.uuid}`,
+        alive: () => _objVisible(line),
         showHitArgs: {
           label: tauSymbolFromCharge(line.userData.charge),
           coord: line.userData.storeGateKey ?? '',
@@ -639,6 +672,7 @@ function doRaycast(clientX, clientY) {
       _finishHit({
         anchor: jetHits[0].point,
         key: `obj:${line.uuid}`,
+        alive: () => _objVisible(line),
         showHitArgs: {
           label: 'Jet',
           coord: storeGateKey,
@@ -664,6 +698,7 @@ function doRaycast(clientX, clientY) {
       _finishHit({
         anchor: metHits[0].point,
         key: `obj:${arrow?.uuid}`,
+        alive: () => _objVisible(arrow),
         showHitArgs: {
           label: 'ν',
           coord: arrow?.userData.metKey ?? '',
@@ -707,6 +742,7 @@ function doRaycast(clientX, clientY) {
       _finishHit({
         anchor: chamberHits[0].point,
         key: `obj:${mesh.uuid}`,
+        alive: () => _objVisible(mesh),
         outlineAction: () => {
           clearOutline();
           showChamberHoverOutline(stationMeshes.length ? stationMeshes : [mesh]);

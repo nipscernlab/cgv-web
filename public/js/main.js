@@ -58,7 +58,14 @@ import {
 } from './trackAtlasIntersections.js';
 import { isAnyMuonVisible, onMuonVisibilityChange } from './visibility/muonVisibility.js';
 import { clearOutline } from './outlines.js';
-import { initHoverTooltip, hideTooltip, tooltip, tipCellEl, tipEEl } from './hoverTooltip.js';
+import {
+  initHoverTooltip,
+  hideTooltip,
+  updatePins,
+  tooltip,
+  tipCellEl,
+  tipEEl,
+} from './hoverTooltip.js';
 import { initRenderLoop } from './renderLoop.js';
 import { setupPanelResize } from './panelResize.js';
 import { setupButtonTooltips } from './buttonTooltips.js';
@@ -136,6 +143,8 @@ controls.addEventListener('change', () => {
 initRenderLoop({
   onFrameStart: () => {
     if (cinema.isAnimating()) cinema.tick();
+    // Reproject pinned tooltips and drop any whose object has disappeared.
+    updatePins();
   },
 });
 

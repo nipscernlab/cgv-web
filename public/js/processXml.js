@@ -83,7 +83,7 @@ import { parseMuons } from './parsers/muonParser.js';
 import { clearOutline, clearAllOutlines } from './outlines.js';
 import { setStatus, showEventInfo } from './statusHud.js';
 import { markDirty } from './renderer.js';
-import { hideTooltip } from './hoverTooltip.js';
+import { hideTooltip, clearPins } from './hoverTooltip.js';
 import { esc } from './utils.js';
 import { etMevFromE, getCellMetric } from './cellMetric.js';
 
@@ -146,6 +146,7 @@ function resetScene() {
   clearVisibilityState();
   clearOutline();
   clearAllOutlines();
+  clearPins(); // a new event invalidates every pinned tooltip
   clearTracks();
   clearClusters();
   clearPhotons();
