@@ -1,3 +1,4 @@
+// @ts-check
 import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
 
@@ -5,33 +6,40 @@ import { scene, markDirty } from './renderer.js';
 const DEFAULT_BG_HEX = '#020d1c';
 
 export function setupColorPicker() {
-  const btn = document.getElementById('btn-bgcolor');
-  const pop = document.getElementById('bgcolor-popover');
-  const sv = document.getElementById('bgcp-sv');
-  const svCursor = document.getElementById('bgcp-sv-cursor');
-  const hueStrip = document.getElementById('bgcp-hue-strip');
-  const hueCursor = document.getElementById('bgcp-hue-cursor');
-  const hexInput = document.getElementById('bgcp-hex');
-  const swatch = document.getElementById('bgcp-swatch');
-  const closeBtn = document.getElementById('bgcp-close');
-  const resetBtn = document.getElementById('bgcp-reset');
-  const presets = Array.from(document.querySelectorAll('.bgcp-preset'));
+  const btn = /** @type {HTMLElement} */ (document.getElementById('btn-bgcolor'));
+  const pop = /** @type {HTMLElement} */ (document.getElementById('bgcolor-popover'));
+  const sv = /** @type {HTMLElement} */ (document.getElementById('bgcp-sv'));
+  const svCursor = /** @type {HTMLElement} */ (document.getElementById('bgcp-sv-cursor'));
+  const hueStrip = /** @type {HTMLElement} */ (document.getElementById('bgcp-hue-strip'));
+  const hueCursor = /** @type {HTMLElement} */ (document.getElementById('bgcp-hue-cursor'));
+  const hexInput = /** @type {HTMLInputElement} */ (document.getElementById('bgcp-hex'));
+  const swatch = /** @type {HTMLElement} */ (document.getElementById('bgcp-swatch'));
+  const closeBtn = /** @type {HTMLElement} */ (document.getElementById('bgcp-close'));
+  const resetBtn = /** @type {HTMLElement} */ (document.getElementById('bgcp-reset'));
+  const presets = /** @type {HTMLElement[]} */ (
+    Array.from(document.querySelectorAll('.bgcp-preset'))
+  );
   if (!btn || !pop) return;
 
   // ── Color math helpers ─────────────────────────────────────────────
+  /** @param {number} n @param {number} a @param {number} b */
   function _clamp(n, a, b) {
     return n < a ? a : n > b ? b : n;
   }
+  /** @param {string} hex @returns {{ r: number, g: number, b: number } | null} */
   function hexToRgb(hex) {
     const m = /^#?([0-9a-f]{6})$/i.exec(hex);
     if (!m) return null;
     const v = parseInt(m[1], 16);
     return { r: (v >> 16) & 0xff, g: (v >> 8) & 0xff, b: v & 0xff };
   }
+  /** @param {number} r @param {number} g @param {number} b */
   function rgbToHex(r, g, b) {
+    /** @param {number} n */
     const h = (n) => _clamp(Math.round(n), 0, 255).toString(16).padStart(2, '0');
     return '#' + h(r) + h(g) + h(b);
   }
+  /** @param {number} r @param {number} g @param {number} b */
   function rgbToHsv(r, g, b) {
     r /= 255;
     g /= 255;
@@ -57,6 +65,7 @@ export function setupColorPicker() {
     const s = max === 0 ? 0 : d / max;
     return { h, s: s * 100, v: max * 100 };
   }
+  /** @param {number} h @param {number} s @param {number} v */
   function hsvToRgb(h, s, v) {
     h = ((h % 360) + 360) % 360;
     s /= 100;
@@ -95,6 +104,7 @@ export function setupColorPicker() {
     curV = 11; // initial ≈ #020d1c
   let open = false;
 
+  /** @param {string} hex @param {{ save?: boolean, syncCursors?: boolean }} [opts] */
   function applyColor(hex, { save = false, syncCursors = true } = {}) {
     const rgb = hexToRgb(hex);
     if (!rgb) return;
@@ -130,9 +140,10 @@ export function setupColorPicker() {
     svCursor.style.top = 100 - curV + '%';
     hueCursor.style.top = (curH / 360) * 100 + '%';
   }
+  /** @param {string} hex */
   function _markActivePreset(hex) {
     presets.forEach((p) =>
-      p.classList.toggle('active', p.dataset.c.toLowerCase() === hex.toLowerCase()),
+      p.classList.toggle('active', (p.dataset.c ?? '').toLowerCase() === hex.toLowerCase()),
     );
   }
   function _updateFromHsv() {
@@ -141,6 +152,7 @@ export function setupColorPicker() {
   }
 
   // ── SV rectangle drag ──────────────────────────────────────────────
+  /** @param {PointerEvent} e */
   function _svFromEvent(e) {
     const r = sv.getBoundingClientRect();
     const x = _clamp(e.clientX - r.left, 0, r.width);
@@ -166,6 +178,7 @@ export function setupColorPicker() {
   });
 
   // ── Hue strip drag ─────────────────────────────────────────────────
+  /** @param {PointerEvent} e */
   function _hueFromEvent(e) {
     const r = hueStrip.getBoundingClientRect();
     const y = _clamp(e.clientY - r.top, 0, r.height);
@@ -195,8 +208,10 @@ export function setupColorPicker() {
   });
 
   presets.forEach((p) => {
-    p.style.background = p.dataset.c;
-    p.addEventListener('click', () => applyColor(p.dataset.c, { save: true, syncCursors: true }));
+    p.style.background = p.dataset.c ?? '';
+    p.addEventListener('click', () =>
+      applyColor(p.dataset.c ?? '', { save: true, syncCursors: true }),
+    );
   });
 
   resetBtn.addEventListener('click', () =>
@@ -250,7 +265,8 @@ export function setupColorPicker() {
   closeBtn.addEventListener('click', closePop);
   document.addEventListener('click', (e) => {
     if (!open) return;
-    if (pop.contains(e.target) || btn.contains(e.target)) return;
+    const tgt = /** @type {Node | null} */ (e.target);
+    if (pop.contains(tgt) || btn.contains(tgt)) return;
     closePop();
   });
   window.addEventListener('resize', () => {
@@ -258,9 +274,10 @@ export function setupColorPicker() {
   });
 
   // Expose for the Shift+B keyboard shortcut.
-  window.__cgvToggleBgPicker = () => (open ? closePop() : openPop());
+  /** @type {any} */ (window).__cgvToggleBgPicker = () => (open ? closePop() : openPop());
 
   // ── Initial color ──────────────────────────────────────────────────
+  /** @type {string | null} */
   let saved = null;
   try {
     saved = localStorage.getItem('cgv-bg-color');

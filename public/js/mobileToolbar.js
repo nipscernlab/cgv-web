@@ -1,11 +1,12 @@
+// @ts-check
 // Mobile toolbar toggle (landscape-only).
 // The toggle pill acts as both opener and closer:
 //  • toolbar hidden → pill sits at the bottom, click slides toolbar up.
 //  • toolbar open  → pill slides above the toolbar (.tb-open), click hides it.
 // Portrait triggers the "rotate your device" overlay in CSS, so no JS there.
 export function setupMobileToolbar() {
-  const tb = document.getElementById('toolbar');
-  const btn = document.getElementById('btn-toolbar-toggle');
+  const tb = /** @type {HTMLElement} */ (document.getElementById('toolbar'));
+  const btn = /** @type {HTMLElement} */ (document.getElementById('btn-toolbar-toggle'));
   const closeBtn = document.getElementById('btn-toolbar-close');
 
   // Switch on the SAME media query the CSS uses to turn the toolbar into a
