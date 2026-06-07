@@ -1,3 +1,4 @@
+// @ts-check
 // JS-side parser for <TauJet> blocks (hadronic tau candidates).
 //
 // Single collection per event: TauJets_xAOD (6-9 candidates typical). Each
@@ -14,6 +15,7 @@
 // Tracks are sliced by numTracks the same way jets do — flat arrays per
 // candidate paired with a per-candidate count.
 
+/** @param {string} body @param {string} tag @returns {number[]} */
 function _readNums(body, tag) {
   const re = new RegExp(`<${tag}(?:\\s+multiple="[^"]+")?>([\\s\\S]*?)</${tag}>`);
   const m = body.match(re);
@@ -23,6 +25,7 @@ function _readNums(body, tag) {
   return trimmed.split(/\s+/).map(Number);
 }
 
+/** @param {string} body @param {string} tag @returns {string[]} */
 function _readStrings(body, tag) {
   const re = new RegExp(`<${tag}(?:\\s+multiple="[^"]+")?>([\\s\\S]*?)</${tag}>`);
   const m = body.match(re);
@@ -38,7 +41,13 @@ function _readStrings(body, tag) {
 //   `charge` is the τ charge (-1 / 0 / +1); 0 marks the seed-only candidates
 //            with no associated tracks (and no physical sign).
 //   `key`    is the storeGateKey (e.g. "TauJets_xAOD"), kept for the tooltip.
+/**
+ * @typedef {{ eta: number, phi: number, ptGev: number, isTau: string, numTracks: number,
+ *   charge: number, tracks: Array<{ key: string, index: number }>, key: string }} Tau
+ */
+/** @param {string} xmlText @returns {Tau[]} */
 export function parseTaus(xmlText) {
+  /** @type {Tau[]} */
   const out = [];
   if (!xmlText) return out;
   const re = /<TauJet\s+count="(\d+)"\s+storeGateKey="([^"]+)">([\s\S]*?)<\/TauJet>/g;

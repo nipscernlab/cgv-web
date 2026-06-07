@@ -1,3 +1,4 @@
+// @ts-check
 // JS-side parser for <ETMis> (Missing Transverse Energy) blocks.
 //
 // JiveXML stores per collection:
@@ -11,6 +12,7 @@
 // MET_Reference_AntiKt4EMTopo_xAOD, MET_Calo_xAOD, ...). Returns them all so
 // the caller (processXml) picks one — usually EMPFlow as the modern default.
 
+/** @param {string} body @param {string} tag @returns {number} */
 function _readNum(body, tag) {
   const re = new RegExp(`<${tag}(?:\\s+multiple="[^"]+")?>([\\s\\S]*?)</${tag}>`);
   const m = body.match(re);
@@ -21,7 +23,12 @@ function _readNum(body, tag) {
   return parseFloat(trimmed.split(/\s+/)[0]);
 }
 
+/**
+ * @typedef {{ key: string, sumEt: number, etx: number, ety: number, magnitude: number }} MetCollection
+ */
+/** @param {string} xmlText @returns {MetCollection[]} */
 export function parseMet(xmlText) {
+  /** @type {MetCollection[]} */
   const collections = [];
   if (!xmlText) return collections;
   const re = /<ETMis\s+count="\d+"\s+storeGateKey="([^"]+)">([\s\S]*?)<\/ETMis>/g;
@@ -46,6 +53,7 @@ export function parseMet(xmlText) {
 
 // Picks the collection we render by default (EMPFlow when present).
 const _PREFERRED_KEY = 'MET_Reference_AntiKt4EMPFlow_xAOD';
+/** @param {MetCollection[] | null} collections */
 export function pickPreferredMet(collections) {
   if (!collections || !collections.length) return null;
   return collections.find((c) => c.key === _PREFERRED_KEY) ?? collections[0];

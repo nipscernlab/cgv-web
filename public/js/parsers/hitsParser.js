@@ -1,3 +1,4 @@
+// @ts-check
 // JS-side parser for inner-detector hits keyed by ATLAS Identifier.
 //
 // The Rust WASM parser doesn't extract hit positions today, so we do a light
@@ -20,10 +21,12 @@
 // and can run inside the WASM worker (off main thread). Consumers that
 // need vector math (Vector3.copy, .subVectors, .distanceToSquared) all
 // read x/y/z properties — plain objects work the same.
+/** @param {number} xCm @param {number} yCm @param {number} zCm */
 function _toScene(xCm, yCm, zCm) {
   return { x: -xCm * 10, y: -yCm * 10, z: zCm * 10 };
 }
 
+/** @param {string} body @param {string} tag @returns {string[] | null} */
 function _readStrings(body, tag) {
   const re = new RegExp(`<${tag}(?:\\s+multiple="[^"]+")?>([\\s\\S]*?)</${tag}>`);
   const m = body.match(re);
@@ -32,6 +35,7 @@ function _readStrings(body, tag) {
   if (!trimmed) return [];
   return trimmed.split(/\s+/);
 }
+/** @param {string} body @param {string} tag @returns {number[] | null} */
 function _readNums(body, tag) {
   const s = _readStrings(body, tag);
   return s ? s.map(Number) : null;
@@ -56,6 +60,7 @@ function _readNums(body, tag) {
 // We store `rhoz` already converted to mm (× 10) so the overlay doesn't have
 // to remember the unit; `sub` stays as the raw integer for the interpretation
 // switch.
+/** @param {string} xmlText */
 export function parseHits(xmlText) {
   const positionsById = new Map();
   const trtParams = new Map();

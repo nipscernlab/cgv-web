@@ -1,3 +1,4 @@
+// @ts-check
 // JS-side parser for <Muon> blocks (reconstructed muon objects).
 //
 // The XML lists each muon with eta, phi, pt, energy, mass, pdgId, chi2.
@@ -13,6 +14,7 @@
 // its closest CombinedMuonTrack so the sprite label lands on the rendered
 // blue polyline.
 
+/** @param {string} body @param {string} tag @returns {number[]} */
 function _readNums(body, tag) {
   const re = new RegExp(`<${tag}(?:\\s+multiple="[^"]+")?>([\\s\\S]*?)</${tag}>`);
   const m = body.match(re);
@@ -22,7 +24,12 @@ function _readNums(body, tag) {
   return trimmed.split(/\s+/).map(Number);
 }
 
+/**
+ * @typedef {{ eta: number, phi: number, ptGev: number, energyGev: number, pdgId: number | null, key: string }} Muon
+ */
+/** @param {string} xmlText @returns {Muon[]} */
 export function parseMuons(xmlText) {
+  /** @type {Muon[]} */
   const out = [];
   if (!xmlText) return out;
   const re = /<Muon\s+count="(\d+)"\s+storeGateKey="([^"]+)">([\s\S]*?)<\/Muon>/g;

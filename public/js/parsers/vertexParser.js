@@ -12,14 +12,19 @@
 // (secondary decay vertex from a b-hadron); they're distinguished by the
 // storeGateKey.
 
+// @ts-check
 import * as THREE from 'three';
+
+/** @typedef {{ position: THREE.Vector3, numTracks: number, key: string }} Vertex */
 
 // Convert XML coordinate (cm) to scene coords (mm) with x and y negated to
 // match the existing track / hit convention.
+/** @param {number} xCm @param {number} yCm @param {number} zCm */
 function _toScene(xCm, yCm, zCm) {
   return new THREE.Vector3(-xCm * 10, -yCm * 10, zCm * 10);
 }
 
+/** @param {string} body @param {string} tag @returns {number[] | null} */
 function _readNums(body, tag) {
   const re = new RegExp(`<${tag}(?:\\s+multiple="[^"]+")?>([\\s\\S]*?)</${tag}>`);
   const m = body.match(re);
@@ -34,7 +39,9 @@ function _readNums(body, tag) {
 //   primary[0]  — the event's primary vertex (highest-pT-sum collision).
 //   pileup[]    — additional collisions from the same bunch crossing.
 //   secondary[] — b-tagging-style displaced vertices, one per algorithm.
+/** @param {string} xmlText */
 export function parseVertices(xmlText) {
+  /** @type {{ primary: Vertex[], pileup: Vertex[], secondary: Vertex[] }} */
   const out = { primary: [], pileup: [], secondary: [] };
   if (!xmlText) return out;
   const re = /<RVx\s+count="\d+"\s+storeGateKey="([^"]+)">([\s\S]*?)<\/RVx>/g;
@@ -55,7 +62,7 @@ export function parseVertices(xmlText) {
       const t = types?.[i] ?? 0;
       const v = {
         position: _toScene(xs[i], ys[i], zs[i]),
-        numTracks: ntrk?.[i] | 0,
+        numTracks: (ntrk?.[i] ?? 0) | 0,
         key,
       };
       if (isBTag) {
