@@ -141,9 +141,9 @@ export function setupSampleMode({
 
   addBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => {
-    const f = e.target.files?.[0];
+    const files = [...(e.target.files ?? [])];
     e.target.value = '';
-    if (f) addUserFile(f);
+    files.forEach(addUserFile);
   });
   clearBtn.addEventListener('click', clearAll);
 
