@@ -798,7 +798,10 @@ fn tile_comp_k(tower: i32, sampling: i32, x: i32) -> Option<i32> {
         return Some(if sampling == 2 { tower / 2 } else { tower });
     }
     match tower {
-        8  => Some(if x == 0 || x == 1 { 8 } else { 0 }),
+        // tower 8: A-layer (x=1) → A9, BC-layer (x=23) → B9 (standalone B cell,
+        // stored at ieta=8 of the x=23 group in CaloGeometry.glb). Both map to
+        // k=8; anything else here (e.g. D4, x=8) stays at k=0.
+        8  => Some(if x == 1 || x == 23 { 8 } else { 0 }),
         9  => { if x == 1 { Some(9) } else if x == 9 { Some(0) } else { None } }
         10 => Some(0),
         11 => { if x == 11 || x == 5 { Some(0) } else if x == 6 { Some(1) } else { None } }

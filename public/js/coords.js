@@ -9,7 +9,9 @@ export function cellLabel(x, k) {
     case 1:
       return `A${k + 1}`;
     case 23:
-      return `BC${k + 1}`;
+      // Long Barrel B/C layer: BC1–BC8 are merged B+C cells (k=0–7); the 9th
+      // ring (k=8, tower 8) is a standalone B cell with no C partner → "B9".
+      return k === 8 ? 'B9' : `BC${k + 1}`;
     case 4:
       return `D${k}`;
     case 5:
