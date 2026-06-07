@@ -27,11 +27,13 @@ whichever overlay is on top of the stack.
 | =S=      | Open the Settings panel                               |
 | =P=      | Open the Screenshot dialog                            |
 | =Shift+B= | Open the scene background colour picker              |
-| =Esc=    | Close the topmost overlay, exit cinema, exit slicer   |
+| =Esc=    | Clear pinned tooltips, close the topmost overlay      |
 
-The =Esc= priority chain, in order: slicer active &rarr; cinema mode
-&rarr; settings panel &rarr; layers panel &rarr; right panel pinned
-&rarr; screenshot dialog &rarr; left panel pinned &rarr; about overlay.
+The =Esc= priority chain, in order: pinned tooltips (if any) &rarr;
+slicer active &rarr; cinema mode &rarr; settings panel &rarr; layers
+panel &rarr; right panel pinned &rarr; screenshot dialog &rarr; left
+panel pinned &rarr; about overlay. =Esc= only acts on the first item
+that is active, so it clears pinned tooltips before touching any panel.
 
 ---++ Scene toggles
 
@@ -51,6 +53,23 @@ The =Esc= priority chain, in order: slicer active &rarr; cinema mode
 The =V= "All cells" toggle and the =B= beam-axis toggle are available
 via the toolbar; they are not bound to a keyboard shortcut in the
 current build.
+
+---++ Cell tooltips
+
+Hovering a cell or reconstructed object shows a floating tooltip (the
+=I= key toggles this on or off). With the tooltip enabled it can be
+*pinned* so it stays on screen while you inspect or compare several
+objects at once:
+
+| *Gesture / key*               | *Effect*                                      |
+| Click an object               | Pin its tooltip as a standalone card          |
+| Click a pinned object again   | Remove that object's card                     |
+| =Esc=                         | Clear every pinned card at once               |
+
+Pinned cards are anchored to their object in 3D, so they follow it as
+you orbit, zoom or pan, and hide while the object is behind the camera.
+Any number can be pinned at once, and the live hover tooltip keeps
+working independently alongside them.
 
 ---++ Slicer gestures
 
