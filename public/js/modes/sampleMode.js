@@ -1,3 +1,11 @@
+import {
+  saveUserXml,
+  listUserXml,
+  readUserXml,
+  removeUserXml,
+  clearUserXml,
+} from './userXmlStore.js';
+
 export function setupSampleMode({
   advanceProgress,
   endProgress,
@@ -71,6 +79,9 @@ export function setupSampleMode({
         advanceProgress('download');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         xmlText = await res.text();
+      } else if (entry.source.opfsId) {
+        advanceProgress('acquire');
+        xmlText = await readUserXml(entry.source.opfsId);
       } else if (entry.source.file) {
         advanceProgress('acquire');
         xmlText = await entry.source.file.text();
@@ -86,26 +97,47 @@ export function setupSampleMode({
   }
 
   function removeEntry(key) {
+    const entry = entries.find((e) => e.key === key);
     entries = entries.filter((e) => e.key !== key);
     if (currentKey === key) currentKey = null;
     renderList();
+    if (entry?.source.opfsId) removeUserXml(entry.source.opfsId);
   }
 
   function clearAll() {
     entries = [];
     currentKey = null;
     renderList();
+    clearUserXml();
   }
 
-  function addUserFile(file) {
+  // Persist each added file to OPFS so the user list survives reloads; if OPFS
+  // is unavailable, saveUserXml returns null and we keep the file in-session
+  // only (the previous behaviour). async so callers await it sequentially,
+  // which serialises the OPFS index read-modify-write.
+  async function addUserFile(file) {
     if (!file || !file.name.toLowerCase().endsWith('.xml')) return;
-    const key = `u:${++seq}`;
-    entries.unshift({
-      display: file.name,
-      kind: 'user',
-      source: { file },
-      key,
-    });
+    const id = await saveUserXml(file.name, file);
+    entries.unshift(
+      id
+        ? { display: file.name, kind: 'user', source: { opfsId: id }, key: `u:${id}` }
+        : { display: file.name, kind: 'user', source: { file }, key: `u:${++seq}` },
+    );
+    renderList();
+  }
+
+  // Rebuild the persisted user entries from OPFS on startup.
+  async function restoreUserEntries() {
+    const metas = await listUserXml(); // most-recent first
+    if (!metas.length) return;
+    entries = entries.concat(
+      metas.map((m) => ({
+        display: m.name,
+        kind: 'user',
+        source: { opfsId: m.id },
+        key: `u:${m.id}`,
+      })),
+    );
     renderList();
   }
 
@@ -140,10 +172,10 @@ export function setupSampleMode({
   }
 
   addBtn.addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', (e) => {
+  fileInput.addEventListener('change', async (e) => {
     const files = [...(e.target.files ?? [])];
     e.target.value = '';
-    files.forEach(addUserFile);
+    for (const f of files) await addUserFile(f);
   });
   clearBtn.addEventListener('click', clearAll);
 
@@ -160,17 +192,18 @@ export function setupSampleMode({
       if (e.target === sec) sec.classList.remove('dragover');
     }),
   );
-  sec.addEventListener('drop', (e) => {
+  sec.addEventListener('drop', async (e) => {
     e.preventDefault();
     e.stopPropagation();
     sec.classList.remove('dragover');
     const files = [...(e.dataTransfer?.files ?? [])].filter((f) =>
       f.name.toLowerCase().endsWith('.xml'),
     );
-    files.forEach(addUserFile);
+    for (const f of files) await addUserFile(f);
   });
 
   syncClearVisibility();
+  restoreUserEntries();
 
   return { loadSampleIndex };
 }
