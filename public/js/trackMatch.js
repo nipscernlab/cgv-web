@@ -1,3 +1,4 @@
+// @ts-check
 // Per-particle "which track is which" passes.
 //
 // Four functions, one per particle class, each stamps a userData flag (and
@@ -23,6 +24,7 @@ import { applyTrackMaterials, XAOD_TO_AOD_TRACK_KEY } from './trackMaterials.js'
 // Late-injected accessor for the rendered track group. Set by initTrackMatch
 // once the visibility module has booted (chicken-and-egg between this module
 // and the group registration).
+/** @type {() => any} */
 let _getTrackGroup = () => null;
 
 /** @param {{ getTrackGroup: () => any }} deps */
@@ -200,6 +202,7 @@ export function recomputeElectronTrackMatch(electrons) {
 const _MUON_TRACK_DR_MAX = 0.1;
 const _MUON_TRACK_COLLECTION = 'CombinedMuonTracks';
 
+/** @param {any} line */
 function _muonTrackEligible(line) {
   if (line.userData.storeGateKey !== _MUON_TRACK_COLLECTION) return false;
   const u = line.userData;
@@ -249,13 +252,13 @@ export function recomputeMuonTrackMatch(muons) {
 
   // Phase 1 candidates: chamber-passing CombinedMuonTracks.
   const chamberTracks = trackGroup.children.filter(
-    (line) => _muonTrackEligible(line) && line.userData.isHitTrack,
+    (/** @type {any} */ line) => _muonTrackEligible(line) && line.userData.isHitTrack,
   );
 
   // The matching loop, parametrised by candidate set + ΔR cap. Greedy
   // first-Muon-wins: each muon claims the closest unclaimed candidate; ties
   // are rare enough not to warrant Hungarian-style optimisation.
-  const matchAgainst = (candidates, maxDR) => {
+  const matchAgainst = (/** @type {any[]} */ candidates, /** @type {number} */ maxDR) => {
     for (const mu of validMuons) {
       let best = null;
       let bestDR = maxDR;

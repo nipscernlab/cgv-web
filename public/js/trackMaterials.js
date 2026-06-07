@@ -38,6 +38,7 @@ const TRACK_ELECTRON_POS_MAT = new THREE.LineBasicMaterial({ color: 0x33dd55, li
 // τ→track highlighting. Only collections we actually render are listed;
 // mappings for skipped ones (GSFTracks, MS-only-extrapolated, etc.) would
 // never resolve to a line.
+/** @type {Record<string, string>} */
 export const XAOD_TO_AOD_TRACK_KEY = {
   InDetTrackParticles_xAOD: 'CombinedInDetTracks',
   CombinedMuonTrackParticles_xAOD: 'CombinedMuonTracks',

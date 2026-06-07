@@ -1,3 +1,4 @@
+// @ts-check
 import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
 
@@ -37,13 +38,15 @@ const TILE_PHI_SEGS = [
   { rIn: 2288, rOut: 3835, zMin: -6050, zMax: -3600 },
 ];
 const N_PHI = 64;
+/** @type {THREE.Group | null} */
 let ghostPhiGroup = null;
 
 function buildPhiLines() {
   if (ghostPhiGroup) {
     scene.remove(ghostPhiGroup);
     ghostPhiGroup.traverse((o) => {
-      if (o.geometry) o.geometry.dispose();
+      const m = /** @type {THREE.Mesh} */ (o);
+      if (m.geometry) m.geometry.dispose();
     });
   }
   ghostPhiGroup = new THREE.Group();
@@ -72,6 +75,7 @@ export function anyGhostOn() {
   return false;
 }
 
+/** @param {string} name @param {boolean} visible */
 function applyGhostMeshOne(name, visible) {
   const mesh = ghostMeshByName.get(name);
   if (!mesh) return;
@@ -99,6 +103,7 @@ function syncGhostToggles() {
   document.getElementById('hbtn-ghost')?.classList.toggle('on', anyGhostOn());
 }
 
+/** @param {boolean} on */
 function setAllGhosts(on) {
   for (const name of GHOST_MESH_NAMES) ghostVisible.set(name, on);
   if (on && !ghostPhiGroup) buildPhiLines();

@@ -1,3 +1,4 @@
+// @ts-check
 // JS-side jet parser for JiveXML.
 //
 // The Rust WASM parser doesn't extract jets today, so we do a light second pass
@@ -18,6 +19,7 @@
 // Tracks are flat (key, index) tuples — sliced from flat trackKey/trackIndex
 // arrays using trackLinkCount per jet.
 
+/** @param {string} body @param {string} tag @returns {number[]} */
 function _readNums(body, tag) {
   const re = new RegExp(`<${tag}(?:\\s+multiple="[^"]+")?>([\\s\\S]*?)</${tag}>`);
   const m = body.match(re);
@@ -27,6 +29,7 @@ function _readNums(body, tag) {
   return trimmed.split(/\s+/).map(Number);
 }
 
+/** @param {string} body @param {string} tag @returns {string[]} */
 function _readStrings(body, tag) {
   const re = new RegExp(`<${tag}(?:\\s+multiple="[^"]+")?>([\\s\\S]*?)</${tag}>`);
   const m = body.match(re);
@@ -36,6 +39,7 @@ function _readStrings(body, tag) {
   return trimmed.split(/\s+/);
 }
 
+/** @param {string} xmlText */
 export function parseJets(xmlText) {
   const collections = [];
   // Fresh regex per call — avoids any stale lastIndex state from a previous run.
