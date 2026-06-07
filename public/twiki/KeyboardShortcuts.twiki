@@ -61,10 +61,11 @@ Hovering a cell or reconstructed object shows a floating tooltip (the
 *pinned* so it stays on screen while you inspect or compare several
 objects at once:
 
-| *Gesture / key*               | *Effect*                                      |
-| Click an object               | Pin its tooltip as a standalone card          |
-| Click a pinned object again   | Remove that object's card                     |
-| =Esc=                         | Clear every pinned card at once               |
+| *Gesture / key*               | *Effect*                                       |
+| Click an object               | Pin its tooltip as a standalone card           |
+| Click the same object again   | Move that object's card to the new click point |
+| Click a pinned card           | Dismiss that card                              |
+| =Esc=                         | Clear every pinned card at once                |
 
 Pinned cards are anchored to their object in 3D, so they follow it as
 you orbit, zoom or pan, and hide while the object is behind the camera.

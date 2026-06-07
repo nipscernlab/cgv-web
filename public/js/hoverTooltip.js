@@ -108,34 +108,62 @@ export function clearPins() {
   return true;
 }
 
-// Pin the live hover card, or un-pin it when its object is already pinned —
-// clicking a pinned object toggles it back off. Identity is the per-hit `key`
-// (cell handle / FCAL instance / object uuid), not the click point, so a second
-// click anywhere on the same object removes exactly its card.
-function _togglePin(key, anchor) {
-  const i = _pins.findIndex((p) => p.key === key);
-  if (i !== -1) {
-    _pins[i].el.remove();
-    _pins.splice(i, 1);
-    return;
-  }
-  _addPin(key, anchor);
-}
-
-// Clone the live #tip into a standalone, screen-anchored pinned card. The clone
-// is static, so its duplicate ids are stripped (and the two id-styled children
-// re-tagged with classes the .tip-pinned CSS targets). pointer-events:none is
-// inherited from the shared #tip rule, so pinned cards never block hover rays.
-function _addPin(key, anchor) {
-  const el = tooltip.cloneNode(true);
-  el.removeAttribute('id');
-  el.classList.add('tip-pinned');
-  el.hidden = false;
+// Strip the duplicate ids from a cloned #tip (the clone is static, so the ids
+// serve no purpose) and re-tag the two id-styled children with the classes the
+// .tip-pinned CSS targets.
+function _stripPinIds(el) {
   for (const node of el.querySelectorAll('[id]')) {
     if (node.id === 'tip-cell') node.classList.add('tip-cell');
     else if (node.id === 'tip-coords') node.classList.add('tip-coords');
     node.removeAttribute('id');
   }
+}
+
+// Click on an object: if it already has a card, MOVE that card to the new hit
+// point (and refresh its text); otherwise create a new card. Identity is the
+// per-hit `key` (cell handle / FCAL instance / object uuid), not the click
+// point, so clicking anywhere on the same object re-targets its existing card.
+// Removal is not done here — clicking the card itself dismisses it (_addPin).
+function _pinObject(key, anchor) {
+  const existing = _pins.find((p) => p.key === key);
+  if (existing) {
+    existing.anchor.copy(anchor);
+    _refreshPinContent(existing);
+    _positionPin(existing);
+    return;
+  }
+  _addPin(key, anchor);
+}
+
+// Remove the pin whose card element is `el`. Each card's own click handler
+// calls this, so clicking a pinned card dismisses it.
+function _removePinEl(el) {
+  const i = _pins.findIndex((p) => p.el === el);
+  if (i !== -1) {
+    _pins[i].el.remove();
+    _pins.splice(i, 1);
+  }
+}
+
+// Re-sync a moved card's text with the live #tip. Same object → same content,
+// but this also picks up a metric switch (e.g. E ↔ E_T) made between clicks.
+function _refreshPinContent(pin) {
+  const fresh = tooltip.cloneNode(true);
+  _stripPinIds(fresh);
+  pin.el.innerHTML = fresh.innerHTML;
+}
+
+// Clone the live #tip into a standalone, screen-anchored pinned card. Pinned
+// cards are interactive (pointer-events:auto): clicking one dismisses it. The
+// trade-off is that hovering a card suppresses the transient hover tooltip and
+// a drag started on a card won't orbit — both fine for these small cards.
+function _addPin(key, anchor) {
+  const el = tooltip.cloneNode(true);
+  el.removeAttribute('id');
+  el.classList.add('tip-pinned');
+  el.hidden = false;
+  _stripPinIds(el);
+  el.addEventListener('click', () => _removePinEl(el));
   document.body.appendChild(el);
   const pin = { el, key, anchor: anchor.clone() };
   _pins.push(pin);
@@ -190,10 +218,12 @@ export function initHoverTooltip({ getShowInfo, getCinemaMode, getDragging, t })
     setTimeout(() => doRaycast(mousePos.x, mousePos.y), 50);
   });
 
-  // ── Click to pin ──────────────────────────────────────────────────────────
+  // ── Click to pin / move ───────────────────────────────────────────────────
   // Record the press position so the click that *ends* an orbit / pan drag
   // doesn't spawn a pin. A click landing within a few px of the press is a
-  // genuine click; refresh the hover under the cursor and pin it if it hit.
+  // genuine click; refresh the hover under the cursor and pin (or re-position
+  // an existing card for the same object) if it hit. Dismissing a card is the
+  // card's own job — see the click handler attached in _addPin.
   let downX = 0,
     downY = 0;
   canvas.addEventListener('pointerdown', (e) => {
@@ -203,7 +233,7 @@ export function initHoverTooltip({ getShowInfo, getCinemaMode, getDragging, t })
   canvas.addEventListener('click', (e) => {
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // was a drag
     doRaycast(e.clientX, e.clientY);
-    if (!tooltip.hidden && _hasHoverAnchor) _togglePin(_lastHoverKey, _lastHoverAnchor);
+    if (!tooltip.hidden && _hasHoverAnchor) _pinObject(_lastHoverKey, _lastHoverAnchor);
   });
 
   // Keep pinned cards glued to their cells as the camera moves / window resizes.

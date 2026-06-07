@@ -78,12 +78,16 @@
 
   white-space: nowrap;
 }
-/* Pinned cards (click-to-pin; cleared with Esc). A left accent bar sets them
-   apart from the transient hover tooltip; padding-left compensates for the 2px
-   border so text stays aligned with #tip's 12px right padding. */
+/* Pinned cards: click an object to pin/move its card, click the card itself to
+   dismiss it, Esc to clear all. A left accent bar sets them apart from the
+   transient hover tooltip; padding-left compensates for the 2px border so text
+   stays aligned with #tip's 12px right padding. Unlike #tip they are
+   interactive (pointer-events:auto) so they can receive the dismiss click. */
 .tip-pinned {
   border-left: 2px solid var(--bright);
   padding-left: 10px;
+  pointer-events: auto;
+  cursor: pointer;
 }
 #tip-cell,
 .tip-pinned .tip-cell {
