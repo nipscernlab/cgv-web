@@ -1,3 +1,5 @@
+import { clearPins } from './hoverTooltip.js';
+
 export function registerViewerShortcuts({
   aboutOverlay,
   closeLayersPanel,
@@ -78,6 +80,9 @@ export function registerViewerShortcuts({
         document.getElementById('btn-cluster').click();
         break;
       case 'ESCAPE':
+        // Clear pinned tooltips first, but consume Esc only when some existed —
+        // otherwise fall through to the panel / cinema / slicer dismiss chain.
+        if (clearPins()) return;
         if (slicer.isActive()) {
           slicer.disable();
           return;

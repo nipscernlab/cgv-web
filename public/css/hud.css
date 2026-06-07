@@ -63,7 +63,8 @@
 }
 
 /* ── Cell-hover tooltip ────────────────────────────────── */
-#tip {
+#tip,
+.tip-pinned {
   position: fixed;
   pointer-events: none;
   z-index: 25;
@@ -77,13 +78,22 @@
 
   white-space: nowrap;
 }
-#tip-cell {
+/* Pinned cards (click-to-pin; cleared with Esc). A left accent bar sets them
+   apart from the transient hover tooltip; padding-left compensates for the 2px
+   border so text stays aligned with #tip's 12px right padding. */
+.tip-pinned {
+  border-left: 2px solid var(--bright);
+  padding-left: 10px;
+}
+#tip-cell,
+.tip-pinned .tip-cell {
   font: 600 var(--fs-md) var(--font);
   color: var(--bright);
   letter-spacing: 0.01em;
   margin-bottom: 2px;
 }
-#tip-coords {
+#tip-coords,
+.tip-pinned .tip-coords {
   font: 400 10.5px var(--mono);
   color: var(--muted);
   margin-bottom: 4px;
