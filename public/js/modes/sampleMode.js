@@ -1,5 +1,6 @@
 import {
   saveUserXml,
+  overwriteUserXml,
   listUserXml,
   readUserXml,
   removeUserXml,
@@ -117,6 +118,15 @@ export function setupSampleMode({
   // which serialises the OPFS index read-modify-write.
   async function addUserFile(file) {
     if (!file || !file.name.toLowerCase().endsWith('.xml')) return;
+    // Dedupe by name: re-adding a same-named file refreshes the existing
+    // entry's content in place instead of creating a second copy.
+    const existing = entries.find((e) => e.kind === 'user' && e.display === file.name);
+    if (existing) {
+      if (existing.source.opfsId) await overwriteUserXml(existing.source.opfsId, file);
+      else existing.source.file = file;
+      renderList();
+      return;
+    }
     const id = await saveUserXml(file.name, file);
     entries.unshift(
       id

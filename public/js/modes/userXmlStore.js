@@ -75,6 +75,28 @@ export async function saveUserXml(name, blob) {
 }
 
 /**
+ * Overwrite an existing persisted XML's content in place (id + index entry
+ * unchanged). Used to refresh a file re-added under the same name instead of
+ * storing a duplicate. Returns false when OPFS is unavailable.
+ * @param {string} id
+ * @param {Blob} blob
+ * @returns {Promise<boolean>}
+ */
+export async function overwriteUserXml(id, blob) {
+  const dir = await _dir();
+  if (!dir) return false;
+  try {
+    const h = await dir.getFileHandle(`${id}.xml`, { create: true });
+    const w = await h.createWritable();
+    await w.write(blob);
+    await w.close();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * List persisted entries, most-recent first. Empty when OPFS is unavailable.
  * @returns {Promise<UserXmlMeta[]>}
  */
