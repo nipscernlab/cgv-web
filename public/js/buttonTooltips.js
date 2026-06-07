@@ -1,9 +1,11 @@
+// @ts-check
 // Parse a tooltip string like "Reset camera (R)" or "Slicer … (Shift+S)" into
 // its main text and (optional) keyboard shortcut. The shortcut pattern must
 // be the last parenthesised group at the very end of the string and contain
 // only key names / modifiers.
 const SHORTCUT_RE = /\s*\(([A-Za-z0-9]+(?:\+[A-Za-z0-9]+)*(?:\s*\/\s*[A-Za-z0-9]+)*)\)\s*$/;
 
+/** @param {string} s */
 function escHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -12,6 +14,7 @@ function escHtml(s) {
 }
 
 // Convert "Shift+B" → "<kbd>Shift</kbd>+<kbd>B</kbd>" and "L / A" → two kbds.
+/** @param {string} raw */
 function formatShortcut(raw) {
   const parts = raw.split(/\s*\/\s*/); // alternatives split by "/"
   return parts
@@ -24,6 +27,7 @@ function formatShortcut(raw) {
     .join(' / ');
 }
 
+/** @param {string} text */
 function renderTip(text) {
   const m = SHORTCUT_RE.exec(text);
   if (!m) return { html: escHtml(text), isHtml: false };
@@ -33,8 +37,12 @@ function renderTip(text) {
 }
 
 export function setupButtonTooltips() {
-  const btnTipEl = document.getElementById('btn-tip');
+  const btnTipEl = /** @type {HTMLElement} */ (document.getElementById('btn-tip'));
 
+  /**
+   * @param {HTMLElement} anchor
+   * @param {string} text
+   */
   function show(anchor, text) {
     const { html, isHtml } = renderTip(text);
     if (isHtml) btnTipEl.innerHTML = html;
@@ -76,8 +84,9 @@ export function setupButtonTooltips() {
   }
 
   document.querySelectorAll('[data-tip]').forEach((el) => {
-    el.addEventListener('mouseenter', () => show(el, el.dataset.tip));
-    el.addEventListener('mouseleave', hide);
-    el.addEventListener('click', hide);
+    const htmlEl = /** @type {HTMLElement} */ (el);
+    htmlEl.addEventListener('mouseenter', () => show(htmlEl, htmlEl.dataset.tip ?? ''));
+    htmlEl.addEventListener('mouseleave', hide);
+    htmlEl.addEventListener('click', hide);
   });
 }

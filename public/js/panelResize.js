@@ -1,7 +1,9 @@
+// @ts-check
 export function setupPanelResize() {
-  const panelEl = document.getElementById('panel');
-  const panelResizer = document.getElementById('panel-resizer');
+  const panelEl = /** @type {HTMLElement} */ (document.getElementById('panel'));
+  const panelResizer = /** @type {HTMLElement} */ (document.getElementById('panel-resizer'));
 
+  /** @type {string | null} */
   let savedPW = null;
   try {
     savedPW = localStorage.getItem('cgv-panel-width');
@@ -33,7 +35,7 @@ export function setupPanelResize() {
       parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pw')),
     );
     try {
-      localStorage.setItem('cgv-panel-width', w);
+      localStorage.setItem('cgv-panel-width', String(w));
     } catch (_) {}
   });
 }

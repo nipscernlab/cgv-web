@@ -1,18 +1,32 @@
+// @ts-check
 import { esc } from './utils.js';
 
-const statusTxtEl = document.getElementById('status-txt');
-const collisionHud = document.getElementById('collision-hud');
+/**
+ * @typedef {Object} EventInfo
+ * @property {string} runNumber
+ * @property {string} eventNumber
+ * @property {string} lumiBlock
+ * @property {string} dateTime
+ * @property {string} version
+ */
 
+const statusTxtEl = /** @type {HTMLElement} */ (document.getElementById('status-txt'));
+const collisionHud = /** @type {HTMLElement} */ (document.getElementById('collision-hud'));
+
+/** @type {EventInfo | null} */
 let _lastEventInfo = null;
 let _collisionHudEnabled = true;
 let _collisionHudSuppressed = false;
+/** @type {() => boolean} */
 let _getPanelPinned = () => false;
+/** @type {(k: string) => string} */
 let _t = (k) => k;
 
 export function getLastEventInfo() {
   return _lastEventInfo;
 }
 
+/** @param {string} h */
 export function setStatus(h) {
   statusTxtEl.innerHTML = h;
 }
@@ -47,6 +61,7 @@ export function updateCollisionHud() {
   if (!collisionHud.hidden) _buildCollisionHud();
 }
 
+/** @param {boolean} enabled */
 export function setCollisionHudEnabled(enabled) {
   _collisionHudEnabled = !!enabled;
   updateCollisionHud();
@@ -54,12 +69,14 @@ export function setCollisionHudEnabled(enabled) {
 
 // Force-hide the HUD regardless of the user toggle. Used by the minimap when
 // it's enabled so the two top-left widgets never overlap.
+/** @param {boolean} suppressed */
 export function setCollisionHudSuppressed(suppressed) {
   _collisionHudSuppressed = !!suppressed;
   updateCollisionHud();
 }
 
 const BASE_TITLE = 'CGV — Calorimeter Geometry Viewer';
+/** @param {EventInfo | null} info */
 function _updateDocumentTitle(info) {
   if (!info || (!info.runNumber && !info.eventNumber)) {
     document.title = BASE_TITLE;
@@ -70,6 +87,7 @@ function _updateDocumentTitle(info) {
   document.title = `CGV — Run ${run} | Event ${evt}`;
 }
 
+/** @param {EventInfo | null} info */
 export function showEventInfo(info) {
   _lastEventInfo = info;
   updateCollisionHud();
@@ -83,6 +101,13 @@ export function showEventInfo(info) {
   setStatus(`<span class="ev-meta">${esc(_t('status-loaded'))}</span>`);
 }
 
+/**
+ * @param {{
+ *   t?: (k: string) => string,
+ *   isCollisionHudEnabled?: () => boolean,
+ *   getPanelPinned?: () => boolean,
+ * }} [opts]
+ */
 export function initStatusHud({ t, isCollisionHudEnabled, getPanelPinned } = {}) {
   if (t) _t = t;
   if (typeof isCollisionHudEnabled === 'function') _collisionHudEnabled = !!isCollisionHudEnabled();
