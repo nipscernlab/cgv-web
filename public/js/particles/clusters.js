@@ -11,12 +11,19 @@ import { _disposeGroup, _buildEtaPhiLineGroup } from './_internal.js';
 // Three.js X = −ATLAS x, Y = −ATLAS y.
 const CLUSTER_MAT = new THREE.LineDashedMaterial({
   color: 0xff4400,
-  transparent: true,
-  opacity: 0.2,
   dashSize: 40,
   gapSize: 60,
-  depthWrite: false,
 });
+
+// Set cluster-line opacity (0..1). Fully opaque writes depth like solid
+// geometry; translucent disables depth-write so overlapping lines blend
+// instead of occluding each other. Driven by the Helpers line-opacity slider.
+export function setClusterLineOpacity(o) {
+  CLUSTER_MAT.opacity = o;
+  CLUSTER_MAT.transparent = o < 1;
+  CLUSTER_MAT.depthWrite = o >= 1;
+  CLUSTER_MAT.needsUpdate = true;
+}
 
 // Cached cluster list so refreshCaloBoundParticles (in particles.js) can
 // re-run drawClusters after a visibility change without re-parsing the XML.

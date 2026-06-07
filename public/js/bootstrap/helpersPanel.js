@@ -24,6 +24,8 @@ import {
 } from '../visibility.js';
 import { getViewLevel, onViewLevelChange } from '../viewLevel.js';
 import { markDirty } from '../renderer.js';
+import { setClusterLineOpacity } from '../particles/clusters.js';
+import { setJetLineOpacity } from '../particles/jets.js';
 import { setupAnchoredPopover } from './anchoredPopover.js';
 
 /**
@@ -52,6 +54,11 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
   const hrowLines = document.getElementById('hrow-lines');
   const linesNameEl = hrowLines?.querySelector('.layer-name') ?? null;
   const linesSubEl = hrowLines?.querySelector('.layer-sub') ?? null;
+  const hrowLineOpacity = document.getElementById('hrow-line-opacity');
+  const hLineOpacity = /** @type {HTMLInputElement | null} */ (
+    document.getElementById('h-line-opacity')
+  );
+  const hLineOpacityVal = document.getElementById('h-line-opacity-val');
 
   /**
    * @param {HTMLElement | null} el
@@ -72,11 +79,11 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
   function syncLinesRow() {
     if (!hrowLines) return;
     const lvl = getViewLevel();
-    if (lvl === 1) {
-      hrowLines.style.display = 'none';
-      return;
-    }
-    hrowLines.style.display = '';
+    // L1 (Hits view) has no clusters / jets — hide the toggle and its slider.
+    const show = lvl !== 1;
+    hrowLines.style.display = show ? '' : 'none';
+    if (hrowLineOpacity) hrowLineOpacity.style.display = show ? '' : 'none';
+    if (!show) return;
     if (lvl === 2) {
       if (linesNameEl) linesNameEl.textContent = 'Cluster Lines';
       if (linesNameEl) linesNameEl.setAttribute('data-i18n', 'helpers-cluster-lines');
@@ -143,6 +150,18 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
       setSwitch(hbtnLines, getJetsVisible());
       markDirty();
     }
+  });
+
+  // Line-opacity slider drives both cluster and jet line materials (the lines
+  // row toggles whichever is active for the current view level, but the slider
+  // applies to both so its value persists across an L2 ↔ L3 switch).
+  hLineOpacity?.addEventListener('input', () => {
+    const pct = Number(hLineOpacity?.value ?? '100');
+    const o = pct / 100;
+    setClusterLineOpacity(o);
+    setJetLineOpacity(o);
+    if (hLineOpacityVal) hLineOpacityVal.textContent = `${pct}%`;
+    markDirty();
   });
 
   const popover = setupAnchoredPopover({

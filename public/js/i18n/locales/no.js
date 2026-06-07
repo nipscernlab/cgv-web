@@ -83,6 +83,7 @@ export default {
   'helpers-jet-lines-sub': 'η/φ-senterlinjer (jet + τ)',
   'helpers-cluster-lines': 'Cluster-linjer',
   'helpers-cluster-lines-sub': 'η/φ-senterlinjer',
+  'helpers-line-opacity': 'Linjeopasitet',
   'tip-lang': 'Bytt visningsspråk',
   'tip-shot': 'Lagre skjermbilde — velg oppløsning (P)',
   'tip-reset': 'Tilbakestill kamera til standardposisjon (R)',

@@ -12,12 +12,19 @@ import {
 
 const JET_MAT = new THREE.LineDashedMaterial({
   color: 0xff8800,
-  transparent: true,
-  opacity: 0.75,
   dashSize: 40,
   gapSize: 60,
-  depthWrite: false,
 });
+
+// Set jet-line opacity (0..1). Fully opaque writes depth like solid geometry;
+// translucent disables depth-write so overlapping lines blend instead of
+// occluding each other. Driven by the Helpers line-opacity slider.
+export function setJetLineOpacity(o) {
+  JET_MAT.opacity = o;
+  JET_MAT.transparent = o < 1;
+  JET_MAT.depthWrite = o >= 1;
+  JET_MAT.needsUpdate = true;
+}
 
 export function clearJets() {
   _disposeGroup(getJetGroup, setJetGroup);

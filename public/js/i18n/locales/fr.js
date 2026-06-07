@@ -83,6 +83,7 @@ export default {
   'helpers-jet-lines-sub': 'Centres η/φ (jets + τ)',
   'helpers-cluster-lines': 'Lignes de clusters',
   'helpers-cluster-lines-sub': 'Centres η/φ',
+  'helpers-line-opacity': 'Opacité des lignes',
   'tip-lang': "Changer la langue d'affichage",
   'tip-shot': "Enregistrer une capture d'écran (P)",
   'tip-reset': 'Réinitialiser la caméra à la position par défaut (R)',

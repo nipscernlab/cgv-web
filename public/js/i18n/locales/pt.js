@@ -83,6 +83,7 @@ export default {
   'helpers-jet-lines-sub': 'Linhas centrais η/φ (jets + τ)',
   'helpers-cluster-lines': 'Cluster Lines',
   'helpers-cluster-lines-sub': 'Linhas centrais η/φ',
+  'helpers-line-opacity': 'Opacidade das linhas',
   'tip-lang': 'Mudar idioma de exibição',
   'tip-shot': 'Salvar captura de tela — escolher resolução (P)',
   'tip-reset': 'Redefinir câmera para posição padrão (R)',
