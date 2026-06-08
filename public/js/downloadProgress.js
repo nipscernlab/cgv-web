@@ -1,9 +1,13 @@
+// @ts-check
 const DL_STAGES = ['request', 'recogn', 'download', 'acquire', 'load'];
+/** @type {Record<string, number>} */
 const DL_PCTS = { request: 10, recogn: 28, download: 58, acquire: 78, load: 95 };
 
 export function createDownloadProgressController() {
+  /** @type {ReturnType<typeof setTimeout> | null} */
   let dlTimer = null;
 
+  /** @param {string} [kind] */
   function startProgress(kind = 'live') {
     const pEl = document.getElementById('dl-progress');
     if (!pEl) return;
@@ -19,6 +23,7 @@ export function createDownloadProgressController() {
     advanceProgress('request');
   }
 
+  /** @param {string} stage */
   function advanceProgress(stage) {
     if (dlTimer) clearTimeout(dlTimer);
     const pEl = document.getElementById('dl-progress');

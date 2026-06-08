@@ -1,3 +1,4 @@
+// @ts-check
 // Event-driven tour path for the cinema mode.
 //
 // The path is a closed orbit on the "safe envelope" cylinder (R_SAFE_MM,
@@ -57,6 +58,7 @@ const TGT_R_MM = 2500;
  * @typedef {{etaMin:number, etaMax:number, phiMin:number, phiMax:number}} Rect
  */
 
+/** @param {number} d */
 function _wrapDPhi(d) {
   while (d > Math.PI) d -= 2 * Math.PI;
   while (d < -Math.PI) d += 2 * Math.PI;

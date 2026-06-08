@@ -1,3 +1,4 @@
+// @ts-check
 import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
 import { fcalGroup, fcalEdgeMat4, getFcalEdgeBase, visHandles } from './visibility.js';
@@ -14,6 +15,7 @@ const outlineMat = new THREE.LineBasicMaterial({
   transparent: true,
   opacity: 1.0,
 });
+/** @type {THREE.LineSegments | null} */
 let outlineMesh = null;
 
 export function clearOutline() {
@@ -27,6 +29,7 @@ export function clearOutline() {
   markDirty();
 }
 
+/** @param {any} h cell handle (see CellHandle in state.js) */
 export function showOutline(h) {
   if (outlineMesh?.userData.src === h.name) return;
   clearOutline();
@@ -47,11 +50,14 @@ export function showOutline(h) {
 
 // Show hover outline (white) for a specific FCAL InstancedMesh instance.
 // Mirrors showOutline but transforms the shared cylinder edge base by the instance matrix.
+/** @param {number} instanceId */
 export function showFcalOutline(instanceId) {
   const src = 'fcal_' + instanceId;
   if (outlineMesh?.userData.src === src) return;
   clearOutline();
-  const iMesh = fcalGroup?.children.find((c) => c.isInstancedMesh);
+  const iMesh = /** @type {any} */ (
+    fcalGroup?.children.find((/** @type {any} */ c) => c.isInstancedMesh)
+  );
   if (!iMesh) return;
   iMesh.getMatrixAt(instanceId, fcalEdgeMat4);
   const eb = getFcalEdgeBase();
@@ -82,8 +88,10 @@ const outlineAllMat = new THREE.LineBasicMaterial({
   depthWrite: false,
 });
 const _edgeWorldCache = new Map(); // handle.name → Float32Array (world-space positions)
+/** @type {THREE.LineSegments | null} */
 let allOutlinesMesh = null;
 
+/** @param {any} h cell handle (see CellHandle in state.js) */
 function _getWorldEdges(h) {
   const cached = _edgeWorldCache.get(h.name);
   if (cached) return cached;

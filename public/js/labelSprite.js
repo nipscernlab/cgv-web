@@ -12,19 +12,25 @@
 //                so it doesn't dwarf the geometry).
 // The crossover happens automatically via min(worldH, maxPx * worldUnitsPerPx).
 
+// @ts-check
 import * as THREE from 'three';
 
 const _tmpVec2 = new THREE.Vector2();
 const DEFAULT_WORLD_H_MM = 150;
 const DEFAULT_MAX_PX = 20;
 
+/**
+ * @param {string} text
+ * @param {number} hexColor
+ * @param {{ worldH?: number, maxPx?: number }} [opts]
+ */
 export function makeLabelSprite(text, hexColor, opts = {}) {
   const worldH = opts.worldH ?? DEFAULT_WORLD_H_MM;
   const maxPx = opts.maxPx ?? DEFAULT_MAX_PX;
   const canvas = document.createElement('canvas');
   canvas.width = 128;
   canvas.height = 64;
-  const ctx = canvas.getContext('2d');
+  const ctx = /** @type {CanvasRenderingContext2D} */ (canvas.getContext('2d'));
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = `#${hexColor.toString(16).padStart(6, '0')}`;
   ctx.font = 'bold 56px sans-serif';
@@ -42,6 +48,12 @@ export function makeLabelSprite(text, hexColor, opts = {}) {
   });
   const sprite = new THREE.Sprite(mat);
   sprite.scale.set(1, 0.5, 1); // overwritten in onBeforeRender
+  /**
+   * @this {THREE.Sprite}
+   * @param {THREE.WebGLRenderer} renderer
+   * @param {THREE.Scene} _scene
+   * @param {any} camera  perspective or orthographic — props read after the isPerspectiveCamera check
+   */
   sprite.onBeforeRender = function (renderer, _scene, camera) {
     renderer.getSize(_tmpVec2);
     const viewportH = _tmpVec2.y || 1;
