@@ -1,3 +1,4 @@
+// @ts-check
 // Jet state + collection picker.
 //
 // Holds the parsed jet collections for the current event and which one is
@@ -7,8 +8,12 @@
 // Coleção preferida quando a default existe no evento.
 const _PREFERRED_KEY = 'AntiKt4EMTopoJets_xAOD';
 
-let _collections = []; // [{ key, jets: [...] }]
+/** @typedef {{ key: string, jets: any[] }} JetCollection */
+/** @type {JetCollection[]} */
+let _collections = [];
+/** @type {string | null} */
 let _activeKey = null;
+/** @type {Set<() => void>} */
 const _listeners = new Set();
 
 function _notify() {
@@ -30,6 +35,7 @@ export function getActiveJetCollection() {
 
 // Called from processXml when a new event lands. Replaces collections and
 // re-elects an active key (preferred → first non-empty → null).
+/** @param {any} list */
 export function setJetCollections(list) {
   _collections = Array.isArray(list) ? list : [];
   const preferred = _collections.find((c) => c.key === _PREFERRED_KEY && c.jets.length);
@@ -42,6 +48,7 @@ export function setJetCollections(list) {
   _notify();
 }
 
+/** @param {string} key */
 export function setActiveJetKey(key) {
   if (key === _activeKey) return;
   if (!_collections.some((c) => c.key === key)) return;
@@ -55,6 +62,7 @@ export function clearJetState() {
   _notify();
 }
 
+/** @param {() => void} cb */
 export function onJetStateChange(cb) {
   _listeners.add(cb);
   return () => _listeners.delete(cb);

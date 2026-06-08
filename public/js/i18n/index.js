@@ -1,35 +1,42 @@
+// @ts-check
 import { TRANSLATIONS } from './translations.js';
 
 let currentLang = 'en';
 
+/** @param {string} key */
 export function t(key) {
   return (TRANSLATIONS[currentLang] ?? TRANSLATIONS.en)[key] ?? TRANSLATIONS.en[key] ?? key;
 }
 
+/** @param {string} lang */
 function applyLang(lang) {
   currentLang = lang;
 
+  /** @type {Record<string, string>} */
   const htmlLang = { no: 'nb', pt: 'pt-BR' };
   document.documentElement.lang = htmlLang[lang] ?? lang;
 
   document.querySelectorAll('[data-i18n]').forEach((el) => {
-    const v = t(el.dataset.i18n);
-    if (v) el.textContent = v;
+    const htmlEl = /** @type {HTMLElement} */ (el);
+    const v = t(htmlEl.dataset.i18n ?? '');
+    if (v) htmlEl.textContent = v;
   });
 
   document.querySelectorAll('[data-i18n-tip]').forEach((el) => {
-    const v = t(el.dataset.i18nTip);
-    if (v) el.dataset.tip = v;
+    const htmlEl = /** @type {HTMLElement} */ (el);
+    const v = t(htmlEl.dataset.i18nTip ?? '');
+    if (v) htmlEl.dataset.tip = v;
   });
 
   document.querySelectorAll('[data-i18n-ph]').forEach((el) => {
-    const v = t(el.dataset.i18nPh);
-    if (v) el.placeholder = v;
+    const inputEl = /** @type {HTMLInputElement} */ (el);
+    const v = t(inputEl.dataset.i18nPh ?? '');
+    if (v) inputEl.placeholder = v;
   });
 
   document
     .querySelectorAll('.lang-opt')
-    .forEach((o) => o.classList.toggle('on', o.dataset.lang === lang));
+    .forEach((o) => o.classList.toggle('on', /** @type {HTMLElement} */ (o).dataset.lang === lang));
 
   try {
     localStorage.setItem('cgv-lang', lang);
@@ -37,6 +44,7 @@ function applyLang(lang) {
 }
 
 export function initLanguage() {
+  /** @type {string | null} */
   let saved = null;
   try {
     saved = localStorage.getItem('cgv-lang');
@@ -51,8 +59,8 @@ export function initLanguage() {
 }
 
 export function setupLanguagePicker() {
-  const langMenu = document.getElementById('lang-menu');
-  const langButton = document.getElementById('btn-lang');
+  const langMenu = /** @type {HTMLElement} */ (document.getElementById('lang-menu'));
+  const langButton = /** @type {HTMLElement} */ (document.getElementById('btn-lang'));
   if (!langMenu || !langButton) return;
 
   langButton.addEventListener('click', (e) => {
@@ -89,7 +97,7 @@ export function setupLanguagePicker() {
   document.querySelectorAll('.lang-opt').forEach((opt) => {
     opt.addEventListener('click', (e) => {
       e.stopPropagation();
-      applyLang(opt.dataset.lang);
+      applyLang(/** @type {HTMLElement} */ (opt).dataset.lang ?? 'en');
       langMenu.classList.remove('open');
     });
   });
