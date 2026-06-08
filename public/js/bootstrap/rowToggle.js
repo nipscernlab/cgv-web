@@ -1,3 +1,4 @@
+// @ts-check
 // Row-level toggle: clicking anywhere on a `.layer-row` (non-parent) or
 // `.sett-row` forwards the click to the inner `.gswitch`. The user
 // shouldn't have to aim at the small switch — the whole row is the

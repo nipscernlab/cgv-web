@@ -1,3 +1,4 @@
+// @ts-check
 // Geometry GLB loader + WASM parser pool initialisation.
 //
 // Owns the wasmOk / sceneOk flags and the _readyFired latch. main.js
@@ -22,10 +23,12 @@ const atlasMat = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
+/** @param {{ t: (k: string) => string }} deps */
 export function setupSceneInit({ t }) {
   let wasmOk = false;
   let sceneOk = false;
   let _readyFired = false;
+  /** @type {(() => void) | null} */
   let onReadyCb = null;
 
   function checkReady() {
@@ -48,7 +51,7 @@ export function setupSceneInit({ t }) {
       markDirty();
       checkReady();
     },
-    onAtlasReady(tree) {
+    onAtlasReady(/** @type {any} */ tree) {
       setAtlasRoot(tree);
     },
   });
@@ -64,6 +67,7 @@ export function setupSceneInit({ t }) {
     });
 
   return {
+    /** @param {() => void} cb */
     setOnReady(cb) {
       onReadyCb = cb;
     },
