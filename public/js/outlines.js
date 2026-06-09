@@ -29,36 +29,45 @@ export function clearOutline() {
   markDirty();
 }
 
+// Build a white EdgesGeometry outline mesh for a cell handle, placed at the
+// cell's origMatrix. Shared by the single hover outline (showOutline) and the
+// persistent pinned outlines (makePinnedOutline). The edge geometry is cached
+// per source geometry so repeat outlines are cheap.
 /** @param {any} h cell handle (see CellHandle in state.js) */
-export function showOutline(h) {
-  if (outlineMesh?.userData.src === h.name) return;
-  clearOutline();
+function _buildCellOutline(h) {
   const geo = h.iMesh.geometry;
   const uid = geo.uuid;
   if (!eGeoCache.has(uid)) eGeoCache.set(uid, new THREE.EdgesGeometry(geo, 30));
-  outlineMesh = new THREE.LineSegments(eGeoCache.get(uid), outlineMat);
+  const mesh = new THREE.LineSegments(eGeoCache.get(uid), outlineMat);
   // Decompose the cell's origMatrix into the outline's position/quaternion/
   // scale so matrixAutoUpdate=true (default) reproduces it correctly each
   // frame — and so a rotated scene's matrixWorld propagates to the outline
   // without any per-add fix-ups.
-  outlineMesh.applyMatrix4(h.origMatrix);
-  outlineMesh.renderOrder = 999;
+  mesh.applyMatrix4(h.origMatrix);
+  mesh.renderOrder = 999;
+  return mesh;
+}
+
+/** @param {any} h cell handle (see CellHandle in state.js) */
+export function showOutline(h) {
+  if (outlineMesh?.userData.src === h.name) return;
+  clearOutline();
+  outlineMesh = _buildCellOutline(h);
   outlineMesh.userData.src = h.name;
   scene.add(outlineMesh);
   markDirty();
 }
 
-// Show hover outline (white) for a specific FCAL InstancedMesh instance.
-// Mirrors showOutline but transforms the shared cylinder edge base by the instance matrix.
-/** @param {number} instanceId */
-export function showFcalOutline(instanceId) {
-  const src = 'fcal_' + instanceId;
-  if (outlineMesh?.userData.src === src) return;
-  clearOutline();
+// Build a white outline mesh for one FCAL InstancedMesh instance by transforming
+// the shared cylinder edge base by the instance matrix. Returns null when the
+// FCAL instanced mesh isn't present. Shared by the hover outline
+// (showFcalOutline) and the persistent pinned outlines (makePinnedFcalOutline).
+/** @param {number} instanceId @returns {THREE.LineSegments | null} */
+function _buildFcalOutline(instanceId) {
   const iMesh = /** @type {any} */ (
     fcalGroup?.children.find((/** @type {any} */ c) => c.isInstancedMesh)
   );
-  if (!iMesh) return;
+  if (!iMesh) return null;
   iMesh.getMatrixAt(instanceId, fcalEdgeMat4);
   const eb = getFcalEdgeBase();
   const buf = new Float32Array(eb.length);
@@ -73,10 +82,54 @@ export function showFcalOutline(instanceId) {
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
-  outlineMesh = new THREE.LineSegments(geo, outlineMat);
-  outlineMesh.renderOrder = 999;
+  const mesh = new THREE.LineSegments(geo, outlineMat);
+  mesh.renderOrder = 999;
+  return mesh;
+}
+
+// Show hover outline (white) for a specific FCAL InstancedMesh instance.
+/** @param {number} instanceId */
+export function showFcalOutline(instanceId) {
+  const src = 'fcal_' + instanceId;
+  if (outlineMesh?.userData.src === src) return;
+  clearOutline();
+  const mesh = _buildFcalOutline(instanceId);
+  if (!mesh) return;
+  outlineMesh = mesh;
   outlineMesh.userData.src = src;
   scene.add(outlineMesh);
+  markDirty();
+}
+
+// ── Pinned (persistent) outlines ─────────────────────────────────────────────
+// A pinned tooltip card (see js/hoverTooltip.js) keeps its cell outlined in
+// white for as long as the card lives — independent of the single hover outline
+// above, so orbiting the scene (which clears the hover outline) leaves these in
+// place. The caller owns each returned mesh and hands it back to
+// removePinnedOutline when the card is dismissed or pruned. Several may coexist
+// (one per pinned card); they all share the white outlineMat.
+/** @param {any} h cell handle (see CellHandle in state.js) @returns {THREE.LineSegments} */
+export function makePinnedOutline(h) {
+  const mesh = _buildCellOutline(h);
+  scene.add(mesh);
+  markDirty();
+  return mesh;
+}
+
+/** @param {number} instanceId @returns {THREE.LineSegments | null} */
+export function makePinnedFcalOutline(instanceId) {
+  const mesh = _buildFcalOutline(instanceId);
+  if (mesh) {
+    scene.add(mesh);
+    markDirty();
+  }
+  return mesh;
+}
+
+/** @param {THREE.LineSegments | null | undefined} mesh */
+export function removePinnedOutline(mesh) {
+  if (!mesh) return;
+  scene.remove(mesh);
   markDirty();
 }
 

@@ -12,7 +12,14 @@ import {
   getMetGroup,
   getVertexGroup,
 } from './visibility.js';
-import { showOutline, showFcalOutline, clearOutline } from './outlines.js';
+import {
+  showOutline,
+  showFcalOutline,
+  clearOutline,
+  makePinnedOutline,
+  makePinnedFcalOutline,
+  removePinnedOutline,
+} from './outlines.js';
 import { showTrackHits, hideTrackHits, getHitsEnabled } from './overlays/hitsOverlay.js';
 import { buildExtrasHtml } from './tooltipRows.js';
 import { getMuonChamberMeshes, showChamberHoverOutline } from './trackAtlasIntersections.js';
@@ -39,6 +46,9 @@ const _pins = [];
 const _lastHoverAnchor = new THREE.Vector3(); // world point of the live hover hit
 let _lastHoverKey = ''; // stable identity of the live hover hit (drives pin toggle)
 let _lastHoverAlive = () => false; // predicate: is the live hover's object still shown?
+// Outline descriptor for the live hover hit so a pin can keep its cell outlined:
+// { kind: 'cell', handle } | { kind: 'fcal', iid } | null (non-outlineable hit).
+let _lastHoverOutline = null;
 let _hasHoverAnchor = false; // is the live hover valid (a tooltip is showing)?
 
 // Renders the extra-rows block. Builder is in tooltipRows.js so the
@@ -116,6 +126,7 @@ export function updatePins() {
     const pin = _pins[i];
     if (!pin.alive()) {
       pin.el.remove();
+      removePinnedOutline(pin.outlineMesh);
       _pins.splice(i, 1);
       continue;
     }
@@ -127,9 +138,20 @@ export function updatePins() {
 // consume the keypress only when it actually dismissed something.
 export function clearPins() {
   if (!_pins.length) return false;
-  for (const pin of _pins) pin.el.remove();
+  for (const pin of _pins) {
+    pin.el.remove();
+    removePinnedOutline(pin.outlineMesh);
+  }
   _pins.length = 0;
   return true;
+}
+
+// Read-only snapshot of the pinned cards for the screenshot renderer: each
+// card's world anchor + its live DOM element. Text is read straight from the
+// element so the E / E_T metric, η/φ coords and any extra rows match the viewer
+// exactly. See js/screenshot.js.
+export function getPinnedCards() {
+  return _pins.map((p) => ({ anchor: p.anchor, el: p.el }));
 }
 
 // Strip the duplicate ids from a cloned #tip (the clone is static, so the ids
@@ -148,7 +170,7 @@ function _stripPinIds(el) {
 // per-hit `key` (cell handle / FCAL instance / object uuid), not the click
 // point, so clicking anywhere on the same object re-targets its existing card.
 // Removal is not done here — clicking the card itself dismisses it (_addPin).
-function _pinObject(key, anchor, alive) {
+function _pinObject(key, anchor, alive, outline) {
   const existing = _pins.find((p) => p.key === key);
   if (existing) {
     existing.anchor.copy(anchor);
@@ -157,15 +179,17 @@ function _pinObject(key, anchor, alive) {
     _positionPin(existing, canvas.getBoundingClientRect());
     return;
   }
-  _addPin(key, anchor, alive);
+  _addPin(key, anchor, alive, outline);
 }
 
 // Remove the pin whose card element is `el`. Each card's own click handler
-// calls this, so clicking a pinned card dismisses it.
+// calls this, so clicking a pinned card dismisses it — which also drops its
+// persistent white outline.
 function _removePinEl(el) {
   const i = _pins.findIndex((p) => p.el === el);
   if (i !== -1) {
     _pins[i].el.remove();
+    removePinnedOutline(_pins[i].outlineMesh);
     _pins.splice(i, 1);
   }
 }
@@ -182,7 +206,7 @@ function _refreshPinContent(pin) {
 // cards are interactive (pointer-events:auto): clicking one dismisses it. The
 // trade-off is that hovering a card suppresses the transient hover tooltip and
 // a drag started on a card won't orbit — both fine for these small cards.
-function _addPin(key, anchor, alive) {
+function _addPin(key, anchor, alive, outline) {
   const el = tooltip.cloneNode(true);
   el.removeAttribute('id');
   el.classList.add('tip-pinned');
@@ -190,7 +214,13 @@ function _addPin(key, anchor, alive) {
   _stripPinIds(el);
   el.addEventListener('click', () => _removePinEl(el));
   document.body.appendChild(el);
-  const pin = { el, key, anchor: anchor.clone(), alive };
+  // A pinned cell / FCAL cell keeps a persistent white outline for the card's
+  // lifetime (other hit types have no cell outline). Stored on the pin so the
+  // dismiss / prune / clear paths can drop it.
+  let outlineMesh = null;
+  if (outline?.kind === 'cell') outlineMesh = makePinnedOutline(outline.handle);
+  else if (outline?.kind === 'fcal') outlineMesh = makePinnedFcalOutline(outline.iid);
+  const pin = { el, key, anchor: anchor.clone(), alive, outlineMesh };
   _pins.push(pin);
   _positionPin(pin, canvas.getBoundingClientRect());
 }
@@ -259,7 +289,7 @@ export function initHoverTooltip({ getShowInfo, getCinemaMode, getDragging, t })
     if (Math.hypot(e.clientX - downX, e.clientY - downY) > 6) return; // was a drag
     doRaycast(e.clientX, e.clientY);
     if (!tooltip.hidden && _hasHoverAnchor) {
-      _pinObject(_lastHoverKey, _lastHoverAnchor, _lastHoverAlive);
+      _pinObject(_lastHoverKey, _lastHoverAnchor, _lastHoverAlive, _lastHoverOutline);
     }
   });
   // Repositioning + pruning of pins is driven once per frame by updatePins()
@@ -386,18 +416,29 @@ function doRaycast(clientX, clientY) {
    *   anchor?: THREE.Vector3,
    *   key?: string,
    *   alive?: () => boolean,
+   *   outline?: {kind:'cell',handle:any}|{kind:'fcal',iid:number}|null,
    * }} opts
    */
-  function _finishHit({ showHitArgs, outlineAction, trackHitsAction, anchor, key, alive }) {
+  function _finishHit({
+    showHitArgs,
+    outlineAction,
+    trackHitsAction,
+    anchor,
+    key,
+    alive,
+    outline,
+  }) {
     (outlineAction ?? clearOutline)();
     (trackHitsAction ?? hideTrackHits)();
     showHit(showHitArgs);
-    // Remember the world hit point + identity + liveness so a click can pin
-    // this tooltip and updatePins() can later prune it (see _pinObject).
+    // Remember the world hit point + identity + liveness + outline so a click
+    // can pin this tooltip (keeping its cell outlined) and updatePins() can
+    // later prune it (see _pinObject / _addPin).
     if (anchor && !tooltip.hidden) {
       _lastHoverAnchor.copy(anchor);
       _lastHoverKey = key ?? '';
       _lastHoverAlive = alive ?? (() => true);
+      _lastHoverOutline = outline ?? null;
       _hasHoverAnchor = true;
     }
   }
@@ -442,6 +483,7 @@ function doRaycast(clientX, clientY) {
         anchor: cellHit.point,
         key: `cell:${cellHandle.iMesh.uuid}:${cellHandle.instId}`,
         alive: () => active.has(cellHandle) && cellHandle.visible,
+        outline: { kind: 'cell', handle: cellHandle },
         outlineAction: () => (wantTooltip ? showOutline(cellHandle) : clearOutline()),
         showHitArgs: {
           label: data.cellName,
@@ -470,6 +512,7 @@ function doRaycast(clientX, clientY) {
         anchor: fcalHit.point,
         key: `fcal:${iid}`,
         alive: () => _objVisible(fcalGroup) && !!fcalVisibleMap[iid],
+        outline: { kind: 'fcal', iid },
         outlineAction: () => (wantTooltip ? showFcalOutline(iid) : clearOutline()),
         showHitArgs: {
           label: `FCAL${cell.module} (${side}-side)`,

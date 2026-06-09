@@ -58,14 +58,7 @@ import {
 } from './trackAtlasIntersections.js';
 import { isAnyMuonVisible, onMuonVisibilityChange } from './visibility/muonVisibility.js';
 import { clearOutline } from './outlines.js';
-import {
-  initHoverTooltip,
-  hideTooltip,
-  updatePins,
-  tooltip,
-  tipCellEl,
-  tipEEl,
-} from './hoverTooltip.js';
+import { initHoverTooltip, hideTooltip, updatePins } from './hoverTooltip.js';
 import { initRenderLoop } from './renderLoop.js';
 import { setupPanelResize } from './panelResize.js';
 import { setupButtonTooltips } from './buttonTooltips.js';
@@ -411,16 +404,12 @@ initVisibility({ slicer });
 
 setupScreenshotControls({
   camera,
-  canvas,
   markDirty,
   renderer,
   scene,
   slicer,
   t,
   getLastEventInfo,
-  tooltip,
-  tipCellEl,
-  tipEEl,
 });
 
 registerViewerShortcuts({
