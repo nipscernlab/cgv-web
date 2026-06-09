@@ -220,7 +220,7 @@
    Background-color picker — small SV / Hue picker popover.
    ───────────────────────────────────────────────────────── */
 #bgcolor-popover {
-  width: 264px;
+  width: 300px;
   padding: 12px 14px 12px;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
@@ -256,6 +256,37 @@
 .bgcp-close:hover {
   color: var(--bright);
   background: var(--surface-hover);
+}
+
+.bgcp-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 3px;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border);
+}
+.bgcp-tab {
+  flex: 1;
+  padding: 6px 4px;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  font: 600 9.5px/1 var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast),
+    background var(--motion-fast);
+}
+.bgcp-tab:hover {
+  color: var(--bright);
+  background: var(--surface-hover);
+}
+.bgcp-tab.active {
+  color: var(--accent-text);
+  background: var(--accent-soft);
 }
 
 .bgcp-canvas-row {

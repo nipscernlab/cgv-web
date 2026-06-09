@@ -211,6 +211,10 @@ function _addPin(key, anchor, alive, outline) {
   el.removeAttribute('id');
   el.classList.add('tip-pinned');
   el.hidden = false;
+  // The hover tooltip carries a user-picked inline background (see the Tooltip
+  // tab in colorpicker.js); pinned cards keep the theme surface, so drop the
+  // cloned inline colour and let the .tip-pinned CSS take over.
+  el.style.background = '';
   _stripPinIds(el);
   el.addEventListener('click', () => _removePinEl(el));
   document.body.appendChild(el);

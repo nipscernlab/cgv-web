@@ -1400,12 +1400,18 @@
     <!-- ─────────────────────────────────────────────────────────
          Background-color picker popover (anchored to #btn-bgcolor)
          ───────────────────────────────────────────────────────── -->
-    <div id="bgcolor-popover" class="popover" role="dialog" aria-label="Background color">
+    <div id="bgcolor-popover" class="popover" role="dialog" aria-label="Colors">
       <div class="bgcp-head">
-        <span class="bgcp-title" data-i18n="bgcp-title">Scene Background</span>
+        <span id="bgcp-title" class="bgcp-title" data-i18n="bgcp-title">Scene Background</span>
         <button id="bgcp-close" class="bgcp-close" data-tip="Close">
           <svg class="ic" style="stroke-width: 2.5"><use href="#i-x" /></svg>
         </button>
+      </div>
+      <div class="bgcp-tabs" role="tablist">
+        <button class="bgcp-tab active" data-tab="bg" data-i18n="bgcp-tab-bg">Background</button>
+        <button class="bgcp-tab" data-tab="outline" data-i18n="bgcp-tab-outline">Outline</button>
+        <button class="bgcp-tab" data-tab="hover" data-i18n="bgcp-tab-hover">Hover</button>
+        <button class="bgcp-tab" data-tab="tooltip" data-i18n="bgcp-tab-tooltip">Tooltip</button>
       </div>
       <div class="bgcp-canvas-row">
         <div class="bgcp-sv" id="bgcp-sv">
@@ -1427,15 +1433,8 @@
         />
       </div>
       <div class="bgcp-presets-hdr" data-i18n="bgcp-presets">Presets</div>
-      <div class="bgcp-presets">
-        <button class="bgcp-preset" data-c="#0e1014" data-tip="Default — Graphite"></button>
-        <button class="bgcp-preset" data-c="#000000" data-tip="Black"></button>
-        <button class="bgcp-preset" data-c="#1a1a1a" data-tip="Charcoal"></button>
-        <button class="bgcp-preset" data-c="#0b1f3a" data-tip="Deep Navy"></button>
-        <button class="bgcp-preset" data-c="#020d1c" data-tip="Prussian Blue"></button>
-        <button class="bgcp-preset" data-c="#1f2a44" data-tip="Slate"></button>
-        <button class="bgcp-preset" data-c="#ffffff" data-tip="White"></button>
-      </div>
+      <!-- Presets are rendered per active tab by colorpicker.js -->
+      <div class="bgcp-presets" id="bgcp-presets"></div>
       <button id="bgcp-reset" class="bgcp-reset" data-i18n="bgcp-reset">Reset to Default</button>
     </div>
 

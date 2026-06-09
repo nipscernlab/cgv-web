@@ -18,6 +18,14 @@ const outlineMat = new THREE.LineBasicMaterial({
 /** @type {THREE.LineSegments | null} */
 let outlineMesh = null;
 
+// Recolor the single hover / pinned outline material (shared by showOutline,
+// showFcalOutline and the pinned outlines). Live — repaints next frame.
+/** @param {string} hex */
+export function setHoverOutlineColor(hex) {
+  outlineMat.color.set(hex);
+  markDirty();
+}
+
 export function clearOutline() {
   // Also drops any per-mesh muon-chamber hover outlines forced visible by
   // showChamberHoverOutline — keeps "leave hover, every outline goes away"
@@ -143,6 +151,13 @@ const outlineAllMat = new THREE.LineBasicMaterial({
 const _edgeWorldCache = new Map(); // handle.name → Float32Array (world-space positions)
 /** @type {THREE.LineSegments | null} */
 let allOutlinesMesh = null;
+
+// Recolor the persistent all-cells outline material. Live — repaints next frame.
+/** @param {string} hex */
+export function setAllOutlineColor(hex) {
+  outlineAllMat.color.set(hex);
+  markDirty();
+}
 
 /** @param {any} h cell handle (see CellHandle in state.js) */
 function _getWorldEdges(h) {

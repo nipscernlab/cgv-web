@@ -1,45 +1,30 @@
 Hi Fabio,
 
-Done, but with one extra change worth flagging before you install. While
-preparing the package we noticed that the previous backend kept a single
-process-wide watched folder, mutated by POST /api/xml/set-folder. That
-meant two operators on different PCs would step on each other's view:
-last writer wins, for everyone. Wrong shape for a desk tool.
+2.3.0 is tested locally and ready whenever you have a window.
 
-2.2.0 fixes that. The backend is now stateless: each request carries the
-folder it wants. The XML_FOLDER default is still honoured, but only as the
-prefill returned by GET /api/xml/default, which the UI uses on a first
-visit. Every browser/tab keeps its own choice in localStorage and can
-switch streams from the pencil, independently of every other client.
+What is new:
+* The Technical TWiki bundle now ships inside the package at
+  /var/www/cgv-web/public/twiki/, so the sidebar "Technical TWiki" link
+  resolves locally (https://pc-atlas-www.cern.ch/cgv-web/twiki/) and
+  works inside P1 with no external network. The existing Alias /cgv-web/
+  already covers it.
+* Same systemd unit, sysconfig and /api/xml/* shape as 2.2.0. Drop-in
+  upgrade.
 
-So, to your question: yes, /etc/sysconfig/cgv-web now ships
+Files:
+  /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.3.0/cgv-web-2.3.0-1.el9.noarch.rpm
+  /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.3.0/cgv-web.spec
+SHA-256:
+  943f1440b9949fff925ce8eb1812e4f73e753ebc5c50f9876b19d553dac4874b
 
-    XML_FOLDER=/atlas/EventDisplayEvents/physics_Main
+Going forward, we will keep dropping new builds straight into
+/afs/cern.ch/user/c/camaroaf/public/cgv-web/<version>/ as the project
+evolves. The folder stays world-readable from AFS. We will also try
+to mirror each build to /atlas-home/0/lucianom/ whenever Luciano can
+sync it.
 
-active by default. The file remains %config(noreplace), so on upgrade an
-existing file is kept; if it was not modified locally, the new default
-takes effect, otherwise you will see cgv-web.rpmnew next to it.
-
-RPM:  /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.2.0/cgv-web-2.2.0-1.el9.noarch.rpm
-Spec: /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.2.0/cgv-web.spec
-SHA-256 of the RPM: 5e1704207aaddc3af825c68328936514ca1821f90e1be0e6d12cf9fb34ce884e
-(Luciano will mirror the RPM to /atlas-home/0/lucianom/ as agreed.)
-
-API change to be aware of for your reverse proxy:
- - GET /api/xml/default                         (always 200, JSON)
- - GET /api/xml/list?path=<dir>                 (200 or 4xx)
- - GET /api/xml/file?path=<dir>&name=<basename> (200 or 4xx)
- - POST /api/xml/set-folder is gone. The proxy no longer needs to forward
-   POST for the SERVER feature; GET-only is enough.
-
-Verify after install:
-    curl -s https://pc-atlas-www.cern.ch/cgv-web/api/xml/default
-        -> {"path": "/atlas/EventDisplayEvents/physics_Main"}
-    curl -s "https://pc-atlas-www.cern.ch/cgv-web/api/xml/list?path=/atlas/EventDisplayEvents/physics_Main"
-        -> JSON array of the newest .xml (during a run)
-
-Thanks again for the patience on this one; this version finally has the
-right shape both for P1 and for concurrent operators.
+Thank you very much, Fabio, Diana, Nikiforos and Oleg, for all the
+work and patience on this deployment. Luciano and I really appreciate it.
 
 Best regards,
 Chrysthofer

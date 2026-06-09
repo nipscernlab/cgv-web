@@ -1,13 +1,75 @@
 // @ts-check
 import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
+import { setAllOutlineColor, setHoverOutlineColor } from './outlines.js';
+import { t } from './i18n/index.js';
 
-// ── Background color picker (2D SV rectangle + vertical hue strip) ────────────
+// ── Tabbed colour picker (2D SV rectangle + vertical hue strip) ───────────────
+// The palette popover edits one of several targets, chosen via tabs. Each
+// channel owns its default, its localStorage key, its preset swatches and the
+// apply() that pushes a hex onto the live scene / DOM. The picker body (SV
+// square + hue strip + hex + presets) is shared; switching tabs just rebinds it
+// to a different channel and reloads that channel's saved colour.
+
 const DEFAULT_BG_HEX = '#020d1c';
+const TAB_KEY = 'cgv-color-tab';
+
+/**
+ * @typedef {Object} Channel
+ * @property {string} id
+ * @property {string} titleI18n   data-i18n key for the popover title
+ * @property {string} def         default hex
+ * @property {string} key         localStorage key
+ * @property {string[]} presets   preset hex swatches
+ * @property {(hex: string) => void} apply
+ */
+
+/** @type {Channel[]} */
+const CHANNELS = [
+  {
+    id: 'bg',
+    titleI18n: 'bgcp-title',
+    def: DEFAULT_BG_HEX,
+    key: 'cgv-bg-color',
+    presets: ['#0e1014', '#000000', '#1a1a1a', '#0b1f3a', '#020d1c', '#1f2a44', '#ffffff'],
+    apply: (hex) => {
+      scene.background = new THREE.Color(hex);
+      markDirty();
+    },
+  },
+  {
+    id: 'outline',
+    titleI18n: 'bgcp-title-outline',
+    def: '#000000',
+    key: 'cgv-outline-all-color',
+    presets: ['#000000', '#ffffff', '#808080', '#0b1f3a', '#6398ff', '#ff4d4d'],
+    apply: (hex) => setAllOutlineColor(hex),
+  },
+  {
+    id: 'hover',
+    titleI18n: 'bgcp-title-hover',
+    def: '#ffffff',
+    key: 'cgv-outline-hover-color',
+    presets: ['#ffffff', '#ffe600', '#00e5ff', '#7cff00', '#ff8a00', '#ff00e5'],
+    apply: (hex) => setHoverOutlineColor(hex),
+  },
+  {
+    id: 'tooltip',
+    titleI18n: 'bgcp-title-tooltip',
+    def: '#1b2029', // --surface-2
+    key: 'cgv-tooltip-color',
+    presets: ['#1b2029', '#000000', '#0e1014', '#0b1f3a', '#1f2a44', '#2a2030'],
+    apply: (hex) => {
+      const el = document.getElementById('tip');
+      if (el) el.style.background = hex;
+    },
+  },
+];
 
 export function setupColorPicker() {
   const btn = /** @type {HTMLElement} */ (document.getElementById('btn-bgcolor'));
   const pop = /** @type {HTMLElement} */ (document.getElementById('bgcolor-popover'));
+  const titleEl = /** @type {HTMLElement} */ (document.getElementById('bgcp-title'));
   const sv = /** @type {HTMLElement} */ (document.getElementById('bgcp-sv'));
   const svCursor = /** @type {HTMLElement} */ (document.getElementById('bgcp-sv-cursor'));
   const hueStrip = /** @type {HTMLElement} */ (document.getElementById('bgcp-hue-strip'));
@@ -16,9 +78,8 @@ export function setupColorPicker() {
   const swatch = /** @type {HTMLElement} */ (document.getElementById('bgcp-swatch'));
   const closeBtn = /** @type {HTMLElement} */ (document.getElementById('bgcp-close'));
   const resetBtn = /** @type {HTMLElement} */ (document.getElementById('bgcp-reset'));
-  const presets = /** @type {HTMLElement[]} */ (
-    Array.from(document.querySelectorAll('.bgcp-preset'))
-  );
+  const presetsWrap = /** @type {HTMLElement} */ (document.getElementById('bgcp-presets'));
+  const tabEls = /** @type {HTMLElement[]} */ (Array.from(document.querySelectorAll('.bgcp-tab')));
   if (!btn || !pop) return;
 
   // ── Color math helpers ─────────────────────────────────────────────
@@ -98,58 +159,115 @@ export function setupColorPicker() {
     return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
   }
 
-  // ── State ──────────────────────────────────────────────────────────
-  let curH = 210,
-    curS = 85,
-    curV = 11; // initial ≈ #020d1c
+  // ── State (one HSV cursor + last hex per channel) ──────────────────
+  /** @type {Record<string, { h: number, s: number, v: number, hex: string }>} */
+  const state = {};
+  let activeId = CHANNELS[0].id;
   let open = false;
+  /** @type {HTMLElement[]} */
+  let presetEls = [];
+
+  /** @param {string} id */
+  const channelById = (id) => CHANNELS.find((c) => c.id === id) ?? CHANNELS[0];
+  const active = () => channelById(activeId);
+
+  /** @param {Channel} ch @returns {string} */
+  function loadSaved(ch) {
+    let saved = null;
+    try {
+      saved = localStorage.getItem(ch.key);
+    } catch (_) {}
+    return saved && /^#[0-9a-f]{6}$/i.test(saved) ? saved.toLowerCase() : ch.def;
+  }
 
   /** @param {string} hex @param {{ save?: boolean, syncCursors?: boolean }} [opts] */
   function applyColor(hex, { save = false, syncCursors = true } = {}) {
     const rgb = hexToRgb(hex);
     if (!rgb) return;
-    scene.background = new THREE.Color(hex);
+    const ch = active();
+    const st = state[ch.id];
+    ch.apply(hex);
+    st.hex = hex;
     swatch.style.background = hex;
     if (document.activeElement !== hexInput) hexInput.value = hex.toUpperCase();
     if (syncCursors) {
       const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
-      curH = hsv.h;
-      curS = hsv.s;
-      curV = hsv.v;
+      st.h = hsv.h;
+      st.s = hsv.s;
+      st.v = hsv.v;
     }
     _paintSvBackground();
     _positionCursors();
     _markActivePreset(hex);
     if (save) {
       try {
-        localStorage.setItem('cgv-bg-color', hex);
+        localStorage.setItem(ch.key, hex);
       } catch (_) {}
     }
-    markDirty();
   }
 
   function _paintSvBackground() {
-    const pure = hsvToRgb(curH, 100, 100);
+    const st = state[activeId];
+    const pure = hsvToRgb(st.h, 100, 100);
     sv.style.background =
       `linear-gradient(to top, #000 0%, rgba(0,0,0,0) 100%), ` +
       `linear-gradient(to right, #fff 0%, rgba(255,255,255,0) 100%), ` +
       `rgb(${pure.r}, ${pure.g}, ${pure.b})`;
   }
   function _positionCursors() {
-    svCursor.style.left = curS + '%';
-    svCursor.style.top = 100 - curV + '%';
-    hueCursor.style.top = (curH / 360) * 100 + '%';
+    const st = state[activeId];
+    svCursor.style.left = st.s + '%';
+    svCursor.style.top = 100 - st.v + '%';
+    hueCursor.style.top = (st.h / 360) * 100 + '%';
   }
   /** @param {string} hex */
   function _markActivePreset(hex) {
-    presets.forEach((p) =>
+    presetEls.forEach((p) =>
       p.classList.toggle('active', (p.dataset.c ?? '').toLowerCase() === hex.toLowerCase()),
     );
   }
   function _updateFromHsv() {
-    const rgb = hsvToRgb(curH, curS, curV);
+    const st = state[activeId];
+    const rgb = hsvToRgb(st.h, st.s, st.v);
     applyColor(rgbToHex(rgb.r, rgb.g, rgb.b), { save: true, syncCursors: false });
   }
+
+  // ── Presets (rebuilt per active channel) ───────────────────────────
+  /** @param {Channel} ch */
+  function renderPresets(ch) {
+    presetsWrap.innerHTML = '';
+    presetEls = ch.presets.map((c) => {
+      const b = document.createElement('button');
+      b.className = 'bgcp-preset';
+      b.dataset.c = c;
+      b.dataset.tip = c.toUpperCase();
+      b.style.background = c;
+      b.addEventListener('click', () => applyColor(c, { save: true, syncCursors: true }));
+      presetsWrap.appendChild(b);
+      return b;
+    });
+  }
+
+  // ── Tab switching ──────────────────────────────────────────────────
+  /** @param {string} id */
+  function switchTab(id) {
+    activeId = id;
+    const ch = active();
+    tabEls.forEach((tb) => tb.classList.toggle('active', tb.dataset.tab === id));
+    // Keep data-i18n in sync so a later language switch retranslates the title.
+    titleEl.setAttribute('data-i18n', ch.titleI18n);
+    titleEl.textContent = t(ch.titleI18n);
+    renderPresets(ch);
+    // Load this channel's current colour into the shared picker UI.
+    applyColor(state[id].hex, { save: false, syncCursors: true });
+    try {
+      localStorage.setItem(TAB_KEY, id);
+    } catch (_) {}
+  }
+
+  tabEls.forEach((tb) => {
+    tb.addEventListener('click', () => switchTab(tb.dataset.tab ?? CHANNELS[0].id));
+  });
 
   // ── SV rectangle drag ──────────────────────────────────────────────
   /** @param {PointerEvent} e */
@@ -157,8 +275,9 @@ export function setupColorPicker() {
     const r = sv.getBoundingClientRect();
     const x = _clamp(e.clientX - r.left, 0, r.width);
     const y = _clamp(e.clientY - r.top, 0, r.height);
-    curS = (x / r.width) * 100;
-    curV = (1 - y / r.height) * 100;
+    const st = state[activeId];
+    st.s = (x / r.width) * 100;
+    st.v = (1 - y / r.height) * 100;
     _updateFromHsv();
   }
   let svDrag = false;
@@ -182,7 +301,7 @@ export function setupColorPicker() {
   function _hueFromEvent(e) {
     const r = hueStrip.getBoundingClientRect();
     const y = _clamp(e.clientY - r.top, 0, r.height);
-    curH = (y / r.height) * 360;
+    state[activeId].h = (y / r.height) * 360;
     _updateFromHsv();
   }
   let hueDrag = false;
@@ -207,21 +326,14 @@ export function setupColorPicker() {
     if (/^#[0-9a-f]{6}$/i.test(v)) applyColor(v, { save: true, syncCursors: true });
   });
 
-  presets.forEach((p) => {
-    p.style.background = p.dataset.c ?? '';
-    p.addEventListener('click', () =>
-      applyColor(p.dataset.c ?? '', { save: true, syncCursors: true }),
-    );
-  });
-
   resetBtn.addEventListener('click', () =>
-    applyColor(DEFAULT_BG_HEX, { save: true, syncCursors: true }),
+    applyColor(active().def, { save: true, syncCursors: true }),
   );
 
   // ── Popover open/close/position ────────────────────────────────────
   function position() {
     const r = btn.getBoundingClientRect();
-    const pw = pop.offsetWidth || 264;
+    const pw = pop.offsetWidth || 300;
     const ph = pop.offsetHeight || 340;
     const tb = document.getElementById('toolbar');
     const tbr = tb ? tb.getBoundingClientRect() : { left: 0, height: 0, width: 0 };
@@ -276,12 +388,24 @@ export function setupColorPicker() {
   // Expose for the Shift+B keyboard shortcut.
   /** @type {any} */ (window).__cgvToggleBgPicker = () => (open ? closePop() : openPop());
 
-  // ── Initial color ──────────────────────────────────────────────────
-  /** @type {string | null} */
-  let saved = null;
+  // ── Initial colours ────────────────────────────────────────────────
+  // Seed every channel from storage (or its default) and push it live, so all
+  // four targets reflect the saved colours from the first frame — not just once
+  // the user opens the popover.
+  CHANNELS.forEach((ch) => {
+    const hex = loadSaved(ch);
+    const rgb = hexToRgb(hex) ?? { r: 0, g: 0, b: 0 };
+    const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+    state[ch.id] = { h: hsv.h, s: hsv.s, v: hsv.v, hex };
+    ch.apply(hex);
+  });
+
+  // Open on the last-used tab.
+  let savedTab = null;
   try {
-    saved = localStorage.getItem('cgv-bg-color');
+    savedTab = localStorage.getItem(TAB_KEY);
   } catch (_) {}
-  const initial = saved && /^#[0-9a-f]{6}$/i.test(saved) ? saved : DEFAULT_BG_HEX;
-  applyColor(initial, { save: false, syncCursors: true });
+  switchTab(
+    CHANNELS.some((c) => c.id === savedTab) ? /** @type {string} */ (savedTab) : CHANNELS[0].id,
+  );
 }
