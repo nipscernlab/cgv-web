@@ -73,6 +73,12 @@ import {
   getActiveJetCollection,
   onJetStateChange,
 } from './jets.js';
+import {
+  setClusterCollections,
+  getActiveClusterCollections,
+  getActiveClusterDrawList,
+  onClusterStateChange,
+} from './clusterCollections.js';
 import { setHitPositions, clearHitsState } from './overlays/hitsOverlay.js';
 import { parseMet, pickPreferredMet } from './parsers/metParser.js';
 import { drawMet, clearMet } from './overlays/metOverlay.js';
@@ -92,6 +98,18 @@ import { etMevFromE, getCellMetric } from './cellMetric.js';
 // (setActiveJetKey). drawJets(null) on clearJetState removes the group.
 onJetStateChange(() => {
   drawJets(getActiveJetCollection());
+});
+
+// Re-draw the cluster η/φ lines + refresh the cluster-cell membership filter
+// whenever the active cluster collection changes — fires on fresh events
+// (setClusterCollections) and on user-driven switches from the rpanel2
+// dropdown (setActiveClusterKey). setLastClusterData runs first so the filter
+// rebuild inside drawClusters → applyClusterThreshold reads the new
+// collections. Fires from inside processXml's withSuppressedCaloBoundRefresh
+// block on load, so the deferred-draw ordering (after applyThreshold) holds.
+onClusterStateChange(() => {
+  setLastClusterData({ collections: getActiveClusterCollections() });
+  drawClusters(getActiveClusterDrawList());
 });
 
 // Worker delivers the hit positions in a second message (after the cell-
@@ -202,7 +220,6 @@ export async function processXml(xmlText) {
   const hecPacked = workerResult.hecPacked;
   const rawPhotons = workerResult.photons;
   const rawElectrons = workerResult.electrons ?? [];
-  const rawClusters = workerResult.clusters;
   const _clusterCollections = workerResult.clusterCollections;
   // Worker returns plain {x,y,z} objects; reconstruct THREE.Vector3 here.
   const rawTracks = workerResult.tracks.map((t) => ({
@@ -248,22 +265,11 @@ export async function processXml(xmlText) {
   // Calo-face-bound particle drawing (γ spring / cluster / τ / jet η-φ lines)
   // is deferred until after applyThreshold below — those endpoints raycast
   // against rayTargets to land on the first VISIBLE cell, so the cells must
-  // be in their energized matrices first. Parse the xml-derived bits now (cheap
-  // regex passes) and stash them; setLastClusterData / cluster-slider update
-  // are ok here since they don't draw.
-  setLastClusterData({ collections: _clusterCollections });
-  if (rawClusters.length) {
-    let etMin = Infinity,
-      etMax = -Infinity;
-    for (const { etGev } of rawClusters) {
-      if (etGev < etMin) etMin = etGev;
-      if (etGev > etMax) etMax = etGev;
-    }
-    _deps.clusterEtSlider.update(
-      etMin === Infinity ? 0 : Math.max(0, etMin),
-      etMax === -Infinity ? 1 : etMax,
-    );
-  }
+  // be in their energized matrices first. Parse the xml-derived bits now
+  // (cheap regex passes) and stash them. Clusters flow through
+  // setClusterCollections (below); its onClusterStateChange listeners own the
+  // ET-slider range (detectorPanels.js) and the line draw + cell filter
+  // (the subscription above), so neither needs setting up here.
   const tausParsed = parseTaus(xmlText);
   const jetsParsed = parseJets(xmlText);
 
@@ -499,7 +505,10 @@ export async function processXml(xmlText) {
   // (the L3 ET-slider listener fired by setJetCollections reads getLastTaus()).
   withSuppressedCaloBoundRefresh(() => {
     drawPhotons(rawPhotons);
-    drawClusters(rawClusters);
+    // Elects the active cluster collection (first non-empty) and notifies its
+    // listeners — drawClusters + cell filter (above) and the ET-slider range
+    // (detectorPanels.js) — mirroring setJetCollections.
+    setClusterCollections(_clusterCollections);
     drawTaus(tausParsed);
     setJetCollections(jetsParsed);
   });

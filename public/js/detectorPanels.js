@@ -1,6 +1,7 @@
 import { fmtMev } from './utils.js';
 import { getViewLevel, onViewLevelChange } from './viewLevel.js';
 import { getActiveJetCollection, onJetStateChange } from './jets.js';
+import { getActiveClusterDrawList, onClusterStateChange } from './clusterCollections.js';
 import { getLastTaus } from './particles.js';
 import { t } from './i18n/index.js';
 import { getCellMetric, setCellMetric, onCellMetricChange } from './cellMetric.js';
@@ -545,9 +546,27 @@ export function setupDetectorPanels({
       if (getViewLevel() === 3) updateUI();
     });
 
-    // Cluster-only update path kept for processXml.js (which only knows about
-    // cluster ET ranges). Jet bounds flow through the onJetStateChange hook
-    // above. Both paths converge on updateUI for the active mode.
+    // Active cluster collection changed (new event or user picked another from
+    // the rpanel2 dropdown): recompute cluster ET min/max from the active draw
+    // list so the L2 slider bounds track the selected collection. Mirrors the
+    // onJetStateChange hook above.
+    onClusterStateChange(() => {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const c of getActiveClusterDrawList()) {
+        if (c.etGev < min) min = c.etGev;
+        if (c.etGev > max) max = c.etGev;
+      }
+      if (!isFinite(min)) {
+        min = 0;
+        max = 1;
+      }
+      update(Math.max(0, min), max);
+    });
+
+    // Cluster ET bounds flow through the onClusterStateChange hook above; jet
+    // bounds through onJetStateChange. Both converge on updateUI for the active
+    // mode (cluster at L2, jet at L3).
     function update(minGev, maxGev) {
       state.setClusterEtMinGev(minGev);
       state.setClusterEtMaxGev(maxGev);

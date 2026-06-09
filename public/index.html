@@ -716,6 +716,21 @@
         <div id="det-tab-bar-cluster">
           <div class="det-tab on" id="cluster-tab-label" style="--tab-col: #ff5a3a">Cluster</div>
         </div>
+        <!-- Cluster (L2) + jet (L3) collection pickers share the .jet-coll-*
+             dropdown skin; topToolbar.js shows one per view level. -->
+        <button
+          id="cluster-coll-trigger"
+          class="jet-coll-trigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          style="display: none"
+        >
+          <span class="jet-coll-label" id="cluster-coll-label">—</span>
+          <svg class="jet-coll-chev" viewBox="0 0 24 24" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
         <button
           id="jet-coll-trigger"
           class="jet-coll-trigger"
@@ -944,7 +959,8 @@
       </aside>
     </div>
 
-    <!-- ── Jet collection dropdown (escapes rpanel containing block) ─ -->
+    <!-- ── Cluster / jet collection dropdowns (escape rpanel containing block) ─ -->
+    <div id="cluster-coll-menu" class="jet-coll-menu" role="listbox"></div>
     <div id="jet-coll-menu" class="jet-coll-menu" role="listbox"></div>
 
     <!-- ── Cell-metric dropdown (escapes rpanel containing block) ──── -->

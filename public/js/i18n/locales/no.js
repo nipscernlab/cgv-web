@@ -225,6 +225,7 @@ export default {
   'layer-name-muon-cside': 'C-side',
   'slbl-track-pt': 'Min |pT|',
   'slbl-cluster-et': 'Min ET',
+  'cluster-coll-all': 'Alle samlinger',
   'thr-placeholder-gev': 'f.eks. 1,5 GeV',
   'dl-request': 'Forespørsel',
   'dl-recogn': 'Gjenkjenning',
