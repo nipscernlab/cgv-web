@@ -59,10 +59,9 @@ const CHANNELS = [
     def: '#1b2029', // --surface-2
     key: 'cgv-tooltip-color',
     presets: ['#1b2029', '#000000', '#0e1014', '#0b1f3a', '#1f2a44', '#2a2030'],
-    apply: (hex) => {
-      const el = document.getElementById('tip');
-      if (el) el.style.background = hex;
-    },
+    // Drive a CSS variable read by both #tip and every .tip-pinned card, so the
+    // hover tooltip and any already-open pinned cards recolour together.
+    apply: (hex) => document.documentElement.style.setProperty('--tip-bg', hex),
   },
 ];
 

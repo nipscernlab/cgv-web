@@ -71,7 +71,11 @@
   padding: 10px 12px;
   min-width: 160px;
 
-  background: var(--surface-2);
+  /* --tip-bg is set on :root by the Tooltip tab of the colour picker
+     (js/colorpicker.js); both the hover tooltip and the pinned cards read it,
+     so recolouring updates every tooltip on screen at once. Falls back to the
+     theme surface when unset. */
+  background: var(--tip-bg, var(--surface-2));
   border: 1px solid var(--border-strong);
   border-radius: var(--r);
   box-shadow: var(--shadow-2);
