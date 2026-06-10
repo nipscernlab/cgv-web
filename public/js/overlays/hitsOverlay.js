@@ -1,3 +1,4 @@
+// @ts-check
 // Hover-driven hit overlay (inner detector + muon spectrometer).
 //
 // When the user mouses over a track line, this module looks up that track's
@@ -36,6 +37,12 @@ const _HIT_MAT = new THREE.MeshBasicMaterial({
 });
 
 const _tmpVec2 = new THREE.Vector2();
+/**
+ * @this {any}  the hit-marker Mesh
+ * @param {any} renderer
+ * @param {any} _scene
+ * @param {any} camera
+ */
 function _hitOnBeforeRender(renderer, _scene, camera) {
   renderer.getSize(_tmpVec2);
   const viewportH = _tmpVec2.y || 1;
@@ -65,7 +72,9 @@ function _hitOnBeforeRender(renderer, _scene, camera) {
 let _positionsById = new Map();
 let _trtById = new Map();
 let _chamberById = new Map();
+/** @type {any} */
 let _hitsGroup = null;
+/** @type {any} */
 let _currentTrackLine = null;
 
 // User intent for the "Hits" toggle inside the Detector Layers panel. When
@@ -81,6 +90,7 @@ export function setHitsEnabled(v) {
 }
 
 // Called once per event by processXml after parseHits().
+/** @param {any} parsed  { positions, trtParams, chamberPos } maps from hitsParser. */
 export function setHitPositions(parsed) {
   _positionsById = parsed && parsed.positions instanceof Map ? parsed.positions : new Map();
   _trtById = parsed && parsed.trtParams instanceof Map ? parsed.trtParams : new Map();
@@ -106,6 +116,10 @@ const _tmpB = new THREE.Vector3();
 const _tmpAB = new THREE.Vector3();
 const _tmpAT = new THREE.Vector3();
 const _tmpProj = new THREE.Vector3();
+/**
+ * @param {any} posAttr  BufferAttribute ('position') or null
+ * @param {THREE.Vector3} target
+ */
 function _distanceToPolyline(posAttr, target) {
   if (!posAttr || posAttr.count < 2) return Infinity;
   let bestDist2 = Infinity;
@@ -133,6 +147,11 @@ const _CHAMBER_KEEP_MM = 300;
 // z (endcap TRT). Returns the (x, y, z) at the crossing, or null if the track
 // doesn't reach the target.
 //   `kind` is 'r' (barrel) or 'z' (endcap).
+/**
+ * @param {any} posAttr  BufferAttribute ('position') or null
+ * @param {string} kind  'r' (barrel) or 'z' (endcap)
+ * @param {number} target
+ */
 function _interpolatePolyline(posAttr, kind, target) {
   if (!posAttr || posAttr.count < 2) return null;
   const lastIdx = posAttr.count - 1;
@@ -165,7 +184,7 @@ function _interpolatePolyline(posAttr, kind, target) {
 
 export function hideTrackHits() {
   if (_hitsGroup) {
-    _hitsGroup.traverse((o) => {
+    _hitsGroup.traverse((/** @type {any} */ o) => {
       if (o.geometry && o.geometry !== _HIT_GEO) o.geometry.dispose();
     });
     scene.remove(_hitsGroup);
@@ -186,6 +205,7 @@ export function hideTrackHits() {
 //     centres, off by metres for long MDT barrel wires).
 // Re-uses the existing group when the same line is hovered again (no churn
 // during raycast-driven re-fires).
+/** @param {any} trackLine  the hovered track Line (carries userData.hitIds). */
 export function showTrackHits(trackLine) {
   if (!_hitsEnabled || !trackLine) return;
   if (trackLine === _currentTrackLine) return;

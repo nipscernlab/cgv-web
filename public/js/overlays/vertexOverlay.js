@@ -1,3 +1,4 @@
+// @ts-check
 // Vertex marker overlay.
 //
 // Renders the primary, pile-up and secondary (b-tag) vertices as small
@@ -49,7 +50,14 @@ const _MATS = {
 };
 
 const _tmpVec2 = new THREE.Vector2();
+/** @param {number} sizePx */
 function _makeOnBeforeRender(sizePx) {
+  /**
+   * @this {any}  the vertex-marker Mesh
+   * @param {any} renderer
+   * @param {any} _scene
+   * @param {any} camera
+   */
   return function (renderer, _scene, camera) {
     renderer.getSize(_tmpVec2);
     const viewportH = _tmpVec2.y || 1;
@@ -76,7 +84,7 @@ function _makeOnBeforeRender(sizePx) {
 }
 
 export function clearVertices() {
-  const g = getVertexGroup();
+  const g = /** @type {any} */ (getVertexGroup());
   if (!g) return;
   // Geometry and materials are shared singletons — never dispose them here.
   scene.remove(g);
@@ -84,21 +92,23 @@ export function clearVertices() {
 }
 
 // vertices: { primary, pileup, secondary } — empty arrays are OK.
+/** @param {any} vertices  { primary, pileup, secondary } from vertexParser, or null. */
 export function drawVertices(vertices) {
   clearVertices();
   if (!vertices) return;
   const all = [
-    ...(vertices.primary ?? []).map((v) => ({ ...v, kind: 'primary' })),
-    ...(vertices.pileup ?? []).map((v) => ({ ...v, kind: 'pileup' })),
-    ...(vertices.secondary ?? []).map((v) => ({ ...v, kind: 'secondary' })),
+    ...(vertices.primary ?? []).map((/** @type {any} */ v) => ({ ...v, kind: 'primary' })),
+    ...(vertices.pileup ?? []).map((/** @type {any} */ v) => ({ ...v, kind: 'pileup' })),
+    ...(vertices.secondary ?? []).map((/** @type {any} */ v) => ({ ...v, kind: 'secondary' })),
   ];
   if (!all.length) return;
 
   const g = new THREE.Group();
   g.renderOrder = 31; // above hit markers (renderOrder 30)
   for (const v of all) {
-    const style = VERTEX_STYLES[v.kind];
-    const m = new THREE.Mesh(_GEO, _MATS[v.kind]);
+    const kind = /** @type {keyof typeof VERTEX_STYLES} */ (v.kind);
+    const style = VERTEX_STYLES[kind];
+    const m = new THREE.Mesh(_GEO, _MATS[kind]);
     m.position.copy(v.position);
     m.onBeforeRender = _makeOnBeforeRender(style.sizePx);
     m.userData.vertexKind = v.kind;

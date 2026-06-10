@@ -1,3 +1,4 @@
+// @ts-check
 // Missing-transverse-energy arrow.
 //
 // Drawn as an ArrowHelper in the (x, y) plane (z = 0), pointing in the
@@ -52,9 +53,9 @@ const _Y_AXIS = new THREE.Vector3(0, 1, 0);
 const _tmpVec2 = new THREE.Vector2();
 
 export function clearMet() {
-  const g = getMetGroup();
+  const g = /** @type {any} */ (getMetGroup());
   if (!g) return;
-  g.traverse((o) => {
+  g.traverse((/** @type {any} */ o) => {
     // Skip the shared cone geometry; only the per-event shaft geometry needs
     // disposing (it's created fresh in drawMet).
     if (o.geometry && o.geometry !== _CONE_GEO) o.geometry.dispose();
@@ -71,6 +72,7 @@ export function clearMet() {
 // shaft matters: Three.js's Line.raycast divides the threshold by the
 // average of scale.x/y/z, so ArrowHelper's (1, length, 1) scale collapses
 // the hit zone to ~1 mm and the user can't reasonably hover the line.
+/** @param {any} metInfo  { key, sumEt, etx, ety, magnitude } from metParser, or null. */
 export function drawMet(metInfo) {
   clearMet();
   if (!metInfo) return;
@@ -100,7 +102,11 @@ export function drawMet(metInfo) {
   cone.renderOrder = 9;
   const tipDir = new THREE.Vector3(dx, dy, 0);
   const tipQuat = new THREE.Quaternion().setFromUnitVectors(_Y_AXIS, tipDir);
-  cone.onBeforeRender = function (renderer, _scene, camera) {
+  cone.onBeforeRender = function (
+    /** @type {any} */ renderer,
+    /** @type {any} */ _scene,
+    /** @type {any} */ camera,
+  ) {
     renderer.getSize(_tmpVec2);
     const viewportH = _tmpVec2.y || 1;
     let worldUnitsPerPx;
@@ -122,7 +128,7 @@ export function drawMet(metInfo) {
     cone.quaternion.copy(tipQuat);
     cone.scale.set(headW, headH, headW);
     cone.updateMatrix();
-    cone.matrixWorld.multiplyMatrices(cone.parent.matrixWorld, cone.matrix);
+    cone.matrixWorld.multiplyMatrices(/** @type {any} */ (cone.parent).matrixWorld, cone.matrix);
   };
 
   // Stamp metadata on both so a hover on either reaches it via parent walk.
