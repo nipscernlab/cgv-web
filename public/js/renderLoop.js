@@ -1,3 +1,4 @@
+// @ts-check
 import {
   renderer,
   scene,
@@ -49,9 +50,12 @@ function _restoreRendererAfterFocus() {
   camera.updateProjectionMatrix();
   dirLight.position.copy(camera.position);
   controls.update();
-  if (renderer.isWebGLRenderer) {
-    if (typeof renderer.resetState === 'function') renderer.resetState();
-    if (renderer.info && typeof renderer.info.reset === 'function') renderer.info.reset();
+  // WebGL-only state reset after focus regain — the WebGPU renderer branch of
+  // the union exposes neither isWebGLRenderer nor resetState.
+  const r = /** @type {any} */ (renderer);
+  if (r.isWebGLRenderer) {
+    if (typeof r.resetState === 'function') r.resetState();
+    if (r.info && typeof r.info.reset === 'function') r.info.reset();
   }
   _scheduleWarmFrames(18);
 }
@@ -98,6 +102,7 @@ function _stopLoop() {
   }
 }
 
+/** @param {{ onFrameStart?: () => void }} [opts] */
 export function initRenderLoop({ onFrameStart } = {}) {
   if (onFrameStart) _onFrameStart = onFrameStart;
 
