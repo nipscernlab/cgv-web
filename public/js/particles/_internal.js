@@ -1,3 +1,4 @@
+// @ts-check
 // Shared infrastructure used by every per-particle file in this directory.
 //
 // Three reusable group-builders:
@@ -56,6 +57,11 @@ const LEPTON_LABEL_RENDER_ORDER = 7;
 /**
  * Returns t at which the unit-direction ray (dx,dy,dz) from the origin hits
  * the surface of a cylinder with given radius and half-height.
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} dz
+ * @param {number} r
+ * @param {number} halfH
  */
 export function _cylIntersect(dx, dy, dz, r, halfH) {
   const rT = Math.sqrt(dx * dx + dy * dy);
@@ -72,6 +78,9 @@ export function _cylIntersect(dx, dy, dz, r, halfH) {
  * on |η| computed from the ray itself (|η| = asinh(|dz|/rT) for a unit ray).
  * Used for the inner endpoint of cluster/jet/τ lines and the spring termination
  * of γ/e helices.
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} dz
  */
 export function _innerCaloFaceIntersect(dx, dy, dz) {
   const rT = Math.sqrt(dx * dx + dy * dy);
@@ -88,6 +97,7 @@ export function _innerCaloFaceIntersect(dx, dy, dz) {
 // raycast hit). Computed from the geometry's local bsphere transformed by
 // origMatrix. The sphere is invariant under cell visibility — we only need
 // to recompute if origMatrix changes (it never does for static geometry).
+/** @param {any} h  cell handle (iMesh + origMatrix); caches `_wsphere` on it. */
 function _handleWorldSphere(h) {
   if (h._wsphere) return h._wsphere;
   const geo = h.iMesh.geometry;
@@ -114,6 +124,9 @@ function _handleWorldSphere(h) {
  * Bounding-sphere approximation means the reported t lands on the cell's
  * front bsphere, not on the exact triangle hit — accurate to cell-half-size
  * (~tens of mm), which is invisible at the visualization scale.
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} dz
  */
 export function _firstVisibleCellHit(dx, dy, dz) {
   // dx, dy, dz are unit (caller normalises). Origin at (0,0,0).
@@ -143,7 +156,7 @@ export function _firstVisibleCellHit(dx, dy, dz) {
   // fcalVisibleMap[i] is truthy. We pull the per-instance world-space matrix
   // out of the InstancedMesh and apply it to the geometry's bsphere.
   if (fcalGroup && fcalVisibleMap && fcalVisibleMap.length) {
-    const fcalIMesh = fcalGroup.children.find((c) => c.isInstancedMesh);
+    const fcalIMesh = /** @type {any[]} */ (fcalGroup.children).find((c) => c.isInstancedMesh);
     if (fcalIMesh) {
       const fcalGeo = fcalIMesh.geometry;
       if (!fcalGeo.boundingSphere) fcalGeo.computeBoundingSphere();
@@ -189,13 +202,13 @@ const _scratchMat4 = new THREE.Matrix4();
  *   - Materials are typically shared singletons (TRACK_MAT, JET_MAT, …) and
  *     are also left alone.
  *
- * @param {() => { traverse: (cb: (o: any) => void) => void } | null} getter
+ * @param {() => any} getter
  * @param {(g: any) => void} setter
  */
 export function _disposeGroup(getter, setter) {
   const g = getter();
   if (!g) return;
-  g.traverse((o) => {
+  g.traverse((/** @type {any} */ o) => {
     if (o.isSprite) {
       if (o.material?.map) o.material.map.dispose();
     } else if (o.geometry) {
@@ -276,13 +289,13 @@ export function _buildEtaPhiLineGroup({
  * dance that would otherwise run per slider tick. computeLineDistances()
  * is re-run since the LineDashedMaterial caches them based on positions.
  *
- * @param {THREE.Group | null} g  the existing line group (no-op if null)
+ * @param {any} g  the existing line group (VisibleObject | null; no-op if null)
  * @param {boolean} useCellRaycast  same semantics as in _buildEtaPhiLineGroup
  */
 export function _refreshEtaPhiLineGroupGeometry(g, useCellRaycast = true) {
   if (!g) return;
   const innerHit = useCellRaycast ? _firstVisibleCellHit : _innerCaloFaceIntersect;
-  for (const line of g.children) {
+  for (const line of /** @type {any[]} */ (g.children)) {
     const { eta, phi } = line.userData;
     if (eta == null || phi == null) continue;
     const theta = 2 * Math.atan(Math.exp(-eta));
@@ -327,7 +340,7 @@ export function _buildAnchoredLabelGroup({ predicate, anchorIdx, makeSprite, set
   const g = new THREE.Group();
   g.renderOrder = LEPTON_LABEL_RENDER_ORDER;
   let added = false;
-  for (const line of trackGroup.children) {
+  for (const line of /** @type {any[]} */ (trackGroup.children)) {
     if (!predicate(line)) continue;
     const pos = line.geometry?.getAttribute('position');
     if (!pos || pos.count < 1) continue;

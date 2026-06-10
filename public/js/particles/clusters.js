@@ -1,3 +1,4 @@
+// @ts-check
 // Calorimeter clusters drawn as η/φ-direction dashed lines spanning the band
 // between the inner-detector cylinder (r ≈ 1.42 m) and the outer cylinder
 // (r ≈ 3.82 m) — the visual zone occupied by the calo.
@@ -18,6 +19,7 @@ const CLUSTER_MAT = new THREE.LineDashedMaterial({
 // Set cluster-line opacity (0..1). Fully opaque writes depth like solid
 // geometry; translucent disables depth-write so overlapping lines blend
 // instead of occluding each other. Driven by the Helpers line-opacity slider.
+/** @param {number} o  line opacity in 0..1. */
 export function setClusterLineOpacity(o) {
   CLUSTER_MAT.opacity = o;
   CLUSTER_MAT.transparent = o < 1;
@@ -27,6 +29,7 @@ export function setClusterLineOpacity(o) {
 
 // Cached cluster list so refreshCaloBoundParticles (in particles.js) can
 // re-run drawClusters after a visibility change without re-parsing the XML.
+/** @type {any[]} */
 let _lastClusters = [];
 export function getLastClusters() {
   return _lastClusters;
@@ -37,6 +40,7 @@ export function clearClusters() {
   _disposeGroup(getClusterGroup, setClusterGroup);
 }
 
+/** @param {any[]} clusters  draw list ({ eta, phi, etGev, storeGateKey }). */
 export function drawClusters(clusters) {
   clearClusters();
   _lastClusters = Array.isArray(clusters) ? clusters : [];

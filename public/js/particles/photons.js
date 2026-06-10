@@ -1,3 +1,4 @@
+// @ts-check
 // Photons drawn as Feynman-diagram wavy-line helices from the origin.
 //
 // The "spring" only spans the last 40 cm before the photon hits the inner
@@ -34,6 +35,16 @@ const _up = new THREE.Vector3();
 // previous Vector3-array version — see the TAPER_START block for why the
 // last 15 % of t taper to zero radial offset (closes the spring onto the
 // centerline endpoint so the visible tip lands exactly on the calo face).
+/**
+ * @param {Float32Array} out
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} dz
+ * @param {number} totalLen
+ * @param {number} radius
+ * @param {number} nTurns
+ * @param {number} ptsPerTurn
+ */
 function _fillSpringPoints(out, dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn) {
   _fwd.set(dx, dy, dz).normalize();
   if (Math.abs(_fwd.x) < 0.9) _ref.set(1, 0, 0);
@@ -71,6 +82,7 @@ function _fillSpringPoints(out, dx, dy, dz, totalLen, radius, nTurns, ptsPerTurn
 
 // Cached photon list so refreshCaloBoundParticles (in particles.js) can
 // re-run drawPhotons after a visibility change without re-parsing the XML.
+/** @type {any[]} */
 let _lastPhotons = [];
 export function getLastPhotons() {
   return _lastPhotons;
@@ -84,6 +96,12 @@ export function clearPhotons() {
 // Convert a (dx,dy,dz) ray into spring geometry, returning the Float32Array
 // of point coordinates. Used by drawPhotons (full build) and
 // refreshPhotonsGeometry (in-place update via array reuse).
+/**
+ * @param {number} dx
+ * @param {number} dy
+ * @param {number} dz
+ * @param {Float32Array | null} [out]
+ */
 function _computeSpringFromRay(dx, dy, dz, out) {
   const tEnd = _firstVisibleCellHit(dx, dy, dz);
   const nTurns = Math.round(PHOTON_SPRING_TURNS_PER_MM * Math.min(PHOTON_PRE_INNER_MM, tEnd));
@@ -93,6 +111,7 @@ function _computeSpringFromRay(dx, dy, dz, out) {
   return { arr, nTotal };
 }
 
+/** @param {any[]} photons  parsed photon records ({ eta, phi, ptGev }). */
 export function drawPhotons(photons) {
   clearPhotons();
   _lastPhotons = Array.isArray(photons) ? photons : [];
@@ -127,7 +146,7 @@ export function drawPhotons(photons) {
 export function refreshPhotonsGeometry() {
   const g = getPhotonGroup();
   if (!g) return;
-  for (const line of g.children) {
+  for (const line of /** @type {any[]} */ (g.children)) {
     const { eta, phi } = line.userData;
     if (eta == null || phi == null) continue;
     const theta = 2 * Math.atan(Math.exp(-eta));

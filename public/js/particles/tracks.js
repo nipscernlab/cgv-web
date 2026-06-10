@@ -1,3 +1,4 @@
+// @ts-check
 // Per-event track polylines.
 //
 // JiveXML emits multiple track collections that are alternative fits of the
@@ -29,6 +30,7 @@ export function clearTracks() {
   updateTrackAtlasIntersections();
 }
 
+/** @param {any[]} tracks  parsed track records ({ pts, ptGev, hitIds, storeGateKey }). */
 export function drawTracks(tracks) {
   clearTracks();
   if (!tracks.length) return;

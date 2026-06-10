@@ -1,3 +1,4 @@
+// @ts-check
 // Hadronic τ candidates: η/φ purple-dashed lines + per-daughter-track τ
 // labels. Two render groups owned by this module:
 //   - tauGroup       : the η/φ lines (one per τ candidate)
@@ -45,6 +46,7 @@ const TAU_MAT = new THREE.LineDashedMaterial({
 const TAU_LABEL_COLOR = 0xb366ff;
 
 // Cached tau list so the level gate can re-run the track match on re-entry to L3.
+/** @type {any[]} */
 let _lastTaus = [];
 export function getLastTaus() {
   return _lastTaus;
@@ -59,6 +61,7 @@ export function clearTaus() {
 // Draws one line per tau candidate. `taus` is the flat array out of
 // tauParser. Stamps tooltip-relevant fields on each line's userData and runs
 // the track-match sync so the τ's associated tracks pick up the purple colour.
+/** @param {any[]} taus  flat array out of tauParser. */
 export function drawTaus(taus) {
   clearTaus();
   _lastTaus = Array.isArray(taus) ? taus : [];
@@ -106,6 +109,7 @@ export function drawTaus(taus) {
 
 // Single entry point for the τ→track colour update. Called by drawTaus on
 // load and by the visibility level gate when entering / leaving L3.
+/** @param {any[] | null} taus */
 export function syncTauTrackMatch(taus) {
   recomputeTauTrackMatch(taus);
 }

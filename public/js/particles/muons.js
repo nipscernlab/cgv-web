@@ -1,3 +1,4 @@
+// @ts-check
 // Muon / anti-muon labels.
 //
 // Mirrors the electron pipeline: the matched track is already coloured blue
@@ -19,6 +20,7 @@ import { _disposeGroup, _buildAnchoredLabelGroup } from './_internal.js';
 
 const MUON_LABEL_COLOR = 0x4a90d9;
 
+/** @type {any[]} */
 let _lastMuons = [];
 export function getLastMuons() {
   return _lastMuons;
@@ -29,6 +31,7 @@ export function clearMuons() {
   _disposeGroup(getMuonGroup, setMuonGroup);
 }
 
+/** @param {any[]} muons  parsed muon records. */
 export function drawMuons(muons) {
   clearMuons();
   _lastMuons = Array.isArray(muons) ? muons : [];
@@ -57,6 +60,7 @@ export function drawMuons(muons) {
 }
 
 // Mirrors syncElectronTrackMatch — only re-runs the ΔR colour match.
+/** @param {any[] | null} muons */
 export function syncMuonTrackMatch(muons) {
   recomputeMuonTrackMatch(muons);
 }

@@ -1,3 +1,4 @@
+// @ts-check
 // Electron / positron labels.
 //
 // The matched track itself (red for e⁻, green for e⁺, set by
@@ -23,6 +24,7 @@ const ELECTRON_POS_COLOR = 0x33dd55;
 
 // Last drawn electrons cached so view-level changes can re-run the
 // ΔR matching against the current track set.
+/** @type {any[]} */
 let _lastElectrons = [];
 export function getLastElectrons() {
   return _lastElectrons;
@@ -35,6 +37,7 @@ export function clearElectrons() {
   _disposeGroup(getElectronGroup, setElectronGroup);
 }
 
+/** @param {any[]} electrons  parsed electron records. */
 export function drawElectrons(electrons) {
   clearElectrons();
   _lastElectrons = Array.isArray(electrons) ? electrons : [];
@@ -69,6 +72,7 @@ export function drawElectrons(electrons) {
 // stay accurate. Does NOT touch label sprites — those were built once in
 // drawElectrons. K-popover, J button, and level-gate toggles flip the group's
 // .visible directly through the setters in detectorGroups.js.
+/** @param {any[] | null} electrons */
 export function syncElectronTrackMatch(electrons) {
   recomputeElectronTrackMatch(electrons);
 }
