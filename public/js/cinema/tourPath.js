@@ -97,14 +97,36 @@ const Z_DEFAULT_FRAC = 0.35;
 //   · a single full barrel roll plays out across the inner plateau, and the
 //     baked dive gate is exposed (path.dg) so the renderer can add a gentle
 //     FOV push inside the tunnel.
-const DIVE_U0 = 0.7;
-const DIVE_U1 = 0.95;
-// Entry/exit z of the dive — past the calo (|z| ≤ 6.3 m) so the camera
-// lines up with the bore before anything interesting is nearby.
-const DIVE_Z_MM = 9000;
-// Fraction of the dive window spent ramping in/out (smootherstep). Wide
-// ramps keep the spiral gentle (no sharp radial collapse).
-const DIVE_RAMP_FRAC = 0.35;
+// Window placement: the orbit's pole passes sit at u = 0.25 and 0.75
+// (azimuth ±90°), and a dive approach near a pole produces near-vertical
+// views that no guard can fully tame. [0.30, 0.70] keeps both approaches
+// 54° away from the poles. Exported: cinema.js defers path swaps that
+// would reverse the dive while the camera is inside this window.
+export const DIVE_U0 = 0.3;
+export const DIVE_U1 = 0.7;
+// Flight shaping: a straight blend from the envelope to the axis would
+// chord through the calorimeter whenever the orbit height opposes the
+// entry end. Instead, three OVERLAPPING smooth gates shape one continuous
+// plunge (no piecewise segments — overlapping C2 gates mean the camera
+// never passes through a dead stop between phases):
+//   gz   (ramp DIVE_CLIMB_RAMP)  blends the camera height onto the z-track
+//                                first — by the time the radius starts
+//                                collapsing in earnest, the camera rides
+//                                high over the end cap;
+//   gxy  (start DIVE_XY_START,   collapses the radius onto the axis. Tuned
+//         ramp DIVE_XY_RAMP)     so the calo radial band (r 0.15–4.9 m) is
+//                                crossed only while |z| > 6.5 m;
+//   zT   (DIVE_SWEEP_T0..T1)     the z-track itself: holds ±DIVE_Z at the
+//                                ends and cos-sweeps through the bore in
+//                                the middle (landmark fly-by, dwell, roll).
+const DIVE_CLIMB_RAMP = 0.26;
+const DIVE_XY_START = 0.13;
+const DIVE_XY_RAMP = 0.24;
+const DIVE_SWEEP_T0 = 0.22;
+const DIVE_SWEEP_T1 = 0.78;
+// Hold/entry height of the flight plan — keeps the radial crossing above
+// the calo end (|z| ≤ 6.5 m) with margin, inside the muon endcap void.
+const DIVE_Z_MM = 9300;
 // |energy-centroid z| beyond which the dive picks an entry end (below it
 // the event is balanced and the default +z entry is used).
 const DIVE_END_BIAS_MM = 800;
@@ -113,43 +135,80 @@ const DIVE_END_BIAS_MM = 800;
 // pan rate at closest approach — the camera never flies through its own
 // look target).
 const DIVE_LM_ZMAX_MM = 4500;
-const DIVE_LM_MIN_R_MM = 1100;
-// Dive speed profile: rush the empty bore, dwell at the landmark.
-const DIVE_SPEED_FAST = 1.6;
-const DIVE_SPEED_SLOW = 0.5;
-const DIVE_DWELL_SIGMA_MM = 2800;
-// Barrel roll: one full turn across the middle of the plateau.
-const DIVE_ROLL_T0 = 0.2;
-const DIVE_ROLL_T1 = 0.8;
+// Generous lateral floor: the fly-by pan rate scales as speed/distance, so
+// the closest allowed approach directly caps how fast the gaze can whip
+// around the landmark.
+const DIVE_LM_MIN_R_MM = 1600;
+// Dive speed profile: cruise the empty bore, dwell at the landmark. Kept
+// well below the orbit cruise — the flythrough is the set piece, so the
+// camera savours it (the loop-time normalisation trades the slack to the
+// outer orbit).
+const DIVE_SPEED_FAST = 0.8;
+const DIVE_SPEED_SLOW = 0.3;
+const DIVE_DWELL_SIGMA_MM = 3800;
+// Barrel roll: one full turn inside the bore sweep. The roll WINDOW is
+// solved per bake (not fixed): a full roll sweeps the up through every
+// horizontal azimuth, so whatever direction the fly-by landmark sits in,
+// SOME roll phase points the up straight at it — and if that coincides
+// with closest approach (where the view is horizontal, toward the
+// landmark), lookAt degenerates mid-bore. The bake therefore places the
+// window so that at the closest-approach instant the roll phase sits as
+// close as feasibility allows to 90° away from the landmark azimuth.
+const DIVE_ROLL_LEN = 0.18;
+const DIVE_ROLL_MARGIN = 0.015;
+// The follower's target lags the lead by ~0.8 s; the EFFECTIVE fly-by
+// happens that much later than the baked closest approach. Solving the
+// roll phase at the lag-shifted instant keeps the planned up↔landmark
+// separation true at runtime (0.8 s / 66 s loop, in window-tw units).
+const DIVE_ROLL_LAG_TW = 0.03;
+// Up-vector z-lift inside the bore (shared with cinema.js). This is the
+// HARD floor on lookAt clearance during the fly-by: with the up tilted
+// this much off the roll plane, a horizontal view can align with it at
+// most cos(asin(lift/√(1+lift²))) ≈ 0.90 — whatever the roll phase or
+// follower lag do. The roll-phase planning above is the polish on top.
+export const DIVE_UP_LIFT = 0.48;
 
-// ── Up field: parallel transport + rate-limited anchoring ────────────────────
-// lookAt degenerates when the line of sight aligns with the up vector: the
-// internal cross product flips sign and the frame snap-rolls 180° for a few
-// frames — the "scene flips and comes back" glitch. With a y-up orbit
-// around the beam axis this is guaranteed twice per loop (the camera
-// passes over/under the detector while looking at the centre: view ≈ ±y),
-// and no fixed blend target can fix it — any world-anchored up reverses
-// across a pole crossing (that reversal IS the flip).
+// ── Camera pole clearance ─────────────────────────────────────────────────────
+// lookAt degenerates when the line of sight aligns with the camera's up
+// vector: the internal cross product flips sign and the frame snap-rolls
+// 180° for a few frames — the "scene flips and comes back" glitch. With a
+// y-up orbit around the beam axis that alignment is guaranteed twice per
+// loop (the camera passes over/under the detector while looking at the
+// centre: view ≈ ±y), and the dive entry/exit spirals can graze it too.
 //
-// The bake therefore builds the up as a FIELD along the loop:
-//   1. parallel transport: each sample re-projects the previous up
-//      perpendicular to the new view direction. The up is ⊥ view at every
-//      sample BY CONSTRUCTION, so the lookAt degeneracy cannot occur, ever;
-//   2. anchoring: the transported up is pulled toward the reference up
-//      (world vertical, or the barrel-roll frame inside the dive) by at
-//      most MAX_ROLL_STEP per sample. Across a pole pass — where the
-//      reference reverses — this turns the would-be instant flip into a
-//      banked roll spread over ~2 s, and everywhere else it keeps the
-//      horizon level. Where the reference itself is momentarily parallel
-//      to the view (the exact crossing), anchoring is skipped and pure
-//      transport carries the frame through.
-const MAX_ROLL_STEP = 0.13; // rad per LUT sample (~7.5°: 180° in ≈ 2 s)
+// Neither steering the up (a continuous up field must roll ~180° through
+// a pole pass — reads as a sudden unnatural turn) nor deflecting the gaze
+// (pushes the detector out of frame, and the follower's smoothing shaves
+// the deflection back toward the flip) survives in practice. What works is
+// moving the CAMERA: wherever the line of sight closes in on the up axis,
+// the camera rises so it always sits POLE_Z_SEP above its look target
+// while crossing over the top (and under the bottom). The gaze never
+// leaves the detector — framing is untouched — and the view's tilt keeps
+// a guaranteed ~25° away from the pole. The gate is blurred along the
+// loop so the rise ramps in over several seconds (gentle, and robust to
+// the follower's smoothing lag).
+const POLE_ALIGN_ON = 0.74;
+const POLE_ALIGN_FULL = 0.9;
+const POLE_Z_SEP_MM = 7800;
+const POLE_BLUR_R = 14; // samples per box pass (two passes ≈ C1 ramp, ~4 s)
 
 /** C2 ease used for the dive blend gate. @param {number} t */
 function _sstep01(t) {
   if (t <= 0) return 0;
   if (t >= 1) return 1;
   return t * t * t * (t * (6 * t - 15) + 10);
+}
+
+/** Inverse of _sstep01 on (0,1), by bisection (monotone). @param {number} y */
+function _invSstep01(y) {
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 28; i++) {
+    const mid = (lo + hi) / 2;
+    if (_sstep01(mid) < y) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
 }
 
 /**
@@ -159,8 +218,9 @@ function _sstep01(t) {
  * @typedef {{n:number,
  *            px:Float32Array, py:Float32Array, pz:Float32Array,
  *            tx:Float32Array, ty:Float32Array, tz:Float32Array,
- *            speed:Float32Array, roll:Float32Array, dg:Float32Array,
- *            upx:Float32Array, upy:Float32Array, upz:Float32Array}} TourPath
+ *            speed:Float32Array, roll:Float32Array,
+ *            rollSin:Float32Array, rollCos:Float32Array,
+ *            dg:Float32Array, diveSign:number}} TourPath
  */
 
 /** @param {number} d */
@@ -318,12 +378,16 @@ export function filterPOIsByMinimap(pois, rects) {
  *            height is soft-clamped (tanh) into this window so it stays
  *            level with the opening.
  *   dive     Enable the once-per-loop beam-line flythrough (default true).
+ *   prevDiveSign  The previous bake's dive direction (path.diveSign) —
+ *            feeds the entry-end hysteresis so balanced events don't flip
+ *            the dive on every rebuild.
  *
  * @param {POI[]} pois
  * @param {{rotZ?: number,
  *          arc?: {center:number, halfWidth:number} | null,
  *          zWindow?: {min:number, max:number} | null,
- *          dive?: boolean}} [opts]
+ *          dive?: boolean,
+ *          prevDiveSign?: number}} [opts]
  * @returns {TourPath}
  */
 export function bakeTourPath(pois, opts = {}) {
@@ -331,6 +395,7 @@ export function bakeTourPath(pois, opts = {}) {
   const arc = opts.arc || null;
   const zWindow = opts.zWindow || null;
   const dive = opts.dive !== false;
+  const prevDiveSign = opts.prevDiveSign === -1 ? -1 : 1;
 
   const n = LUT_N;
   const px = new Float32Array(n);
@@ -341,10 +406,10 @@ export function bakeTourPath(pois, opts = {}) {
   const tz = new Float32Array(n);
   const speed = new Float32Array(n);
   const roll = new Float32Array(n);
+  const rollSin = new Float32Array(n);
+  const rollCos = new Float32Array(n);
   const dg = new Float32Array(n);
-  const upx = new Float32Array(n);
-  const upy = new Float32Array(n);
-  const upz = new Float32Array(n);
+  const gPole = new Float64Array(n);
 
   // Per-POI precomputation: relative energy weight, the camera height its η
   // asks for, its WORLD azimuth (scene angle φ+π, then the scene rotation),
@@ -390,9 +455,14 @@ export function bakeTourPath(pois, opts = {}) {
   }
   const zHot = cw > 0 ? czAcc / cw : 0;
   // Enter from the end OPPOSITE the energy concentration so the hot region
-  // is ahead of the camera for the whole approach. Balanced events keep the
-  // default +z entry.
-  const entrySign = zHot > DIVE_END_BIAS_MM ? -1 : 1;
+  // is ahead of the camera for the whole approach. Hysteresis: balanced
+  // events (centroid inside the dead band) KEEP the previous direction —
+  // without it, successive events hovering near the threshold would flip
+  // the dive every rebuild, dragging the camera from one end of the bore
+  // to the other mid-loop.
+  let entrySign = prevDiveSign === -1 ? -1 : 1;
+  if (zHot > DIVE_END_BIAS_MM) entrySign = -1;
+  else if (zHot < -DIVE_END_BIAS_MM) entrySign = 1;
   // Fly-by landmark: the hot centroid, kept inside the calo along z and
   // pushed off the flight line laterally (the camera must pass it, never
   // pierce it — the pass-by is what swings the gaze around).
@@ -410,6 +480,38 @@ export function bakeTourPath(pois, opts = {}) {
     }
   }
   const inv2sDive = 1 / (2 * DIVE_DWELL_SIGMA_MM * DIVE_DWELL_SIGMA_MM);
+
+  // Solve the barrel-roll window (see DIVE_ROLL_LEN above): at closest
+  // approach (bore z = landmark z) the roll phase should put the up 90°
+  // away from the landmark azimuth. Two safe phases exist (ρ and ρ+π);
+  // each is clamped into the feasible placement range inside the bore
+  // sweep and the one landing closest to its ideal is used (worst-case
+  // clamping still leaves ≥ ~65° of up↔landmark separation at the pass).
+  const sCa = Math.acos(Math.max(-1, Math.min(1, lmZ / (entrySign * DIVE_Z_MM)))) / Math.PI;
+  const twCa = DIVE_SWEEP_T0 + (DIVE_SWEEP_T1 - DIVE_SWEEP_T0) * sCa + DIVE_ROLL_LAG_TW;
+  const lmAz = Math.atan2(lmY, lmX);
+  // up(ρ) = (sin ρ, cos ρ): its azimuth (from +x) is π/2 − ρ. Safe when
+  // perpendicular to the landmark azimuth (mod π).
+  const TWO_PI = 2 * Math.PI;
+  let rollT0 = twCa - 0.5 * DIVE_ROLL_LEN;
+  let rollT1 = rollT0 + DIVE_ROLL_LEN;
+  {
+    const tLo = DIVE_SWEEP_T0 + DIVE_ROLL_MARGIN;
+    const tHi = DIVE_SWEEP_T1 - DIVE_ROLL_MARGIN;
+    const xMin = Math.max(0.001, (twCa - (tHi - DIVE_ROLL_LEN)) / DIVE_ROLL_LEN);
+    const xMax = Math.min(0.999, (twCa - tLo) / DIVE_ROLL_LEN);
+    const rhoSafe1 = (((Math.PI - lmAz) % Math.PI) + Math.PI) % Math.PI;
+    let bestErr = Infinity;
+    for (const rho of [rhoSafe1, rhoSafe1 + Math.PI]) {
+      const x = Math.max(xMin, Math.min(xMax, _invSstep01(rho / TWO_PI)));
+      const err = Math.abs(_sstep01(x) * TWO_PI - rho);
+      if (err < bestErr) {
+        bestErr = err;
+        rollT0 = twCa - x * DIVE_ROLL_LEN;
+        rollT1 = rollT0 + DIVE_ROLL_LEN;
+      }
+    }
+  }
 
   // Z placement: free-roaming by default; pinned to the wedge's z window in
   // arc mode (soft tanh limit — C∞, no clamp kinks).
@@ -460,7 +562,10 @@ export function bakeTourPath(pois, opts = {}) {
     // z-wave wherever no POI exerts meaningful pull. The blend gate is a
     // smooth rational in the total weight, so entering/leaving a POI's
     // sphere of influence never kinks the path.
-    const zDefault = zMid + Math.sin(u * 4 * Math.PI) * zAmpDef;
+    // −cos phasing puts the wave's high points at u = 0.25 / 0.75 — exactly
+    // the orbit's pole passes — so the camera already carries z-separation
+    // from its look target where the pole clearance needs it most.
+    const zDefault = zMid - Math.cos(u * 4 * Math.PI) * zAmpDef;
     const gz = wzSum / (wzSum + 0.12);
     const zRaw = zDefault * (1 - gz) + (wzSum > 0 ? zAcc / wzSum : zMid) * gz;
     const z = zWindow ? zMid + zSoftL * Math.tanh((zRaw - zMid) / zSoftL) : zRaw;
@@ -486,29 +591,63 @@ export function bakeTourPath(pois, opts = {}) {
     let rollK = 0;
     let dgK = 0;
 
-    // Beam-line dive: blend the orbit toward the axis and back with a C2
-    // gate. While inside, position tracks the bore (x=y=0, z sweeping from
-    // the entry end through to the other side) and the gaze locks onto the
-    // fly-by landmark; speed rushes the empty bore and dwells (Gaussian in
-    // z) around the landmark. A single barrel roll spins across the inner
-    // plateau (it returns to exactly 2π ≡ 0, so the up-vector is continuous
-    // where the gate releases it).
+    // Beam-line dive — one continuous plunge shaped by OVERLAPPING smooth
+    // gates (see the DIVE_CLIMB/XY/SWEEP block): the height blends onto the
+    // z-track first, the radius collapses while the camera rides high over
+    // the end cap, and the z-track cos-sweeps the bore in the middle. No
+    // piecewise segments — the gates overlap, so the camera never passes
+    // through a dead stop between phases. The gaze swings to the fly-by
+    // landmark with the radial approach; speed dwells (Gaussian in z)
+    // around the landmark; the barrel roll spins inside the sweep (ends at
+    // exactly 2π ≡ 0, seam-safe via the sin/cos tables).
     if (dive && u > DIVE_U0 && u < DIVE_U1) {
       const tw = (u - DIVE_U0) / diveW;
-      const g = _sstep01(Math.min(tw, 1 - tw) / DIVE_RAMP_FRAC);
-      const zd = entrySign * Math.cos(tw * Math.PI) * DIVE_Z_MM;
-      posX *= 1 - g;
-      posY *= 1 - g;
-      posZ = posZ * (1 - g) + zd * g;
-      tgtX = tgtX * (1 - g) + lmX * g;
-      tgtY = tgtY * (1 - g) + lmY * g;
-      tgtZ = tgtZ * (1 - g) + lmZ * g;
-      const dz = zd - lmZ;
+      const twm = Math.min(tw, 1 - tw);
+      const gz = _sstep01(twm / DIVE_CLIMB_RAMP);
+      const gxy = _sstep01((twm - DIVE_XY_START) / DIVE_XY_RAMP);
+      const sw = Math.max(0, Math.min(1, (tw - DIVE_SWEEP_T0) / (DIVE_SWEEP_T1 - DIVE_SWEEP_T0)));
+      const zT = entrySign * DIVE_Z_MM * Math.cos(Math.PI * sw);
+
+      posX *= 1 - gxy;
+      posY *= 1 - gxy;
+      posZ = posZ * (1 - gz) + zT * gz;
+      tgtX = tgtX * (1 - gxy) + lmX * gxy;
+      tgtY = tgtY * (1 - gxy) + lmY * gxy;
+      tgtZ = tgtZ * (1 - gxy) + lmZ * gxy;
+      const dz = zT - lmZ;
       const sDive =
         DIVE_SPEED_FAST - (DIVE_SPEED_FAST - DIVE_SPEED_SLOW) * Math.exp(-dz * dz * inv2sDive);
-      s = s * (1 - g) + sDive * g;
-      rollK = 2 * Math.PI * _sstep01((tw - DIVE_ROLL_T0) / (DIVE_ROLL_T1 - DIVE_ROLL_T0));
-      dgK = g;
+      s = s * (1 - gz) + sDive * gz;
+      rollK = TWO_PI * _sstep01((tw - rollT0) / (rollT1 - rollT0));
+      dgK = gxy;
+    }
+
+    // Camera pole clearance gate (see POLE_* above): alignment is measured
+    // against the up this sample will actually use — world vertical plus
+    // the dive's roll/lift — so one mechanism covers the orbit pole passes
+    // AND the dive spirals. Scaled out by the dive gate so the bore flight
+    // itself is never perturbed (the fly-by lift owns that regime). The
+    // actual camera rise is applied after the loop, through a blurred copy
+    // of this gate.
+    {
+      let vx = tgtX - posX;
+      let vy = tgtY - posY;
+      let vz = tgtZ - posZ;
+      const vl = Math.hypot(vx, vy, vz) || 1;
+      vx /= vl;
+      vy /= vl;
+      vz /= vl;
+      let ux = Math.sin(rollK);
+      let uy = Math.cos(rollK);
+      let uz = DIVE_UP_LIFT * dgK;
+      const ul = Math.hypot(ux, uy, uz);
+      ux /= ul;
+      uy /= ul;
+      uz /= ul;
+      const aCand = Math.abs(vx * ux + vy * uy + vz * uz);
+      if (aCand > POLE_ALIGN_ON) {
+        gPole[k] = _sstep01((aCand - POLE_ALIGN_ON) / (POLE_ALIGN_FULL - POLE_ALIGN_ON));
+      }
     }
 
     px[k] = posX;
@@ -519,79 +658,49 @@ export function bakeTourPath(pois, opts = {}) {
     tz[k] = tgtZ;
     speed[k] = s;
     roll[k] = rollK;
+    // Stored as sin/cos, not as the angle: the roll ends at exactly 2π,
+    // and a LUT lerp of the ANGLE across the dive's exit boundary (2π → 0)
+    // would sweep the up through a full turn within one sample — an
+    // instant 360° barrel flip. sin/cos interpolate through that seam as
+    // the constants they are.
+    rollSin[k] = Math.sin(rollK);
+    rollCos[k] = Math.cos(rollK);
     dg[k] = dgK;
     invSpeedSum += 1 / s;
   }
 
-  // ── Up-field pass (see MAX_ROLL_STEP block above) ─────────────────────────
-  // Two laps: the first lets the anchored transport converge from its seed,
-  // the second writes the tables — so the wrap seam (sample n−1 → 0) carries
-  // no start-up transient and the loop closes cleanly.
+  // Camera pole clearance, applied through a blurred gate: two wrap-aware
+  // box passes spread the rise over ~4 s of path, so it ramps in gently
+  // even when the raw alignment band is narrow, and it survives the
+  // follower's smoothing lag with margin. Where the (blurred) gate is
+  // high, the camera z is pulled toward "look target + POLE_Z_SEP": the
+  // camera arcs over the top (or under the bottom) while the gaze stays
+  // on the detector.
   {
-    let ux = 0;
-    let uy = 1;
-    let uz = 0;
-    for (let lap = 0; lap < 2; lap++) {
+    const tmp = new Float64Array(n);
+    const w = 2 * POLE_BLUR_R + 1;
+    for (let pass = 0; pass < 2; pass++) {
+      let acc = 0;
+      for (let k = -POLE_BLUR_R; k <= POLE_BLUR_R; k++) acc += gPole[(k + n) % n];
       for (let k = 0; k < n; k++) {
-        // View direction of this sample.
-        let vx = tx[k] - px[k];
-        let vy = ty[k] - py[k];
-        let vz = tz[k] - pz[k];
-        const vl = Math.hypot(vx, vy, vz) || 1;
-        vx /= vl;
-        vy /= vl;
-        vz /= vl;
-
-        // 1. Transport: strip the view component from the running up.
-        let d = ux * vx + uy * vy + uz * vz;
-        ux -= vx * d;
-        uy -= vy * d;
-        uz -= vz * d;
-        const ul = Math.hypot(ux, uy, uz) || 1;
-        ux /= ul;
-        uy /= ul;
-        uz /= ul;
-
-        // 2. Anchor: reference up (world vertical / dive roll frame),
-        // projected ⊥ view. Skipped when the projection vanishes (the
-        // reference is parallel to the view — the exact pole crossing).
-        let cx = Math.sin(roll[k]);
-        let cy = Math.cos(roll[k]);
-        let cz = 0.32 * dg[k];
-        d = cx * vx + cy * vy + cz * vz;
-        cx -= vx * d;
-        cy -= vy * d;
-        cz -= vz * d;
-        const cl = Math.hypot(cx, cy, cz);
-        if (cl > 1e-4) {
-          cx /= cl;
-          cy /= cl;
-          cz /= cl;
-          // Signed angle from û to ĉ around v̂, clamped to the roll-rate
-          // budget, applied as a rotation of û about v̂ (both ⊥ v̂, so the
-          // rotation stays in their shared plane).
-          const sinA =
-            (uy * cz - uz * cy) * vx + (uz * cx - ux * cz) * vy + (ux * cy - uy * cx) * vz;
-          const cosA = ux * cx + uy * cy + uz * cz;
-          let a = Math.atan2(sinA, cosA);
-          if (a > MAX_ROLL_STEP) a = MAX_ROLL_STEP;
-          else if (a < -MAX_ROLL_STEP) a = -MAX_ROLL_STEP;
-          const ca = Math.cos(a);
-          const sa = Math.sin(a);
-          const wx = vy * uz - vz * uy;
-          const wy = vz * ux - vx * uz;
-          const wz = vx * uy - vy * ux;
-          ux = ux * ca + wx * sa;
-          uy = uy * ca + wy * sa;
-          uz = uz * ca + wz * sa;
-        }
-
-        if (lap === 1) {
-          upx[k] = ux;
-          upy[k] = uy;
-          upz[k] = uz;
-        }
+        tmp[k] = acc / w;
+        acc -= gPole[(k - POLE_BLUR_R + n) % n];
+        acc += gPole[(k + POLE_BLUR_R + 1) % n];
       }
+      gPole.set(tmp);
+    }
+    for (let k = 0; k < n; k++) {
+      // Masked by the dive's radial gate: the z-rise must never displace
+      // the flight plan while the camera is off the envelope — a vertical
+      // shove at intermediate radius is exactly how a path ends up inside
+      // calo cells. The dive's own choreography owns that regime.
+      //
+      // Always lifts UP (+z): a dive-dependent side selection was tried and
+      // discarded — any per-u sign choice puts a hard step somewhere (the
+      // loop seam being the killer). A +z crest followed by a −z dive reads
+      // as one long, continuous descent (~2 m/s), not as a reversal.
+      const g = gPole[k] * (1 - dg[k]);
+      if (g > 1e-4) pz[k] = pz[k] * (1 - g) + (tz[k] + POLE_Z_SEP_MM) * g;
     }
   }
 
@@ -601,7 +710,7 @@ export function bakeTourPath(pois, opts = {}) {
   const scale = invSpeedSum / n;
   for (let k = 0; k < n; k++) speed[k] *= scale;
 
-  return { n, px, py, pz, tx, ty, tz, speed, roll, dg, upx, upy, upz };
+  return { n, px, py, pz, tx, ty, tz, speed, roll, rollSin, rollCos, dg, diveSign: entrySign };
 }
 
 /**
@@ -658,45 +767,31 @@ export function samplePathSpeed(path, u) {
 }
 
 /**
- * Sample the barrel-roll angle (radians; 0 outside the dive) at u.
+ * Sample the barrel-roll orientation at u as a (sin, cos) pair written into
+ * `out`. Always sample the roll THROUGH this (never the raw angle): the
+ * angle table wraps 2π → 0 at the dive's exit boundary and lerping it
+ * there sweeps a full turn within one sample. The lerped pair is slightly
+ * sub-unit between samples; callers normalise (the up assembly already
+ * does).
  *
  * @param {TourPath} path
  * @param {number} u
+ * @param {{s:number, c:number}} out
  */
-export function samplePathRoll(path, u) {
-  return _lerpWrap(path.roll, path.n, u);
+export function samplePathRollSC(path, u, out) {
+  out.s = _lerpWrap(path.rollSin, path.n, u);
+  out.c = _lerpWrap(path.rollCos, path.n, u);
 }
 
 /**
  * Sample the dive gate (0 = on the orbit envelope, 1 = inside the bore).
- * Drives the renderer-side FOV push.
+ * Drives the renderer-side FOV push and the up-vector fly-by lift.
  *
  * @param {TourPath} path
  * @param {number} u
  */
 export function samplePathDiveGate(path, u) {
   return _lerpWrap(path.dg, path.n, u);
-}
-
-/**
- * Sample the baked camera up-vector at loop parameter u (normalised on the
- * way out — adjacent samples are near-parallel so lerp + renormalise is
- * exact for all practical purposes). Carries the dive barrel roll, the
- * fly-by lift AND the pole guard, so feeding it straight to camera.up is
- * flip-proof by construction.
- *
- * @param {TourPath} path
- * @param {number} u
- * @param {{x:number,y:number,z:number}} out
- */
-export function samplePathUp(path, u, out) {
-  out.x = _lerpWrap(path.upx, path.n, u);
-  out.y = _lerpWrap(path.upy, path.n, u);
-  out.z = _lerpWrap(path.upz, path.n, u);
-  const l = Math.hypot(out.x, out.y, out.z) || 1;
-  out.x /= l;
-  out.y /= l;
-  out.z /= l;
 }
 
 /**

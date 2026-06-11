@@ -12,14 +12,15 @@ import {
   samplePathSpeed,
   nearestPathU,
   filterPOIsByMinimap,
+  DIVE_UP_LIFT,
 } from '../public/js/cinema/tourPath.js';
 
 const R_SAFE_MM = 14000;
 const CAM_DIP_MM = 1100;
 const TWO_PI = Math.PI * 2;
 // Dive window — keep in sync with DIVE_U0/DIVE_U1 in tourPath.js.
-const DIVE_U0 = 0.7;
-const DIVE_U1 = 0.95;
+const DIVE_U0 = 0.3;
+const DIVE_U1 = 0.7;
 
 // Loop parameter at which the camera's world azimuth passes a POI at
 // ATLAS φ (with optional scene rotation): α(u) = 2πu − π and the POI sits
@@ -55,10 +56,9 @@ function bakeAll(pois, opts) {
     'tz',
     'speed',
     'roll',
+    'rollSin',
+    'rollCos',
     'dg',
-    'upx',
-    'upy',
-    'upz',
   ]) {
     for (let i = 0; i < path.n; i++) expect(Number.isFinite(path[key][i])).toBe(true);
   }
@@ -144,14 +144,16 @@ describe('bakeTourPath', () => {
     expect(zAtMinS).toBeLessThan(4200);
   });
 
-  it('keeps the up vector perpendicular to the line of sight (no flip glitch)', () => {
+  it('keeps the line of sight clear of the camera up axis (no lookAt flip)', () => {
     // The y-up orbit passes over/under the detector twice per loop with the
-    // gaze near the centre — with a fixed up, lookAt snap-rolls 180° there
-    // (the "scene flips for a moment" glitch). The baked up field is
-    // parallel-transported, so view ⊥ up holds at EVERY sample by
-    // construction. Stress all three regimes: default orbit (exact
-    // degeneracy at u=0.25), POI-steered, and a slicer pendulum centred
-    // exactly on the pole.
+    // gaze near the centre — if the line of sight reaches the up axis,
+    // lookAt snap-rolls 180° (the "scene flips for a moment" glitch). The
+    // bake lifts the CAMERA over the poles (z-separation from its look
+    // target) so the alignment is capped at a safe angle at every sample,
+    // while the gaze — and therefore the framing — never leaves the
+    // detector. Stress all three regimes: default orbit (exact degeneracy
+    // at u=0.25 without the guard), POI-steered, and a slicer pendulum
+    // centred on the pole.
     const cases = [
       bakeTourPath([]),
       bakeTourPath(ZIGZAG_POIS),
@@ -164,18 +166,14 @@ describe('bakeTourPath', () => {
         const vz = path.tz[i] - path.pz[i];
         const vl = Math.hypot(vx, vy, vz);
         expect(vl).toBeGreaterThan(1);
-        const dot = Math.abs((vx * path.upx[i] + vy * path.upy[i] + vz * path.upz[i]) / vl);
-        expect(dot).toBeLessThan(0.02);
-        expect(Math.hypot(path.upx[i], path.upy[i], path.upz[i])).toBeCloseTo(1, 5);
+        // The exact up cinema.js uses at this sample (roll + fly-by lift).
+        const ux = Math.sin(path.roll[i]);
+        const uy = Math.cos(path.roll[i]);
+        const uz = DIVE_UP_LIFT * path.dg[i];
+        const ul = Math.hypot(ux, uy, uz);
+        const dot = Math.abs((vx * ux + vy * uy + vz * uz) / (vl * ul));
+        expect(dot).toBeLessThan(0.945);
       }
-      // The loop seam must close: the up at the last sample matches the
-      // first within one roll-rate step (no transient at the wrap).
-      const seam = Math.hypot(
-        path.upx[0] - path.upx[path.n - 1],
-        path.upy[0] - path.upy[path.n - 1],
-        path.upz[0] - path.upz[path.n - 1],
-      );
-      expect(seam).toBeLessThan(0.2);
     }
   });
 
@@ -190,21 +188,76 @@ describe('bakeTourPath', () => {
     expect(maxRoll).toBeCloseTo(2 * Math.PI, 3);
   });
 
-  it('has no cusps: per-sample steps stay bounded even for η-zigzag POIs', () => {
-    // A uniform circular orbit of radius 14 m steps ~2π·14000/720 ≈ 122 mm
-    // per sample; the dive's spiral adds a bounded radial component. A
-    // hairpin reversal would produce multi-thousand-mm steps.
-    const MAX_STEP_MM = 600;
-    for (const opts of [undefined, { arc: { center: 0.5, halfWidth: 0.9 } }]) {
-      const path = bakeTourPath(ZIGZAG_POIS, opts);
+  it('roll sin/cos tables carry no wrap seam (no 360° up-whip at the dive exit)', () => {
+    // The roll ANGLE ends at exactly 2π and the next sample reads 0 — a
+    // lerp of the angle across that boundary sweeps the up through a full
+    // turn within one sample (the "flip when leaving the centre" glitch).
+    // The runtime samples sin/cos, which must therefore step by at most a
+    // few degrees between ANY adjacent samples, seam included.
+    for (const pois of [[], ZIGZAG_POIS]) {
+      const path = bakeTourPath(pois);
+      // Budget: full roll over DIVE_ROLL_LEN of the window at peak
+      // smootherstep slope ≈ 0.23 rad/sample. A wrap seam would show as ~2π.
+      const minDot = Math.cos(0.26);
       for (let i = 0; i < path.n; i++) {
         const j = (i + 1) % path.n;
-        const step = Math.hypot(
-          path.px[j] - path.px[i],
-          path.py[j] - path.py[i],
-          path.pz[j] - path.pz[i],
-        );
-        expect(step).toBeLessThan(MAX_STEP_MM);
+        const dot = path.rollSin[i] * path.rollSin[j] + path.rollCos[i] * path.rollCos[j];
+        expect(dot).toBeGreaterThan(minDot);
+      }
+    }
+  });
+
+  it('has no cusps: bounded steps and no hairpin turns, even for η-zigzag POIs', () => {
+    // A uniform circular orbit of radius 14 m steps ~2π·14000/720 ≈ 122 mm
+    // per sample; the dive's climb/approach segments are longer but still
+    // bounded. Cusps are caught by the TURN limit: the direction change
+    // between consecutive steps must stay small (tiny steps are skipped —
+    // direction is numerically meaningless there).
+    const MAX_STEP_MM = 900;
+    const MAX_TURN_RAD = 0.35;
+    for (const opts of [undefined, { arc: { center: 0.5, halfWidth: 0.9 } }]) {
+      const path = bakeTourPath(ZIGZAG_POIS, opts);
+      const dx = new Float64Array(path.n);
+      const dy = new Float64Array(path.n);
+      const dz = new Float64Array(path.n);
+      for (let i = 0; i < path.n; i++) {
+        const j = (i + 1) % path.n;
+        dx[i] = path.px[j] - path.px[i];
+        dy[i] = path.py[j] - path.py[i];
+        dz[i] = path.pz[j] - path.pz[i];
+        expect(Math.hypot(dx[i], dy[i], dz[i])).toBeLessThan(MAX_STEP_MM);
+      }
+      // Hairpins show as large ADJACENT steps pointing apart. Slow corners
+      // (the flight plan's L-joints, where rates pass through ~0) are fine:
+      // either step being small means the turn is traversed gradually.
+      for (let i = 0; i < path.n; i++) {
+        const j = (i + 1) % path.n;
+        const l1 = Math.hypot(dx[i], dy[i], dz[i]);
+        const l2 = Math.hypot(dx[j], dy[j], dz[j]);
+        if (l1 < 120 || l2 < 120) continue;
+        const cosT = (dx[i] * dx[j] + dy[i] * dy[j] + dz[i] * dz[j]) / (l1 * l2);
+        expect(cosT).toBeGreaterThan(Math.cos(MAX_TURN_RAD));
+      }
+    }
+  });
+
+  it('the dive never enters the calorimeter volume (no cell fly-through)', () => {
+    // Forbidden region: inside the calo cylinder (r < 4.9 m AND |z| < 6.5 m)
+    // anywhere off the beam corridor (r > 150 mm). The L-shaped flight plan
+    // must hold ±DIVE_Z while the radius collapses, entering the calo z-range
+    // only once pinned to the axis.
+    const cases = [
+      bakeTourPath([]),
+      bakeTourPath(ZIGZAG_POIS),
+      bakeTourPath([{ eta: 2.5, phi: 1.0, energyMev: 100000 }]), // reversed dive
+      bakeTourPath(ZIGZAG_POIS, { arc: { center: Math.PI / 2, halfWidth: 0.8 } }),
+    ];
+    for (const path of cases) {
+      for (let i = 0; i < path.n; i++) {
+        const r = Math.hypot(path.px[i], path.py[i]);
+        if (r > 150 && r < 4900) {
+          expect(Math.abs(path.pz[i])).toBeGreaterThan(6500);
+        }
       }
     }
   });
@@ -259,11 +312,13 @@ describe('bakeTourPath', () => {
   });
 
   it('soft-clamps the camera height into the slicer z window in arc mode', () => {
-    // Forward POIs pull hard toward +z; the window must win.
+    // Forward POIs pull hard toward +z; the window must win. The arc is
+    // centred away from the ±y poles so the pole-clearance rise (which is
+    // allowed to leave the window for lookAt safety) stays out of play.
     const pois = [{ eta: 2.5, phi: 1.0, energyMev: 100000 }];
     const zWindow = { min: -2000, max: 2000 };
     const path = bakeTourPath(pois, {
-      arc: { center: 1.0, halfWidth: 0.6 },
+      arc: { center: 0.0, halfWidth: 0.6 },
       zWindow,
       dive: false,
     });
