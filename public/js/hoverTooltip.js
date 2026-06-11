@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { canvas, camera, controls, scene, markDirty } from './renderer.js';
-import { active, rayTargets } from './state.js';
+import { active } from './state.js';
+import { pickCell } from './megaCells.js';
+import { getWedgeMask, insideWedge } from './wedgeClip.js';
 import {
   fcalGroup,
   fcalVisibleMap,
@@ -22,7 +24,11 @@ import {
 } from './outlines.js';
 import { showTrackHits, hideTrackHits, getHitsEnabled } from './overlays/hitsOverlay.js';
 import { buildExtrasHtml } from './tooltipRows.js';
-import { getMuonChamberMeshes, showChamberHoverOutline } from './trackAtlasIntersections.js';
+import {
+  getMuonChamberMeshes,
+  showChamberHoverOutline,
+  CHAMBER_RAYCAST_LAYER,
+} from './trackAtlasIntersections.js';
 import { getMuonAliasForMesh, getStationMeshes } from './visibility/muonAliases.js';
 import { leptonSymbol, tauSymbolFromCharge } from './particleSymbols.js';
 import { getCellMetric, etMevFromE } from './cellMetric.js';
@@ -227,6 +233,10 @@ function _addPin(key, anchor, alive, outline) {
 
 const raycast = new THREE.Raycaster();
 raycast.firstHitOnly = true; // stop after first intersection (much faster)
+// Chamber bodies render via the merged mega mesh but stay raycastable as
+// individual meshes on a camera-invisible layer — opt the hover ray in.
+raycast.layers.enable(CHAMBER_RAYCAST_LAYER);
+const _fcalPickMat = new THREE.Matrix4(); // scratch for FCAL wedge-carve check
 raycast.params.Line = { threshold: 40 }; // 40 mm hit zone for ID tracks / photons
 // Muon tracks live at much larger radii (~10 m) and are typically watched
 // from further away, so they want a wider raycast threshold to be easy to
@@ -447,18 +457,15 @@ function doRaycast(clientX, clientY) {
     let cellHit = null,
       cellHandle = null,
       cellDist = Infinity;
-    if (active.size && rayTargets.length) {
-      const hits = raycast.intersectObjects(rayTargets, false);
-      for (let i = 0; i < hits.length; i++) {
-        const hit = hits[i];
-        const iid = hit.instanceId;
-        if (iid == null) continue;
-        const h = hit.object.userData.handles?.[iid];
-        if (!h || !active.has(h)) continue;
-        cellHit = hit;
-        cellHandle = h;
-        cellDist = hit.distance;
-        break; // hits are sorted; first active match is closest
+    if (active.size) {
+      // Cell picking goes through megaCells.pickCell — the merged cell meshes
+      // have per-texel visibility the stock raycaster can't see. The pick
+      // already skips hidden and wedge-carved cells.
+      const pick = pickCell(raycast, { requireActive: active });
+      if (pick) {
+        cellHit = pick;
+        cellHandle = pick.handle;
+        cellDist = pick.distance;
       }
     }
     let fcalHit = null,
@@ -468,8 +475,13 @@ function doRaycast(clientX, clientY) {
       if (iMesh) {
         const hits = raycast.intersectObject(iMesh, false);
         if (hits.length && hits[0].instanceId != null && fcalVisibleMap[hits[0].instanceId]) {
-          fcalHit = hits[0];
-          fcalDist = hits[0].distance;
+          // Skip tubes the GPU wedge is currently hiding (live drag carve).
+          iMesh.getMatrixAt(hits[0].instanceId, _fcalPickMat);
+          const e = _fcalPickMat.elements;
+          if (!insideWedge(e[12], e[13], e[14], getWedgeMask())) {
+            fcalHit = hits[0];
+            fcalDist = hits[0].distance;
+          }
         }
       }
     }
@@ -481,7 +493,7 @@ function doRaycast(clientX, clientY) {
       const valGev = isET ? data.etMev / 1000 : data.energyGev;
       _finishHit({
         anchor: cellHit.point,
-        key: `cell:${cellHandle.iMesh.uuid}:${cellHandle.instId}`,
+        key: `cell:${cellHandle.det}:${cellHandle.slot}`,
         alive: () => active.has(cellHandle) && cellHandle.visible,
         outline: { kind: 'cell', handle: cellHandle },
         outlineAction: () => (wantTooltip ? showOutline(cellHandle) : clearOutline()),

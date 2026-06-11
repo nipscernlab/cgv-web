@@ -1,14 +1,6 @@
 // @ts-check
-import * as THREE from 'three';
-import {
-  active,
-  cellMeshesByDet,
-  rayTargets,
-  _ZERO_MAT4,
-  _markIMDirty,
-  _flushIMDirty,
-  _rayIMeshes,
-} from './state.js';
+import { active, cellMeshesByDet } from './state.js';
+import { setCellVisible, setCellColor, flushCells } from './megaCells.js';
 import {
   PAL_TILE_COLOR,
   PAL_LAR_COLOR,
@@ -294,38 +286,14 @@ export function clearVisibilityState() {
 }
 
 // ── Core cell handle visibility primitive ─────────────────────────────────────
+// Visibility is one byte in the detector's mega texture (megaCells.js); the
+// slicer wedge is applied on the GPU and never touches these flags.
 /**
  * @param {import('./state.js').CellHandle} h
  * @param {boolean} vis
  */
 function _setHandleVisible(h, vis) {
-  if (h.visible === vis) return;
-  h.visible = vis;
-  h.iMesh.setMatrixAt(h.instId, vis ? h.origMatrix : _ZERO_MAT4);
-  _markIMDirty(h.iMesh);
-}
-
-function _rebuildRayIMeshes() {
-  _rayIMeshes.clear();
-  for (const h of visHandles) _rayIMeshes.add(h.iMesh);
-  rayTargets.length = 0;
-  _rayIMeshes.forEach((im) => rayTargets.push(im));
-}
-
-// Cached world-space centre of a cell handle (derived from origMatrix).
-/** @param {import('./state.js').CellHandle} h  @returns {THREE.Vector3} */
-function _cellCenter(h) {
-  if (h._center) return h._center;
-  const m = h.origMatrix.elements;
-  const c = new THREE.Vector3(m[12], m[13], m[14]);
-  if (c.lengthSq() < 1e-6) {
-    const geo = h.iMesh.geometry;
-    if (!geo.boundingSphere) geo.computeBoundingSphere();
-    const bs = geo.boundingSphere;
-    if (bs) c.copy(bs.center).applyMatrix4(h.origMatrix);
-  }
-  h._center = c;
-  return c;
+  setCellVisible(h, vis);
 }
 
 // Called by the slicer's onHideNonActiveShowAll callback: hide all non-active cells.
@@ -337,7 +305,7 @@ export function hideNonActiveCells() {
       if (!active.has(h)) _setHandleVisible(h, false);
     }
   }
-  _flushIMDirty();
+  flushCells();
 }
 
 // ── Track threshold ───────────────────────────────────────────────────────────
@@ -491,21 +459,19 @@ export function applyTauPtThreshold() {
 }
 
 // ── Non-active cells in show-all mode ────────────────────────────────────────
-// Sweeps every cell absent from `active` and makes it visible (painted with
-// the minimum-palette colour) unless the slicer wedge covers its centre.
-// Appends newly-visible handles to visHandles so outlines and raycasting include them.
+// Sweeps every cell absent from `active` and makes it visible, painted with
+// the minimum-palette colour. The slicer wedge is NOT tested here — it is a
+// GPU uniform (wedgeClip.js), so the carve follows the drag with zero CPU
+// work. Appends newly-visible handles to visHandles so outlines, raycasting
+// and particle endpoints include them.
 function _syncNonActiveShowAll() {
   if (!_slicer?.isShowAllCells()) return;
-  // Pin a non-null reference for the closure below — TS can't narrow `_slicer`
-  // through the lambda boundary even though we just guarded above.
-  const slicer = _slicer;
-  const slicerMask = slicer.getMaskState();
   // Each handle resolves its own visibility flag via h.subDet, so the sweep
   // doesn't need to be split per sub-region — just per top-level detector for
   // the minimum-palette colour.
   /**
    * @param {import('./state.js').CellHandle[]} list
-   * @param {THREE.Color} minColor
+   * @param {import('three').Color} minColor
    */
   const sweep = (list, minColor) => {
     for (let i = 0; i < list.length; i++) {
@@ -515,17 +481,9 @@ function _syncNonActiveShowAll() {
         _setHandleVisible(h, false);
         continue;
       }
-      let vis = true;
-      if (slicerMask.active) {
-        const c = _cellCenter(h);
-        if (slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) vis = false;
-      }
-      if (vis) {
-        h.iMesh.setColorAt(h.instId, minColor);
-        _markIMDirty(h.iMesh);
-        visHandles.push(h);
-      }
-      _setHandleVisible(h, vis);
+      setCellColor(h, minColor);
+      visHandles.push(h);
+      _setHandleVisible(h, true);
     }
   };
   sweep(cellMeshesByDet.TILE, PAL_TILE_COLOR[0]);
@@ -534,18 +492,15 @@ function _syncNonActiveShowAll() {
 }
 
 // ── Main threshold application (Tile / LAr EM / HEC) ─────────────────────────
-// Both branches (slicer-active via _applySlicerMask, regular per-cell sweep)
-// fall through to the same particle-endpoint refresh at the end. The internal
-// applyFcalThreshold call inside _applySlicerMask has its own hook — the
-// suppress wrapper around the body silences it so we only refresh once.
+// Single pass for both slicer and non-slicer states: the wedge carve lives
+// entirely on the GPU (wedgeClip.js uniforms), so the CPU sweep only decides
+// detector / threshold / cluster / region visibility. Slicer drags never
+// re-enter this function — only enable/disable and the usual filter changes do.
 export function applyThreshold() {
   withCoalescedCaloBoundRefresh(() => {
-    if (_slicer?.isActive()) {
-      _applySlicerMask();
-      return;
-    }
     visHandles = [];
     _visibleForHeatmap = [];
+    const showAll = !!_slicer?.isShowAllCells();
     const acIds = getActiveClusterCellIds();
     const amLabels = getActiveMbtsLabels();
     for (const [h, { energyMev, etMev, det, cellId, mbtsLabel, eta, phi }] of active) {
@@ -563,8 +518,8 @@ export function applyThreshold() {
       } else {
         inCluster = true;
       }
-      const passThr = _slicer?.isShowAllCells() || !isFinite(thr) || cellVal >= thr;
-      const passCl = _slicer?.isShowAllCells() || inCluster;
+      const passThr = showAll || !isFinite(thr) || cellVal >= thr;
+      const passCl = showAll || inCluster;
       const passPreRegion = detOn && passThr && passCl;
       const passRegion = _inEtaPhiRegion(eta, phi);
       const vis = passPreRegion && passRegion;
@@ -580,73 +535,11 @@ export function applyThreshold() {
       if (passHeatmap) _visibleForHeatmap.push({ eta, phi, energyMev: cellVal });
     }
     _syncNonActiveShowAll();
-    _flushIMDirty();
-    _rebuildRayIMeshes();
+    flushCells();
     rebuildAllOutlines();
     markDirty();
     _notifyHeatmap();
   });
-}
-
-// ── Slicer-masked threshold (called by applyThreshold when slicer is active) ──
-function _applySlicerMask() {
-  // Caller (applyThreshold) already gated on `_slicer?.isActive()`, so a null
-  // _slicer here would be a bug — assert and pin a non-null local for TS.
-  if (!_slicer) return;
-  const slicer = _slicer;
-  visHandles = [];
-  _visibleForHeatmap = [];
-  const slicerMask = slicer.getMaskState();
-  const acIds = getActiveClusterCellIds();
-  const amLabels = getActiveMbtsLabels();
-  for (const [h, { energyMev, etMev, det, cellId, mbtsLabel, eta, phi }] of active) {
-    const thr = det === 'LAR' ? thrLArMev : det === 'HEC' ? thrHecMev : thrTileMev;
-    // Threshold + heatmap compare against the active metric (E or E_T).
-    const cellVal = metricValueOf(energyMev, etMev);
-    const detOn = _detOnFor(h);
-    let inCluster;
-    if (acIds === null) {
-      inCluster = true;
-    } else if (mbtsLabel != null) {
-      inCluster = amLabels !== null && amLabels.has(mbtsLabel);
-    } else if (cellId != null) {
-      inCluster = acIds.has(cellId);
-    } else {
-      inCluster = true;
-    }
-    const passThr = slicer.isShowAllCells() || !isFinite(thr) || cellVal >= thr;
-    const passCl = slicer.isShowAllCells() || inCluster;
-    const passPreRegion = detOn && passThr && passCl;
-    const passRegion = _inEtaPhiRegion(eta, phi);
-    let passSlicer = true;
-    if (passPreRegion) {
-      const c = _cellCenter(h);
-      if (slicer.isPointInsideWedge(c.x, c.y, c.z, slicerMask)) passSlicer = false;
-    }
-    const vis = passPreRegion && passRegion && passSlicer;
-    _setHandleVisible(h, vis);
-    if (vis) visHandles.push(h);
-    // Heatmap inclusion: detector + energy threshold + cluster filter only.
-    // The slicer wedge is deliberately NOT applied here — it would punch
-    // wedge-shaped holes into the heatmap that move with the slicer drag,
-    // making the overview hard to read. The minimap stays as a stable map
-    // of the event while the slicer carves the 3D scene. (Also applies the
-    // raw threshold even when slicer.isShowAllCells() is true, so toggling
-    // the slicer doesn't suddenly repaint a flood of low-energy cells.)
-    // energyMev field carries the active-metric value.
-    const passHeatmap = detOn && (!isFinite(thr) || cellVal >= thr) && inCluster;
-    if (passHeatmap) _visibleForHeatmap.push({ eta, phi, energyMev: cellVal });
-  }
-  _syncNonActiveShowAll();
-  _flushIMDirty();
-  _rebuildRayIMeshes();
-  rebuildAllOutlines();
-  applyFcalThreshold();
-  markDirty();
-  _notifyHeatmap();
-  // Particle-endpoint refresh is owned by the caller (applyThreshold's slicer
-  // branch) — _applySlicerMask runs inside applyFcalThreshold's hook (skipped
-  // via the suppress flag during applyThreshold's downstream call).
 }
 
 // ── Cell-metric recolour ─────────────────────────────────────────────────────
@@ -696,21 +589,19 @@ export function recolorActiveCells() {
     const v = metricValueOf(e.energyMev, e.etMev);
     const col =
       e.det === 'LAR' ? palColorLAr(v) : e.det === 'HEC' ? palColorHec(v) : palColorTile(v);
-    h.iMesh.setColorAt(h.instId, col);
-    _markIMDirty(h.iMesh);
+    setCellColor(h, col);
   }
-  _flushIMDirty();
+  flushCells();
   markDirty();
   return { tile, lar, hec };
 }
 
 // ── High-level entry point ────────────────────────────────────────────────────
-// Avoids double FCAL rebuild when slicer is active (_applySlicerMask already
-// calls applyFcalThreshold internally). Single particle-endpoint refresh at
-// the end — see applyClusterThreshold for the rationale.
+// Single particle-endpoint refresh at the end — see applyClusterThreshold for
+// the rationale.
 export function refreshSceneVisibility() {
   withCoalescedCaloBoundRefresh(() => {
     applyThreshold();
-    if (!_slicer?.isActive()) applyFcalThreshold();
+    applyFcalThreshold();
   });
 }

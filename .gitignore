@@ -48,3 +48,4 @@ yarn-error.log*
 # ── Committed npm lockfile is intentional (build reproducibility).
 # If you want to exclude it, uncomment the next line:
 # package-lock.json
+.smoke/

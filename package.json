@@ -45,8 +45,9 @@
     "lint:fix":     "eslint --fix \"public/js/**/*.js\" \"tools/setup/**/*.mjs\" \"tests/**/*.mjs\"",
     "format":       "prettier --write \"public/js/**/*.js\" \"tools/setup/**/*.mjs\" \"tests/**/*.mjs\" \"public/css/**/*.css\" public/index.html",
     "format:check": "prettier --check \"public/js/**/*.js\" \"tools/setup/**/*.mjs\" \"tests/**/*.mjs\" \"public/css/**/*.css\" public/index.html",
-    "test":         "vitest run",
-    "test:watch":   "vitest",
+    "test":         "vitest run --exclude \"tests/smoke/**\"",
+    "test:watch":   "vitest --exclude \"tests/smoke/**\"",
+    "smoke":        "node tests/smoke/run.mjs",
     "typecheck":    "tsc --noEmit"
   },
   "dependencies": {
@@ -62,6 +63,7 @@
     "eslint-config-prettier": "^9.1.0",
     "globals": "^15.12.0",
     "@types/three": "^0.162.0",
+    "playwright-core": "^1.60.0",
     "prettier": "^3.4.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.5"

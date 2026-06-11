@@ -19,8 +19,20 @@ import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
 import { applyTrackMaterials } from './trackMaterials.js';
 import { initTrackMatch } from './trackMatch.js';
+import { applyWedgeClipWorld, WEDGE_GLSL, WEDGE_UNIFORMS } from './wedgeClip.js';
 
-// Chamber materials (only used here — not exported).
+// Raycast-only layer for the individual chamber body meshes. Their RENDERING
+// is owned by the merged chamber mega mesh below (one draw call for all
+// ~thousands of chambers); the individual meshes stay in the scene, visible-
+// flagged exactly as before, so hover picking, per-station outlines and the
+// layers-panel toggles keep their per-mesh granularity. The camera renders
+// layer 0 only, so layer 1 objects are raycastable but never drawn.
+export const CHAMBER_RAYCAST_LAYER = 1;
+
+// Chamber materials (only used here — not exported). Both carry the slicer
+// wedge as a per-fragment GPU clip (wedgeClip.js): the cut carves through the
+// chamber bodies and their outlines in real time during a slicer drag, with
+// zero per-chamber CPU work.
 const atlasTrackHitMat = new THREE.MeshBasicMaterial({
   color: 0x4a90d9,
   transparent: true,
@@ -28,12 +40,14 @@ const atlasTrackHitMat = new THREE.MeshBasicMaterial({
   depthWrite: false,
   side: THREE.DoubleSide,
 });
+applyWedgeClipWorld(atlasTrackHitMat);
 const trackAtlasOutlineMat = new THREE.LineBasicMaterial({
   color: 0x4a90d9,
   transparent: true,
   opacity: 0.15,
   depthWrite: false,
 });
+applyWedgeClipWorld(trackAtlasOutlineMat);
 
 // Atlas subtree names whose descendants are the chamber meshes we test.
 const TRACK_ATLAS_TARGET_NODE_NAMES = ['MUCH_1', 'MUC1_2'];
@@ -42,6 +56,7 @@ const TRACK_ATLAS_TARGET_NODE_NAMES = ['MUCH_1', 'MUC1_2'];
 // inside the per-track loop (called every time a track-affecting state
 // changes, can happen many times per second during slider drags).
 const _trackAtlasRay = new THREE.Raycaster();
+_trackAtlasRay.layers.enable(CHAMBER_RAYCAST_LAYER);
 const _trackAtlasSegA = new THREE.Vector3();
 const _trackAtlasSegB = new THREE.Vector3();
 const _trackAtlasDir = new THREE.Vector3();
@@ -80,6 +95,11 @@ export function setAtlasRoot(tree) {
   _trackAtlasOutlineMeshes = null;
   _trackAtlasOutlineMeshSet = null;
   _trackAtlasMeshBoxes = null;
+  if (_chamberMega) {
+    scene.remove(_chamberMega.mesh);
+    _chamberMega.mesh.geometry.dispose();
+    _chamberMega = null;
+  }
   // Chamber meshes change with a new atlas tree → per-track chamber caches
   // are stale. Lines stay between events; explicit reset here. (Fresh-event
   // path goes through clearTracks → new line objects → no cache to drop.)
@@ -158,6 +178,119 @@ function _collectAtlasNodesAtDepth(node, depth, out = []) {
   }
   for (const child of node.children.values()) _collectAtlasNodesAtDepth(child, depth - 1, out);
   return out;
+}
+
+// ── Merged chamber mega mesh ─────────────────────────────────────────────────
+// All chamber bodies baked (scene-local, ×10 atlas scale included) into ONE
+// BufferGeometry with a per-vertex chamber slot. Per-chamber visibility lives
+// in a 1-texel-per-chamber DataTexture mirrored from mesh.visible inside
+// updateTrackAtlasIntersections — pixel-identical to drawing the individual
+// translucent boxes, at 1 draw call instead of ~3.5k in slicer show-all.
+// The slicer wedge cuts per fragment (baked positions are scene-local, so
+// no counter-rotation is needed).
+const CHAMBER_TEX_W = 2048;
+/** @type {{ mesh: THREE.Mesh, tex: THREE.DataTexture, data: Uint8Array,
+ *           slotOf: Map<any, number> } | null} */
+let _chamberMega = null;
+
+/** @param {any[]} meshes */
+function _buildChamberMega(meshes) {
+  if (_chamberMega || !meshes.length) return;
+  scene.updateMatrixWorld(true);
+  let nVerts = 0;
+  let nIdx = 0;
+  for (const m of meshes) {
+    const pos = m.geometry.attributes.position;
+    nVerts += pos.count;
+    nIdx += m.geometry.index ? m.geometry.index.count : pos.count;
+  }
+  const posArr = new Float32Array(nVerts * 3);
+  const slotArr = new Float32Array(nVerts);
+  const idxArr = nVerts > 65535 ? new Uint32Array(nIdx) : new Uint16Array(nIdx);
+  const texH = Math.max(1, Math.ceil(meshes.length / CHAMBER_TEX_W));
+  const data = new Uint8Array(CHAMBER_TEX_W * texH * 4);
+  const slotOf = new Map();
+  let vOff = 0;
+  let iOff = 0;
+  for (let slot = 0; slot < meshes.length; slot++) {
+    const m = meshes[slot];
+    slotOf.set(m, slot);
+    const pos = m.geometry.attributes.position;
+    const idx = m.geometry.index;
+    const e = m.matrixWorld.elements;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i),
+        y = pos.getY(i),
+        z = pos.getZ(i);
+      const o = (vOff + i) * 3;
+      posArr[o] = e[0] * x + e[4] * y + e[8] * z + e[12];
+      posArr[o + 1] = e[1] * x + e[5] * y + e[9] * z + e[13];
+      posArr[o + 2] = e[2] * x + e[6] * y + e[10] * z + e[14];
+      slotArr[vOff + i] = slot;
+    }
+    if (idx) {
+      for (let i = 0; i < idx.count; i++) idxArr[iOff + i] = vOff + idx.getX(i);
+      iOff += idx.count;
+    } else {
+      for (let i = 0; i < pos.count; i++) idxArr[iOff + i] = vOff + i;
+      iOff += pos.count;
+    }
+    vOff += pos.count;
+    // Render ownership moves to the mega mesh; the individual mesh becomes a
+    // raycast-only proxy (hover, track-hit tests) on the non-rendered layer.
+    m.layers.set(CHAMBER_RAYCAST_LAYER);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  geo.setAttribute('aSlot', new THREE.BufferAttribute(slotArr, 1));
+  geo.setIndex(new THREE.BufferAttribute(idxArr, 1));
+  const tex = new THREE.DataTexture(data, CHAMBER_TEX_W, texH, THREE.RGBAFormat);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: {
+      ...WEDGE_UNIFORMS,
+      uChamberTex: { value: tex },
+      uColor: { value: new THREE.Color(0x4a90d9) },
+      uOpacity: { value: 0.035 },
+    },
+    defines: { CGV_TEXW: CHAMBER_TEX_W },
+    vertexShader:
+      WEDGE_GLSL +
+      /* glsl */ `
+attribute float aSlot;
+uniform sampler2D uChamberTex;
+varying vec3 vScenePos;
+void main() {
+  int s = int(aSlot + 0.5);
+  float vis = texelFetch(uChamberTex, ivec2(s % CGV_TEXW, s / CGV_TEXW), 0).a;
+  vScenePos = position;
+  gl_Position = vis < 0.5
+    ? vec4(2.0, 2.0, 2.0, 1.0)
+    : projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`,
+    fragmentShader:
+      WEDGE_GLSL +
+      /* glsl */ `
+varying vec3 vScenePos;
+uniform vec3 uColor;
+uniform float uOpacity;
+void main() {
+  if (cgvInsideWedge(vScenePos)) discard;
+  gl_FragColor = vec4(uColor, uOpacity);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`,
+  });
+  const mega = new THREE.Mesh(geo, mat);
+  mega.name = 'muon-chambers-merged';
+  mega.frustumCulled = false;
+  scene.add(mega);
+  _chamberMega = { mesh: mega, tex, data, slotOf };
 }
 
 function _ensureTrackAtlasOutline(mesh) {
@@ -241,6 +374,7 @@ function _resolveTrackAtlasTargets() {
   // restrict slicer-mode rendering to outer chamber boxes only (skip the
   // inner-leaf hierarchy that would otherwise show through the cut faces).
   _trackAtlasOutlineMeshSet = new Set(outlineMeshes);
+  _buildChamberMega(meshes);
   return { nodes, meshes, outlineMeshes };
 }
 
@@ -269,18 +403,17 @@ export function updateTrackAtlasIntersections() {
   const hitTracks = new Set();
 
   // Slicer state — when active in show-all mode, every chamber the panel
-  // allows is shown (no track-hit gate) and the wedge cut carves through them
-  // just like through calo cells.
+  // allows is shown (no track-hit gate). The wedge cut itself is a GPU
+  // fragment clip on the chamber materials (see top of file), so no per-mesh
+  // wedge test is needed here.
   const slicer = _getSlicer();
-  const slicerMask = slicer?.getMaskState() ?? null;
   const showAllChambers = !!slicer?.isShowAllCells();
 
-  if (allTracks.length || slicerMask?.active) {
+  if (allTracks.length) {
     scene.updateMatrixWorld(true);
 
-    // Cache world-space AABBs for all target meshes once (static geometry).
-    // Needed both for per-track raycast AABB pre-filter and for the per-mesh
-    // wedge-mask centre test below.
+    // Cache world-space AABBs for all target meshes once (static geometry) —
+    // used by the per-track raycast AABB pre-filter.
     if (!_trackAtlasMeshBoxes) {
       _trackAtlasMeshBoxes = meshes.map((m) => new THREE.Box3().setFromObject(m));
     }
@@ -352,29 +485,25 @@ export function updateTrackAtlasIntersections() {
   //   - Show-all (slicer active): track-hit gate is dropped — every OUTER
   //     chamber the panel allows shows up. Inner-leaf meshes (the deeper
   //     hierarchy) stay hidden because they'd render as overlapping shapes
-  //     inside the outer box. The wedge then carves chambers whose AABB
-  //     centre falls inside the cut, mirroring how cells behave.
+  //     inside the outer box. The wedge carve is the materials' GPU clip.
   let changed = false;
+  const megaData = _chamberMega?.data ?? null;
   for (let mi = 0; mi < meshes.length; mi++) {
     const mesh = meshes[mi];
     const baseShow = showAllChambers
       ? (_trackAtlasOutlineMeshSet?.has(mesh) ?? false)
       : hitMeshes.has(mesh);
-    let next = baseShow && !!mesh.userData.muonForceVisible;
-    if (next && slicerMask?.active) {
-      const box = _trackAtlasMeshBoxes?.[mi];
-      if (box) {
-        const cx = (box.min.x + box.max.x) * 0.5;
-        const cy = (box.min.y + box.max.y) * 0.5;
-        const cz = (box.min.z + box.max.z) * 0.5;
-        if (slicer.isPointInsideWedge(cx, cy, cz, slicerMask)) next = false;
-      }
-    }
+    const next = baseShow && !!mesh.userData.muonForceVisible;
     if (mesh.visible !== next) {
       mesh.visible = next;
+      // Mirror into the merged-chamber visibility texture — the mega mesh is
+      // what actually renders the body; mesh.visible keeps driving raycast
+      // filters and the per-mesh outline children.
+      if (megaData) megaData[mi * 4 + 3] = next ? 255 : 0;
       changed = true;
     }
   }
+  if (changed && _chamberMega) _chamberMega.tex.needsUpdate = true;
   for (const mesh of meshes) {
     if (mesh.userData.trackAtlasOutline)
       mesh.userData.trackAtlasOutline.visible = hitMeshes.has(mesh) && outlineMeshes.includes(mesh);

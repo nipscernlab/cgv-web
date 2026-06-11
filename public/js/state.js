@@ -1,7 +1,5 @@
 // @ts-check
 
-import * as THREE from 'three';
-
 /**
  * One pending request inside the WASM worker pool.
  * @typedef {{ resolve: (m: any) => void, reject: (e: Error) => void }} PendingRequest
@@ -107,22 +105,24 @@ export const SUBSYS_LAR_EM = 2;
 export const SUBSYS_LAR_HEC = 3;
 
 // ── Cell handle storage ──────────────────────────────────────────────────────
-// Handles replace one-Mesh-per-cell. Each handle identifies one instance
-// inside an InstancedMesh; visibility.js / loader.js / outlines.js share the
-// shape via the CellHandle typedef below. _center is added lazily by
-// visibility._cellCenter.
+// Handles replace one-Mesh-per-cell. Each handle identifies one cell slot
+// inside its detector's mega mesh (see megaCells.js); visibility.js /
+// loader.js / outlines.js share the shape via the CellHandle typedef below.
 
 /**
  * @typedef {Object} CellHandle
- * @property {THREE.InstancedMesh} iMesh
- * @property {number} instId
  * @property {string} det              'TILE' | 'LAR' | 'HEC'
+ * @property {number} slot             texel index inside the detector's mega textures
+ * @property {any} mega                owning MegaRecord (see megaCells.js)
+ * @property {import('three').BufferGeometry} geo shared unique geometry (pre-transform)
+ * @property {import('three').Matrix4} origMatrix
+ * @property {import('three').Vector3} center scene-local cell centre (baked at load)
+ * @property {number} radius           scene-local bounding-sphere radius
+ * @property {string} name
+ * @property {number | null} key       integer cell key (meshNameToKey), if any
  * @property {string} subDet           'barrel' | 'extended' | 'itc' | 'mbts' | 'ec'
  * @property {string|number} sampling  per-detector sampling tag (see classifyCellName)
- * @property {string} name
- * @property {THREE.Matrix4} origMatrix
  * @property {boolean} visible
- * @property {THREE.Vector3} [_center] lazy cache, set by visibility._cellCenter
  */
 
 /**
@@ -147,56 +147,6 @@ export const cellMeshesByDet = { TILE: [], LAR: [], HEC: [] };
 
 /** @type {Map<CellHandle, ActiveEntry>} — handle → tooltip / threshold data; .clear() to reset */
 export const active = new Map();
-
-/** @type {THREE.InstancedMesh[]} — use .length = 0 to reset */
-export const rayTargets = [];
-
-// ── InstancedMesh bookkeeping ────────────────────────────────────────────────
-// Zero-determinant matrix collapses an instance to a point; degenerate
-// triangles are rejected by both the rasterizer and the raycaster.
-export const _ZERO_MAT4 = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-
-/** @type {Set<THREE.InstancedMesh>} */
-const _dirtyIM = new Set();
-
-// Reusable temporaries for bounding-sphere computation (avoids per-frame GC).
-const _bsMat = new THREE.Matrix4();
-const _bsSph = new THREE.Sphere();
-
-/** @param {THREE.InstancedMesh} iMesh */
-export function _markIMDirty(iMesh) {
-  _dirtyIM.add(iMesh);
-}
-
-export function _flushIMDirty() {
-  for (const im of _dirtyIM) {
-    im.instanceMatrix.needsUpdate = true;
-    if (im.instanceColor) im.instanceColor.needsUpdate = true;
-    // Recompute bounding sphere skipping hidden instances.
-    // Three.js's computeBoundingSphere applies _ZERO_MAT4, which yields an
-    // Infinity/NaN center and poisons ray.intersectsSphere. Fix: skip any
-    // instance where elements[15] === 0 (our zero-matrix sentinel).
-    if (!im.geometry.boundingSphere) im.geometry.computeBoundingSphere();
-    const geomBS = /** @type {THREE.Sphere} */ (im.geometry.boundingSphere);
-    if (!im.boundingSphere) im.boundingSphere = new THREE.Sphere();
-    const imBS = im.boundingSphere;
-    imBS.makeEmpty();
-    for (let i = 0; i < im.count; i++) {
-      im.getMatrixAt(i, _bsMat);
-      if (_bsMat.elements[15] === 0) continue;
-      _bsSph.copy(geomBS).applyMatrix4(_bsMat);
-      imBS.union(_bsSph);
-    }
-    if (imBS.isEmpty()) imBS.set(new THREE.Vector3(), 0);
-  }
-  _dirtyIM.clear();
-}
-
-/** @type {THREE.InstancedMesh[]} — all cell InstancedMeshes, for bulk reset sweeps */
-export const _allCellIMeshes = [];
-
-/** @type {Set<THREE.InstancedMesh>} */
-export const _rayIMeshes = new Set();
 
 // ── Integer key encoding ─────────────────────────────────────────────────────
 // Avoids string construction in the per-cell hot path.

@@ -1,3 +1,10 @@
+import {
+  buildWedgeMask,
+  insideWedge,
+  updateWedgeMask,
+  setWedgeSceneRotation,
+} from './wedgeClip.js';
+
 export function createSlicerController({
   THREE,
   canvas,
@@ -137,15 +144,25 @@ export function createSlicerController({
     };
   }
 
+  // Half-plane wedge test (no atan2 / fmod — see wedgeClip.js for the math;
+  // it is the exact CPU mirror of the GPU uniform test). Mask snapshots are
+  // cached per state object so bulk callers (cinema POIs, FCAL filter) pay
+  // the cos/sin only once per snapshot.
+  const _maskCache = new WeakMap();
   function isPointInsideWedge(x, y, z, slicer = getMaskState()) {
-    if (!slicer.active || slicer.emptyTh) return false;
-    const dy = y - slicer.yOff;
-    if (x * x + dy * dy >= slicer.r2) return false;
-    if (z <= slicer.zMin || z >= slicer.zMax) return false;
-    if (slicer.fullTh) return true;
-    let ang = Math.atan2(dy, x) - slicer.phi;
-    ang = ((ang % TWO_PI) + TWO_PI) % TWO_PI;
-    return ang < slicer.thetaLen;
+    let m = _maskCache.get(slicer);
+    if (!m) {
+      m = buildWedgeMask(slicer);
+      _maskCache.set(slicer, m);
+    }
+    return insideWedge(x, y, z, m);
+  }
+
+  // Push the current mask into the shared GPU uniforms (wedgeClip.js). This —
+  // plus markDirty — is the entire per-pointermove cost of a slicer drag; the
+  // cells/outlines/FCAL/chambers all carve themselves in their shaders.
+  function _syncWedgeUniforms() {
+    updateWedgeMask(getMaskState());
   }
 
   function buildGizmo() {
@@ -220,6 +237,7 @@ export function createSlicerController({
     slicerGroup.userData.arrowP.setDirection(new THREE.Vector3(0, 1, 0));
     slicerGroup.userData.arrowT.setDirection(new THREE.Vector3(1, 0, 0));
     slicerGroup.updateMatrix();
+    _syncWedgeUniforms();
     onMaskChange?.();
   }
 
@@ -258,6 +276,9 @@ export function createSlicerController({
     const phi = slicerPhi + slicerThetaLength / 2;
     scene.rotation.z = -phi;
     scene.updateMatrix();
+    // World-space clipped materials (chambers, hover outlines) counter-rotate
+    // through this uniform — keep it in lockstep with the scene rotation.
+    setWedgeSceneRotation(-phi);
     markDirty?.();
   }
 
@@ -265,6 +286,7 @@ export function createSlicerController({
     if (!scene) return;
     scene.rotation.z = 0;
     scene.updateMatrix();
+    setWedgeSceneRotation(0);
     markDirty?.();
   }
 
@@ -298,6 +320,7 @@ export function createSlicerController({
     if (!slicerActive) return;
     slicerActive = false;
     if (slicerGroup) slicerGroup.visible = false;
+    _syncWedgeUniforms(); // mask off → GPU carve disappears immediately
     _restoreSceneRotation();
     _resetCameraToDefault();
     syncButtons();
@@ -308,6 +331,13 @@ export function createSlicerController({
   function toggle() {
     slicerActive ? disable() : enable();
   }
+
+  // Live-drag bookkeeping. While a gizmo drag is in flight, onMaskChange
+  // consumers (main.js) skip the heavy CPU refresh — the GPU uniforms updated
+  // in updateBasis carry the carve in real time. endDrag calls updateBasis()
+  // once more with the flag cleared so the deferred work runs exactly once.
+  let _dragDepth = 0;
+  const isDragging = () => _dragDepth > 0;
 
   // Re-aligns the wedge walls with the current event's two leading jets,
   // and re-frames the camera onto the new wedge. Called from outside
@@ -385,6 +415,7 @@ export function createSlicerController({
         const hits = dragRay.intersectObject(pickHandle(e), false);
         if (!hits.length) return;
         dragging = true;
+        _dragDepth++;
         mode = 'shape';
         dragStartX = e.clientX;
         dragStartY = e.clientY;
@@ -451,6 +482,7 @@ export function createSlicerController({
     const endDrag = (e) => {
       if (!dragging) return;
       dragging = false;
+      _dragDepth = Math.max(0, _dragDepth - 1);
       clearLongPress();
       if (mode === 'rotate') setHandleHighlight(false);
       mode = 'shape';
@@ -458,6 +490,10 @@ export function createSlicerController({
       try {
         canvas.releasePointerCapture(e.pointerId);
       } catch (_) {}
+      // Final mask notification with isDragging() now false — consumers run
+      // the deferred CPU refresh (visibility sweep, FCAL rebuild, chambers,
+      // cinema) exactly once per drag.
+      updateBasis();
     };
     canvas.addEventListener('pointerup', endDrag);
     canvas.addEventListener('pointercancel', endDrag);
@@ -483,6 +519,7 @@ export function createSlicerController({
         const hits = dragRay.intersectObject(pickHandle(e), false);
         if (!hits.length) return;
         tDragging = true;
+        _dragDepth++;
         prevNdcX = pt.x;
         dragStartClientY = e.clientY;
         dragStartPhi = slicerPhi;
@@ -522,10 +559,12 @@ export function createSlicerController({
     const endTDrag = (e) => {
       if (!tDragging) return;
       tDragging = false;
+      _dragDepth = Math.max(0, _dragDepth - 1);
       controls.enabled = true;
       try {
         canvas.releasePointerCapture(e.pointerId);
       } catch (_) {}
+      updateBasis(); // deferred heavy refresh — see endDrag above
     };
     canvas.addEventListener('pointerup', endTDrag);
     canvas.addEventListener('pointercancel', endTDrag);
@@ -559,6 +598,7 @@ export function createSlicerController({
     getGroup: () => slicerGroup,
     getMaskState,
     isActive: () => slicerActive,
+    isDragging,
     isPointInsideWedge,
     isShowAllCells: () => slicerActive,
     refreshFromActiveJets,

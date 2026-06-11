@@ -1,15 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import {
-  meshByKey,
-  cellMeshesByDet,
-  _ZERO_MAT4,
-  _allCellIMeshes,
-  _tileKey,
-  _larEmKey,
-  _hecKey,
-} from './state.js';
-import { matTile, matHec, matLAr, PAL_TILE_COLOR } from './palette.js';
+import { meshByKey, cellMeshesByDet, _tileKey, _larEmKey, _hecKey } from './state.js';
+import { buildMegaCells } from './megaCells.js';
 import { scene, markDirty } from './renderer.js';
 import { ghostVisible, ghostMeshByName } from './ghost.js';
 import { HEC_NAMES } from './coords.js';
@@ -317,42 +309,22 @@ export async function initScene({ setStatus, atlasMat, onSceneReady, onAtlasRead
         });
       });
 
-      // Build one InstancedMesh per (detector, geometry) pair.
-      const cellsGroup = new THREE.Group();
-      cellsGroup.name = 'cells';
-
-      for (const { det, geo, items } of groups.values()) {
-        const mat = det === 'TILE' ? matTile : det === 'LAR' ? matLAr : matHec;
-        const iMesh = new THREE.InstancedMesh(geo, mat, items.length);
-        iMesh.name = `cells_${det}_${geo.uuid.slice(0, 8)}`;
-        iMesh.frustumCulled = false;
-        iMesh.renderOrder = 2;
-        iMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-        iMesh.setColorAt(0, new THREE.Color(1, 1, 1)); // allocate instanceColor buffer
-        const handles = new Array(items.length);
-        for (let i = 0; i < items.length; i++) {
-          const it = items[i];
-          iMesh.setMatrixAt(i, _ZERO_MAT4); // start hidden
-          iMesh.setColorAt(i, PAL_TILE_COLOR[0]); // neutral; overwritten on event
-          const h = {
-            iMesh,
-            instId: i,
-            det,
-            subDet: it.subDet,
-            sampling: it.sampling,
-            name: it.name,
-            origMatrix: it.matrix,
-            visible: false,
-          };
-          handles[i] = h;
-          if (it.key !== null) meshByKey.set(it.key, h);
-          cellMeshesByDet[det].push(h);
+      // Bake every detector's cells into one merged mega mesh (megaCells.js):
+      // a single draw call per detector, per-cell colour/visibility in a
+      // small DataTexture, and the slicer wedge applied as a vertex-stage
+      // uniform test. Replaces the previous one-InstancedMesh-per-unique-
+      // geometry layout (~13.7k draw calls).
+      /** @type {{ [det: string]: Array<{ geo: THREE.BufferGeometry, items: any[] }> }} */
+      const groupsByDet = { TILE: [], LAR: [], HEC: [] };
+      for (const bucket of groups.values()) {
+        if (groupsByDet[bucket.det]) groupsByDet[bucket.det].push(bucket);
+      }
+      const { group: cellsGroup, records } = buildMegaCells(groupsByDet);
+      for (const rec of records) {
+        for (const h of rec.handles) {
+          if (h.key !== null && h.key !== undefined) meshByKey.set(h.key, h);
+          cellMeshesByDet[/** @type {'TILE'|'LAR'|'HEC'} */ (h.det)].push(h);
         }
-        iMesh.userData.handles = handles;
-        iMesh.instanceMatrix.needsUpdate = true;
-        iMesh.instanceColor.needsUpdate = true;
-        cellsGroup.add(iMesh);
-        _allCellIMeshes.push(iMesh);
       }
       scene.add(cellsGroup);
 

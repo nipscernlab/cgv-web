@@ -10,7 +10,11 @@ import {
   clearDirty,
 } from './renderer.js';
 
-// ── FPS counter ──────────────────────────────────────────────────────────────
+// ── FPS counter / perf HUD ───────────────────────────────────────────────────
+// Default: the historical FPS readout. With `?perf=1`: draw calls, triangles,
+// rendered-frame CPU time p50/p95 and DPR — the acceptance metrics for the
+// performance work (docs/PERFORMANCE_PLAN.md).
+const _PERF_HUD = new URLSearchParams(location.search).get('perf') === '1';
 const fpsEl = document.createElement('div');
 Object.assign(fpsEl.style, {
   position: 'fixed',
@@ -20,11 +24,27 @@ Object.assign(fpsEl.style, {
   fontFamily: 'monospace',
   fontSize: '13px',
   color: '#66ccff',
-  opacity: '0.45',
+  opacity: _PERF_HUD ? '0.8' : '0.45',
   pointerEvents: 'none',
   userSelect: 'none',
+  whiteSpace: 'pre',
+  textAlign: 'right',
 });
 document.body.appendChild(fpsEl);
+
+// Rendered-frame CPU times (ms), ring buffer for p50/p95 in the perf HUD.
+const _frameMs = new Float32Array(120);
+let _frameMsN = 0;
+let _lastCalls = 0;
+let _lastTris = 0;
+
+/** @param {number} p */
+function _perfPercentile(p) {
+  const n = Math.min(_frameMsN, _frameMs.length);
+  if (!n) return 0;
+  const a = Array.from(_frameMs.slice(0, n)).sort((x, y) => x - y);
+  return a[Math.min(n - 1, Math.floor(p * n))];
+}
 
 // ── Render loop ───────────────────────────────────────────────────────────────
 // Paused while the tab is hidden: browsers already throttle RAF on hidden tabs,
@@ -69,7 +89,17 @@ function _loopTick() {
   _fpsFrames++;
   const now = performance.now();
   if (now - _fpsLast >= 500) {
-    fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
+    const fps = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0);
+    if (_PERF_HUD) {
+      const r = /** @type {any} */ (renderer);
+      const tris = _lastTris >= 1e6 ? (_lastTris / 1e6).toFixed(2) + 'M' : String(_lastTris);
+      fpsEl.textContent =
+        `${fps} FPS · ${_lastCalls} draws · ${tris} tris\n` +
+        `cpu ${_perfPercentile(0.5).toFixed(1)} / ${_perfPercentile(0.95).toFixed(1)} ms · ` +
+        `dpr ${(r.getPixelRatio ? r.getPixelRatio() : 1).toFixed(2)}`;
+    } else {
+      fpsEl.textContent = fps + ' FPS';
+    }
     _fpsFrames = 0;
     _fpsLast = now;
   }
@@ -81,7 +111,17 @@ function _loopTick() {
   }
   if (controls.autoRotate) markDirty();
   if (!isDirty()) return;
+  const t0 = _PERF_HUD ? performance.now() : 0;
   renderer.render(scene, camera);
+  if (_PERF_HUD) {
+    _frameMs[_frameMsN % _frameMs.length] = performance.now() - t0;
+    _frameMsN++;
+    const info = /** @type {any} */ (renderer).info;
+    if (info?.render) {
+      _lastCalls = info.render.calls;
+      _lastTris = info.render.triangles;
+    }
+  }
   clearDirty();
 }
 

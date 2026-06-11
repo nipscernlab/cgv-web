@@ -15,6 +15,7 @@
 
 import * as THREE from 'three';
 import { scene } from '../renderer.js';
+import { getWedgeMask, insideWedge } from '../wedgeClip.js';
 import {
   fcalGroup,
   fcalVisibleMap,
@@ -93,21 +94,6 @@ export function _innerCaloFaceIntersect(dx, dy, dz) {
   return CALO_ECSTRIP_Z / dzAbs; // EC Strip
 }
 
-// World-space bounding sphere cached on each cell handle (lazy, on first
-// raycast hit). Computed from the geometry's local bsphere transformed by
-// origMatrix. The sphere is invariant under cell visibility — we only need
-// to recompute if origMatrix changes (it never does for static geometry).
-/** @param {any} h  cell handle (iMesh + origMatrix); caches `_wsphere` on it. */
-function _handleWorldSphere(h) {
-  if (h._wsphere) return h._wsphere;
-  const geo = h.iMesh.geometry;
-  if (!geo.boundingSphere) geo.computeBoundingSphere();
-  const s = new THREE.Sphere().copy(geo.boundingSphere);
-  s.applyMatrix4(h.origMatrix);
-  h._wsphere = s;
-  return s;
-}
-
 /**
  * Returns t at which the unit ray (dx,dy,dz) from the origin first hits a
  * VISIBLE calorimeter cell — Tile / LAr / HEC instances currently in `active`,
@@ -115,11 +101,10 @@ function _handleWorldSphere(h) {
  * surface-based `_innerCaloFaceIntersect` when no such cell lies on the ray.
  *
  * Implementation: manual ray-vs-bounding-sphere iteration over the visible
- * cell maps. Three.js's Raycaster.intersectObjects is O(total instances) per
- * ray — including the zero-matrix hidden ones it can't short-circuit, which
- * on this detector is ~150 k per InstancedMesh. The manual pass is O(visible
- * cells), typically a few hundred, and skips the per-instance triangle
- * iteration entirely.
+ * cell handles, whose scene-local centres/radii are precomputed at GLB load
+ * (megaCells.js). O(visible cells) per ray, no triangle iteration. Cells the
+ * slicer wedge is hiding on the GPU are skipped via the shared CPU mirror
+ * (wedgeClip.insideWedge) so spring tips never land inside the cut.
  *
  * Bounding-sphere approximation means the reported t lands on the cell's
  * front bsphere, not on the exact triangle hit — accurate to cell-half-size
@@ -131,23 +116,24 @@ function _handleWorldSphere(h) {
 export function _firstVisibleCellHit(dx, dy, dz) {
   // dx, dy, dz are unit (caller normalises). Origin at (0,0,0).
   let bestT = Infinity;
+  const wedge = getWedgeMask();
 
-  // Tile / LAr / HEC: iterate visHandles (cells whose iMesh matrix is
-  // currently set to origMatrix, i.e. actually displayed). visHandles is
-  // rebuilt by applyThreshold / _applySlicerMask whenever cell visibility
+  // Tile / LAr / HEC: iterate visHandles (cells currently displayed).
+  // visHandles is rebuilt by applyThreshold whenever cell visibility
   // changes, so the spring tip follows the slider.
   for (let i = 0; i < visHandles.length; i++) {
     const h = visHandles[i];
-    const s = _handleWorldSphere(h);
-    const cx = s.center.x,
-      cy = s.center.y,
-      cz = s.center.z;
-    const r = s.radius;
+    const c = h.center;
+    const cx = c.x,
+      cy = c.y,
+      cz = c.z;
+    const r = h.radius;
     const tCenter = dx * cx + dy * cy + dz * cz; // closest-approach t along ray
     if (tCenter <= 0) continue; // sphere behind origin
     const distSq = cx * cx + cy * cy + cz * cz - tCenter * tCenter;
     const r2 = r * r;
     if (distSq > r2) continue; // ray misses sphere
+    if (wedge && insideWedge(cx, cy, cz, wedge)) continue; // GPU-carved cell
     const tHit = tCenter - Math.sqrt(r2 - distSq); // front-of-sphere t
     if (tHit > 0 && tHit < bestT) bestT = tHit;
   }
@@ -170,6 +156,7 @@ export function _firstVisibleCellHit(dx, dy, dz) {
         const cx = e[12],
           cy = e[13],
           cz = e[14];
+        if (wedge && insideWedge(cx, cy, cz, wedge)) continue; // GPU-carved
         // Approx radius: max scale × local bsphere radius. The FCAL builder
         // applies non-uniform scales (rx, ry, len/2) to a unit-cylinder; pick
         // the largest axis so we don't false-negative.

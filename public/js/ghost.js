@@ -52,21 +52,38 @@ function buildPhiLines() {
   ghostPhiGroup = new THREE.Group();
   ghostPhiGroup.renderOrder = 6;
   ghostPhiGroup.visible = false;
+  // All 64×3 rectangles merged into ONE LineSegments (4 segments each) — one
+  // draw call instead of 192 Line objects, pixel-identical output.
+  const segs = new Float32Array(N_PHI * TILE_PHI_SEGS.length * 4 * 2 * 3);
+  let o = 0;
+  /** @type {(x: number, y: number, z: number) => void} */
+  const push = (x, y, z) => {
+    segs[o++] = x;
+    segs[o++] = y;
+    segs[o++] = z;
+  };
   for (let i = 0; i < N_PHI; i++) {
     const phi = (i / N_PHI) * Math.PI * 2;
     const cx = Math.cos(phi),
       cy = Math.sin(phi);
     for (const { rIn, rOut, zMin, zMax } of TILE_PHI_SEGS) {
-      const pts = [
-        new THREE.Vector3(cx * rIn, cy * rIn, zMin),
-        new THREE.Vector3(cx * rIn, cy * rIn, zMax),
-        new THREE.Vector3(cx * rOut, cy * rOut, zMax),
-        new THREE.Vector3(cx * rOut, cy * rOut, zMin),
-        new THREE.Vector3(cx * rIn, cy * rIn, zMin),
-      ];
-      ghostPhiGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), ghostPhiMat));
+      const ax = cx * rIn,
+        ay = cy * rIn,
+        bx = cx * rOut,
+        by = cy * rOut;
+      push(ax, ay, zMin);
+      push(ax, ay, zMax); // inner edge
+      push(ax, ay, zMax);
+      push(bx, by, zMax); // far radial
+      push(bx, by, zMax);
+      push(bx, by, zMin); // outer edge
+      push(bx, by, zMin);
+      push(ax, ay, zMin); // near radial
     }
   }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(segs, 3));
+  ghostPhiGroup.add(new THREE.LineSegments(geo, ghostPhiMat));
   scene.add(ghostPhiGroup);
 }
 

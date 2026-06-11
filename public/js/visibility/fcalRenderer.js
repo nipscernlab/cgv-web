@@ -32,6 +32,7 @@ import {
   setFcalHeatmapEntries,
 } from '../visibility.js';
 import { refreshCaloBoundParticles } from '../particles.js';
+import { applyWedgeClipInstanced, applyWedgeClipAttrCenter } from '../wedgeClip.js';
 
 /**
  * One FCAL cell as decoded by the WASM XML parser. `module` is 1=EM, 2=Had1,
@@ -154,17 +155,52 @@ function _installFcalWidthScales(cells) {
   }
 }
 
+// ── Persistent GPU resources ─────────────────────────────────────────────────
+// Geometry / materials / InstancedMesh / outline buffers are singletons that
+// grow on demand and are reused across events and threshold changes — the
+// previous dispose-and-recreate-per-tick pattern caused a WebGL allocation
+// storm during slider drags. The slicer wedge carves both the tubes and the
+// outline lines in their shaders (live during drags); the CPU wedge filter
+// below only runs on drag-end / threshold changes to keep picking and
+// particle endpoints consistent.
+/** @type {THREE.CylinderGeometry | null} */
+let _cylGeo = null;
+/** @type {THREE.MeshStandardMaterial | null} */
+let _cylMat = null;
+/** @type {THREE.LineBasicMaterial | null} */
+let _outMat = null;
+/** @type {THREE.InstancedMesh | null} */
+let _iMesh = null;
+let _iCapacity = 0;
+/** @type {THREE.LineSegments | null} */
+let _outLines = null;
+/** @type {THREE.BufferGeometry | null} */
+let _outGeo = null;
+let _outCapacityFloats = 0;
+
+function _ensureFcalResources() {
+  if (!_cylGeo) _cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
+  if (!_cylMat) {
+    _cylMat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide });
+    applyWedgeClipInstanced(_cylMat);
+  }
+  if (!_outMat) {
+    _outMat = new THREE.LineBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+    });
+    applyWedgeClipAttrCenter(_outMat);
+  }
+}
+
 export function clearFcal() {
-  if (!fcalGroup) return;
-  fcalGroup.traverse((o) => {
-    // Mesh / LineSegments / etc. carry geometry+material; structural cast
-    // because Object3D's base type doesn't expose them.
-    const m = /** @type {any} */ (o);
-    if (m.geometry) m.geometry.dispose();
-    if (m.material) m.material.dispose();
-  });
-  scene.remove(fcalGroup);
-  fcalGroup = null;
+  fcalCellsData = [];
+  fcalVisibleMap = [];
+  if (_iMesh) _iMesh.count = 0;
+  if (_outGeo) _outGeo.setDrawRange(0, 0);
+  markDirty();
 }
 
 /** @param {FcalCell[]} cells */
@@ -178,14 +214,6 @@ export function drawFcal(cells) {
 
 export function applyFcalThreshold() {
   if (!fcalCellsData.length) return;
-  if (fcalGroup) {
-    for (const child of [...fcalGroup.children]) {
-      const m = /** @type {any} */ (child);
-      if (m.geometry) m.geometry.dispose();
-      if (m.material) m.material.dispose();
-      fcalGroup.remove(child);
-    }
-  }
   _applyFcalDraw();
   // FCAL visibility changed — re-run γ / cluster / jet / τ endpoints so
   // they don't end at FCAL cells that just got hidden (and pick up newly
@@ -300,14 +328,31 @@ function _applyFcalDraw() {
     scene.add(fcalGroup);
   }
   if (!visible.length) {
+    if (_iMesh) _iMesh.count = 0;
+    if (_outGeo) _outGeo.setDrawRange(0, 0);
     markDirty();
     return;
   }
 
   const n = visible.length;
-  const cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
-  const cylMat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide });
-  const iMesh = new THREE.InstancedMesh(cylGeo, cylMat, n);
+  _ensureFcalResources();
+  if (!_iMesh || n > _iCapacity) {
+    if (_iMesh) {
+      fcalGroup.remove(_iMesh);
+      _iMesh.dispose();
+    }
+    _iCapacity = Math.max(n, Math.ceil(n * 1.25));
+    _iMesh = new THREE.InstancedMesh(
+      /** @type {THREE.CylinderGeometry} */ (_cylGeo),
+      /** @type {THREE.MeshStandardMaterial} */ (_cylMat),
+      _iCapacity,
+    );
+    _iMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    _iMesh.frustumCulled = false;
+    fcalGroup.add(_iMesh);
+  }
+  const iMesh = _iMesh;
+  iMesh.count = n;
 
   for (let i = 0; i < n; i++) {
     const { x, y, z, dx, dy, dz, energy } = visible[i];
@@ -342,10 +387,36 @@ function _applyFcalDraw() {
   }
   iMesh.instanceMatrix.needsUpdate = true;
   if (iMesh.instanceColor) iMesh.instanceColor.needsUpdate = true;
-  fcalGroup.add(iMesh);
 
+  // Outline lines: persistent buffer, grown on demand. aCenter carries the
+  // owning tube's centre so the wedge shader culls whole-cell outlines in
+  // lockstep with the tubes.
   const eb = getFcalEdgeBase();
-  const outBuf = new Float32Array(n * eb.length);
+  const floatsNeeded = n * eb.length;
+  if (!_outGeo || floatsNeeded > _outCapacityFloats) {
+    if (_outLines) {
+      fcalGroup.remove(_outLines);
+      _outGeo?.dispose();
+    }
+    _outCapacityFloats = Math.max(floatsNeeded, Math.ceil(floatsNeeded * 1.25));
+    _outGeo = new THREE.BufferGeometry();
+    _outGeo.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array(_outCapacityFloats), 3),
+    );
+    _outGeo.setAttribute(
+      'aCenter',
+      new THREE.BufferAttribute(new Float32Array(_outCapacityFloats), 3),
+    );
+    _outLines = new THREE.LineSegments(_outGeo, /** @type {THREE.LineBasicMaterial} */ (_outMat));
+    _outLines.frustumCulled = false;
+    _outLines.renderOrder = 3;
+    fcalGroup.add(_outLines);
+  }
+  const outPos = /** @type {THREE.BufferAttribute} */ (_outGeo.getAttribute('position'));
+  const outCen = /** @type {THREE.BufferAttribute} */ (_outGeo.getAttribute('aCenter'));
+  const outBuf = /** @type {Float32Array} */ (outPos.array);
+  const cenBuf = /** @type {Float32Array} */ (outCen.array);
   let op = 0;
   for (let i = 0; i < n; i++) {
     iMesh.getMatrixAt(i, fcalEdgeMat4);
@@ -354,25 +425,17 @@ function _applyFcalDraw() {
       const lx = eb[j],
         ly = eb[j + 1],
         lz = eb[j + 2];
+      cenBuf[op] = m[12];
+      cenBuf[op + 1] = m[13];
+      cenBuf[op + 2] = m[14];
       outBuf[op++] = m[0] * lx + m[4] * ly + m[8] * lz + m[12];
       outBuf[op++] = m[1] * lx + m[5] * ly + m[9] * lz + m[13];
       outBuf[op++] = m[2] * lx + m[6] * ly + m[10] * lz + m[14];
     }
   }
-  const outGeo = new THREE.BufferGeometry();
-  outGeo.setAttribute('position', new THREE.BufferAttribute(outBuf, 3));
-  const outLines = new THREE.LineSegments(
-    outGeo,
-    new THREE.LineBasicMaterial({
-      color: 0x000000,
-      transparent: true,
-      opacity: 0.5,
-      depthWrite: false,
-    }),
-  );
-  outLines.frustumCulled = false;
-  outLines.renderOrder = 3;
-  fcalGroup.add(outLines);
+  outPos.needsUpdate = true;
+  outCen.needsUpdate = true;
+  _outGeo.setDrawRange(0, floatsNeeded / 3);
 
   markDirty();
 }

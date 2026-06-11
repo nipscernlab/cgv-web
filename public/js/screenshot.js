@@ -250,7 +250,6 @@ export function setupScreenshotControls({
 
   async function renderAndDownload(targetW, targetH) {
     const origW = renderer.domElement.width;
-    const origH = renderer.domElement.height;
     const origPR = renderer.getPixelRatio();
     const origAspect = camera.aspect;
     const origFov = camera.fov;
@@ -259,8 +258,6 @@ export function setupScreenshotControls({
     const origTanHalf = Math.tan((origFov * Math.PI) / 180 / 2);
     const newTanHalf = origTanHalf * Math.max(1, origAspect / targetAspect);
     const newFov = (2 * Math.atan(newTanHalf) * 180) / Math.PI;
-    renderer.setPixelRatio(1);
-    renderer.setSize(targetW, targetH, false);
     camera.aspect = targetAspect;
     camera.fov = newFov;
     camera.updateProjectionMatrix();
@@ -272,15 +269,31 @@ export function setupScreenshotControls({
       renderer.setClearColor(0x000000, 0);
     }
 
+    // Render into an offscreen MSAA target: the on-screen canvas keeps
+    // alpha:false / preserveDrawingBuffer:false (cheaper every frame), while
+    // the shot still gets 4x AA and a real alpha channel for transparent
+    // exports. sRGB on the target texture reproduces the on-screen output
+    // transform exactly.
+    const rt = new THREE.WebGLRenderTarget(targetW, targetH, {
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      depthBuffer: true,
+      stencilBuffer: false,
+      samples: 4,
+    });
+    rt.texture.colorSpace = THREE.SRGBColorSpace;
+
     const slicerGroup = slicer.getGroup();
     const slicerVisSaved = slicerGroup ? slicerGroup.visible : null;
     if (slicerGroup) slicerGroup.visible = false;
+    renderer.setRenderTarget(rt);
     renderer.render(scene, camera);
     if (slicerGroup && slicerVisSaved !== null) slicerGroup.visible = slicerVisSaved;
 
-    const gl = renderer.getContext();
     const pixels = new Uint8Array(targetW * targetH * 4);
-    gl.readPixels(0, 0, targetW, targetH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    renderer.readRenderTargetPixels(rt, 0, 0, targetW, targetH, pixels);
+    renderer.setRenderTarget(null);
+    rt.dispose();
 
     const offscreen = document.createElement('canvas');
     offscreen.width = targetW;
@@ -339,8 +352,6 @@ export function setupScreenshotControls({
       scene.background = savedBg;
       renderer.setClearColor(0x000000, 1);
     }
-    renderer.setPixelRatio(origPR);
-    renderer.setSize(origW / origPR, origH / origPR, false);
     camera.aspect = origAspect;
     camera.fov = origFov;
     camera.updateProjectionMatrix();

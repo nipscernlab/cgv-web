@@ -5,17 +5,12 @@ import {
   SUBSYS_LAR_EM,
   SUBSYS_LAR_HEC,
   meshByKey,
-  cellMeshesByDet,
   active,
-  rayTargets,
-  _ZERO_MAT4,
-  _markIMDirty,
-  _flushIMDirty,
-  _rayIMeshes,
   _tileKey,
   _larEmKey,
   _hecKey,
 } from './state.js';
+import { hideAllCells, flushCells, setCellColor } from './megaCells.js';
 import {
   palColorTile,
   palColorHec,
@@ -144,23 +139,12 @@ export function setProcessXmlDeps(deps) {
 
 // ── Scene reset ───────────────────────────────────────────────────────────────
 function resetScene() {
-  for (const det of ['TILE', 'LAR', 'HEC']) {
-    for (const h of cellMeshesByDet[det]) {
-      if (h.visible) {
-        h.visible = false;
-        h.iMesh.setMatrixAt(h.instId, _ZERO_MAT4);
-        _markIMDirty(h.iMesh);
-      }
-    }
-  }
-  _flushIMDirty();
-  // Re-apply ghost state: resetScene hides all meshes (including ghost envelopes),
-  // which would desync the ghostVisible map and make the next ghost toggle
-  // render only the phi lines without the solid envelopes.
+  hideAllCells();
+  flushCells();
+  // Re-apply ghost state: ghost envelopes are separate meshes, but keep the
+  // historical re-sync so the ghostVisible map and the toggles never drift.
   applyAllGhostMeshes();
   active.clear();
-  rayTargets.length = 0;
-  _rayIMeshes.clear();
   clearVisibilityState();
   clearOutline();
   clearAllOutlines();
@@ -264,7 +248,7 @@ export async function processXml(xmlText) {
 
   // Calo-face-bound particle drawing (γ spring / cluster / τ / jet η-φ lines)
   // is deferred until after applyThreshold below — those endpoints raycast
-  // against rayTargets to land on the first VISIBLE cell, so the cells must
+  // against the visible-cell handles to land on the first VISIBLE cell, so the cells must
   // be in their energized matrices first. Parse the xml-derived bits now
   // (cheap regex passes) and stash them. Clusters flow through
   // setClusterCollections (below); its onClusterStateChange listeners own the
@@ -334,9 +318,8 @@ export async function processXml(xmlText) {
     nHec = 0;
 
   // ── TileCal cells ─────────────────────────────────────────────────────────
-  // The event loop paints colors via setColorAt; visibility is decided by
-  // applyThreshold() further down (which zero-scales the instance matrix for
-  // filtered-out cells). renderOrder lives on the InstancedMesh itself.
+  // The event loop paints colors via setCellColor (mega-texture write);
+  // visibility is decided by applyThreshold() further down.
   for (let i = 0; i < tileCells.length; i++) {
     const base = i * 8;
     if (tilePacked[base] !== SUBSYS_TILE) continue;
@@ -352,8 +335,7 @@ export async function processXml(xmlText) {
     const s_bit = side < 0 ? 0 : 1;
     const h = meshByKey.get(_tileKey(x, s_bit, k, module));
     if (!h) continue;
-    h.iMesh.setColorAt(h.instId, palColorTile(eMev));
-    _markIMDirty(h.iMesh);
+    setCellColor(h, palColorTile(eMev));
     const tEta = physTileEta(section, side, tower, sampling);
     const tPhi = physTilePhi(module);
     const tilePrefix = `${section === 1 ? 'LB' : 'EB'}${side >= 0 ? 'A' : 'C'}${module + 1}`;
@@ -386,8 +368,7 @@ export async function processXml(xmlText) {
     const eMev = energy * 1000;
     const h = meshByKey.get(_larEmKey(abs_be, sampling, R, z_pos, eta, phi));
     if (!h) continue;
-    h.iMesh.setColorAt(h.instId, palColorLAr(eMev));
-    _markIMDirty(h.iMesh);
+    setCellColor(h, palColorLAr(eMev));
     const rName =
       abs_be === 1
         ? `EMB${sampling}`
@@ -424,8 +405,7 @@ export async function processXml(xmlText) {
     const eMev = energy * 1000;
     const h = meshByKey.get(_hecKey(group, region, z_pos, cum_eta, phi));
     if (!h) continue;
-    h.iMesh.setColorAt(h.instId, palColorHec(eMev));
-    _markIMDirty(h.iMesh);
+    setCellColor(h, palColorHec(eMev));
     const be = z_pos ? 2 : -2;
     const eta_idx = region === 0 ? cum_eta : cum_eta - HEC_INNER[group];
     const hLabel = `HEC${group + 1}`;
@@ -459,8 +439,7 @@ export async function processXml(xmlText) {
       mod = +_m[3];
     const h = meshByKey.get(_tileKey(tileNum, s_bit, 0, mod));
     if (!h) continue;
-    h.iMesh.setColorAt(h.instId, palColorTile(eMev));
-    _markIMDirty(h.iMesh);
+    setCellColor(h, palColorTile(eMev));
     const mbtsEta = (s_bit ? 1 : -1) * (_m[2] === '0' ? 2.76 : 3.84);
     const mbtsPhi = _wrapPhi((2 * Math.PI) / 16 + (mod * 2 * Math.PI) / 8);
     const mbtsCoords = `η = ${mbtsEta.toFixed(3)}   φ = ${mbtsPhi.toFixed(3)} rad`;

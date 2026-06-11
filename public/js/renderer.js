@@ -47,10 +47,15 @@ if (!_renderer) {
   _renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
-    alpha: true,
-    powerPreference: 'high-performance',
-    precision: 'mediump',
-    preserveDrawingBuffer: true,
+    // Opaque canvas: scene.background is always set, so an alpha channel only
+    // costs compositing bandwidth. Screenshots (incl. transparent ones) render
+    // into an offscreen WebGLRenderTarget — see screenshot.js — so the default
+    // framebuffer no longer needs preserveDrawingBuffer either.
+    alpha: false,
+    powerPreference: 'high-performance', // request the discrete GPU on hybrids
+    // highp position math: scene coordinates run to ±50 000 mm, beyond
+    // mediump's reliable range on mobile GPUs.
+    precision: 'highp',
     stencil: false,
     depth: true,
   });
@@ -61,7 +66,6 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 if (renderer.isWebGLRenderer) {
   renderer.sortObjects = false;
-  renderer.info.autoReset = false;
 }
 
 // ── Scene / Camera ────────────────────────────────────────────────────────────

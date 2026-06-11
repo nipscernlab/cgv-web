@@ -37,7 +37,7 @@
 
 /**
  * Subset of a cell handle that this module reads. The full handle shape
- * lives in loader.js (it also carries iMesh, instId, origMatrix, etc.).
+ * lives in loader.js (it also carries mega, slot, origMatrix, etc.).
  * @typedef {{ det?: string, subDet?: string, sampling?: string | number }} CellHandle
  */
 

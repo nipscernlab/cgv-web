@@ -322,6 +322,15 @@ const _notifyCinemaSlicer = () => {
 };
 
 const onSlicerStateChanged = () => {
+  // Live drag: the slicer already pushed the wedge mask into the shared GPU
+  // uniforms (wedgeClip.js) — cells, outlines, FCAL and chambers carve
+  // themselves in their shaders, so a frame request is all that's needed.
+  // The CPU refresh below (visibility sweep, FCAL instance rebuild, chamber
+  // pass, cinema tour) runs once per discrete change: enable / disable /
+  // muon-driven resize / drag END (the slicer re-fires this with
+  // isDragging() === false from its pointerup handler).
+  markDirty();
+  if (slicer?.isDragging?.()) return;
   refreshSceneVisibility();
   updateTrackAtlasIntersections();
   _notifyCinemaSlicer();
