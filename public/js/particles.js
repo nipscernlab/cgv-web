@@ -30,6 +30,7 @@ import {
 } from './particles/taus.js';
 import { clearJets, drawJets, refreshJetsGeometry } from './particles/jets.js';
 import { getActiveJetCollection } from './jets.js';
+import { getCellVisGeneration } from './megaCells.js';
 
 export { clearTracks, drawTracks } from './particles/tracks.js';
 export { clearPhotons, drawPhotons, getLastPhotons };
@@ -95,14 +96,32 @@ function _drawAll() {
 // rAF-debounced so a slider drag firing applyXxxThreshold many times per
 // frame coalesces into a single _drawAll on the next frame. Without this the
 // drag freezes — each tick re-runs all four drawXxx + raycaster end-to-end.
+//
+// Generation-gated on top of that: the endpoints only depend on WHICH cells
+// are visible, so when a refresh request arrives but no cell flipped since
+// the last redraw (slicer show-all + threshold drag is the canonical case:
+// every cell stays visible whatever the slider does), the whole raycast
+// pass is skipped. External cell-like visibility sources that live outside
+// megaCells (the FCAL instanced renderer) bump the generation by hand.
 let _refreshScheduled = false;
+let _extGeneration = 0;
+let _lastDrawnGeneration = -1;
+export function bumpCaloBoundGeneration() {
+  _extGeneration++;
+}
+function _curGeneration() {
+  return getCellVisGeneration() + _extGeneration;
+}
 function _runRefreshNow() {
   _refreshScheduled = false;
   if (_refreshSuppressed) return;
   if (!_hasAnyCachedCaloParticle()) return;
+  const gen = _curGeneration();
+  if (gen === _lastDrawnGeneration) return;
   _refreshSuppressed = true;
   try {
     _drawAll();
+    _lastDrawnGeneration = gen;
   } finally {
     _refreshSuppressed = false;
   }

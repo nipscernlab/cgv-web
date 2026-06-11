@@ -30,6 +30,30 @@ function fmtBoxNum(v) {
 }
 
 /**
+ * Coalesce a (potentially expensive) apply function to at most one call per
+ * animation frame. Slider pointermove events can fire faster than the frame
+ * rate, and each apply re-runs a full visibility sweep — running it more
+ * than once per rendered frame is pure waste and is what made the threshold
+ * sliders stutter (worst with the slicer active, where the sweep covers
+ * every cell). The trailing call always runs, so the final value of a drag
+ * is never skipped.
+ *
+ * @param {() => void} fn
+ * @returns {() => void}
+ */
+function rafCoalesce(fn) {
+  let scheduled = false;
+  return () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      fn();
+    });
+  };
+}
+
+/**
  * Wire the persistent numeric input that sits below a slider. The box mirrors
  * the slider's current value (precise — see fmtBoxNum) and commits a typed
  * value through the SAME parse path the dblclick popup uses, so dragging the
@@ -236,6 +260,10 @@ export function setupDetectorPanels({
       if (!drag) _hideValTip();
     });
 
+    // Per-frame coalescing for the drag path: UI (thumb + tooltip) updates on
+    // every pointer event so the slider feels glued to the cursor; the heavy
+    // visibility apply runs at most once per frame.
+    const onApplyCoalesced = rafCoalesce(onApply);
     track.addEventListener('pointerdown', (e) => {
       drag = true;
       rpanelWrap.classList.add('dragging');
@@ -249,7 +277,7 @@ export function setupDetectorPanels({
       if (!drag) return;
       setThr(fromRatio(ratioFromPtr(e, track)));
       updateUI(getThr());
-      onApply();
+      onApplyCoalesced();
       _showValTip(e, fmtVal());
     });
     ['pointerup', 'pointercancel'].forEach((eventName) => {
@@ -310,13 +338,14 @@ export function setupDetectorPanels({
       box?.sync();
     }
 
-    function setFromRatio(ratio) {
+    const applyCoalesced = rafCoalesce(applyTrackThreshold);
+    function setFromRatio(ratio, coalesce = false) {
       const span = state.getTrackPtMaxGev() - state.getTrackPtMinGev();
       state.setThrTrackGev(
         ratio <= 0 ? state.getTrackPtMinGev() : state.getTrackPtMinGev() + span * ratio,
       );
       updateUI();
-      applyTrackThreshold();
+      (coalesce ? applyCoalesced : applyTrackThreshold)();
     }
 
     // Floating value tooltip — same hover + drag pattern as the cell sliders.
@@ -343,7 +372,7 @@ export function setupDetectorPanels({
     });
     trackEl.addEventListener('pointermove', (e) => {
       if (drag) {
-        setFromRatio(ratioFromPtr(e, trackEl));
+        setFromRatio(ratioFromPtr(e, trackEl), true);
         _showValTip(e, fmtVal());
       }
     });
@@ -409,6 +438,7 @@ export function setupDetectorPanels({
       getThr: () => state.getThrClusterEtGev(),
       setThr: (v) => state.setThrClusterEtGev(v),
       apply: applyClusterThreshold,
+      applyCoalesced: rafCoalesce(applyClusterThreshold),
     };
     const JET_OPS = {
       getMin: () => state.getJetEtMinGev(),
@@ -416,6 +446,7 @@ export function setupDetectorPanels({
       getThr: () => state.getThrJetEtGev(),
       setThr: (v) => state.setThrJetEtGev(v),
       apply: applyJetThreshold,
+      applyCoalesced: rafCoalesce(applyJetThreshold),
     };
     function currentOps() {
       return getViewLevel() === 3 ? JET_OPS : CLUSTER_OPS;
@@ -433,13 +464,13 @@ export function setupDetectorPanels({
       box?.sync();
     }
 
-    function setFromRatio(ratio) {
+    function setFromRatio(ratio, coalesce = false) {
       const ops = currentOps();
       const min = ops.getMin();
       const span = ops.getMax() - min;
       ops.setThr(ratio <= 0 ? min : min + span * ratio);
       updateUI();
-      ops.apply();
+      (coalesce ? ops.applyCoalesced : ops.apply)();
     }
 
     // Floating value tooltip — same hover + drag pattern as the cell sliders.
@@ -466,7 +497,7 @@ export function setupDetectorPanels({
     });
     trackEl.addEventListener('pointermove', (e) => {
       if (drag) {
-        setFromRatio(ratioFromPtr(e, trackEl));
+        setFromRatio(ratioFromPtr(e, trackEl), true);
         _showValTip(e, fmtVal());
       }
     });

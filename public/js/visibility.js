@@ -21,7 +21,7 @@ import { getViewLevel, onViewLevelChange } from './viewLevel.js';
 import { getActiveJetCollection } from './jets.js';
 import { recomputeJetTrackMatch } from './trackMatch.js';
 import { updateTrackAtlasIntersections } from './trackAtlasIntersections.js';
-import { rebuildAllOutlines } from './outlines.js';
+import { rebuildAllOutlines, hasAllOutlines } from './outlines.js';
 // Internal-use imports below — only the symbols this module's own pipeline
 // orchestration touches. The complete public surface of each sub-module is
 // re-exported via the `export * from` barrel further down.
@@ -464,31 +464,50 @@ export function applyTauPtThreshold() {
 // GPU uniform (wedgeClip.js), so the carve follows the drag with zero CPU
 // work. Appends newly-visible handles to visHandles so outlines, raycasting
 // and particle endpoints include them.
+// Last min-palette colour painted per detector — lets the show-all sweep
+// skip the (texture-dirtying) repaint of every non-active cell when neither
+// the palette nor the cell's shown-state changed. Without this, every
+// threshold-slider pointermove with the slicer on re-painted ~10k cells to
+// the colour they already had, forcing a full ≤1 MB texture re-upload per
+// detector per event — a large share of the slider jank.
+const _lastShowAllHex = { TILE: -1, LAR: -1, HEC: -1 };
+
+/** @returns {boolean} whether any non-active cell flipped visibility */
 function _syncNonActiveShowAll() {
-  if (!_slicer?.isShowAllCells()) return;
+  if (!_slicer?.isShowAllCells()) return false;
+  let changed = false;
   // Each handle resolves its own visibility flag via h.subDet, so the sweep
   // doesn't need to be split per sub-region — just per top-level detector for
   // the minimum-palette colour.
   /**
+   * @param {keyof typeof _lastShowAllHex} det
    * @param {import('./state.js').CellHandle[]} list
    * @param {import('three').Color} minColor
    */
-  const sweep = (list, minColor) => {
+  const sweep = (det, list, minColor) => {
+    const hex = minColor.getHex();
+    const repaintAll = _lastShowAllHex[det] !== hex;
     for (let i = 0; i < list.length; i++) {
       const h = list[i];
       if (active.has(h)) continue;
       if (!_detOnFor(h)) {
+        if (h.visible) changed = true;
         _setHandleVisible(h, false);
         continue;
       }
-      setCellColor(h, minColor);
+      // Paint only on the hidden→shown transition or a palette change —
+      // an already-shown cell already carries this exact colour.
+      if (!h.visible || repaintAll) setCellColor(h, minColor);
+      if (!h.visible) changed = true;
       visHandles.push(h);
       _setHandleVisible(h, true);
     }
+    _lastShowAllHex[det] = hex;
   };
-  sweep(cellMeshesByDet.TILE, PAL_TILE_COLOR[0]);
-  sweep(cellMeshesByDet.LAR, PAL_LAR_COLOR[0]);
-  sweep(cellMeshesByDet.HEC, PAL_HEC_COLOR[0]);
+  sweep('TILE', cellMeshesByDet.TILE, PAL_TILE_COLOR[0]);
+  sweep('LAR', cellMeshesByDet.LAR, PAL_LAR_COLOR[0]);
+  sweep('HEC', cellMeshesByDet.HEC, PAL_HEC_COLOR[0]);
+  return changed;
 }
 
 // ── Main threshold application (Tile / LAr EM / HEC) ─────────────────────────
@@ -503,6 +522,7 @@ export function applyThreshold() {
     const showAll = !!_slicer?.isShowAllCells();
     const acIds = getActiveClusterCellIds();
     const amLabels = getActiveMbtsLabels();
+    let visChanged = false;
     for (const [h, { energyMev, etMev, det, cellId, mbtsLabel, eta, phi }] of active) {
       const thr = det === 'LAR' ? thrLArMev : det === 'HEC' ? thrHecMev : thrTileMev;
       // Threshold + heatmap compare against the active metric (E or E_T).
@@ -523,6 +543,7 @@ export function applyThreshold() {
       const passPreRegion = detOn && passThr && passCl;
       const passRegion = _inEtaPhiRegion(eta, phi);
       const vis = passPreRegion && passRegion;
+      if (h.visible !== vis) visChanged = true;
       _setHandleVisible(h, vis);
       if (vis) visHandles.push(h);
       // Heatmap inclusion uses a CONSISTENT filter set regardless of slicer
@@ -534,9 +555,18 @@ export function applyThreshold() {
       const passHeatmap = detOn && (!isFinite(thr) || cellVal >= thr) && inCluster;
       if (passHeatmap) _visibleForHeatmap.push({ eta, phi, energyMev: cellVal });
     }
-    _syncNonActiveShowAll();
+    if (_syncNonActiveShowAll()) visChanged = true;
     flushCells();
-    rebuildAllOutlines();
+    // Outline rebuild only when some cell actually flipped visibility (or
+    // the outlines were cleared externally, e.g. by a new event). In slicer
+    // show-all mode EVERY cell is visible regardless of the thresholds, so
+    // slider drags used to dispose + reallocate the full ~13.7k-cell edge
+    // geometry on every pointermove for an identical result — that was the
+    // slider jank. The visible SET can't change without some flag flipping,
+    // so skipping on visChanged === false is exact, not heuristic.
+    if (visChanged || (visHandles.length > 0 && !hasAllOutlines())) {
+      rebuildAllOutlines();
+    }
     markDirty();
     _notifyHeatmap();
   });

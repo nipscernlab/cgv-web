@@ -240,6 +240,13 @@ function _getWorldEdges(h) {
   return out;
 }
 
+// Whether any all-cells outline meshes currently exist — lets applyThreshold
+// skip the (expensive) rebuild when per-cell visibility didn't change, while
+// still rebuilding after an external clearAllOutlines (e.g. a new event).
+export function hasAllOutlines() {
+  return _allOutlineByDet.size > 0;
+}
+
 export function clearAllOutlines() {
   if (!_allOutlineByDet.size) return;
   for (const mesh of _allOutlineByDet.values()) {

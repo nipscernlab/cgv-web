@@ -284,6 +284,17 @@ export function buildMegaCells(groupsByDet) {
 }
 
 // ── Per-cell state writes ────────────────────────────────────────────────────
+
+// Monotonic counter bumped whenever ANY cell actually flips visibility.
+// Consumers that derive expensive state from "which cells are visible"
+// (calo-bound particle endpoints, outline rebuilds) compare generations to
+// skip work when a refresh pass ended up changing nothing — e.g. threshold
+// slider drags while the slicer's show-all mode has everything visible.
+let _visGeneration = 0;
+export function getCellVisGeneration() {
+  return _visGeneration;
+}
+
 /**
  * @param {CellHandle} h
  * @param {THREE.Color} color
@@ -304,6 +315,7 @@ export function setCellColor(h, color) {
 export function setCellVisible(h, vis) {
   if (h.visible === vis) return;
   h.visible = vis;
+  _visGeneration++;
   const rec = /** @type {MegaRecord} */ (h.mega);
   rec.colorVis[h.slot * 4 + 3] = vis ? 255 : 0;
   rec.dirty = true;
@@ -315,6 +327,7 @@ export function hideAllCells() {
     for (const h of rec.handles) {
       if (!h.visible) continue;
       h.visible = false;
+      _visGeneration++;
       rec.colorVis[h.slot * 4 + 3] = 0;
       rec.dirty = true;
     }

@@ -31,7 +31,7 @@ import {
   inEtaPhiRegion,
   setFcalHeatmapEntries,
 } from '../visibility.js';
-import { refreshCaloBoundParticles } from '../particles.js';
+import { refreshCaloBoundParticles, bumpCaloBoundGeneration } from '../particles.js';
 import { applyWedgeClipInstanced, applyWedgeClipAttrCenter } from '../wedgeClip.js';
 
 /**
@@ -219,7 +219,9 @@ export function applyFcalThreshold() {
   // they don't end at FCAL cells that just got hidden (and pick up newly
   // shown ones). The flag inside refreshCaloBoundParticles prevents the
   // applyClusterThreshold → applyThreshold → applyFcalThreshold chain from
-  // re-entering.
+  // re-entering. FCAL visibility lives outside megaCells' generation
+  // counter, so bump it by hand or the gated refresh would skip this.
+  bumpCaloBoundGeneration();
   refreshCaloBoundParticles();
 }
 
