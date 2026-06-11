@@ -324,16 +324,33 @@ const _notifyCinemaSlicer = () => {
   cinema.notifySlicerChanged(slicer.getMaskState(), slicer.isPointInsideWedge);
 };
 
+let _slicerDragSeen = false;
 const onSlicerStateChanged = () => {
   // Live drag: the slicer already pushed the wedge mask into the shared GPU
   // uniforms (wedgeClip.js) — cells, outlines, FCAL and chambers carve
   // themselves in their shaders, so a frame request is all that's needed.
-  // The CPU refresh below (visibility sweep, FCAL instance rebuild, chamber
-  // pass, cinema tour) runs once per discrete change: enable / disable /
-  // muon-driven resize / drag END (the slicer re-fires this with
-  // isDragging() === false from its pointerup handler).
   markDirty();
-  if (slicer?.isDragging?.()) return;
+  if (slicer?.isDragging?.()) {
+    _slicerDragSeen = true;
+    return;
+  }
+  const wasDragEnd = _slicerDragSeen;
+  _slicerDragSeen = false;
+  if (wasDragEnd) {
+    // A gizmo drag just ended. The mask MOVED but nothing CPU-side depends
+    // on its position: the carve lives in GPU uniforms, cell visibility is
+    // mask-independent while show-all is on, and the chamber gate keys off
+    // track hits, not the wedge. Re-running the full refresh here would
+    // recompute an identical scene and hitch the frame — felt hardest when
+    // the cinema tour is running. Only the cinema cares about the new cut
+    // (its POI filter + pendulum arc); its rebuild is debounced,
+    // sub-millisecond, and lands as a smooth C2 path morph.
+    _notifyCinemaSlicer();
+    return;
+  }
+  // Discrete state change (enable / disable / muon-driven resize): run the
+  // full CPU refresh — visibility sweep, FCAL instance rebuild, chamber
+  // pass, cinema tour.
   refreshSceneVisibility();
   updateTrackAtlasIntersections();
   _notifyCinemaSlicer();

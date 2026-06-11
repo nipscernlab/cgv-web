@@ -99,12 +99,29 @@ const Z_DEFAULT_FRAC = 0.35;
 //     FOV push inside the tunnel.
 const DIVE_U0 = 0.7;
 const DIVE_U1 = 0.95;
-// Entry/exit z of the dive — past the calo (|z| ≤ 6.3 m) so the camera
-// lines up with the bore before anything interesting is nearby.
-const DIVE_Z_MM = 9000;
-// Fraction of the dive window spent ramping in/out (smootherstep). Wide
-// ramps keep the spiral gentle (no sharp radial collapse).
-const DIVE_RAMP_FRAC = 0.35;
+// Entry/exit z of the dive — past the calo (|z| ≤ 6.5 m) with margin, so
+// the camera lines up with the bore before anything interesting is nearby.
+const DIVE_Z_MM = 9400;
+// Flight shaping inside the window: a single straight blend from the
+// envelope to the axis chords through the calorimeter end cap whenever the
+// orbit height opposes the entry end (visible as a fly-through of FCAL/
+// TILE cells). Three OVERLAPPING smooth gates keep the one-plunge feel
+// while routing around it:
+//   gz  (ramp DIVE_CLIMB_RAMP)            the camera height eases onto the
+//                                         z-track first;
+//   gxy (start DIVE_XY_START,             the radius collapses afterwards —
+//        ramp DIVE_XY_RAMP)               tuned so the calo radial band
+//                                         (r 0.15–4.9 m) is only crossed
+//                                         while |z| > 6.5 m;
+//   zT  (sweep DIVE_SWEEP_T0..T1)         holds ±DIVE_Z at the ends and
+//                                         cos-sweeps the bore in between.
+// The gates overlap (no piecewise segments), so the camera never passes
+// through a dead stop between phases.
+const DIVE_CLIMB_RAMP = 0.2;
+const DIVE_XY_START = 0.1;
+const DIVE_XY_RAMP = 0.25;
+const DIVE_SWEEP_T0 = 0.17;
+const DIVE_SWEEP_T1 = 0.83;
 // |energy-centroid z| beyond which the dive picks an entry end (below it
 // the event is balanced and the default +z entry is used).
 const DIVE_END_BIAS_MM = 800;
@@ -113,11 +130,15 @@ const DIVE_END_BIAS_MM = 800;
 // pan rate at closest approach — the camera never flies through its own
 // look target).
 const DIVE_LM_ZMAX_MM = 4500;
-const DIVE_LM_MIN_R_MM = 1100;
-// Dive speed profile: rush the empty bore, dwell at the landmark.
-const DIVE_SPEED_FAST = 1.6;
-const DIVE_SPEED_SLOW = 0.5;
-const DIVE_DWELL_SIGMA_MM = 2800;
+// Lateral floor: the fly-by pan rate scales as speed/distance, so the
+// closest allowed approach caps how fast the gaze sweeps the landmark.
+const DIVE_LM_MIN_R_MM = 1500;
+// Dive speed profile: cruise the empty bore, dwell at the landmark — the
+// centre passage is the set piece, so it runs below the orbit cruise (the
+// loop-time normalisation trades the slack to the outer orbit).
+const DIVE_SPEED_FAST = 1.0;
+const DIVE_SPEED_SLOW = 0.38;
+const DIVE_DWELL_SIGMA_MM = 3200;
 // Barrel roll: one full turn across the middle of the plateau.
 const DIVE_ROLL_T0 = 0.2;
 const DIVE_ROLL_T1 = 0.8;
@@ -495,20 +516,23 @@ export function bakeTourPath(pois, opts = {}) {
     // where the gate releases it).
     if (dive && u > DIVE_U0 && u < DIVE_U1) {
       const tw = (u - DIVE_U0) / diveW;
-      const g = _sstep01(Math.min(tw, 1 - tw) / DIVE_RAMP_FRAC);
-      const zd = entrySign * Math.cos(tw * Math.PI) * DIVE_Z_MM;
-      posX *= 1 - g;
-      posY *= 1 - g;
-      posZ = posZ * (1 - g) + zd * g;
-      tgtX = tgtX * (1 - g) + lmX * g;
-      tgtY = tgtY * (1 - g) + lmY * g;
-      tgtZ = tgtZ * (1 - g) + lmZ * g;
-      const dz = zd - lmZ;
+      const twm = Math.min(tw, 1 - tw);
+      const gz = _sstep01(twm / DIVE_CLIMB_RAMP);
+      const gxy = _sstep01((twm - DIVE_XY_START) / DIVE_XY_RAMP);
+      const sw = Math.max(0, Math.min(1, (tw - DIVE_SWEEP_T0) / (DIVE_SWEEP_T1 - DIVE_SWEEP_T0)));
+      const zT = entrySign * DIVE_Z_MM * Math.cos(Math.PI * sw);
+      posX *= 1 - gxy;
+      posY *= 1 - gxy;
+      posZ = posZ * (1 - gz) + zT * gz;
+      tgtX = tgtX * (1 - gxy) + lmX * gxy;
+      tgtY = tgtY * (1 - gxy) + lmY * gxy;
+      tgtZ = tgtZ * (1 - gxy) + lmZ * gxy;
+      const dz = zT - lmZ;
       const sDive =
         DIVE_SPEED_FAST - (DIVE_SPEED_FAST - DIVE_SPEED_SLOW) * Math.exp(-dz * dz * inv2sDive);
-      s = s * (1 - g) + sDive * g;
+      s = s * (1 - gz) + sDive * gz;
       rollK = 2 * Math.PI * _sstep01((tw - DIVE_ROLL_T0) / (DIVE_ROLL_T1 - DIVE_ROLL_T0));
-      dgK = g;
+      dgK = gxy;
     }
 
     px[k] = posX;

@@ -106,6 +106,27 @@ describe('bakeTourPath', () => {
     expect(zOnAxisMin).toBeLessThan(-3000);
   });
 
+  it('the dive never enters the calorimeter volume (no cell fly-through)', () => {
+    // Forbidden region: inside the calo cylinder (r < 4.9 m AND |z| < 6.5 m)
+    // anywhere off the beam corridor (r > 150 mm). The overlapping dive
+    // gates must hold the camera high over the end cap while the radius
+    // collapses, entering the calo z-range only once pinned to the axis.
+    const cases = [
+      bakeTourPath([]),
+      bakeTourPath(ZIGZAG_POIS),
+      bakeTourPath([{ eta: 2.5, phi: 1.0, energyMev: 100000 }]), // reversed dive
+      bakeTourPath(ZIGZAG_POIS, { arc: { center: Math.PI / 2, halfWidth: 0.8 } }),
+    ];
+    for (const path of cases) {
+      for (let i = 0; i < path.n; i++) {
+        const r = Math.hypot(path.px[i], path.py[i]);
+        if (r > 150 && r < 4900) {
+          expect(Math.abs(path.pz[i])).toBeGreaterThan(6500);
+        }
+      }
+    }
+  });
+
   it('enters the dive from the end opposite the energy concentration', () => {
     // All the energy far forward (+z): the dive must fly −z → +z so the hot
     // region is ahead of the camera, not behind it.
@@ -192,9 +213,11 @@ describe('bakeTourPath', () => {
 
   it('has no cusps: per-sample steps stay bounded even for η-zigzag POIs', () => {
     // A uniform circular orbit of radius 14 m steps ~2π·14000/720 ≈ 122 mm
-    // per sample; the dive's spiral adds a bounded radial component. A
-    // hairpin reversal would produce multi-thousand-mm steps.
-    const MAX_STEP_MM = 600;
+    // per sample; the dive's height-alignment climb is the longest smooth
+    // stride (worst case ~1 m/sample when a forward POI drags the orbit to
+    // the end opposite the entry). A hairpin reversal would produce
+    // multi-thousand-mm steps.
+    const MAX_STEP_MM = 1100;
     for (const opts of [undefined, { arc: { center: 0.5, halfWidth: 0.9 } }]) {
       const path = bakeTourPath(ZIGZAG_POIS, opts);
       for (let i = 0; i < path.n; i++) {
