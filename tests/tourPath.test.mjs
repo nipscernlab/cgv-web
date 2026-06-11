@@ -241,21 +241,32 @@ describe('bakeTourPath', () => {
     }
   });
 
+  // Physical camera speed at loop parameter u: u-rate × local stride. The
+  // baked speed[] is arc-length compensated, so the u-rate alone no longer
+  // mirrors what the viewer perceives — this does.
+  const physicalPace = (path, u) => {
+    const a = { x: 0, y: 0, z: 0 };
+    const b = { x: 0, y: 0, z: 0 };
+    samplePathPoint(path, u - 1 / path.n, a);
+    samplePathPoint(path, u + 1 / path.n, b);
+    return samplePathSpeed(path, u) * Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+  };
+
   it('dwells near hotspots: slower at a POI azimuth than in an empty gap', () => {
     const pois = [{ eta: 0.0, phi: 0.5, energyMev: 100000 }];
     const path = bakeTourPath(pois, { dive: false });
-    const sAt = samplePathSpeed(path, uAtPoi(0.5));
-    const sAway = samplePathSpeed(path, (uAtPoi(0.5) + 0.5) % 1);
-    expect(sAt).toBeLessThan(sAway * 0.6);
+    const vAt = physicalPace(path, uAtPoi(0.5));
+    const vAway = physicalPace(path, (uAtPoi(0.5) + 0.5) % 1);
+    expect(vAt).toBeLessThan(vAway * 0.6);
   });
 
   it('compensates the scene rotation: dwell follows the rotated POI', () => {
     const pois = [{ eta: 0.0, phi: 0.5, energyMev: 100000 }];
     const rotZ = 2.0;
     const path = bakeTourPath(pois, { rotZ, dive: false });
-    const sAt = samplePathSpeed(path, uAtPoi(0.5, rotZ));
-    const sAway = samplePathSpeed(path, (uAtPoi(0.5, rotZ) + 0.5) % 1);
-    expect(sAt).toBeLessThan(sAway * 0.6);
+    const vAt = physicalPace(path, uAtPoi(0.5, rotZ));
+    const vAway = physicalPace(path, (uAtPoi(0.5, rotZ) + 0.5) % 1);
+    expect(vAt).toBeLessThan(vAway * 0.6);
   });
 
   it('aims the gaze at the hotspot when the camera passes it', () => {

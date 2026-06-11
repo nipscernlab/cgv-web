@@ -544,7 +544,31 @@ export function bakeTourPath(pois, opts = {}) {
     speed[k] = s;
     roll[k] = rollK;
     dg[k] = dgK;
-    invSpeedSum += 1 / s;
+  }
+
+  // ── Arc-length compensation ───────────────────────────────────────────────
+  // Up to here speed[] is the DESIRED PHYSICAL pace (cruise / dwell). The
+  // lead advances in u, and u is NOT arc length: through the dive the local
+  // stride |dP/du| swells 4–5× (height climb, bore sweep), so a flat u-rate
+  // would turn into physical speed surges — the dive's "trancos". Dividing
+  // by the local stride makes the camera's REAL speed follow the desired
+  // pace everywhere. The stride floor keeps the u-rate bounded through the
+  // flight plan's near-stationary corners (they are flown through promptly
+  // instead of lingering at a crawl).
+  {
+    const strideArr = new Float64Array(n);
+    let total = 0;
+    for (let k = 0; k < n; k++) {
+      const j = (k + 1) % n;
+      strideArr[k] = Math.hypot(px[j] - px[k], py[j] - py[k], pz[j] - pz[k]);
+      total += strideArr[k];
+    }
+    const meanStride = total / n || 1;
+    for (let k = 0; k < n; k++) {
+      const st = Math.max(strideArr[k], 0.2 * meanStride);
+      speed[k] *= meanStride / st;
+      invSpeedSum += 1 / speed[k];
+    }
   }
 
   // ── Up-field pass (see MAX_ROLL_STEP block above) ─────────────────────────

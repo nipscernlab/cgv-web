@@ -332,6 +332,11 @@ const onSlicerStateChanged = () => {
   markDirty();
   if (slicer?.isDragging?.()) {
     _slicerDragSeen = true;
+    // Track the moving cut LIVE: the cinema rebake is debounced and
+    // sub-millisecond, and each (small) path change lands as a C2 morph —
+    // a chain of gentle nudges while the ball moves, instead of one large
+    // glide on release.
+    _notifyCinemaSlicer();
     return;
   }
   const wasDragEnd = _slicerDragSeen;
