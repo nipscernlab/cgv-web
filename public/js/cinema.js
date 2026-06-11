@@ -4,15 +4,12 @@ import {
   bakeTourPath,
   samplePathPoint,
   samplePathSpeed,
-  samplePathRollSC,
+  samplePathUp,
   samplePathDiveGate,
   nearestPathU,
   filterPOIsBySlicer,
   filterPOIsByMinimap,
   pathFingerprint,
-  DIVE_U0,
-  DIVE_U1,
-  DIVE_UP_LIFT,
 } from './cinema/tourPath.js';
 
 export function setupCinemaControls({
@@ -83,11 +80,7 @@ export function setupCinemaControls({
   // TOUR_LOOP_MS is the duration of one full loop (the bake normalises its
   // speed profile so this holds whatever the dwell/cruise mix). FOLLOW_SMOOTH
   // is the follower's time constant: larger = smoother, more cinematic lag.
-  // 72 s per loop: the dive runs deliberately slow (its speed profile sits
-  // well below the orbit cruise — the bore passage is the set piece), and
-  // the loop-time normalisation would otherwise push the outer orbit
-  // noticeably faster — the extra seconds keep the orbit unhurried.
-  const TOUR_LOOP_MS = 72_000;
+  const TOUR_LOOP_MS = 60_000;
   const FOLLOW_SMOOTH = 0.8;
   // Exit recentering: the camera is left exactly where the tour put it, and
   // only the orbit target glides to the detector centre (scene origin) so
@@ -120,43 +113,26 @@ export function setupCinemaControls({
   let exitT0 = 0;
   const _exitTgtFrom = new THREE.Vector3();
 
-  // ── Runtime view guard ─────────────────────────────────────────────────────
-  // The baked path keeps every SAMPLE's line of sight clear of the up axis,
-  // but the follower's smoothing lag mixes nearby samples — most visibly on
-  // the dive's entry/exit spirals, where the smoothed camera cuts the
-  // corner and the actual view can sweep right past ±up (the lookAt flip).
-  // This guard watches the REAL smoothed view every frame: as its alignment
-  // with the current up approaches 1, a vertical offset is added to the
-  // rendered camera position (never to the follower state), restoring the
-  // camera↔target z-separation that keeps lookAt stable. The offset target
-  // is an open-loop function of the unlifted geometry (no feedback hunting)
-  // and the offset itself is critically damped, so the correction is as
-  // glassy as the rest of the motion. The push direction is latched per
-  // engagement so it can't dither mid-correction.
-  const VIEW_GUARD_ON = 0.86;
-  const VIEW_GUARD_FULL = 0.96;
-  const VIEW_GUARD_LIFT_MM = 6000;
-  const VIEW_GUARD_SMOOTH = 0.4;
-  const _rollSC = { s: 0, c: 1 };
-  let _guardLift = 0;
-  let _guardLiftVel = 0;
-  let _guardSign = 0;
-  function _resetViewGuard() {
-    _guardLift = 0;
-    _guardLiftVel = 0;
-    _guardSign = 0;
-  }
-
-  // Beam-dive presentation state. The path bakes a barrel-roll angle and a
-  // dive gate per sample; the tick applies them as the camera up-vector and
-  // a gentle FOV push (speed sensation inside the bore). Both are exact
+  // Beam-dive presentation state. The path bakes a per-sample up-vector
+  // (world vertical + dive barrel roll + fly-by lift + pole guard — see
+  // tourPath.js) and a dive gate; the tick applies them as camera.up and a
+  // gentle FOV push (speed sensation inside the bore). Both are exact
   // functions of the loop parameter — identical across path swaps — so they
-  // need no smoothing of their own. Up stays world-vertical outside the
-  // dive; the lookAt pole degeneracy is avoided geometrically by the gaze
-  // pole clearance baked into the path (tourPath.js), not by steering the
-  // up. The base FOV is captured once so exit always restores the default.
+  // need no smoothing of their own. The base FOV is captured once so exit
+  // always restores the project default.
   const _fovBase = camera.fov;
   const FOV_DIVE_BOOST = 12;
+  const _upTmp = new THREE.Vector3();
+  function _applyDivePresentation(u) {
+    samplePathUp(tourPath, u, _upTmp);
+    camera.up.copy(_upTmp);
+    const g = samplePathDiveGate(tourPath, u);
+    const fov = _fovBase + FOV_DIVE_BOOST * g;
+    if (Math.abs(fov - camera.fov) > 0.01) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+  }
   function _resetDivePresentation() {
     camera.up.set(0, 1, 0);
     if (camera.fov !== _fovBase) {
@@ -259,13 +235,6 @@ export function setupCinemaControls({
     // wheel/drag can't fight the follower.
     if (_inputSuspendedByTour && controls.enabled) controls.enabled = false;
 
-    // Apply a parked dive-reversing swap once the camera is back on the
-    // envelope (see _requestPathSwap).
-    if (_pendingPath && (_phase <= _SWAP_DEFER_LO || _phase >= _SWAP_DEFER_HI)) {
-      _applyNewPath(_pendingPath);
-      _pendingPath = null;
-    }
-
     // Advance the lead point. The baked speed profile slows it near hotspots
     // and cruises it through gaps; the profile is C∞ in u so the resulting
     // acceleration/deceleration is glassy by construction.
@@ -275,80 +244,9 @@ export function setupCinemaControls({
     _smoothDamp(_camPos, _leadPos, _camVel, FOLLOW_SMOOTH, dt);
     _smoothDamp(_tgtPos, _leadTgt, _tgtVel, FOLLOW_SMOOTH, dt);
 
-    // Up vector + dive gate for this frame (also feeds the view guard).
-    // Roll comes as a lerped (sin, cos) pair — see samplePathRollSC.
-    samplePathRollSC(tourPath, _phase, _rollSC);
-    const diveG = samplePathDiveGate(tourPath, _phase);
-    let upX = _rollSC.s;
-    let upY = _rollSC.c;
-    let upZ = DIVE_UP_LIFT * diveG;
-    const upL = Math.hypot(upX, upY, upZ) || 1;
-    upX /= upL;
-    upY /= upL;
-    upZ /= upL;
-
-    // Runtime view guard (see VIEW_GUARD_* above): alignment of the actual
-    // smoothed view with the up, mapped to a vertical camera offset. The
-    // push side is latched on engagement (full force even when camera and
-    // target sit at the same height — the worst spot) and re-latched
-    // whenever the geometry has clearly picked a side, so it can't go
-    // stale across a mid-engagement crossing.
-    const vgx = _tgtPos.x - _camPos.x;
-    const vgy = _tgtPos.y - _camPos.y;
-    const vgz = _tgtPos.z - _camPos.z;
-    const vgl = Math.hypot(vgx, vgy, vgz) || 1;
-    const aView = Math.abs((vgx * upX + vgy * upY + vgz * upZ) / vgl);
-    let liftTarget = 0;
-    if (aView > VIEW_GUARD_ON) {
-      const dzNow = _camPos.z - _tgtPos.z;
-      if (_guardSign === 0) _guardSign = dzNow >= 0 ? 1 : -1;
-      else if (Math.abs(dzNow) > 1500) _guardSign = dzNow > 0 ? 1 : -1;
-      // Masked by RADIUS: full strength on the envelope (any z is safe out
-      // there) and on the beam axis (a z-shift stays inside the free bore
-      // corridor) — but zero through the dive's approach radii, where a
-      // vertical shove is exactly how a path ends up inside calo cells.
-      const rr = Math.hypot(_camPos.x, _camPos.y);
-      const boreW = 1 - _smootherstep01((rr - 300) / 1200);
-      const envW = _smootherstep01((rr - 9500) / 2500);
-      liftTarget =
-        _guardSign *
-        VIEW_GUARD_LIFT_MM *
-        Math.min(1, boreW + envW) *
-        _smootherstep01((aView - VIEW_GUARD_ON) / (VIEW_GUARD_FULL - VIEW_GUARD_ON));
-    } else if (Math.abs(_guardLift) < 1) {
-      _guardSign = 0;
-    }
-    {
-      // Asymmetric damping: when the wanted lift has flipped sides (the
-      // camera crossed its target's z mid-engagement — routine on reversed
-      // dive entries), a stale same-side lift would PUSH the view INTO the
-      // pole. Cross through zero quickly; settle gently otherwise.
-      const crossing = liftTarget * _guardLift < 0;
-      const omega = 2 / (crossing ? 0.12 : VIEW_GUARD_SMOOTH);
-      const x = omega * dt;
-      const exp = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
-      const change = _guardLift - liftTarget;
-      const temp = (_guardLiftVel + omega * change) * dt;
-      _guardLiftVel = (_guardLiftVel - omega * temp) * exp;
-      const prevLift = _guardLift;
-      _guardLift = liftTarget + (change + temp) * exp;
-      // Hard rate cap on the rendered offset itself — the correction must
-      // read as a gentle drift, never a dart, fast zero-crossings included.
-      const maxStep = 5000 * dt;
-      if (_guardLift > prevLift + maxStep) _guardLift = prevLift + maxStep;
-      else if (_guardLift < prevLift - maxStep) _guardLift = prevLift - maxStep;
-      if (_guardLiftVel > 5000) _guardLiftVel = 5000;
-      else if (_guardLiftVel < -5000) _guardLiftVel = -5000;
-    }
-
-    camera.position.set(_camPos.x, _camPos.y, _camPos.z + _guardLift);
+    camera.position.copy(_camPos);
     controls.target.copy(_tgtPos);
-    camera.up.set(upX, upY, upZ);
-    const fov = _fovBase + FOV_DIVE_BOOST * diveG;
-    if (Math.abs(fov - camera.fov) > 0.01) {
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-    }
+    _applyDivePresentation(_phase);
     controls.update();
     markDirty();
   }
@@ -366,7 +264,6 @@ export function setupCinemaControls({
     _ofsActive = false;
     _lastTickT = performance.now();
     exitRecentering = false;
-    _resetViewGuard();
   }
 
   // Path swap. The phase is left UNTOUCHED: the new path is sampled at the
@@ -392,25 +289,6 @@ export function setupCinemaControls({
       _ofsActive = false;
     }
     tourPath = newPath;
-  }
-
-  // A swap that REVERSES the dive direction while the camera is inside (or
-  // entering) the dive window would morph it from one end of the bore to
-  // the other — a violent multi-metre glide. Such swaps are parked here and
-  // applied by tick() the moment the camera is back on the envelope; all
-  // other swaps go through immediately.
-  let _pendingPath = null;
-  const _SWAP_DEFER_LO = DIVE_U0 - 0.04;
-  const _SWAP_DEFER_HI = DIVE_U1 + 0.02;
-  function _requestPathSwap(newPath) {
-    const touring = cinemaMode && tourMode && !exitRecentering;
-    const inDiveZone = touring && _phase > _SWAP_DEFER_LO && _phase < _SWAP_DEFER_HI;
-    if (inDiveZone && newPath.diveSign !== tourPath.diveSign) {
-      _pendingPath = newPath;
-      return;
-    }
-    _pendingPath = null;
-    _applyNewPath(newPath);
   }
 
   function _scheduleRebuild() {
@@ -467,7 +345,7 @@ export function setupCinemaControls({
       zWindow = { min: m.zMin, max: m.zMax };
     }
 
-    _requestPathSwap(bakeTourPath(pois, { rotZ, arc, zWindow, prevDiveSign: tourPath.diveSign }));
+    _applyNewPath(bakeTourPath(pois, { rotZ, arc, zWindow }));
   }
 
   // Force the path to reflect the current inputs RIGHT NOW (used on entry so
@@ -539,12 +417,6 @@ export function setupCinemaControls({
 
   function startTour() {
     _rebuildSyncForEntry();
-    // A swap parked by the dive-reversal deferral must not survive entry —
-    // the follower is being re-seeded anyway, so apply it outright.
-    if (_pendingPath) {
-      _applyNewPath(_pendingPath);
-      _pendingPath = null;
-    }
     controls.autoRotate = false;
     _seedFollower();
     _suspendUserInput();
@@ -573,10 +445,7 @@ export function setupCinemaControls({
     document.getElementById('btn-cinema').classList.remove('on');
     _restoreUserInput();
     // Exiting mid-dive must not leave a rolled horizon or a pushed FOV.
-    // The view-guard lift stays baked into the rendered camera position
-    // (no pop); only its state is cleared.
     _resetDivePresentation();
-    _resetViewGuard();
     updateCollisionHud();
     // Always recenter on exit: keep the camera exactly where it is and bring
     // the orbit target (scene centre) back onto the geometry centre. Skipped
@@ -602,7 +471,6 @@ export function setupCinemaControls({
       exitRecentering = false;
       _restoreUserInput();
       _resetDivePresentation();
-      _resetViewGuard();
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.55;
     }
