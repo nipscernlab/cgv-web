@@ -1,6 +1,6 @@
 {
   "name": "cgv-web",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "CGV Web — browser-based 3D viewer for the ATLAS Tile Calorimeter (TileCal) at CERN. Renders .root geometry compiled to .glb via Three.js + WebGL, and overlays live event data (cells, clusters, tracks) parsed from JiveXML by a Rust/WASM ATLAS-ID decoder.",
   "keywords": [
     "atlas",
