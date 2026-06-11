@@ -1,4 +1,4 @@
-import { dateGroup } from '../utils.js';
+import { dateGroup, withButtonProgress } from '../utils.js';
 
 const MAX_ENTRIES = 100;
 const REFRESH_MS = 5000;
@@ -254,7 +254,12 @@ export function setupServerMode({
       });
       row.querySelector('.srow-dl').addEventListener('click', (ev) => {
         ev.stopPropagation();
-        downloadFile(e.file, shortName);
+        const btn = /** @type {HTMLButtonElement} */ (ev.currentTarget);
+        withButtonProgress(btn, (setProgress) =>
+          downloadFile(e.file, shortName, setProgress),
+        ).catch((err) => {
+          setStatus(`<span class="err">Download error: ${esc(err.message)}</span>`);
+        });
       });
       listEl.appendChild(row);
     });
@@ -275,8 +280,18 @@ export function setupServerMode({
     }
   }
 
-  function downloadFile(file, name) {
-    const url = URL.createObjectURL(file);
+  async function downloadFile(file, name, onProgress) {
+    // Local picks hand us real File objects (already on disk — the ring
+    // just sweeps to full); remote mode hands a stub whose text() streams
+    // from the backend, reporting the real downloaded fraction as it goes.
+    let blob;
+    if (file instanceof Blob) {
+      blob = file;
+      onProgress?.(1);
+    } else {
+      blob = new Blob([await file.text(onProgress)], { type: 'text/xml' });
+    }
+    const url = URL.createObjectURL(blob);
     const a = Object.assign(document.createElement('a'), { href: url, download: name });
     document.body.appendChild(a);
     a.click();
@@ -347,10 +362,29 @@ export function setupServerMode({
       name: meta.name,
       size: meta.size,
       lastModified: meta.mtime,
-      async text() {
+      // onProgress (optional) is fed the real downloaded fraction (0..1).
+      // The listing's size is the uncompressed byte count, which matches
+      // what the stream reader hands us — Content-Length would be the
+      // compressed transfer size and is only a fallback.
+      async text(onProgress) {
         const r = await fetch(url, { cache: 'no-store' });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.text();
+        const total = meta.size || Number(r.headers.get('content-length')) || 0;
+        if (!r.body || !total || typeof onProgress !== 'function') return r.text();
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let received = 0;
+        let text = '';
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          received += value.byteLength;
+          text += decoder.decode(value, { stream: true });
+          onProgress(Math.min(1, received / total));
+        }
+        text += decoder.decode();
+        onProgress(1);
+        return text;
       },
     };
   }

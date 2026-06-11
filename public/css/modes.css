@@ -210,6 +210,7 @@
   border-radius: var(--r-sm);
   color: var(--muted);
   flex-shrink: 0;
+  position: relative;
   transition:
     color var(--motion-fast),
     background var(--motion-fast);
@@ -217,6 +218,38 @@
 .edl:hover {
   color: var(--accent-text);
   background: var(--surface-hover);
+}
+
+/* Determinate progress ring around a download button (Live .edl and Server
+   .srow-dl): the circumference fills with the real downloaded fraction,
+   driven through the --dl-pct custom property (0–100) by
+   withButtonProgress() in utils.js. Registering the property lets the
+   fill interpolate smoothly between progress updates; browsers without
+   @property simply step. */
+@property --dl-pct {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+.edl.dl-busy,
+.srow-dl.dl-busy {
+  color: var(--accent-text);
+  pointer-events: none;
+  transition: --dl-pct 0.25s linear;
+}
+.edl.dl-busy::after,
+.srow-dl.dl-busy::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--accent-text) calc(var(--dl-pct, 0) * 1%),
+    rgba(147, 182, 255, 0.18) 0
+  );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+  pointer-events: none;
 }
 
 /* Date separators inside the event list */
@@ -563,6 +596,7 @@ input[type='file'] {
   border-radius: var(--r-sm);
   color: var(--muted);
   flex-shrink: 0;
+  position: relative;
   transition:
     color var(--motion-fast),
     background var(--motion-fast);

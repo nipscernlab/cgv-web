@@ -93,6 +93,45 @@ export function makeRelTime(t) {
 }
 
 /**
+ * Run `task` with a determinate progress ring around `btn` (the `dl-busy`
+ * class, styled in modes.css): the ring's circumference fills with the
+ * fraction reported through the `setProgress(0..1)` callback handed to the
+ * task — real downloaded bytes, not an indeterminate spinner. On completion
+ * the ring is driven to 100% and held briefly so the user sees the full
+ * circle before it dismisses. The button is disabled meanwhile to absorb
+ * double-clicks; re-entrant calls on a busy button are ignored. Rejections
+ * propagate to the caller after the ring is scheduled for removal.
+ *
+ * @param {HTMLButtonElement} btn
+ * @param {(setProgress: (frac: number) => void) => (void | Promise<unknown>)} task
+ * @param {number} [holdMs]  How long the completed (100%) ring stays visible.
+ * @returns {Promise<void>}
+ */
+export async function withButtonProgress(btn, task, holdMs = 450) {
+  if (!btn || btn.classList.contains('dl-busy')) return;
+  btn.classList.add('dl-busy');
+  btn.disabled = true;
+  btn.style.setProperty('--dl-pct', '0');
+  const setProgress = (/** @type {number} */ frac) => {
+    if (!Number.isFinite(frac)) return;
+    btn.style.setProperty('--dl-pct', String(Math.max(0, Math.min(1, frac)) * 100));
+  };
+  // Let the 0% state paint before the task starts, so even an instant task
+  // animates a 0→100 sweep instead of popping in already full.
+  await new Promise((r) => requestAnimationFrame(r));
+  try {
+    await task(setProgress);
+  } finally {
+    setProgress(1);
+    setTimeout(() => {
+      btn.classList.remove('dl-busy');
+      btn.disabled = false;
+      btn.style.removeProperty('--dl-pct');
+    }, holdMs);
+  }
+}
+
+/**
  * Classify a past timestamp into a date-group label ("today", "yesterday",
  * "this-week", or an absolute date like "2026-04-18"). Day boundaries use the
  * local-timezone midnight. Returns {key, label} where key is stable across

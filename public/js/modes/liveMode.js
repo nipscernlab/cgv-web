@@ -1,4 +1,4 @@
-import { dateGroup } from '../utils.js';
+import { dateGroup, withButtonProgress } from '../utils.js';
 
 export function setupLiveMode({
   LivePoller,
@@ -103,7 +103,13 @@ export function setupLiveMode({
       });
       row.querySelector('.edl').addEventListener('click', (ev) => {
         ev.stopPropagation();
-        poller.download(idx);
+        const btn = /** @type {HTMLButtonElement} */ (ev.currentTarget);
+        // The XML is already cached by the poller, so the save is instant —
+        // the ring sweeps straight to 100% as completion feedback.
+        withButtonProgress(btn, (setProgress) => {
+          poller.download(idx);
+          setProgress(1);
+        });
       });
       listEl.appendChild(row);
     });
