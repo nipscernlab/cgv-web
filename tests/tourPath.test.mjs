@@ -114,7 +114,7 @@ describe('bakeTourPath', () => {
     const cases = [
       bakeTourPath([]),
       bakeTourPath(ZIGZAG_POIS),
-      bakeTourPath([{ eta: 2.5, phi: 1.0, energyMev: 100000 }]), // reversed dive
+      bakeTourPath([{ eta: 2.5, phi: 1.0, energyMev: 100000 }]), // forward-hot event
       bakeTourPath(ZIGZAG_POIS, { arc: { center: Math.PI / 2, halfWidth: 0.8 } }),
     ];
     for (const path of cases) {
@@ -127,22 +127,27 @@ describe('bakeTourPath', () => {
     }
   });
 
-  it('enters the dive from the end opposite the energy concentration', () => {
-    // All the energy far forward (+z): the dive must fly −z → +z so the hot
-    // region is ahead of the camera, not behind it.
+  it('enters the dive from the end the orbit is already on (no height hairpin)', () => {
+    // A forward POI (η=2.5) pulls the orbit toward +z at the dive entry, and
+    // the empty-event default z-wave is also positive there — in both cases
+    // the flight must enter from +z and sweep through to −z, so the climb
+    // CONTINUES the camera's vertical drift instead of reversing it across
+    // ~20 m (the old event-driven "enter opposite the energy" rule).
     const hotForward = [{ eta: 2.5, phi: 1.0, energyMev: 100000 }];
-    const path = bakeTourPath(hotForward);
-    let firstAxisZ = NaN;
-    let lastAxisZ = NaN;
-    for (let i = 0; i < path.n; i++) {
-      const r = Math.hypot(path.px[i], path.py[i]);
-      if (r < 200) {
-        if (Number.isNaN(firstAxisZ)) firstAxisZ = path.pz[i];
-        lastAxisZ = path.pz[i];
+    for (const pois of [[], hotForward]) {
+      const path = bakeTourPath(pois);
+      let firstAxisZ = NaN;
+      let lastAxisZ = NaN;
+      for (let i = 0; i < path.n; i++) {
+        const r = Math.hypot(path.px[i], path.py[i]);
+        if (r < 200) {
+          if (Number.isNaN(firstAxisZ)) firstAxisZ = path.pz[i];
+          lastAxisZ = path.pz[i];
+        }
       }
+      expect(firstAxisZ).toBeGreaterThan(3000);
+      expect(lastAxisZ).toBeLessThan(-3000);
     }
-    expect(firstAxisZ).toBeLessThan(0);
-    expect(lastAxisZ).toBeGreaterThan(0);
   });
 
   it('dwells around the hot landmark while inside the bore', () => {
@@ -209,6 +214,41 @@ describe('bakeTourPath', () => {
       maxRoll = Math.max(maxRoll, path.roll[i]);
     }
     expect(maxRoll).toBeCloseTo(2 * Math.PI, 3);
+  });
+
+  it('never turns abruptly: consecutive strides stay aligned (no hairpins)', () => {
+    // Angle between consecutive step vectors. A smooth curve at LUT density
+    // turns well under 0.1 rad per sample; a hairpin (e.g. the old dive
+    // entry reversing the orbit height mid-flight) approaches π. Tiny steps
+    // are skipped: smooth reversals (the arc-mode pendulum ends) pass
+    // through zero velocity, so any direction flip there is carried only by
+    // sub-threshold strides.
+    const MIN_STEP_MM = 50;
+    const MAX_TURN_RAD = 0.35;
+    const cases = [
+      bakeTourPath([]),
+      bakeTourPath(ZIGZAG_POIS),
+      bakeTourPath([{ eta: 2.5, phi: 1.0, energyMev: 100000 }]),
+      bakeTourPath(ZIGZAG_POIS, { arc: { center: 1.0, halfWidth: 0.7 } }),
+    ];
+    for (const path of cases) {
+      for (let i = 0; i < path.n; i++) {
+        const j = (i + 1) % path.n;
+        const k = (i + 2) % path.n;
+        const ax = path.px[j] - path.px[i];
+        const ay = path.py[j] - path.py[i];
+        const az = path.pz[j] - path.pz[i];
+        const bx = path.px[k] - path.px[j];
+        const by = path.py[k] - path.py[j];
+        const bz = path.pz[k] - path.pz[j];
+        const la = Math.hypot(ax, ay, az);
+        const lb = Math.hypot(bx, by, bz);
+        if (la < MIN_STEP_MM || lb < MIN_STEP_MM) continue;
+        const cos = (ax * bx + ay * by + az * bz) / (la * lb);
+        const turn = Math.acos(Math.max(-1, Math.min(1, cos)));
+        expect(turn).toBeLessThan(MAX_TURN_RAD);
+      }
+    }
   });
 
   it('has no cusps: per-sample steps stay bounded even for η-zigzag POIs', () => {

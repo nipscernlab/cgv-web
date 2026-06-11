@@ -59,12 +59,17 @@ export function setupCinemaControls({
   // visible cell set happens to be identical between the two levels.
   let _lastViewLevel = 1;
 
-  // Coalesce repeated notifications to a single rebuild ~250 ms after the
-  // last call. The heatmap listener fires once per visibility pass, and an
-  // event load triggers TILE/LAr/HEC/FCAL passes back-to-back. The
-  // fingerprint check inside the timer skips redundant rebuilds when the
-  // accumulated state ends up the same.
-  const PATH_DEBOUNCE_MS = 250;
+  // Coalesce repeated notifications: the first call arms a timer and later
+  // calls ride on it (throttle, NOT a trailing debounce). Under a sustained
+  // stream — a slicer-ball drag emits one notification per pointermove — a
+  // trailing debounce never fires until the stream stops, so the whole
+  // accumulated path change used to land as ONE big morph on release. The
+  // throttle rebuilds every PATH_REBUILD_MS during the drag instead: a
+  // chain of small C2 nudges that track the moving cut live. Burst sources
+  // (an event load fires TILE/LAr/HEC/FCAL passes back-to-back) still
+  // coalesce into a single rebuild, and the fingerprint check inside the
+  // timer skips redundant rebuilds when the accumulated state is unchanged.
+  const PATH_REBUILD_MS = 250;
   let _pathDebounceTimer = null;
 
   // ── Continuous camera follower ─────────────────────────────────────────────
@@ -75,12 +80,18 @@ export function setupCinemaControls({
   // edits) are absorbed by a C2 "swap offset": at swap time the lead point's
   // displacement from the new path is captured and decayed to zero with a
   // smootherstep — the lead the follower sees is continuous through every
-  // swap, so the camera never jumps and never whips.
+  // swap, so the camera never jumps and never whips. The camera part of the
+  // offset lives in CYLINDRICAL coordinates around the beam axis (see the
+  // swap-offset state below), so the morph orbits around the detector
+  // instead of chording through it.
   //
   // TOUR_LOOP_MS is the duration of one full loop (the bake normalises its
-  // speed profile so this holds whatever the dwell/cruise mix). FOLLOW_SMOOTH
-  // is the follower's time constant: larger = smoother, more cinematic lag.
-  const TOUR_LOOP_MS = 60_000;
+  // speed profile so this holds whatever the dwell/cruise mix). 75 s pairs
+  // with the slowed-down dive profile in tourPath.js: the dive takes the
+  // extra time, leaving the outer orbit at roughly its old pace instead of
+  // rushing to pay for it. FOLLOW_SMOOTH is the follower's time constant:
+  // larger = smoother, more cinematic lag.
+  const TOUR_LOOP_MS = 75_000;
   const FOLLOW_SMOOTH = 0.8;
   // Exit recentering: the camera is left exactly where the tour put it, and
   // only the orbit target glides to the detector centre (scene origin) so
@@ -103,11 +114,25 @@ export function setupCinemaControls({
   const _tmpPos = new THREE.Vector3();
   const _tmpTgt = new THREE.Vector3();
 
-  // Swap-offset state: lead = path(u) + offset · (1 − smootherstep(t)).
-  const _ofsPos = new THREE.Vector3();
+  // Swap-offset state: lead = path(u) ⊕ offset · (1 − smootherstep(t)).
+  // The camera offset is CYLINDRICAL around the beam axis (Δazimuth,
+  // Δradius, Δz), applied by rotating/expanding the freshly sampled path
+  // point — so when a slicer drag moves the arc to the other side of the
+  // detector, the morph sweeps AROUND the envelope. The previous Cartesian
+  // decay cut a straight chord through the calorimeter: a sudden direction
+  // reversal plus a fly-through of solid cells. The look-target offset
+  // stays Cartesian — it only steers the gaze, never the camera body.
+  let _ofsPhi = 0;
+  let _ofsRad = 0;
+  let _ofsZ = 0;
   const _ofsTgt = new THREE.Vector3();
   let _ofsT0 = 0;
   let _ofsActive = false;
+  // Below this radius the azimuth is numerically meaningless (deep in the
+  // beam bore) — the residual collapses to radius/z there. Both paths sit
+  // within ~1 m of the axis at such samples, so the xy mismatch this drops
+  // is small and the follower absorbs it.
+  const OFS_AXIS_R_MM = 1000;
 
   let exitRecentering = false;
   let exitT0 = 0;
@@ -116,16 +141,45 @@ export function setupCinemaControls({
   // Beam-dive presentation state. The path bakes a per-sample up-vector
   // (world vertical + dive barrel roll + fly-by lift + pole guard — see
   // tourPath.js) and a dive gate; the tick applies them as camera.up and a
-  // gentle FOV push (speed sensation inside the bore). Both are exact
-  // functions of the loop parameter — identical across path swaps — so they
-  // need no smoothing of their own. The base FOV is captured once so exit
-  // always restores the project default.
+  // FOV push (speed sensation inside the bore). The gate is a pure function
+  // of the loop parameter — identical across path swaps — but the up field
+  // is NOT: parallel transport is a whole-loop solution, so every rebake
+  // re-solves it and the new field at the same u can differ by a finite
+  // roll. Feeding it straight to camera.up snap-rolled the entire scene on
+  // every slicer-drag rebuild — the camera position glided through the
+  // swap while the horizon teleported. camera.up therefore CHASES the
+  // baked up with a bounded angular rate: a swap lands as a short banked
+  // roll over a few hundred ms, while the dive's own slow barrel roll
+  // (~0.3 rad/s) and the pole-guard bank pass through untouched, far below
+  // the cap. The base FOV is captured once so exit always restores the
+  // project default.
   const _fovBase = camera.fov;
   const FOV_DIVE_BOOST = 12;
-  const _upTmp = new THREE.Vector3();
-  function _applyDivePresentation(u) {
-    samplePathUp(tourPath, u, _upTmp);
-    camera.up.copy(_upTmp);
+  const UP_SLEW_RAD_S = 1.5;
+  const _upCur = new THREE.Vector3(0, 1, 0);
+  const _upTgt = new THREE.Vector3();
+  const _upAxis = new THREE.Vector3();
+  function _applyDivePresentation(u, dt) {
+    samplePathUp(tourPath, u, _upTgt);
+    const ang = _upCur.angleTo(_upTgt);
+    const maxStep = UP_SLEW_RAD_S * dt;
+    if (ang <= maxStep) {
+      _upCur.copy(_upTgt);
+    } else {
+      _upAxis.crossVectors(_upCur, _upTgt);
+      if (_upAxis.lengthSq() < 1e-12) {
+        // Antiparallel ups (a true 180° disagreement): rotate around the
+        // line of sight — a pure screen-space roll, the least jarring path.
+        _upAxis.subVectors(_tgtPos, _camPos);
+      }
+      if (_upAxis.lengthSq() < 1e-12) {
+        _upCur.copy(_upTgt); // degenerate geometry — just take the target
+      } else {
+        _upAxis.normalize();
+        _upCur.applyAxisAngle(_upAxis, maxStep).normalize();
+      }
+    }
+    camera.up.copy(_upCur);
     const g = samplePathDiveGate(tourPath, u);
     const fov = _fovBase + FOV_DIVE_BOOST * g;
     if (Math.abs(fov - camera.fov) > 0.01) {
@@ -135,6 +189,7 @@ export function setupCinemaControls({
   }
   function _resetDivePresentation() {
     camera.up.set(0, 1, 0);
+    _upCur.set(0, 1, 0);
     if (camera.fov !== _fovBase) {
       camera.fov = _fovBase;
       camera.updateProjectionMatrix();
@@ -195,13 +250,28 @@ export function setupCinemaControls({
     return 1 - _smootherstep01(bt);
   }
 
-  // Evaluate the effective lead (path sample + decaying swap offset) at the
-  // current phase into _leadPos/_leadTgt.
+  // Smallest signed angle equivalent of a (radians).
+  function _wrapAngle(a) {
+    while (a > Math.PI) a -= 2 * Math.PI;
+    while (a < -Math.PI) a += 2 * Math.PI;
+    return a;
+  }
+
+  // Evaluate the effective lead (path sample ⊕ decaying swap offset) at the
+  // current phase into _leadPos/_leadTgt. The cylindrical camera offset is
+  // exact at s=1 (the lead is bit-identical at the swap instant) and zero at
+  // s=0 (fully on the new path); in between the morph stays on a cylinder
+  // surface that interpolates the two radii — never through the detector.
   function _sampleLead(now) {
     samplePathPoint(tourPath, _phase, _leadPos, _leadTgt);
     const s = _ofsScale(now);
     if (s > 0) {
-      _leadPos.addScaledVector(_ofsPos, s);
+      const r = Math.hypot(_leadPos.x, _leadPos.y);
+      const a = Math.atan2(_leadPos.y, _leadPos.x) + _ofsPhi * s;
+      const r2 = Math.max(0, r + _ofsRad * s);
+      _leadPos.x = r2 * Math.cos(a);
+      _leadPos.y = r2 * Math.sin(a);
+      _leadPos.z += _ofsZ * s;
       _leadTgt.addScaledVector(_ofsTgt, s);
     }
   }
@@ -246,7 +316,7 @@ export function setupCinemaControls({
 
     camera.position.copy(_camPos);
     controls.target.copy(_tgtPos);
-    _applyDivePresentation(_phase);
+    _applyDivePresentation(_phase, dt);
     controls.update();
     markDirty();
   }
@@ -260,6 +330,9 @@ export function setupCinemaControls({
     _tgtPos.copy(controls.target);
     _camVel.set(0, 0, 0);
     _tgtVel.set(0, 0, 0);
+    // The up slew starts from wherever the camera's up is now, so entry
+    // banks gently onto the path's up field instead of snapping to it.
+    _upCur.copy(camera.up).normalize();
     _phase = nearestPathU(tourPath, camera.position.x, camera.position.y, camera.position.z);
     _ofsActive = false;
     _lastTickT = performance.now();
@@ -281,10 +354,26 @@ export function setupCinemaControls({
     if (cinemaMode && tourMode && !exitRecentering) {
       _sampleLead(now); // effective lead on the OLD path, into _leadPos/_leadTgt
       samplePathPoint(newPath, _phase, _tmpPos, _tmpTgt);
-      _ofsPos.subVectors(_leadPos, _tmpPos);
+      const r0 = Math.hypot(_leadPos.x, _leadPos.y);
+      const r1 = Math.hypot(_tmpPos.x, _tmpPos.y);
+      // Δazimuth always takes the short way around — consecutive small
+      // drags accumulate in the drag's own direction, so the camera never
+      // counter-swings. Skipped when either end is in the bore (azimuth
+      // undefined there; see OFS_AXIS_R_MM).
+      _ofsPhi =
+        r0 > OFS_AXIS_R_MM && r1 > OFS_AXIS_R_MM
+          ? _wrapAngle(Math.atan2(_leadPos.y, _leadPos.x) - Math.atan2(_tmpPos.y, _tmpPos.x))
+          : 0;
+      _ofsRad = r0 - r1;
+      _ofsZ = _leadPos.z - _tmpPos.z;
       _ofsTgt.subVectors(_leadTgt, _tmpTgt);
       _ofsT0 = now;
-      _ofsActive = _ofsPos.lengthSq() + _ofsTgt.lengthSq() > 1;
+      _ofsActive =
+        Math.abs(_ofsPhi) * Math.max(r0, r1) +
+          Math.abs(_ofsRad) +
+          Math.abs(_ofsZ) +
+          _ofsTgt.length() >
+        1;
     } else {
       _ofsActive = false;
     }
@@ -292,8 +381,8 @@ export function setupCinemaControls({
   }
 
   function _scheduleRebuild() {
-    if (_pathDebounceTimer) clearTimeout(_pathDebounceTimer);
-    _pathDebounceTimer = setTimeout(_rebuildNow, PATH_DEBOUNCE_MS);
+    if (_pathDebounceTimer) return; // one already armed — coalesce
+    _pathDebounceTimer = setTimeout(_rebuildNow, PATH_REBUILD_MS);
   }
 
   // Openings wider than this leave too little outer wall to matter — the

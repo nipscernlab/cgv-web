@@ -82,10 +82,14 @@ const Z_DEFAULT_FRAC = 0.35;
 // |z| ≈ 4.7–6.3 m) keeps r ≳ 70 mm, well outside the camera's 10 mm near
 // plane.
 //
-// The dive is event-driven:
-//   · it enters from the end OPPOSITE the event's energy centroid, so the
-//     hot region glows at the far end of the tunnel for the whole approach
-//     instead of sitting behind the camera;
+// The dive is choreographed for continuity first:
+//   · it enters from the end of the detector the orbit is ALREADY on (the
+//     sign of the baked orbit height at the entry parameter), so the plunge
+//     continues the camera's current vertical drift. The old event-driven
+//     entry ("hot region ahead") regularly demanded a ~20 m height reversal
+//     mid-flight — the camera visibly yanked from one direction to the
+//     other. The fly-by landmark below keeps the hot region in frame either
+//     way, so nothing is lost;
 //   · the gaze locks onto a fixed "landmark" — the energy-weighted centroid
 //     of the POI centres (pushed off-axis so it is never flown through).
 //     Flying past a fixed landmark produces the classic fly-by: the view
@@ -93,9 +97,12 @@ const Z_DEFAULT_FRAC = 0.35;
 //     back at the heart of the event — no snap, the rotation falls out of
 //     the geometry;
 //   · speed dwells (Gaussian in z) around the landmark and rushes through
-//     the empty stretches;
-//   · a single full barrel roll plays out across the inner plateau, and the
-//     baked dive gate is exposed (path.dg) so the renderer can add a gentle
+//     the empty stretches — but the whole dive runs well below the orbit
+//     cruise (DIVE_SPEED_*): the centre passage is the high point of the
+//     tour, savoured rather than rushed;
+//   · a single slow barrel roll plays out across the inner plateau (at the
+//     dive's pace that is ~0.3 rad/s — a lazy corkscrew, not a stunt), and
+//     the baked dive gate is exposed (path.dg) so the renderer can add a
 //     FOV push inside the tunnel.
 const DIVE_U0 = 0.7;
 const DIVE_U1 = 0.95;
@@ -117,14 +124,11 @@ const DIVE_Z_MM = 9400;
 //                                         cos-sweeps the bore in between.
 // The gates overlap (no piecewise segments), so the camera never passes
 // through a dead stop between phases.
-const DIVE_CLIMB_RAMP = 0.2;
+const DIVE_CLIMB_RAMP = 0.24;
 const DIVE_XY_START = 0.1;
 const DIVE_XY_RAMP = 0.25;
 const DIVE_SWEEP_T0 = 0.17;
 const DIVE_SWEEP_T1 = 0.83;
-// |energy-centroid z| beyond which the dive picks an entry end (below it
-// the event is balanced and the default +z entry is used).
-const DIVE_END_BIAS_MM = 800;
 // Landmark placement: clamp along z (stay inside the calo so the fly-by
 // happens within the geometry) and minimum lateral offset (bounds the peak
 // pan rate at closest approach — the camera never flies through its own
@@ -134,12 +138,16 @@ const DIVE_LM_ZMAX_MM = 4500;
 // closest allowed approach caps how fast the gaze sweeps the landmark.
 const DIVE_LM_MIN_R_MM = 1500;
 // Dive speed profile: cruise the empty bore, dwell at the landmark — the
-// centre passage is the set piece, so it runs below the orbit cruise (the
-// loop-time normalisation trades the slack to the outer orbit).
-const DIVE_SPEED_FAST = 1.0;
-const DIVE_SPEED_SLOW = 0.38;
+// centre passage is the set piece, so it runs well below the orbit cruise
+// (the loop-time normalisation trades the slack to the outer orbit; the
+// loop duration in cinema.js is sized so the orbit doesn't rush to pay
+// for the slow dive).
+const DIVE_SPEED_FAST = 0.7;
+const DIVE_SPEED_SLOW = 0.3;
 const DIVE_DWELL_SIGMA_MM = 3200;
-// Barrel roll: one full turn across the middle of the plateau.
+// Barrel roll: one full turn across the middle of the plateau. It returns
+// to exactly 2π ≡ 0, so the up-vector is continuous where the gate
+// releases it.
 const DIVE_ROLL_T0 = 0.2;
 const DIVE_ROLL_T1 = 0.8;
 
@@ -396,9 +404,46 @@ export function bakeTourPath(pois, opts = {}) {
   const inv2sZ = 1 / (2 * SIG_Z * SIG_Z);
   const inv2sT = 1 / (2 * SIG_TGT * SIG_TGT);
 
-  // ── Dive choreography (event-driven) ────────────────────────────────────
-  // Energy centroid of the POI centres (world frame). Decides which end the
-  // dive enters from and where the fly-by landmark sits.
+  // Z placement: free-roaming by default; pinned to the wedge's z window in
+  // arc mode (soft tanh limit — C∞, no clamp kinks).
+  const zMid = zWindow ? (zWindow.min + zWindow.max) / 2 : 0;
+  const zHalf = zWindow ? Math.max(500, (zWindow.max - zWindow.min) / 2) : Z_AXIAL_MAX;
+  const zAmpDef = arc
+    ? Math.min(Z_AXIAL_MAX * Z_DEFAULT_FRAC, zHalf * 0.55)
+    : Z_AXIAL_MAX * Z_DEFAULT_FRAC;
+  const zSoftL = zHalf * 0.8;
+
+  // Orbit height the main loop below will bake at loop parameter u — the
+  // SAME kernel blend, kept in lockstep. Evaluated standalone here because
+  // the dive's entry end must be known before the tables are filled.
+  const orbitZAt = (/** @type {number} */ u) => {
+    const alpha = arc
+      ? arc.center + Math.sin(u * 2 * Math.PI) * arc.halfWidth
+      : u * 2 * Math.PI - Math.PI;
+    let wzSum = 0;
+    let zAcc = 0;
+    for (let i = 0; i < m; i++) {
+      const d = _wrapDPhi(alpha - pA[i]);
+      const wz = pW[i] * Math.exp(-d * d * inv2sZ);
+      wzSum += wz;
+      zAcc += wz * pZ[i];
+    }
+    const zDefault = zMid + Math.sin(u * 4 * Math.PI) * zAmpDef;
+    const gz = wzSum / (wzSum + 0.12);
+    const zRaw = zDefault * (1 - gz) + (wzSum > 0 ? zAcc / wzSum : zMid) * gz;
+    return zWindow ? zMid + zSoftL * Math.tanh((zRaw - zMid) / zSoftL) : zRaw;
+  };
+
+  // ── Dive choreography ────────────────────────────────────────────────────
+  // Entry end: the end of the detector the orbit is already on when the
+  // dive window opens. The climb then CONTINUES the camera's vertical drift
+  // (a short hop onto the z-track) instead of hairpinning ~20 m to the far
+  // end, which is what the old event-driven entry produced whenever the
+  // orbit height opposed it. The landmark gaze keeps the hot region in
+  // frame regardless of which end the flight starts from.
+  const entrySign = orbitZAt(DIVE_U0) >= 0 ? 1 : -1;
+  // Energy centroid of the POI centres (world frame) — where the fly-by
+  // landmark sits.
   let cw = 0;
   let cxAcc = 0;
   let cyAcc = 0;
@@ -410,10 +455,6 @@ export function bakeTourPath(pois, opts = {}) {
     czAcc += pW[i] * pCz[i];
   }
   const zHot = cw > 0 ? czAcc / cw : 0;
-  // Enter from the end OPPOSITE the energy concentration so the hot region
-  // is ahead of the camera for the whole approach. Balanced events keep the
-  // default +z entry.
-  const entrySign = zHot > DIVE_END_BIAS_MM ? -1 : 1;
   // Fly-by landmark: the hot centroid, kept inside the calo along z and
   // pushed off the flight line laterally (the camera must pass it, never
   // pierce it — the pass-by is what swings the gaze around).
@@ -431,15 +472,6 @@ export function bakeTourPath(pois, opts = {}) {
     }
   }
   const inv2sDive = 1 / (2 * DIVE_DWELL_SIGMA_MM * DIVE_DWELL_SIGMA_MM);
-
-  // Z placement: free-roaming by default; pinned to the wedge's z window in
-  // arc mode (soft tanh limit — C∞, no clamp kinks).
-  const zMid = zWindow ? (zWindow.min + zWindow.max) / 2 : 0;
-  const zHalf = zWindow ? Math.max(500, (zWindow.max - zWindow.min) / 2) : Z_AXIAL_MAX;
-  const zAmpDef = arc
-    ? Math.min(Z_AXIAL_MAX * Z_DEFAULT_FRAC, zHalf * 0.55)
-    : Z_AXIAL_MAX * Z_DEFAULT_FRAC;
-  const zSoftL = zHalf * 0.8;
 
   const diveW = DIVE_U1 - DIVE_U0;
 
@@ -511,9 +543,9 @@ export function bakeTourPath(pois, opts = {}) {
     // gate. While inside, position tracks the bore (x=y=0, z sweeping from
     // the entry end through to the other side) and the gaze locks onto the
     // fly-by landmark; speed rushes the empty bore and dwells (Gaussian in
-    // z) around the landmark. A single barrel roll spins across the inner
-    // plateau (it returns to exactly 2π ≡ 0, so the up-vector is continuous
-    // where the gate releases it).
+    // z) around the landmark. A single slow barrel roll spins across the
+    // inner plateau (it returns to exactly 2π ≡ 0, so the up-vector is
+    // continuous where the gate releases it).
     if (dive && u > DIVE_U0 && u < DIVE_U1) {
       const tw = (u - DIVE_U0) / diveW;
       const twm = Math.min(tw, 1 - tw);
@@ -706,16 +738,6 @@ export function samplePathSpeed(path, u) {
 }
 
 /**
- * Sample the barrel-roll angle (radians; 0 outside the dive) at u.
- *
- * @param {TourPath} path
- * @param {number} u
- */
-export function samplePathRoll(path, u) {
-  return _lerpWrap(path.roll, path.n, u);
-}
-
-/**
  * Sample the dive gate (0 = on the orbit envelope, 1 = inside the bore).
  * Drives the renderer-side FOV push.
  *
@@ -730,8 +752,10 @@ export function samplePathDiveGate(path, u) {
  * Sample the baked camera up-vector at loop parameter u (normalised on the
  * way out — adjacent samples are near-parallel so lerp + renormalise is
  * exact for all practical purposes). Carries the dive barrel roll, the
- * fly-by lift AND the pole guard, so feeding it straight to camera.up is
- * flip-proof by construction.
+ * fly-by lift AND the pole guard. NOTE: the field is re-solved globally on
+ * every bake (parallel transport is a whole-loop solution), so two bakes
+ * can disagree by a finite roll at the same u — consumers must smooth
+ * across path swaps (see cinema.js's up slew limiter).
  *
  * @param {TourPath} path
  * @param {number} u
