@@ -120,9 +120,10 @@ node tools/scripts/fetch-samples.mjs
 ```
 
 The Technical TWiki bundle lives directly in this repository under
-`public/twiki/` (source of truth here, exported to `nipscernweb` by the
-project's `deploy.mjs`) so there is nothing to fetch — it ships with the
-rest of the static site at `/cgv-web/twiki/`.
+`public/twiki/` (source of truth here; the public site serves it at
+`nipscern.com/library/cgvweb/twiki` through a Cloudflare Worker proxy)
+so there is nothing to fetch — it ships with the rest of the static site
+at `/cgv-web/twiki/`.
 
 ---
 

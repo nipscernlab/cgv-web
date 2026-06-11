@@ -24,7 +24,7 @@
   "bugs": {
     "url": "https://github.com/nipscernlab/cgv-web/issues"
   },
-  "license": "NIPSCERN-NC-1.0",
+  "license": "NIPSCERN-1.0",
   "author": "Luciano Manhães de Andrade Filho <luciano.ma.filho@gmail.com>",
   "contributors": [
     "Chrysthofer Arthur Amaro Afonso <chrysthofer.afonso@estudante.ufjf.br>"
@@ -38,7 +38,6 @@
     "dev":                   "npm run fetch:geometry && npm run fetch:samples && python serve.py",
     "build":                 "build.bat",
     "build:geom":            "node tools/setup/setup.mjs",
-    "deploy":                "node tools/scripts/deploy.mjs",
     "fetch:geometry":        "node tools/scripts/fetch-geometry.mjs",
     "fetch:geometry:source": "node tools/scripts/fetch-geometry.mjs --with-source",
     "fetch:samples":         "node tools/scripts/fetch-samples.mjs",
