@@ -232,7 +232,13 @@ function _buildDetector(det, buckets) {
   // recompute and keeps frustum culling decisions trivially correct.
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), maxR);
 
-  const tex = new THREE.DataTexture(colorVis, TEX_W, texH, THREE.RGBAFormat, THREE.UnsignedByteType);
+  const tex = new THREE.DataTexture(
+    colorVis,
+    TEX_W,
+    texH,
+    THREE.RGBAFormat,
+    THREE.UnsignedByteType,
+  );
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
   tex.needsUpdate = true;
