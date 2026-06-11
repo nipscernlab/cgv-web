@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import {
   extractPOIs,
-  buildTourCurves,
-  buildFallbackCurves,
+  bakeTourPath,
+  samplePathPoint,
+  samplePathSpeed,
+  samplePathUp,
+  samplePathDiveGate,
+  nearestPathU,
   filterPOIsBySlicer,
   filterPOIsByMinimap,
   pathFingerprint,
@@ -16,6 +20,14 @@ export function setupCinemaControls({
   clearOutline,
   hideTooltip,
   updateCollisionHud,
+  // Reads scene.rotation.z at rebuild time. The slicer rotates the whole
+  // scene so its wedge opening faces +X; the tour path lives in world
+  // coordinates, so every bake must fold this angle in or the camera stares
+  // at the wrong side of the detector. A getter (not a value) because the
+  // rotation is applied after the mask notification that schedules the
+  // rebuild — by the time the debounce fires, the getter sees the final
+  // rotation.
+  getSceneRotationZ,
 }) {
   let cinemaMode = false;
   let tourMode = true; // defaults ON; overridden by the saved preference below
@@ -23,23 +35,18 @@ export function setupCinemaControls({
     tourMode = localStorage.getItem('cgv-tour-mode') !== '0';
   } catch (_) {}
 
-  // Safe-envelope fallback orbit: lives on r = 14 m at all azimuths, gentle
-  // z-wave so the camera doesn't sit on the equator forever. Used until an
-  // event is loaded and whenever the current event has too few POIs to drive
-  // an adaptive path. Like the adaptive curves, it never crosses cells.
-  const _fallback = buildFallbackCurves();
-  const fallbackPosCurve = _fallback.posCurve;
-  const fallbackTgtCurve = _fallback.tgtCurve;
-  let tourPosCurve = fallbackPosCurve;
-  let tourTgtCurve = fallbackTgtCurve;
+  // Active baked path (Float32Array LUTs from tourPath.js). Starts as the
+  // empty-event default orbit; every rebuild swaps in a fresh bake. See
+  // _applyNewPath for how swaps stay perfectly smooth.
+  let tourPath = bakeTourPath([]);
   let _lastFingerprint = '';
 
-  // Cached inputs that drive curve rebuilds. Each notifier slots its own
+  // Cached inputs that drive path rebuilds. Each notifier slots its own
   // input into the cache and triggers the debounced recompute. The
-  // fingerprint inside _rebuildNow then decides whether the curves actually
-  // need to change. Slicer / minimap filters are read here (not by visibility
-  // pipeline) because their effect on the tour is independent of how they
-  // affect cell visibility.
+  // fingerprint inside _rebuildNow then decides whether the path actually
+  // needs to change. Slicer / minimap filters are read here (not by the
+  // visibility pipeline) because their effect on the tour is independent of
+  // how they affect cell visibility.
   let _lastCells = /** @type {any[]} */ ([]);
   let _lastFcal = /** @type {any[]} */ ([]);
   let _lastSlicerMask = /** @type {any} */ (null);
@@ -61,39 +68,96 @@ export function setupCinemaControls({
   let _pathDebounceTimer = null;
 
   // ── Continuous camera follower ─────────────────────────────────────────────
-  // The whole point of the rewrite: there are NO discrete blends or state
-  // machines any more. A critically-damped follower (Unity-style SmoothDamp)
-  // chases a "lead point" that advances along the active curves at constant
-  // arc-length speed. Because SmoothDamp is C1-continuous (position AND
-  // velocity), every change — entering cinema, a new XML, a 1/2/3 mode switch,
-  // Et↔Energy, a slider drag, slicer/minimap edits — is handled by simply
-  // re-aiming the lead point. The camera eases to the new path from wherever
-  // it currently is, at whatever velocity it currently has, so there is never
-  // a jump or a velocity discontinuity (the old "solavanco").
+  // No discrete blends or state machines. A critically-damped follower
+  // (Unity-style SmoothDamp) chases a lead point that advances along the
+  // baked path; the path's own speed profile supplies the dwell/cruise
+  // dynamics. Path swaps (new XML, 1/2/3 switch, Et↔Energy, slicer/minimap
+  // edits) are absorbed by a C2 "swap offset": at swap time the lead point's
+  // displacement from the new path is captured and decayed to zero with a
+  // smootherstep — the lead the follower sees is continuous through every
+  // swap, so the camera never jumps and never whips.
   //
-  // TOUR_LOOP_MS is how long one full loop of the curve takes; the lead point
-  // is sampled by arc length (getPointAt) so the speed is uniform regardless
-  // of how the control points are spaced. FOLLOW_SMOOTH is the follower's
-  // time constant: larger = smoother / more cinematic lag, smaller = tighter
-  // tracking. ~0.8 s gives a luxurious but responsive feel.
+  // TOUR_LOOP_MS is the duration of one full loop (the bake normalises its
+  // speed profile so this holds whatever the dwell/cruise mix). FOLLOW_SMOOTH
+  // is the follower's time constant: larger = smoother, more cinematic lag.
   const TOUR_LOOP_MS = 60_000;
   const FOLLOW_SMOOTH = 0.8;
-  const TOUR_EXIT_DURATION = 1400;
+  // Exit recentering: the camera is left exactly where the tour put it, and
+  // only the orbit target glides to the detector centre (scene origin) so
+  // post-cinema navigation pivots around the geometry — unlike the reset
+  // button, which also repositions the camera.
+  const EXIT_RECENTER_MS = 900;
+  const SWAP_BLEND_MS = 2200;
   // Clamp per-frame dt so a long stall (hidden tab, GC pause) can't teleport
   // the lead point or blow up the follower on the first frame back.
   const MAX_DT = 0.05;
 
-  let _phase = 0; // lead-point parameter u ∈ [0,1) along the active curves
+  let _phase = 0; // lead-point parameter u ∈ [0,1) along the active path
   let _lastTickT = 0;
   const _camPos = new THREE.Vector3(); // smoothed camera position
   const _camVel = new THREE.Vector3(); // its velocity (units / s)
   const _tgtPos = new THREE.Vector3(); // smoothed look-at target
   const _tgtVel = new THREE.Vector3();
-  const _spPos = new THREE.Vector3(); // current lead point (position curve)
-  const _spTgt = new THREE.Vector3(); // current lead point (target curve)
+  const _leadPos = new THREE.Vector3(); // current lead point (camera table)
+  const _leadTgt = new THREE.Vector3(); // current lead point (target table)
+  const _tmpPos = new THREE.Vector3();
+  const _tmpTgt = new THREE.Vector3();
 
-  let tourExiting = false;
-  let tourExitT0 = 0;
+  // Swap-offset state: lead = path(u) + offset · (1 − smootherstep(t)).
+  const _ofsPos = new THREE.Vector3();
+  const _ofsTgt = new THREE.Vector3();
+  let _ofsT0 = 0;
+  let _ofsActive = false;
+
+  let exitRecentering = false;
+  let exitT0 = 0;
+  const _exitTgtFrom = new THREE.Vector3();
+
+  // Beam-dive presentation state. The path bakes a per-sample up-vector
+  // (world vertical + dive barrel roll + fly-by lift + pole guard — see
+  // tourPath.js) and a dive gate; the tick applies them as camera.up and a
+  // gentle FOV push (speed sensation inside the bore). Both are exact
+  // functions of the loop parameter — identical across path swaps — so they
+  // need no smoothing of their own. The base FOV is captured once so exit
+  // always restores the project default.
+  const _fovBase = camera.fov;
+  const FOV_DIVE_BOOST = 12;
+  const _upTmp = new THREE.Vector3();
+  function _applyDivePresentation(u) {
+    samplePathUp(tourPath, u, _upTmp);
+    camera.up.copy(_upTmp);
+    const g = samplePathDiveGate(tourPath, u);
+    const fov = _fovBase + FOV_DIVE_BOOST * g;
+    if (Math.abs(fov - camera.fov) > 0.01) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+  }
+  function _resetDivePresentation() {
+    camera.up.set(0, 1, 0);
+    if (camera.fov !== _fovBase) {
+      camera.fov = _fovBase;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  // OrbitControls input is suspended while the tour drives the camera —
+  // otherwise a stray drag fights the follower frame-by-frame and judders.
+  // Tracked with a flag so we never clobber another module's (slicer's)
+  // own enable/disable cycle.
+  let _inputSuspendedByTour = false;
+  function _suspendUserInput() {
+    if (controls.enabled && !_inputSuspendedByTour) {
+      controls.enabled = false;
+      _inputSuspendedByTour = true;
+    }
+  }
+  function _restoreUserInput() {
+    if (_inputSuspendedByTour) {
+      controls.enabled = true;
+      _inputSuspendedByTour = false;
+    }
+  }
 
   // Critically-damped smoothing toward a (possibly moving) target. Mutates
   // `current` and `vel` in place; C1 across target changes. Per-component so
@@ -111,73 +175,35 @@ export function setupCinemaControls({
     }
   }
 
-  // Arc-length nearest-U: scans the active position curve at uniform
-  // ARC-LENGTH positions and returns the u of the closest sample to `v`. Used
-  // to seed the lead point near the current camera on entry and on every curve
-  // swap, so the lead point never jumps far from where the camera already is.
-  function _nearestU(v) {
-    const samples = 240;
-    let bestU = 0;
-    let bestD = Infinity;
-    for (let i = 0; i < samples; i++) {
-      const u = i / samples;
-      tourPosCurve.getPointAt(u, _spPos);
-      const d = _spPos.distanceToSquared(v);
-      if (d < bestD) {
-        bestD = d;
-        bestU = u;
-      }
+  // C2 ease (zero first AND second derivative at both ends) used for the
+  // swap-offset decay, so even the acceleration is continuous through swaps.
+  function _smootherstep01(t) {
+    if (t <= 0) return 0;
+    if (t >= 1) return 1;
+    return t * t * t * (t * (6 * t - 15) + 10);
+  }
+
+  // Remaining fraction of the swap offset at `now` (1 → just swapped,
+  // 0 → fully on the new path). Deactivates itself when done.
+  function _ofsScale(now) {
+    if (!_ofsActive) return 0;
+    const bt = (now - _ofsT0) / SWAP_BLEND_MS;
+    if (bt >= 1) {
+      _ofsActive = false;
+      return 0;
     }
-    return bestU;
+    return 1 - _smootherstep01(bt);
   }
 
-  // ── Inner-detector look overrides (kept from the original design) ───────────
-  // When a curve dips into the on-axis corridor (camera x/y near the beam
-  // line) the look direction is forced parallel to ±Z and the screen rolls 90°
-  // around the beam axis, so traversing the calo reads as "flying down the
-  // beam pipe" rather than staring at the inner wall. The safe-envelope curves
-  // normally stay on the r = 14 m cylinder where these gates evaluate to 0, so
-  // this is inert for the default tour — it only kicks in if a future curve
-  // actually approaches the axis. All gates are smoothstep (C1), so even then
-  // there is no discontinuity.
-  const TRAVERSAL_X_FULL = 100;
-  const TRAVERSAL_X_OFF = 800;
-  const TRAVERSAL_Y_FULL = 50;
-  const TRAVERSAL_Y_OFF = 400;
-  const TRAVERSAL_TARGET_FAR = 10000;
-  const ROLL_CYL_HALF_LEN_MM = 6000;
-  const ROLL_RAMP_MM = 1500;
-  const _tourOverrideTgt = new THREE.Vector3();
-  const _UP_OUTSIDE = new THREE.Vector3(0, 1, 0);
-  const _UP_INSIDE = new THREE.Vector3(1, 0, 0);
-  function _smoothBlend01(v, fullBelow, offAbove) {
-    if (v <= fullBelow) return 1;
-    if (v >= offAbove) return 0;
-    const t = (v - fullBelow) / (offAbove - fullBelow);
-    return 1 - t * t * (3 - 2 * t);
-  }
-  function _zRollBlend(z) {
-    const az = Math.abs(z);
-    if (az >= ROLL_CYL_HALF_LEN_MM) return 0;
-    if (az <= ROLL_CYL_HALF_LEN_MM - ROLL_RAMP_MM) return 1;
-    const t = (ROLL_CYL_HALF_LEN_MM - az) / ROLL_RAMP_MM;
-    return t * t * (3 - 2 * t);
-  }
-  // Gates are evaluated on the SMOOTHED camera position (posVec) so they stay
-  // continuous across curve swaps; the (possibly overridden) look target is
-  // written into tgtVec, which the follower then eases toward.
-  function _applyTraversalOverride(posVec, tgtVec) {
-    const xBlend = _smoothBlend01(Math.abs(posVec.x), TRAVERSAL_X_FULL, TRAVERSAL_X_OFF);
-    const yBlend = _smoothBlend01(posVec.y, TRAVERSAL_Y_FULL, TRAVERSAL_Y_OFF);
-    const onAxisBlend = xBlend * yBlend;
-
-    const rollBlend = _zRollBlend(posVec.z) * onAxisBlend;
-    camera.up.lerpVectors(_UP_OUTSIDE, _UP_INSIDE, rollBlend).normalize();
-
-    if (onAxisBlend <= 0) return;
-    const sign = posVec.z >= 0 ? -1 : 1;
-    _tourOverrideTgt.set(0, 0, sign * TRAVERSAL_TARGET_FAR);
-    tgtVec.lerp(_tourOverrideTgt, onAxisBlend);
+  // Evaluate the effective lead (path sample + decaying swap offset) at the
+  // current phase into _leadPos/_leadTgt.
+  function _sampleLead(now) {
+    samplePathPoint(tourPath, _phase, _leadPos, _leadTgt);
+    const s = _ofsScale(now);
+    if (s > 0) {
+      _leadPos.addScaledVector(_ofsPos, s);
+      _leadTgt.addScaledVector(_ofsTgt, s);
+    }
   }
 
   function tick() {
@@ -185,18 +211,18 @@ export function setupCinemaControls({
     const dt = Math.min(MAX_DT, Math.max(1e-4, (now - _lastTickT) / 1000));
     _lastTickT = now;
 
-    // Exit: let the camera coast on its last follower velocity, decaying to a
-    // stop, then hand control back to OrbitControls. Continuous with the tour
-    // motion because _camVel/_tgtVel carry the live velocity at exit time.
-    if (tourExiting) {
-      const et = now - tourExitT0;
-      if (et >= TOUR_EXIT_DURATION) {
-        tourExiting = false;
-        return;
+    // Exit: hold the camera exactly where it is and glide the orbit target
+    // to the scene origin (smootherstep — starts and ends at rest), so the
+    // geometry pans to the centre of the view and post-cinema orbiting
+    // pivots around it. Then hand control back to OrbitControls.
+    if (exitRecentering) {
+      const et = (now - exitT0) / EXIT_RECENTER_MS;
+      if (et >= 1) {
+        exitRecentering = false;
+        controls.target.set(0, 0, 0);
+      } else {
+        controls.target.copy(_exitTgtFrom).multiplyScalar(1 - _smootherstep01(et));
       }
-      const decay = Math.pow(1 - et / TOUR_EXIT_DURATION, 2);
-      camera.position.addScaledVector(_camVel, decay * dt);
-      controls.target.addScaledVector(_tgtVel, decay * dt);
       controls.update();
       markDirty();
       return;
@@ -204,48 +230,65 @@ export function setupCinemaControls({
 
     if (!cinemaMode || !tourMode) return;
 
-    // Advance the lead point by arc length at constant speed.
-    _phase = (_phase + (dt * 1000) / TOUR_LOOP_MS) % 1;
-    tourPosCurve.getPointAt(_phase, _spPos);
-    tourTgtCurve.getPointAt(_phase, _spTgt);
+    // The slicer's gizmo drags toggle controls.enabled on their own; if one
+    // re-enabled input behind our back mid-tour, re-suspend it so a stray
+    // wheel/drag can't fight the follower.
+    if (_inputSuspendedByTour && controls.enabled) controls.enabled = false;
 
-    // Follow position, then gate the look-target override on the smoothed
-    // position, then follow the target. This ordering keeps the up-vector and
-    // target override continuous even across a curve swap.
-    _smoothDamp(_camPos, _spPos, _camVel, FOLLOW_SMOOTH, dt);
-    _applyTraversalOverride(_camPos, _spTgt);
-    _smoothDamp(_tgtPos, _spTgt, _tgtVel, FOLLOW_SMOOTH, dt);
+    // Advance the lead point. The baked speed profile slows it near hotspots
+    // and cruises it through gaps; the profile is C∞ in u so the resulting
+    // acceleration/deceleration is glassy by construction.
+    _phase = (_phase + (dt * 1000 * samplePathSpeed(tourPath, _phase)) / TOUR_LOOP_MS) % 1;
+    _sampleLead(now);
+
+    _smoothDamp(_camPos, _leadPos, _camVel, FOLLOW_SMOOTH, dt);
+    _smoothDamp(_tgtPos, _leadTgt, _tgtVel, FOLLOW_SMOOTH, dt);
 
     camera.position.copy(_camPos);
     controls.target.copy(_tgtPos);
+    _applyDivePresentation(_phase);
     controls.update();
     markDirty();
   }
 
   // Seed the follower from the camera's current pose and aim the lead point at
-  // the nearest point on the active curve. The follower then eases in from
-  // exactly where the user left the camera — no jump on entry, and the same
-  // routine re-seeds after a curve swap so live path changes are seamless too.
+  // the nearest point on the active path. The follower then eases in from
+  // exactly where the user left the camera — starting from zero velocity, so
+  // entry is a gentle pull onto the orbit, never a jump.
   function _seedFollower() {
     _camPos.copy(camera.position);
     _tgtPos.copy(controls.target);
     _camVel.set(0, 0, 0);
     _tgtVel.set(0, 0, 0);
-    _phase = _nearestU(camera.position);
+    _phase = nearestPathU(tourPath, camera.position.x, camera.position.y, camera.position.z);
+    _ofsActive = false;
     _lastTickT = performance.now();
-    tourExiting = false;
+    exitRecentering = false;
   }
 
-  // Curve swap: keep the follower's live position/velocity, just re-aim the
-  // lead point at the nearest point on the NEW curve. Because nearest-U is, by
-  // definition, close to where the camera already is, the lead point barely
-  // moves and the follower carries on smoothly — no blend needed.
-  function _applyNewCurves(newPosCurve, newTgtCurve) {
-    tourPosCurve = newPosCurve;
-    tourTgtCurve = newTgtCurve;
-    if (cinemaMode && tourMode) {
-      _phase = _nearestU(_camPos.lengthSq() > 0 ? _camPos : camera.position);
+  // Path swap. The phase is left UNTOUCHED: the new path is sampled at the
+  // same u, and whatever displacement that introduces is captured in the
+  // swap offset and decayed over SWAP_BLEND_MS with a C2 ease. The effective
+  // lead is therefore bit-identical at the swap instant and morphs onto the
+  // new path over the blend — the camera never stalls and never jumps.
+  // (Re-aiming the phase at the camera here was the cause of the recurring
+  // hiccup: it dropped the lead point onto the camera, zeroing the follower
+  // error, so the camera braked and re-accelerated on every rebuild — once
+  // per XML load, slider pause, or slicer edit.) Repeated swaps are safe:
+  // the offset is recomputed from the current effective lead each time.
+  function _applyNewPath(newPath) {
+    const now = performance.now();
+    if (cinemaMode && tourMode && !exitRecentering) {
+      _sampleLead(now); // effective lead on the OLD path, into _leadPos/_leadTgt
+      samplePathPoint(newPath, _phase, _tmpPos, _tmpTgt);
+      _ofsPos.subVectors(_leadPos, _tmpPos);
+      _ofsTgt.subVectors(_leadTgt, _tmpTgt);
+      _ofsT0 = now;
+      _ofsActive = _ofsPos.lengthSq() + _ofsTgt.lengthSq() > 1;
+    } else {
+      _ofsActive = false;
     }
+    tourPath = newPath;
   }
 
   function _scheduleRebuild() {
@@ -253,22 +296,28 @@ export function setupCinemaControls({
     _pathDebounceTimer = setTimeout(_rebuildNow, PATH_DEBOUNCE_MS);
   }
 
+  // Openings wider than this leave too little outer wall to matter — the
+  // full orbit is better than an enormous pendulum.
+  const ARC_FULL_ORBIT_THETA = 4.6;
+
   function _rebuildNow() {
     _pathDebounceTimer = null;
+    const rotZ = (typeof getSceneRotationZ === 'function' && getSceneRotationZ()) || 0;
     const fp = pathFingerprint(
       _lastCells,
       _lastFcal,
       _lastSlicerMask,
       _lastMinimapRects,
       _lastViewLevel,
+      rotZ,
     );
     if (fp === _lastFingerprint) return;
     _lastFingerprint = fp;
 
     let pois = extractPOIs(_lastCells, _lastFcal);
     // POI filters: slicer drops POIs whose 3D centre is in the hidden
-    // wedge; minimap drops POIs outside the user-defined rects. Either
-    // can leave fewer than 2 POIs, which falls back to the safe orbit.
+    // wedge; minimap drops POIs outside the user-defined rects. The bake
+    // handles any remaining count, down to zero (default orbit).
     if (_lastSlicerMask && _lastIsInsideWedge) {
       pois = filterPOIsBySlicer(pois, _lastSlicerMask, _lastIsInsideWedge);
     }
@@ -276,19 +325,33 @@ export function setupCinemaControls({
       pois = filterPOIsByMinimap(pois, _lastMinimapRects);
     }
 
-    const built = pois.length >= 2 ? buildTourCurves(pois) : null;
-    if (built) {
-      _applyNewCurves(built.posCurve, built.tgtCurve);
-    } else {
-      // No usable POIs — use the safe-envelope fallback so the tour keeps
-      // moving (and so a freshly-entered cinema on an empty scene still orbits).
-      _applyNewCurves(fallbackPosCurve, fallbackTgtCurve);
+    // Slicer-aware tour: confine the camera to a pendulum sweep across the
+    // wedge OPENING (the cut region — its cells are hidden, so the camera
+    // looks through it into the interior and at the cut faces) instead of
+    // orbiting past the solid TILE-only outer wall. The wedge angles are
+    // scene-frame; adding rotZ lands them in world azimuth wherever the
+    // user has rotated the cut. The z window keeps the camera level with
+    // the opening's extent.
+    const m = _lastSlicerMask;
+    let arc = null;
+    let zWindow = null;
+    if (m && m.active && !m.emptyTh && !m.fullTh && m.thetaLen <= ARC_FULL_ORBIT_THETA) {
+      const halfRaw = m.thetaLen / 2;
+      const margin = Math.max(0.08, halfRaw * 0.18);
+      arc = {
+        center: m.phi + halfRaw + rotZ,
+        halfWidth: Math.max(0.12, halfRaw - margin),
+      };
+      zWindow = { min: m.zMin, max: m.zMax };
     }
+
+    _applyNewPath(bakeTourPath(pois, { rotZ, arc, zWindow }));
   }
 
-  // Force the curves to reflect the current inputs RIGHT NOW (used on entry so
-  // we never start on the fallback and swap a frame later). Cancels any pending
-  // debounce and rebuilds synchronously; a no-op if the fingerprint is current.
+  // Force the path to reflect the current inputs RIGHT NOW (used on entry so
+  // we never start on a stale orbit and swap a frame later). Cancels any
+  // pending debounce and rebuilds synchronously; a no-op if the fingerprint
+  // is current.
   function _rebuildSyncForEntry() {
     if (_pathDebounceTimer) {
       clearTimeout(_pathDebounceTimer);
@@ -356,6 +419,7 @@ export function setupCinemaControls({
     _rebuildSyncForEntry();
     controls.autoRotate = false;
     _seedFollower();
+    _suspendUserInput();
   }
 
   function enterCinema() {
@@ -364,7 +428,7 @@ export function setupCinemaControls({
     document.getElementById('btn-cinema').classList.add('on');
     clearOutline();
     hideTooltip();
-    tourExiting = false;
+    exitRecentering = false;
     updateCollisionHud();
     if (tourMode) {
       startTour();
@@ -375,20 +439,22 @@ export function setupCinemaControls({
   }
 
   function exitCinema() {
-    const wasTour = cinemaMode && tourMode;
     cinemaMode = false;
     document.body.classList.remove('cinema');
     controls.autoRotate = false;
     document.getElementById('btn-cinema').classList.remove('on');
+    _restoreUserInput();
+    // Exiting mid-dive must not leave a rolled horizon or a pushed FOV.
+    _resetDivePresentation();
     updateCollisionHud();
-    // The traversal override may have rolled camera.up around the beam
-    // axis; restore the project-default world-up so post-cinema navigation
-    // doesn't carry the roll over.
-    camera.up.set(0, 1, 0);
-    if (wasTour) {
-      tourExiting = true;
-      tourExitT0 = performance.now();
-      _lastTickT = tourExitT0;
+    // Always recenter on exit: keep the camera exactly where it is and bring
+    // the orbit target (scene centre) back onto the geometry centre. Skipped
+    // when the target is already there (nothing to animate).
+    if (controls.target.lengthSq() > 1) {
+      _exitTgtFrom.copy(controls.target);
+      exitRecentering = true;
+      exitT0 = performance.now();
+      _lastTickT = exitT0;
     }
   }
 
@@ -402,8 +468,9 @@ export function setupCinemaControls({
   function disableTourMode() {
     tourMode = false;
     if (cinemaMode) {
-      tourExiting = false;
-      camera.up.set(0, 1, 0);
+      exitRecentering = false;
+      _restoreUserInput();
+      _resetDivePresentation();
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.55;
     }
@@ -423,6 +490,9 @@ export function setupCinemaControls({
   let dragged = false;
   canvas.addEventListener('mousedown', () => {
     dragged = false;
+    // A new interaction takes over immediately — don't fight the user for
+    // the orbit target if they grab the scene mid-recenter.
+    exitRecentering = false;
   });
   canvas.addEventListener('mousemove', () => {
     dragged = true;
@@ -436,7 +506,7 @@ export function setupCinemaControls({
     enterCinema,
     exitCinema,
     resetCamera,
-    isAnimating: () => cinemaMode || tourExiting,
+    isAnimating: () => cinemaMode || exitRecentering,
     isCinemaMode: () => cinemaMode,
     isTourMode: () => tourMode,
     disableTourMode,

@@ -159,6 +159,9 @@ const cinema = setupCinemaControls({
   clearOutline,
   hideTooltip,
   updateCollisionHud,
+  // The slicer rotates the scene to face its wedge opening at +X; the tour
+  // path is world-space, so the cinema folds this angle into every bake.
+  getSceneRotationZ: () => scene.rotation.z,
 });
 // Seed the cinema's view-level cache with the starting level and refresh it
 // on every transition between modes 1/2/3 — the fingerprint includes the
