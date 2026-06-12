@@ -33,6 +33,7 @@ import {
 } from '../visibility.js';
 import { refreshCaloBoundParticles, bumpCaloBoundGeneration } from '../particles.js';
 import { applyWedgeClipInstanced, applyWedgeClipAttrCenter } from '../wedgeClip.js';
+import { CGV_WAVE_UNIFORM, CGV_WAVE_FADE } from '../collisionReplay.js';
 
 /**
  * One FCAL cell as decoded by the WASM XML parser. `module` is 1=EM, 2=Had1,
@@ -178,11 +179,53 @@ let _outLines = null;
 let _outGeo = null;
 let _outCapacityFloats = 0;
 
+// Chains the collision-replay light front onto the FCAL instanced material,
+// ON TOP of the slicer wedge clip (applyWedgeClipInstanced owns onBeforeCompile,
+// so we wrap it rather than replace it). FCAL renders as its own InstancedMesh —
+// not part of the mega-cell mesh the wave is wired into — so without this the
+// front swept past the forward calorimeter without dimming/igniting it. The
+// per-instance centre is the instance translation (instanceMatrix[3]), in the
+// same scene-local frame as the mega cells' baked centres; the modulation
+// mirrors megaCells.js exactly (dim ahead, bright band on the front, tail fade).
+/** @param {THREE.Material} mat */
+function _applyFcalWave(mat) {
+  const prevOnBeforeCompile = mat.onBeforeCompile;
+  mat.onBeforeCompile = (shader, renderer) => {
+    prevOnBeforeCompile.call(mat, shader, renderer); // wedge clip first
+    shader.uniforms.uCgvWaveR = CGV_WAVE_UNIFORM;
+    shader.uniforms.uCgvWaveFade = CGV_WAVE_FADE;
+    shader.vertexShader =
+      'uniform float uCgvWaveR;\nuniform float uCgvWaveFade;\nvarying float vCgvWave;\n' +
+      shader.vertexShader.replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+  vCgvWave = 1.0;
+#ifdef USE_INSTANCING
+  if (uCgvWaveR >= 0.0) {
+    float cgvWd = length(vec3(instanceMatrix[3])) - uCgvWaveR;
+    float cgvLit = 1.0 - smoothstep(0.0, 300.0, cgvWd);
+    float cgvBand = exp(-abs(cgvWd) / 250.0);
+    vCgvWave = mix(1.0, mix(0.05, 1.0, cgvLit) + cgvBand * 0.9, uCgvWaveFade);
+  }
+#endif`,
+      );
+    shader.fragmentShader =
+      'varying float vCgvWave;\n' +
+      shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+  diffuseColor.rgb *= vCgvWave;`,
+      );
+  };
+  mat.customProgramCacheKey = () => 'cgv-fcal-wedge-wave';
+}
+
 function _ensureFcalResources() {
   if (!_cylGeo) _cylGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
   if (!_cylMat) {
     _cylMat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.FrontSide });
     applyWedgeClipInstanced(_cylMat);
+    _applyFcalWave(_cylMat);
   }
   if (!_outMat) {
     _outMat = new THREE.LineBasicMaterial({
