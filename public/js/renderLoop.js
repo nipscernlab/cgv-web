@@ -9,6 +9,7 @@ import {
   isDirty,
   clearDirty,
 } from './renderer.js';
+import { getDprCap, onQualityChange } from './quality.js';
 
 // ── FPS counter / perf HUD ───────────────────────────────────────────────────
 // Default: the historical FPS readout. With `?perf=1`: draw calls, triangles,
@@ -63,7 +64,7 @@ function _scheduleWarmFrames(count = 12) {
 }
 
 function _restoreRendererAfterFocus() {
-  const pr = Math.min(window.devicePixelRatio || 1, 2);
+  const pr = Math.min(window.devicePixelRatio || 1, getDprCap());
   renderer.setPixelRatio(pr);
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -145,6 +146,15 @@ function _stopLoop() {
 /** @param {{ onFrameStart?: () => void }} [opts] */
 export function initRenderLoop({ onFrameStart } = {}) {
   if (onFrameStart) _onFrameStart = onFrameStart;
+
+  // Quality preset switch: re-apply the DPR cap and warm a few frames so the
+  // resize settles. Effect modules (tone mapping, bloom, ...) subscribe on
+  // their own; this is just the renderer-level knob.
+  onQualityChange(() => {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, getDprCap()));
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    _scheduleWarmFrames(4);
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) _stopLoop();

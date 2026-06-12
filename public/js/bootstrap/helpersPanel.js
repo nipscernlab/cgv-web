@@ -26,6 +26,7 @@ import { getViewLevel, onViewLevelChange } from '../viewLevel.js';
 import { markDirty } from '../renderer.js';
 import { setClusterLineOpacity } from '../particles/clusters.js';
 import { setJetLineOpacity } from '../particles/jets.js';
+import { getQuality, setQuality } from '../quality.js';
 import { setupAnchoredPopover } from './anchoredPopover.js';
 
 // Active-line accent colours, mirroring CLUSTER_MAT (clusters.js) and JET_MAT
@@ -114,12 +115,33 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     }
   }
 
+  // Quality preset row: three-way segmented control (low / standard /
+  // beauty). State lives in quality.js (localStorage-backed); this row is
+  // just a view onto it.
+  const hQualityBtns = /** @type {HTMLElement[]} */ (
+    Array.from(document.querySelectorAll('#h-quality .hseg-btn'))
+  );
+  function syncQualityRow() {
+    const q = getQuality();
+    for (const btn of hQualityBtns) btn.classList.toggle('on', btn.dataset.q === q);
+  }
+  for (const btn of hQualityBtns) {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const q = btn.dataset.q;
+      if (q === 'low' || q === 'standard' || q === 'beauty') setQuality(q);
+      syncQualityRow();
+      markDirty();
+    });
+  }
+
   function syncAllRows() {
     setSwitch(hbtnGhost, anyGhostOn());
     setSwitch(hbtnInfo, showInfo);
     setSwitch(hbtnVertices, getVerticesVisible());
     setSwitch(hbtnLabels, getParticleLabelsVisible());
     syncLinesRow();
+    syncQualityRow();
   }
 
   // ── Wiring ─────────────────────────────────────────────────────────────────
