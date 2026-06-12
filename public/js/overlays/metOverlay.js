@@ -143,6 +143,9 @@ export function drawMet(metInfo) {
   shaft.userData.metKey = metInfo.key;
   shaft.userData.magnitude = magnitude;
   shaft.userData.sumEt = metInfo.sumEt;
+  // ATLAS-convention φ of the MET vector — consumed by the minimap's edge
+  // chevron (B4), which works in the same frame as the binned cells.
+  shaft.userData.phiAtlas = Math.atan2(ety, etx);
   cone.userData.metKey = metInfo.key;
   cone.userData.magnitude = magnitude;
   cone.userData.sumEt = metInfo.sumEt;

@@ -68,9 +68,10 @@ void main() {
 /**
  * Anti-kt radius from the collection key: "AntiKt4EMPFlowJets" → 0.4,
  * "AntiKt10LCTopo…" → 1.0. Falls back to the ATLAS default 0.4.
+ * Exported for the minimap's jet circles (B4).
  * @param {string} key
  */
-function _jetRadiusFromKey(key) {
+export function jetRadiusFromKey(key) {
   const m = /antikt(\d+)/i.exec(key || '');
   if (m) {
     const n = Number(m[1]);
@@ -161,7 +162,7 @@ export function drawJets(collection) {
     // ride along with the line).
     const g = /** @type {any} */ (getJetGroup());
     if (g) {
-      const rJet = _jetRadiusFromKey(sgk);
+      const rJet = jetRadiusFromKey(sgk);
       for (const line of g.children.slice()) _attachJetCone(line, rJet);
     }
   }

@@ -20,7 +20,12 @@ import {
   getLastPhotons,
   refreshPhotonsGeometry,
 } from './particles/photons.js';
-import { clearClusters, drawClusters, getLastClusters } from './particles/clusters.js';
+import {
+  clearClusters,
+  drawClusters,
+  getLastClusters,
+  syncClusterGlyphs,
+} from './particles/clusters.js';
 import {
   clearTaus,
   drawTaus,
@@ -41,7 +46,7 @@ export {
   getLastElectrons,
 } from './particles/electrons.js';
 export { clearMuons, drawMuons, syncMuonTrackMatch, getLastMuons } from './particles/muons.js';
-export { clearClusters, drawClusters, getLastClusters };
+export { clearClusters, drawClusters, getLastClusters, syncClusterGlyphs };
 export { clearJets, drawJets };
 export { clearTaus, drawTaus, syncTauTrackMatch, getLastTaus };
 export { syncParticleLabelVisibility } from './particles/_internal.js';
