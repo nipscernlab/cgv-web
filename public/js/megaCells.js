@@ -29,6 +29,7 @@
 import * as THREE from 'three';
 import { WEDGE_GLSL, WEDGE_UNIFORMS, getWedgeMask, insideWedge } from './wedgeClip.js';
 import { getQualityPreset, onQualityChange } from './quality.js';
+import { CGV_WAVE_UNIFORM } from './collisionReplay.js';
 
 const TEX_W = 2048; // texels per DataTexture row (cells per row)
 
@@ -88,11 +89,14 @@ function _makeCellMaterial(tex, centersTex) {
     shader.uniforms.uCellTex = { value: tex };
     shader.uniforms.uCenterTex = { value: centersTex };
     shader.uniforms.uCgvShade = _CGV_SHADE_UNIFORM;
+    shader.uniforms.uCgvWaveR = CGV_WAVE_UNIFORM;
     shader.vertexShader =
       `attribute float aSlot;
 uniform sampler2D uCellTex;
 uniform sampler2D uCenterTex;
+uniform float uCgvWaveR;
 varying vec3 vCgvColor;
+varying float vCgvWave;
 ` +
       WEDGE_GLSL +
       shader.vertexShader
@@ -108,15 +112,25 @@ varying vec3 vCgvColor;
           '#include <project_vertex>',
           `#include <project_vertex>
   vec3 cgvCentre = texelFetch(uCenterTex, cgvTc, 0).xyz;
-  if (cgvCV.a < 0.5 || cgvInsideWedge(cgvCentre)) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);`,
+  if (cgvCV.a < 0.5 || cgvInsideWedge(cgvCentre)) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+  // B2 collision replay: light front at r = uCgvWaveR (mm from the vertex).
+  // Cells behind the front are lit, ahead are dimmed, and a bright band
+  // rides the front itself. uCgvWaveR < 0 → effect off (factor 1).
+  vCgvWave = 1.0;
+  if (uCgvWaveR >= 0.0) {
+    float cgvWd = length(cgvCentre) - uCgvWaveR;
+    float cgvLit = 1.0 - smoothstep(0.0, 300.0, cgvWd);
+    float cgvBand = exp(-abs(cgvWd) / 250.0);
+    vCgvWave = mix(0.05, 1.0, cgvLit) + cgvBand * 0.9;
+  }`,
         );
     shader.fragmentShader =
-      'varying vec3 vCgvColor;\nuniform float uCgvShade;\n' +
+      'varying vec3 vCgvColor;\nvarying float vCgvWave;\nuniform float uCgvShade;\n' +
       shader.fragmentShader
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>
-  diffuseColor.rgb *= vCgvColor;`,
+  diffuseColor.rgb *= vCgvColor * vCgvWave;`,
         )
         .replace(
           '#include <opaque_fragment>',

@@ -11,6 +11,7 @@ import {
   filterPOIsByMinimap,
   pathFingerprint,
 } from './cinema/tourPath.js';
+import { replayCollision, cancelReplay } from './collisionReplay.js';
 
 export function setupCinemaControls({
   camera,
@@ -525,6 +526,9 @@ export function setupCinemaControls({
       controls.autoRotate = true;
       controls.autoRotateSpeed = 0.55;
     }
+    // B2: open the show with the collision replay — a light front expands
+    // from the vertex and the cells ignite as it crosses them.
+    replayCollision();
   }
 
   function exitCinema() {
@@ -532,6 +536,7 @@ export function setupCinemaControls({
     document.body.classList.remove('cinema');
     controls.autoRotate = false;
     document.getElementById('btn-cinema').classList.remove('on');
+    cancelReplay();
     _restoreUserInput();
     // Exiting mid-dive must not leave a rolled horizon or a pushed FOV.
     _resetDivePresentation();

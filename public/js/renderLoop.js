@@ -10,6 +10,7 @@ import {
   clearDirty,
 } from './renderer.js';
 import { getDprCap, onQualityChange } from './quality.js';
+import { getPostFxComposer, resizePostFx } from './postfx.js';
 
 // ── FPS counter / perf HUD ───────────────────────────────────────────────────
 // Default: the historical FPS readout. With `?perf=1`: draw calls, triangles,
@@ -67,6 +68,7 @@ function _restoreRendererAfterFocus() {
   const pr = Math.min(window.devicePixelRatio || 1, getDprCap());
   renderer.setPixelRatio(pr);
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  resizePostFx();
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   dirLight.position.copy(camera.position);
@@ -113,7 +115,11 @@ function _loopTick() {
   if (controls.autoRotate) markDirty();
   if (!isDirty()) return;
   const t0 = _PERF_HUD ? performance.now() : 0;
-  renderer.render(scene, camera);
+  // Beauty preset routes through the post-fx composer (bloom + OutputPass);
+  // every other preset keeps the direct-to-canvas path bit-for-bit.
+  const composer = getPostFxComposer();
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
   if (_PERF_HUD) {
     _frameMs[_frameMsN % _frameMs.length] = performance.now() - t0;
     _frameMsN++;
@@ -175,6 +181,7 @@ export function initRenderLoop({ onFrameStart } = {}) {
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    resizePostFx();
     markDirty();
   });
 
