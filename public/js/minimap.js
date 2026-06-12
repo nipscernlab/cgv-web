@@ -24,16 +24,14 @@
 //   • 0 key → reset zoom
 //
 // Event-radar overlays (docs/VISUAL_PLAN.md, item B4):
-//   • jets drawn as circles of their real anti-kt radius — in the η/φ plane a
-//     jet IS a circle of radius R, so this representation is exact
 //   • MET chevron on the right edge at the MET φ (MET has no η — an edge
 //     marker on the φ axis is the honest representation)
 //   • camera crosshair at the η/φ the 3-D view axis points at (live)
 //   • double-click on empty plot → aim the 3-D camera at that (η, φ)
+//   (jet circles were tried and removed — they crowded the heatmap)
 
 import { camera, controls, scene, markDirty } from './renderer.js';
-import { getJetGroup, getMetGroup } from './visibility.js';
-import { jetRadiusFromKey } from './particles/jets.js';
+import { getMetGroup } from './visibility.js';
 
 const ETA_MIN = -4.9;
 const ETA_MAX = 4.9;
@@ -476,7 +474,6 @@ function _redraw() {
   _drawHeatmap();
   _drawAxes();
   _drawLegend();
-  _drawJetMarkers();
   _drawMetMarker();
   _drawCameraMarker();
   _drawRects();
@@ -498,39 +495,6 @@ function _clipToPlot(area) {
   _ctx.beginPath();
   _ctx.rect(area.x0, area.y0, area.x1 - area.x0, area.y1 - area.y0);
   _ctx.clip();
-}
-
-// Jets as circles of their true anti-kt R (exact in the η/φ plane). Ellipse
-// on screen because the η and φ pixel scales differ; ±2π copies cover the
-// seam. Only visible (threshold/region-passing) jet lines are drawn.
-function _drawJetMarkers() {
-  const grp = /** @type {any} */ (getJetGroup());
-  if (!grp || !grp.visible || !grp.children?.length) return;
-  const area = _plotArea();
-  const { pxPerEta, pxPerPhi, wrapPx } = _overlayScales(area);
-  _clipToPlot(area);
-  _ctx.lineWidth = 1.3;
-  _ctx.strokeStyle = 'rgba(255, 136, 0, 0.95)';
-  _ctx.fillStyle = 'rgba(255, 136, 0, 0.10)';
-  for (const line of grp.children) {
-    if (!line.visible) continue;
-    const { eta, phi, storeGateKey } = line.userData;
-    if (eta == null || phi == null) continue;
-    const R = jetRadiusFromKey(storeGateKey);
-    const x = _etaToX(eta, area);
-    const y = _phiToY(phi, area);
-    const rx = R * pxPerEta;
-    const ry = R * pxPerPhi;
-    for (const dy of [0, -wrapPx, wrapPx]) {
-      const yy = y + dy;
-      if (yy + ry < area.y0 || yy - ry > area.y1) continue;
-      _ctx.beginPath();
-      _ctx.ellipse(x, yy, rx, ry, 0, 0, TWO_PI);
-      _ctx.fill();
-      _ctx.stroke();
-    }
-  }
-  _ctx.restore();
 }
 
 // MET as a chevron on the right edge at its φ. MET carries no η, so an edge

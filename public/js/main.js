@@ -8,6 +8,8 @@ import { TILE_SCALE, HEC_SCALE, LAR_SCALE, FCAL_SCALE } from './palette.js';
 import { markDirty, canvas, renderer, scene, camera, controls } from './renderer.js';
 import { toggleAllGhosts, anyGhostOn } from './ghost.js';
 import { setupColorPicker } from './colorpicker.js';
+// Side-effect: binds renderer.toneMapping to the quality preset (A4).
+import './toneMapping.js';
 import { setupCinemaControls } from './cinema.js';
 import { getViewLevel, onViewLevelChange } from './viewLevel.js';
 import { setupScreenshotControls } from './screenshot.js';
