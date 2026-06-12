@@ -34,10 +34,12 @@ export const CHAMBER_RAYCAST_LAYER = 1;
 // wedge as a per-fragment GPU clip (wedgeClip.js): the cut carves through the
 // chamber bodies and their outlines in real time during a slicer drag, with
 // zero per-chamber CPU work.
+// Both dimmed in the 2026-06-12 review (0.035 → 0.025, 0.15 → 0.09): the
+// chamber wireframe was reading too bright against the event.
 const atlasTrackHitMat = new THREE.MeshBasicMaterial({
   color: 0x4a90d9,
   transparent: true,
-  opacity: 0.035,
+  opacity: 0.025,
   depthWrite: false,
   side: THREE.DoubleSide,
 });
@@ -45,7 +47,7 @@ applyWedgeClipWorld(atlasTrackHitMat);
 const trackAtlasOutlineMat = new THREE.LineBasicMaterial({
   color: 0x4a90d9,
   transparent: true,
-  opacity: 0.15,
+  opacity: 0.09,
   depthWrite: false,
 });
 applyWedgeClipWorld(trackAtlasOutlineMat);

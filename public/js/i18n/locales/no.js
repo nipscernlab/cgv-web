@@ -84,6 +84,8 @@ export default {
   'helpers-cluster-lines': 'Cluster-linjer',
   'helpers-cluster-lines-sub': 'η/φ-senterlinjer',
   'helpers-line-opacity': 'Linjeopasitet',
+  'helpers-cones': 'Jet-kjegler',
+  'helpers-cones-sub': 'ΔR-volum rundt hver jet',
   'helpers-quality': 'Kvalitet',
   'helpers-quality-sub': 'Gjengivelsesforvalg',
   'quality-low': 'Lav',

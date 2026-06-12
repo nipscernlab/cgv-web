@@ -157,7 +157,8 @@ export function removePinnedOutline(mesh) {
 // (event load, detector toggles) — same cadence as before, same look.
 const _outlineUniforms = {
   uColor: { value: new THREE.Color(0x000000) },
-  uOpacity: { value: 0.5 },
+  // 0.5 → 0.8 (2026-06-12 review): crisper, better-defined cell edges.
+  uOpacity: { value: 0.8 },
 };
 const _edgeWorldCache = new Map(); // handle.name → Float32Array (world-space positions)
 /** @type {Map<string, THREE.LineSegments>} det → merged outline mesh */

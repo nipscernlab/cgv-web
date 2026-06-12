@@ -25,7 +25,7 @@ import {
 import { getViewLevel, onViewLevelChange } from '../viewLevel.js';
 import { markDirty } from '../renderer.js';
 import { setClusterLineOpacity } from '../particles/clusters.js';
-import { setJetLineOpacity } from '../particles/jets.js';
+import { setJetLineOpacity, getJetConesVisible, setJetConesVisible } from '../particles/jets.js';
 import { getQuality, setQuality } from '../quality.js';
 import { setupAnchoredPopover } from './anchoredPopover.js';
 
@@ -64,6 +64,8 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
   const linesDotEl = /** @type {HTMLElement | null} */ (
     hrowLines?.querySelector('.layer-dot') ?? null
   );
+  const hrowCones = document.getElementById('hrow-cones');
+  const hbtnCones = document.getElementById('hbtn-cones');
   const hrowLineOpacity = document.getElementById('hrow-line-opacity');
   const hLineOpacity = /** @type {HTMLInputElement | null} */ (
     document.getElementById('h-line-opacity')
@@ -93,6 +95,8 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     const show = lvl !== 1;
     hrowLines.style.display = show ? '' : 'none';
     if (hrowLineOpacity) hrowLineOpacity.style.display = show ? '' : 'none';
+    // ΔR cones only exist on the L3 (Particles) jet view.
+    if (hrowCones) hrowCones.style.display = lvl === 3 ? '' : 'none';
     if (!show) return;
     // Colour the row dot, switch and opacity slider to match the active line
     // type: cluster red at L2, jet orange at L3.
@@ -140,6 +144,7 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     setSwitch(hbtnInfo, showInfo);
     setSwitch(hbtnVertices, getVerticesVisible());
     setSwitch(hbtnLabels, getParticleLabelsVisible());
+    setSwitch(hbtnCones, getJetConesVisible());
     syncLinesRow();
     syncQualityRow();
   }
@@ -174,6 +179,12 @@ export function setupHelpersPanel({ toggleAllGhosts, anyGhostOn, clearOutline, h
     // (electron / muon / tau-label / met) uniformly via the isParticleLabel
     // tag rather than per-group special cases.
     syncParticleLabelVisibility();
+    markDirty();
+  });
+  hbtnCones?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setJetConesVisible(!getJetConesVisible());
+    setSwitch(hbtnCones, getJetConesVisible());
     markDirty();
   });
   hbtnLines?.addEventListener('click', (e) => {

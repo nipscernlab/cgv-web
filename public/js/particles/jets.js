@@ -65,6 +65,38 @@ void main() {
   blending: THREE.AdditiveBlending,
 });
 
+// User toggle for the ΔR cones (Helpers panel) — some users prefer the axis
+// lines alone. Persisted per browser; default on.
+const JET_CONES_KEY = 'cgv-jet-cones';
+let _conesVisible = (() => {
+  try {
+    return localStorage.getItem(JET_CONES_KEY) !== '0';
+  } catch (_) {
+    return true;
+  }
+})();
+
+export function getJetConesVisible() {
+  return _conesVisible;
+}
+
+/** @param {boolean} v */
+export function setJetConesVisible(v) {
+  _conesVisible = !!v;
+  try {
+    localStorage.setItem(JET_CONES_KEY, _conesVisible ? '1' : '0');
+  } catch (_) {
+    /* ignore */
+  }
+  const g = /** @type {any} */ (getJetGroup());
+  if (!g) return;
+  for (const line of g.children) {
+    for (const child of line.children ?? []) {
+      if (child.userData.isJetCone) child.visible = _conesVisible;
+    }
+  }
+}
+
 /**
  * Anti-kt radius from the collection key: "AntiKt4EMPFlowJets" → 0.4,
  * "AntiKt10LCTopo…" → 1.0. Falls back to the ATLAS default 0.4.
@@ -116,6 +148,8 @@ function _attachJetCone(line, rJet) {
   };
   cone.raycast = () => {}; // the axis line stays the hover target
   cone.renderOrder = 6;
+  cone.userData.isJetCone = true;
+  cone.visible = _conesVisible; // honours the Helpers "Jet Cones" toggle
   line.add(cone);
 }
 

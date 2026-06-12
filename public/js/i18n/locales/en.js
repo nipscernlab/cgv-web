@@ -84,6 +84,8 @@ export default {
   'helpers-cluster-lines': 'Cluster Lines',
   'helpers-cluster-lines-sub': 'η/φ centerlines',
   'helpers-line-opacity': 'Line Opacity',
+  'helpers-cones': 'Jet Cones',
+  'helpers-cones-sub': 'ΔR volume around each jet',
   'helpers-quality': 'Quality',
   'helpers-quality-sub': 'Render preset',
   'quality-low': 'Low',

@@ -15,10 +15,12 @@ import { markDirty } from '../renderer.js';
 import { setStatus } from '../statusHud.js';
 import { setAtlasRoot } from '../trackAtlasIntersections.js';
 
+// Dimmed (0.07 → 0.04) in the 2026-06-12 review — the structural wireframe
+// was reading too bright against the event.
 const atlasMat = new THREE.MeshBasicMaterial({
   color: 0x4a90d9,
   transparent: true,
-  opacity: 0.07,
+  opacity: 0.04,
   depthWrite: false,
   side: THREE.DoubleSide,
 });

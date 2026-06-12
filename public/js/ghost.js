@@ -21,10 +21,11 @@ const ghostSolidMat = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 // Phi lines: white + high transparency, so they stay subtle guides.
+// Dimmed 0.06 → 0.04 in the 2026-06-12 review.
 const ghostPhiMat = new THREE.LineBasicMaterial({
   color: 0xffffff,
   transparent: true,
-  opacity: 0.06,
+  opacity: 0.04,
   depthWrite: false,
 });
 
