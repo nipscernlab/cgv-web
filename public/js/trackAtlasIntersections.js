@@ -21,6 +21,7 @@ import { applyTrackMaterials } from './trackMaterials.js';
 import { polylineAttr } from './fatLines.js';
 import { initTrackMatch } from './trackMatch.js';
 import { applyWedgeClipWorld, WEDGE_GLSL, WEDGE_UNIFORMS } from './wedgeClip.js';
+import { CGV_WAVE_UNIFORM, CGV_WAVE_FADE } from './collisionReplay.js';
 
 // Raycast-only layer for the individual chamber body meshes. Their RENDERING
 // is owned by the merged chamber mega mesh below (one draw call for all
@@ -261,6 +262,10 @@ function _buildChamberMega(meshes) {
       uChamberTex: { value: tex },
       uColor: { value: new THREE.Color(0x4a90d9) },
       uOpacity: { value: 0.035 },
+      // Shared by reference with the calorimeter wave — same front, so the
+      // replay ignites the hit chambers as one continuum with the cells.
+      uCgvWaveR: CGV_WAVE_UNIFORM,
+      uCgvWaveFade: CGV_WAVE_FADE,
     },
     defines: { CGV_TEXW: CHAMBER_TEX_W },
     vertexShader:
@@ -283,9 +288,26 @@ void main() {
 varying vec3 vScenePos;
 uniform vec3 uColor;
 uniform float uOpacity;
+uniform float uCgvWaveR;
+uniform float uCgvWaveFade;
 void main() {
   if (cgvInsideWedge(vScenePos)) discard;
-  gl_FragColor = vec4(uColor, uOpacity);
+  float opa = uOpacity;
+  vec3 col = uColor;
+  // B2 collision replay: the light front (r = uCgvWaveR mm from the vertex)
+  // sweeps past the calorimeter and ignites each hit chamber as it crosses —
+  // dimmed ahead of the front, a bright whitened ridge on it, base glow behind.
+  // Mirrors the calorimeter cell modulation. uCgvWaveR < 0 → effect off; the
+  // tail fade lerps it back to the chamber's resting look so it dissolves.
+  if (uCgvWaveR >= 0.0) {
+    float wd = length(vScenePos) - uCgvWaveR;
+    float lit = 1.0 - smoothstep(0.0, 400.0, wd);
+    float band = exp(-abs(wd) / 300.0);
+    float opaRaw = uOpacity * mix(0.15, 1.0, lit) + band * 0.4;
+    opa = mix(uOpacity, opaRaw, uCgvWaveFade);
+    col = mix(uColor, vec3(0.82, 0.92, 1.0), band * 0.7 * uCgvWaveFade);
+  }
+  gl_FragColor = vec4(col, opa);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`,

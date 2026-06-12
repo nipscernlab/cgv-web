@@ -29,7 +29,7 @@
 import * as THREE from 'three';
 import { WEDGE_GLSL, WEDGE_UNIFORMS, getWedgeMask, insideWedge } from './wedgeClip.js';
 import { getQualityPreset, onQualityChange } from './quality.js';
-import { CGV_WAVE_UNIFORM } from './collisionReplay.js';
+import { CGV_WAVE_UNIFORM, CGV_WAVE_FADE } from './collisionReplay.js';
 
 const TEX_W = 2048; // texels per DataTexture row (cells per row)
 
@@ -90,11 +90,13 @@ function _makeCellMaterial(tex, centersTex) {
     shader.uniforms.uCenterTex = { value: centersTex };
     shader.uniforms.uCgvShade = _CGV_SHADE_UNIFORM;
     shader.uniforms.uCgvWaveR = CGV_WAVE_UNIFORM;
+    shader.uniforms.uCgvWaveFade = CGV_WAVE_FADE;
     shader.vertexShader =
       `attribute float aSlot;
 uniform sampler2D uCellTex;
 uniform sampler2D uCenterTex;
 uniform float uCgvWaveR;
+uniform float uCgvWaveFade;
 varying vec3 vCgvColor;
 varying float vCgvWave;
 ` +
@@ -121,7 +123,9 @@ varying float vCgvWave;
     float cgvWd = length(cgvCentre) - uCgvWaveR;
     float cgvLit = 1.0 - smoothstep(0.0, 300.0, cgvWd);
     float cgvBand = exp(-abs(cgvWd) / 250.0);
-    vCgvWave = mix(0.05, 1.0, cgvLit) + cgvBand * 0.9;
+    // Tail fade lerps the modulation back to 1.0 (normal) so the sweep
+    // dissolves instead of cutting out at shutoff.
+    vCgvWave = mix(1.0, mix(0.05, 1.0, cgvLit) + cgvBand * 0.9, uCgvWaveFade);
   }`,
         );
     shader.fragmentShader =
