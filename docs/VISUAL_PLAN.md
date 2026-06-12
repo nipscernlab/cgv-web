@@ -243,3 +243,46 @@ mergeável por si):
 - B4 (clique navega) muda interação do minimap → confirmar que não conflita
   com o fluxo de desenhar retângulos.
 - Lego plot: levantar interesse no ticket antes de investir.
+
+---
+
+## Parte V — Resultado da execução (2026-06-12, branch `visual-quality-lab`)
+
+| Item | Status | Nota |
+|---|---|---|
+| A8 presets | ✔ | Low/Standard/Beauty no painel Helpers; `?quality=` override |
+| A1 fat lines | ✔ | tracks/clusters/jets/τ/fótons; largura escala com preset |
+| B6 MET | ✔ | haste tracejada, rótulo "MET" |
+| A3 rim/especular | ✔ (Beauty) | intensidades reduzidas no review |
+| A6 atmosfera | ✘ revertido | gradiente+fog não agradaram no review |
+| B1 cones de jet | ✔ | ΔR real; alpha atenuado no review |
+| B3 vértices | ✔ | voo b-tag, beamline, flare |
+| B4 minimap | ✔ parcial | MET + câmera + dbl-click navega; círculos de jet removidos no review |
+| B5 glifos de cluster | ✔ | InstancedMesh, 1 draw |
+| A4 tone mapping | ✘ revertido | AgX levantava o ghost/estrutura (review) |
+| A2 bloom | ✔ (Beauty) | atenuado (0.22/0.9) no review |
+| B2 replay da colisão | ✔ | dispara no cinema; 1 uniform |
+| B7 hits | ✔ | cor por subdetector; strips SCT reais |
+| B8 slicer HUD | ✔ | φ/∠/z durante o drag |
+| B9 ghost holograma | ✘ cancelado | decisão do review: ghost fica como era |
+| B10 tooltips | ✔ | τ ID/LLH/isol; cluster cells; jet mass (já havia) |
+| A7 AO | ✘ pulado | risco iGPU > ganho após o Beauty acalmado |
+
+### Validação (smoke suite, 1600×900, SwiftShader)
+
+14/14 passos em AMBOS os presets (`CGV_QUALITY=beauty` pina o preset no
+harness). Draw calls medidos vs budget:
+
+| Cena | Standard | Beauty | Budget |
+|---|---|---|---|
+| boot | 10 | 24 | ≤60 |
+| evento carregado | 137 | 151 | ≤450 |
+| slicer show-all | 144–146 | 158–160 | ≤700 |
+
+Standard ficou numericamente idêntico ao pré-branch (137 draws no evento —
+mesmo valor da linha de base do PERFORMANCE_PLAN). O custo do Beauty é
+~14 draws de passes do composer + bloom. Idle continua com GPU ociosa
+(replay/cinema são as únicas animações, finitas e autoterminantes).
+Screenshots A/B locais em `.smoke-standard/` e `.smoke-beauty/`.
+Telemetria: com o composer ativo, o renderLoop desliga o autoReset do
+renderer.info e reseta por frame, então o HUD `?perf=1` soma os passes.

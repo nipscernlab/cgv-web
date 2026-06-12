@@ -117,9 +117,18 @@ function _loopTick() {
   const t0 = _PERF_HUD ? performance.now() : 0;
   // Beauty preset routes through the post-fx composer (bloom + OutputPass);
   // every other preset keeps the direct-to-canvas path bit-for-bit.
+  // renderer.info auto-resets on every internal render() call, which would
+  // leave only the composer's final fullscreen quad in the counters — switch
+  // to manual reset around the composer so draws/tris stay meaningful.
   const composer = getPostFxComposer();
-  if (composer) composer.render();
-  else renderer.render(scene, camera);
+  if (composer) {
+    renderer.info.autoReset = false;
+    renderer.info.reset();
+    composer.render();
+  } else {
+    renderer.info.autoReset = true;
+    renderer.render(scene, camera);
+  }
   if (_PERF_HUD) {
     _frameMs[_frameMsN % _frameMs.length] = performance.now() - t0;
     _frameMsN++;
