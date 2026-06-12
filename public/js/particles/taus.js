@@ -12,7 +12,6 @@
 // recomputeTauTrackMatch's _applyTrackMaterials priority chain, but only if
 // no higher-priority match (electron / muon / jet) claims them first.
 
-import * as THREE from 'three';
 import {
   getTauGroup,
   setTauGroup,
@@ -20,6 +19,7 @@ import {
   setTauLabelGroup,
   applyTauPtThreshold,
 } from '../visibility.js';
+import { makeFatLineMaterial } from '../fatLines.js';
 import { recomputeTauTrackMatch } from '../trackMatch.js';
 import { getViewLevel } from '../viewLevel.js';
 import { makeLabelSprite } from '../labelSprite.js';
@@ -31,10 +31,12 @@ import {
   _refreshEtaPhiLineGroupGeometry,
 } from './_internal.js';
 
-const TAU_MAT = new THREE.LineDashedMaterial({
+const TAU_MAT = makeFatLineMaterial({
   color: 0xb366ff,
+  widthPx: 2,
   transparent: true,
   opacity: 0.85,
+  dashed: true,
   dashSize: 40,
   gapSize: 60,
   depthWrite: false,

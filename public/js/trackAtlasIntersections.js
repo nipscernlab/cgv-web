@@ -18,6 +18,7 @@
 import * as THREE from 'three';
 import { scene, markDirty } from './renderer.js';
 import { applyTrackMaterials } from './trackMaterials.js';
+import { polylineAttr } from './fatLines.js';
 import { initTrackMatch } from './trackMatch.js';
 import { applyWedgeClipWorld, WEDGE_GLSL, WEDGE_UNIFORMS } from './wedgeClip.js';
 
@@ -430,7 +431,7 @@ export function updateTrackAtlasIntersections() {
       // (979 tracks × ray-vs-mesh-triangles → cached Set lookup).
       let cached = line.userData._atlasChambers;
       if (!cached) {
-        const pos = line.geometry?.getAttribute('position');
+        const pos = polylineAttr(line);
         if (!pos || pos.count < 2) {
           line.userData._atlasChambers = _EMPTY_CHAMBER_SET;
           continue;

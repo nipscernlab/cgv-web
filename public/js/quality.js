@@ -24,6 +24,7 @@ const STORAGE_KEY = 'cgv-quality';
  * @typedef {'low' | 'standard' | 'beauty'} QualityName
  * @typedef {{
  *   dprCap: number,
+ *   lineWidthScale: number,
  *   toneMapping: boolean,
  *   bloom: boolean,
  *   ao: boolean,
@@ -32,9 +33,12 @@ const STORAGE_KEY = 'cgv-quality';
 
 /** @type {Record<QualityName, QualityPreset>} */
 export const QUALITY_PRESETS = {
-  low: { dprCap: 1.0, toneMapping: false, bloom: false, ao: false },
-  standard: { dprCap: 2.0, toneMapping: false, bloom: false, ao: false },
-  beauty: { dprCap: 2.0, toneMapping: true, bloom: true, ao: false },
+  // lineWidthScale multiplies the base pixel width of every fat line
+  // (fatLines.js): low ≈ the historical 1 px look, standard = the width each
+  // call site declares, beauty slightly heavier for presentation.
+  low: { dprCap: 1.0, lineWidthScale: 0.5, toneMapping: false, bloom: false, ao: false },
+  standard: { dprCap: 2.0, lineWidthScale: 1.0, toneMapping: false, bloom: false, ao: false },
+  beauty: { dprCap: 2.0, lineWidthScale: 1.25, toneMapping: true, bloom: true, ao: false },
 };
 
 /** @type {QualityName} */

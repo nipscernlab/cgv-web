@@ -9,10 +9,12 @@
 import * as THREE from 'three';
 import { scene } from '../renderer.js';
 import { getPhotonGroup, setPhotonGroup } from '../visibility.js';
+import { makeFatLineMaterial, makeFatLine, setFatLinePositions } from '../fatLines.js';
 import { _disposeGroup, _firstVisibleCellHit } from './_internal.js';
 
-const PHOTON_MAT = new THREE.LineBasicMaterial({
+const PHOTON_MAT = makeFatLineMaterial({
   color: 0xffcc00,
+  widthPx: 2,
   transparent: true,
   opacity: 0.85,
   depthWrite: false,
@@ -125,9 +127,7 @@ export function drawPhotons(photons) {
     const dy = -sinT * Math.sin(phi);
     const dz = Math.cos(theta);
     const { arr } = _computeSpringFromRay(dx, dy, dz);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-    const line = new THREE.Line(geo, PHOTON_MAT);
+    const line = makeFatLine(arr, PHOTON_MAT);
     line.userData.ptGev = ptGev;
     line.userData.eta = eta;
     line.userData.phi = phi;
@@ -139,10 +139,10 @@ export function drawPhotons(photons) {
 }
 
 // Visibility-driven refresh: re-runs _firstVisibleCellHit per existing line
-// and rewrites its position attribute in place. Avoids the dispose / new
-// Group / new Line / new BufferGeometry chain of drawPhotons (~10–30 ms for
-// 28 springs of 133 vertices each). nTurns can change with tEnd, so the
-// point count may shift — we re-allocate only when that happens.
+// and swaps in a fresh spring geometry (Line2 interleaved buffers can't be
+// rewritten in place — setFatLinePositions disposes the old allocation).
+// Keeps the Group / Line2 objects and materials; events carry ~tens of
+// photons, so the per-tick geometry swap stays cheap.
 export function refreshPhotonsGeometry() {
   const g = getPhotonGroup();
   if (!g) return;
@@ -154,14 +154,7 @@ export function refreshPhotonsGeometry() {
     const dx = -sinT * Math.cos(phi);
     const dy = -sinT * Math.sin(phi);
     const dz = Math.cos(theta);
-    const posAttr = line.geometry.getAttribute('position');
-    const { arr, nTotal } = _computeSpringFromRay(dx, dy, dz, posAttr ? posAttr.array : null);
-    if (!posAttr || posAttr.array !== arr || posAttr.count !== nTotal) {
-      // Point count changed (or no attribute yet) — rebind the attribute.
-      line.geometry.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-    } else {
-      posAttr.needsUpdate = true;
-    }
-    line.geometry.computeBoundingSphere();
+    const { arr } = _computeSpringFromRay(dx, dy, dz, null);
+    setFatLinePositions(line, arr);
   }
 }

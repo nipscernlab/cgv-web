@@ -19,6 +19,7 @@
 
 import * as THREE from 'three';
 import { scene, markDirty } from '../renderer.js';
+import { polylineAttr } from '../fatLines.js';
 
 // Solid white sphere — bright enough to read against any palette colour the
 // underlying track might be painted with (yellow / orange / red / green).
@@ -213,7 +214,7 @@ export function showTrackHits(trackLine) {
   const ids = trackLine.userData?.hitIds;
   if (!Array.isArray(ids) || ids.length === 0) return;
   if (_positionsById.size === 0 && _trtById.size === 0 && _chamberById.size === 0) return;
-  const posAttr = trackLine.geometry?.getAttribute('position');
+  const posAttr = polylineAttr(trackLine);
 
   const g = new THREE.Group();
   g.renderOrder = 30;

@@ -3,16 +3,18 @@
 // Orange is reserved for jets so it doesn't collide with the muon-track blue;
 // dashes mirror the cluster style and visually distinguish jets from tracks.
 
-import * as THREE from 'three';
 import { getJetGroup, setJetGroup, applyJetThreshold } from '../visibility.js';
+import { makeFatLineMaterial } from '../fatLines.js';
 import {
   _disposeGroup,
   _buildEtaPhiLineGroup,
   _refreshEtaPhiLineGroupGeometry,
 } from './_internal.js';
 
-const JET_MAT = new THREE.LineDashedMaterial({
+const JET_MAT = makeFatLineMaterial({
   color: 0xff8800,
+  widthPx: 2,
+  dashed: true,
   dashSize: 40,
   gapSize: 60,
 });

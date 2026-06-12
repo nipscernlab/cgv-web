@@ -2,7 +2,9 @@
 // Track-line materials + the priority chain that picks one per line.
 //
 // This file owns:
-//   - The 6 LineBasicMaterial constants every rendered track may switch to.
+//   - The 6 fat-line materials every rendered track may switch to. They are
+//     LineMaterials (fatLines.js) so the declared 2 px width actually renders
+//     — WebGL silently ignored the old LineBasicMaterial linewidth.
 //   - The fixed xAOD → AOD storeGateKey bridge (tau / jet retrievers reference
 //     tracks by xAOD names; the rendered polylines live under the AOD names).
 //   - applyTrackMaterials(trackGroup): the single place that knows the
@@ -13,23 +15,23 @@
 // and then call applyTrackMaterials to repaint. Centralising the priority
 // keeps "which colour wins when both apply?" in one diff-friendly place.
 
-import * as THREE from 'three';
+import { makeFatLineMaterial } from './fatLines.js';
 import { isLeptonNegative } from './particleSymbols.js';
 
 // Default unmatched track colour. Exported because drawTracks initially
 // assigns this to every Line (the recompute*Match passes restyle later).
-export const TRACK_MAT = new THREE.LineBasicMaterial({ color: 0xffea00, linewidth: 2 });
-const TRACK_HIT_MAT = new THREE.LineBasicMaterial({ color: 0x4a90d9, linewidth: 2 });
+export const TRACK_MAT = makeFatLineMaterial({ color: 0xffea00, widthPx: 2 });
+const TRACK_HIT_MAT = makeFatLineMaterial({ color: 0x4a90d9, widthPx: 2 });
 // Tracks belonging to a jet in the active jet collection: paint them in the
 // jet's own colour (orange) so visually associating "this track came out of
 // that jet" is immediate.
-const TRACK_JET_MAT = new THREE.LineBasicMaterial({ color: 0xff8800, linewidth: 2 });
+const TRACK_JET_MAT = makeFatLineMaterial({ color: 0xff8800, widthPx: 2 });
 // Tracks attached to a hadronic τ candidate: purple, same hue as the τ line.
-const TRACK_TAU_MAT = new THREE.LineBasicMaterial({ color: 0xb366ff, linewidth: 2 });
+const TRACK_TAU_MAT = makeFatLineMaterial({ color: 0xb366ff, widthPx: 2 });
 // Tracks matched to a reconstructed electron / positron by ΔR — coloured to
 // match the electron arrow so the eye links the track with the e±.
-const TRACK_ELECTRON_NEG_MAT = new THREE.LineBasicMaterial({ color: 0xff3030, linewidth: 2 });
-const TRACK_ELECTRON_POS_MAT = new THREE.LineBasicMaterial({ color: 0x33dd55, linewidth: 2 });
+const TRACK_ELECTRON_NEG_MAT = makeFatLineMaterial({ color: 0xff3030, widthPx: 2 });
+const TRACK_ELECTRON_POS_MAT = makeFatLineMaterial({ color: 0x33dd55, widthPx: 2 });
 
 // Maps the xAOD track-collection names that jets / taus reference to the
 // legacy (old-AOD) collection names that JiveXML actually publishes the
