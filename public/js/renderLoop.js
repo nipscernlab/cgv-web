@@ -52,8 +52,12 @@ function _perfPercentile(p) {
 // Paused while the tab is hidden: browsers already throttle RAF on hidden tabs,
 // but stopping the loop entirely frees the main thread for other tabs. Resumed
 // on visibilitychange.
-let _fpsFrames = 0,
-  _fpsLast = performance.now();
+let _fpsLast = performance.now();
+// Generation-capacity FPS state: wall-time + count of frames rendered in the
+// current 500 ms window, and the last computed value (held through idle).
+let _fpsRenderMs = 0;
+let _fpsRenderCount = 0;
+let _fpsValue = 0;
 let _loopRunning = false;
 let _loopRafId = 0;
 let _resumeWarmFrames = 0;
@@ -89,10 +93,23 @@ function _loopTick() {
     return;
   }
   _loopRafId = requestAnimationFrame(_loopTick);
-  _fpsFrames++;
   const now = performance.now();
   if (now - _fpsLast >= 500) {
-    const fps = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0);
+    // UNCAPPED FPS: 1000 / mean wall-time of the frames actually rendered in
+    // this window — i.e. how many frames per second this machine could
+    // generate, independent of the monitor's refresh rate. rAF still vsyncs
+    // PRESENTATION (the screen can't show more than its refresh), and the
+    // demand-driven loop renders only dirty frames, so counting rAF ticks
+    // (the old readout) would clamp at the panel Hz and count idle ticks.
+    // Measured CPU-side around renderer.render — a capability estimate; a
+    // fully GPU-bound scene would need EXT_disjoint_timer_query to refine.
+    // When the window had no rendered frames (idle), keep the last estimate.
+    if (_fpsRenderCount > 0) {
+      _fpsValue = Math.min(9999, (1000 * _fpsRenderCount) / _fpsRenderMs);
+      _fpsRenderCount = 0;
+      _fpsRenderMs = 0;
+    }
+    const fps = _fpsValue.toFixed(0);
     if (_PERF_HUD) {
       const r = /** @type {any} */ (renderer);
       const tris = _lastTris >= 1e6 ? (_lastTris / 1e6).toFixed(2) + 'M' : String(_lastTris);
@@ -103,7 +120,6 @@ function _loopTick() {
     } else {
       fpsEl.textContent = fps + ' FPS';
     }
-    _fpsFrames = 0;
     _fpsLast = now;
   }
   _onFrameStart();
@@ -114,7 +130,7 @@ function _loopTick() {
   }
   if (controls.autoRotate) markDirty();
   if (!isDirty()) return;
-  const t0 = _PERF_HUD ? performance.now() : 0;
+  const t0 = performance.now();
   // Beauty preset routes through the post-fx composer (bloom + OutputPass);
   // every other preset keeps the direct-to-canvas path bit-for-bit.
   // renderer.info auto-resets on every internal render() call, which would
@@ -129,8 +145,13 @@ function _loopTick() {
     renderer.info.autoReset = true;
     renderer.render(scene, camera);
   }
+  // Clamp to the timer's coarsened resolution so a sub-resolution frame
+  // doesn't read as 0 ms (→ infinite FPS).
+  const dt = Math.max(0.05, performance.now() - t0);
+  _fpsRenderMs += dt;
+  _fpsRenderCount++;
   if (_PERF_HUD) {
-    _frameMs[_frameMsN % _frameMs.length] = performance.now() - t0;
+    _frameMs[_frameMsN % _frameMs.length] = dt;
     _frameMsN++;
     const info = /** @type {any} */ (renderer).info;
     if (info?.render) {
@@ -145,7 +166,8 @@ function _startLoop() {
   if (_loopRunning) return;
   _loopRunning = true;
   _fpsLast = performance.now();
-  _fpsFrames = 0;
+  _fpsRenderMs = 0;
+  _fpsRenderCount = 0;
   markDirty();
   if (!_loopRafId) _loopRafId = requestAnimationFrame(_loopTick);
 }
