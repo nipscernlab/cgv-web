@@ -15,6 +15,7 @@
 
 import * as THREE from 'three';
 import { scene } from '../renderer.js';
+import { makeFatLine, setFatLinePositions, polylineAttr } from '../fatLines.js';
 import { getWedgeMask, insideWedge } from '../wedgeClip.js';
 import {
   fcalGroup,
@@ -210,8 +211,8 @@ export function _disposeGroup(getter, setter) {
  * Builds a Group of η/φ lines stretching from the inner-detector cylinder
  * (r ≈ 1.42 m) to the outer cylinder (r ≈ 3.82 m) — the visual band where
  * clusters / jets / τ candidates live. Each line gets the supplied material
- * (typically a LineDashedMaterial — computeLineDistances is called for you so
- * the dashes show up), its endpoints derived from the item's (eta, phi), and
+ * (typically a dashed fat-line material — computeLineDistances is called for
+ * you so the dashes show up), its endpoints derived from the item's (eta, phi), and
  * its userData stamped via mapToUserData(item). On non-empty input attaches
  * the group via setter; empty input is a no-op (caller is responsible for
  * any pre-clear via _disposeGroup before calling).
@@ -255,12 +256,9 @@ export function _buildEtaPhiLineGroup({
     const dz = Math.cos(theta);
     const t0 = innerHit(dx, dy, dz);
     const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
-    const start = new THREE.Vector3(dx * t0, dy * t0, dz * t0);
-    const end = new THREE.Vector3(dx * t1, dy * t1, dz * t1);
-    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const line = new THREE.Line(geo, mat);
-    // Required by LineDashedMaterial — without it, the line renders solid.
-    line.computeLineDistances();
+    // Fat line (Line2) — makeFatLine runs computeLineDistances so dashed
+    // materials render dashed.
+    const line = makeFatLine([dx * t0, dy * t0, dz * t0, dx * t1, dy * t1, dz * t1], mat);
     Object.assign(line.userData, mapToUserData(item));
     g.add(line);
   }
@@ -271,10 +269,10 @@ export function _buildEtaPhiLineGroup({
 /**
  * Visibility-driven refresh for an η/φ-line group built by
  * _buildEtaPhiLineGroup. Walks the existing Lines, recomputes (t0, t1) from
- * each Line's userData.eta / userData.phi, and rewrites its 6-float position
- * attribute in place. Skips the Group / Line / BufferGeometry allocation
- * dance that would otherwise run per slider tick. computeLineDistances()
- * is re-run since the LineDashedMaterial caches them based on positions.
+ * each Line's userData.eta / userData.phi, and swaps in a fresh 2-point
+ * geometry (Line2 interleaved buffers can't be rewritten in place without
+ * leaking the old GPU allocation — setFatLinePositions disposes it). These
+ * groups hold at most a few dozen lines, so the swap stays cheap per tick.
  *
  * @param {any} g  the existing line group (VisibleObject | null; no-op if null)
  * @param {boolean} useCellRaycast  same semantics as in _buildEtaPhiLineGroup
@@ -292,16 +290,7 @@ export function _refreshEtaPhiLineGroupGeometry(g, useCellRaycast = true) {
     const dz = Math.cos(theta);
     const t0 = innerHit(dx, dy, dz);
     const t1 = _cylIntersect(dx, dy, dz, CLUSTER_CYL_OUT_R, CLUSTER_CYL_OUT_HALF_H);
-    const posAttr = line.geometry.getAttribute('position');
-    const arr = posAttr.array;
-    arr[0] = dx * t0;
-    arr[1] = dy * t0;
-    arr[2] = dz * t0;
-    arr[3] = dx * t1;
-    arr[4] = dy * t1;
-    arr[5] = dz * t1;
-    posAttr.needsUpdate = true;
-    line.computeLineDistances();
+    setFatLinePositions(line, [dx * t0, dy * t0, dz * t0, dx * t1, dy * t1, dz * t1]);
   }
 }
 
@@ -329,7 +318,7 @@ export function _buildAnchoredLabelGroup({ predicate, anchorIdx, makeSprite, set
   let added = false;
   for (const line of /** @type {any[]} */ (trackGroup.children)) {
     if (!predicate(line)) continue;
-    const pos = line.geometry?.getAttribute('position');
+    const pos = polylineAttr(line);
     if (!pos || pos.count < 1) continue;
     const idx = anchorIdx(pos.count);
     const x = pos.getX(idx);

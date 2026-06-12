@@ -67,6 +67,8 @@
           overlay.classList.remove('done');
           overlay.innerHTML =
             '<div class="loading-card" style="max-width:440px;text-align:center">' +
+            '<img src="./assets/icons/cgvweb_icon.svg" alt="CGV Web" width="56" height="56" ' +
+            'style="display:block;margin:0 auto 10px" />' +
             '<div class="loading-title">CGV</div>' +
             '<div class="loading-sub" style="margin-bottom:14px">Could not start in this tab</div>' +
             '<div class="loading-lab" style="line-height:1.55;opacity:.85;margin-bottom:18px">' +
@@ -155,7 +157,8 @@
       {
         "imports": {
           "three": "./vendor/three/build/three.module.js",
-          "three/addons/": "./vendor/three/examples/jsm/"
+          "three/addons/": "./vendor/three/examples/jsm/",
+          "mp4-muxer": "./vendor/mp4-muxer/mp4-muxer.mjs"
         }
       }
     </script>
@@ -388,6 +391,9 @@
       </button>
       <button class="tbtn" id="btn-shot" data-tip="Save screenshot (P)" data-i18n-tip="tip-shot">
         <svg class="ic"><use href="#i-camera" /></svg>
+      </button>
+      <button class="tbtn" id="btn-rec" data-tip="Record cinema video" data-i18n-tip="tip-rec">
+        <i class="ti ti-video"></i>
       </button>
       <button
         class="tbtn"
@@ -1289,6 +1295,20 @@
           style="--gswitch-col: #ffa040"
         ></button>
       </div>
+      <div class="layer-row" id="hrow-cones">
+        <span class="layer-dot" style="background: #ff8800"></span>
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="helpers-cones">Jet Cones</div>
+          <div class="layer-sub" data-i18n="helpers-cones-sub">ΔR volume around each jet</div>
+        </div>
+        <button
+          class="gswitch on"
+          id="hbtn-cones"
+          role="switch"
+          aria-checked="true"
+          style="--gswitch-col: #ff8800"
+        ></button>
+      </div>
       <div class="layer-row" id="hrow-line-opacity">
         <div class="hslider">
           <div class="hslider-head">
@@ -1304,6 +1324,17 @@
             value="100"
             aria-label="Line opacity"
           />
+        </div>
+      </div>
+      <div class="layer-row" id="hrow-quality">
+        <div class="layer-info">
+          <div class="layer-name" data-i18n="helpers-quality">Quality</div>
+          <div class="layer-sub" data-i18n="helpers-quality-sub">Render preset</div>
+        </div>
+        <div class="hseg" id="h-quality" role="group" aria-label="Render quality">
+          <button class="hseg-btn" data-q="low" data-i18n="quality-low">Low</button>
+          <button class="hseg-btn" data-q="standard" data-i18n="quality-standard">Std</button>
+          <button class="hseg-btn" data-q="beauty" data-i18n="quality-beauty">Beauty</button>
         </div>
       </div>
     </div>
@@ -1649,6 +1680,127 @@
           <button class="shot-save" id="btn-shot-save" disabled data-i18n="shot-save">
             Save PNG
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Cinema video recorder dialog ──── -->
+    <div id="rec-overlay">
+      <div class="shot-card">
+        <div class="shot-title" data-i18n="rec-title">Record Cinema Video</div>
+        <div class="shot-sub" data-i18n="rec-sub">
+          Renders one full cinema-tour loop offline at maximum quality (the scene is frozen — set
+          the slicer cut and visibility first). Saved as a seamless MP4.
+        </div>
+
+        <div class="shot-grid rec-grid">
+          <button class="rec-res" data-w="1280" data-h="720">
+            HD<br /><span>1280 × 720</span>
+          </button>
+          <button class="rec-res" data-w="1920" data-h="1080">
+            1080p<br /><span>1920 × 1080</span>
+          </button>
+          <button class="rec-res" data-w="2560" data-h="1440">
+            2K<br /><span>2560 × 1440</span>
+          </button>
+        </div>
+
+        <div class="rec-rows">
+          <div class="rec-row">
+            <span class="rec-row-label" data-i18n="rec-fps-label">Frame rate</span>
+            <div class="rec-seg">
+              <button class="rec-fps" data-fps="30">30</button>
+              <button class="rec-fps" data-fps="60">60</button>
+            </div>
+          </div>
+          <div class="rec-row">
+            <span class="rec-row-label" data-i18n="rec-quality-label">Quality</span>
+            <div class="rec-seg">
+              <button class="rec-q" data-q="medium" data-i18n="rec-q-medium">Medium</button>
+              <button class="rec-q" data-q="high" data-i18n="rec-q-high">High</button>
+            </div>
+          </div>
+        </div>
+
+        <label class="shot-opt" for="rec-collision">
+          <input type="checkbox" id="rec-collision" checked />
+          <span class="shot-check" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <polyline
+                points="3.5,8.5 6.8,11.8 12.5,5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+          <span class="shot-opt-text">
+            <span class="shot-opt-title" data-i18n="rec-collision-title"
+              >Collision info overlay</span
+            >
+            <span class="shot-opt-sub" data-i18n="rec-collision-sub"
+              >Composite event metadata (run, event, lumi block) onto the video</span
+            >
+          </span>
+        </label>
+
+        <label class="shot-opt" for="rec-minimap">
+          <input type="checkbox" id="rec-minimap" />
+          <span class="shot-check" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <polyline
+                points="3.5,8.5 6.8,11.8 12.5,5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+          <span class="shot-opt-text">
+            <span class="shot-opt-title" data-i18n="rec-minimap-title">η×φ minimap</span>
+            <span class="shot-opt-sub" data-i18n="rec-minimap-sub"
+              >Composite the energy heatmap onto the video</span
+            >
+          </span>
+        </label>
+
+        <label class="shot-opt" for="rec-pins">
+          <input type="checkbox" id="rec-pins" checked />
+          <span class="shot-check" aria-hidden="true">
+            <svg viewBox="0 0 16 16">
+              <polyline
+                points="3.5,8.5 6.8,11.8 12.5,5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+          <span class="shot-opt-text">
+            <span class="shot-opt-title" data-i18n="rec-pins-title">Pinned cell cards</span>
+            <span class="shot-opt-sub" data-i18n="rec-pins-sub"
+              >Keep pinned tooltips tracking their cells through the flythrough</span
+            >
+          </span>
+        </label>
+
+        <div id="rec-progress">
+          <canvas id="rec-thumb" width="180" height="101"></canvas>
+          <div class="rec-prog-side">
+            <div class="rec-prog-track"><div id="rec-bar"></div></div>
+            <span id="rec-progress-txt"></span>
+          </div>
+        </div>
+
+        <div class="shot-actions">
+          <button class="shot-cancel" id="btn-rec-cancel" data-i18n="rec-close">Close</button>
+          <button class="shot-save" id="btn-rec-start" data-i18n="rec-start">Record</button>
         </div>
       </div>
     </div>

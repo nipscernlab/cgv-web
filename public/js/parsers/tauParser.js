@@ -43,7 +43,8 @@ function _readStrings(body, tag) {
 //   `key`    is the storeGateKey (e.g. "TauJets_xAOD"), kept for the tooltip.
 /**
  * @typedef {{ eta: number, phi: number, ptGev: number, isTau: string, numTracks: number,
- *   charge: number, tracks: Array<{ key: string, index: number }>, key: string }} Tau
+ *   charge: number, logLhRatio: number | null, isolFrac: number | null,
+ *   tracks: Array<{ key: string, index: number }>, key: string }} Tau
  */
 /** @param {string} xmlText @returns {Tau[]} */
 export function parseTaus(xmlText) {
@@ -65,6 +66,8 @@ export function parseTaus(xmlText) {
 
     const isTauString = _readStrings(body, 'isTauString');
     const charges = _readNums(body, 'charge');
+    const logLhRatios = _readNums(body, 'logLhRatio');
+    const isolFracs = _readNums(body, 'isolFrac');
     const trackIndex = _readNums(body, 'trackIndex');
     const trackKey = _readStrings(body, 'trackKey');
     const trackLinkCount = _readNums(body, 'trackLinkCount');
@@ -89,6 +92,10 @@ export function parseTaus(xmlText) {
         isTau: isTauString?.[i] ?? '',
         numTracks: Number.isFinite(numTracks?.[i]) ? numTracks[i] : tracks.length,
         charge: Number.isFinite(charges?.[i]) ? charges[i] : 0,
+        // ID quality metrics — surfaced in the hover tooltip (B10); null when
+        // the XML doesn't publish them.
+        logLhRatio: Number.isFinite(logLhRatios?.[i]) ? logLhRatios[i] : null,
+        isolFrac: Number.isFinite(isolFracs?.[i]) ? isolFracs[i] : null,
         tracks,
         key,
       });

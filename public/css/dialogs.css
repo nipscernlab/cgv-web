@@ -233,7 +233,8 @@
   gap: 8px;
   margin-bottom: 16px;
 }
-.shot-res {
+.shot-res,
+.rec-res {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -251,22 +252,26 @@
     background var(--motion-fast),
     border-color var(--motion-fast);
 }
-.shot-res span {
+.shot-res span,
+.rec-res span {
   font: 400 10.5px var(--mono);
   color: var(--muted);
   letter-spacing: 0;
 }
-.shot-res:hover {
+.shot-res:hover,
+.rec-res:hover {
   color: var(--bright);
   background: var(--surface-hover);
   border-color: var(--border-strong);
 }
-.shot-res.active {
+.shot-res.active,
+.rec-res.active {
   color: var(--bright);
   background: var(--accent-soft);
   border-color: var(--accent);
 }
-.shot-res.active span {
+.shot-res.active span,
+.rec-res.active span {
   color: var(--accent-text);
 }
 
@@ -411,6 +416,122 @@
 .shot-save:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* ── Cinema video recorder dialog ───────────────────────── */
+/* Shares the screenshot dialog's surface + .shot-* element styling. */
+#rec-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+
+  background: rgba(6, 8, 12, 0.78);
+  backdrop-filter: blur(10px) saturate(1.2);
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-fast);
+}
+#rec-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+.rec-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.rec-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.rec-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.rec-row-label {
+  font: 500 12px var(--font);
+  color: var(--bright);
+}
+.rec-seg {
+  display: inline-flex;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.rec-seg button {
+  padding: 7px 16px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: 500 12px var(--font);
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast),
+    background var(--motion-fast);
+}
+.rec-seg button + button {
+  border-left: 1px solid var(--border);
+}
+.rec-seg button:hover {
+  color: var(--bright);
+  background: var(--surface-hover);
+}
+.rec-seg button.active {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+#rec-progress {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0 6px;
+}
+#rec-progress.running {
+  display: flex;
+}
+#rec-thumb {
+  width: 180px;
+  height: auto;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: #000;
+  flex-shrink: 0;
+}
+.rec-prog-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.rec-prog-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+#rec-bar {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: var(--accent);
+  transition: width var(--motion-fast);
+}
+#rec-progress-txt {
+  font: 500 11.5px var(--mono);
+  color: var(--warn);
 }
 
 /* ── Settings popover ───────────────────────────────────── */

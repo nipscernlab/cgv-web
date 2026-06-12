@@ -33,6 +33,7 @@ import {
   getLastMuons,
   syncMuonTrackMatch,
   syncParticleLabelVisibility,
+  syncClusterGlyphs,
   withCoalescedCaloBoundRefresh,
 } from './particles.js';
 import { isLayerOn } from './visibility/layerVis.js';
@@ -395,11 +396,17 @@ export function applyTrackThreshold() {
 export function applyClusterThreshold() {
   withCoalescedCaloBoundRefresh(() => {
     const clusterGroup = getClusterGroup();
-    if (clusterGroup)
+    if (clusterGroup) {
       for (const child of clusterGroup.children ?? []) {
+        // The B5 glyph InstancedMesh lives in this group too — it has no
+        // per-object threshold of its own (instances are compacted from the
+        // lines' visible flags right below).
+        if (child.isInstancedMesh) continue;
         const { etGev, eta, phi } = child.userData;
         child.visible = etGev >= thrClusterEtGev && _inEtaPhiRegion(eta, phi);
       }
+      syncClusterGlyphs();
+    }
     rebuildActiveClusterCellIds();
     applyThreshold();
     applyFcalThreshold();

@@ -238,7 +238,57 @@ export function createSlicerController({
     slicerGroup.userData.arrowT.setDirection(new THREE.Vector3(1, 0, 0));
     slicerGroup.updateMatrix();
     _syncWedgeUniforms();
+    _updateDragHud();
     onMaskChange?.();
+  }
+
+  // ── Drag HUD (docs/VISUAL_PLAN.md, item B8) ────────────────────────────────
+  // Numeric readout while the gizmo is being dragged: wedge azimuth, opening
+  // angle, Z span and offset. Symbols only — no i18n strings needed.
+  /** @type {HTMLDivElement | null} */
+  let _hudEl = null;
+  function _getHud() {
+    if (_hudEl) return _hudEl;
+    _hudEl = document.createElement('div');
+    Object.assign(_hudEl.style, {
+      position: 'fixed',
+      bottom: '14px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      zIndex: '40',
+      font: '500 12px monospace',
+      color: '#cfe3ff',
+      background: 'rgba(8, 14, 28, 0.72)',
+      border: '1px solid rgba(120, 150, 190, 0.35)',
+      borderRadius: '6px',
+      padding: '4px 10px',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      whiteSpace: 'pre',
+      display: 'none',
+    });
+    document.body.appendChild(_hudEl);
+    return _hudEl;
+  }
+  function _updateDragHud() {
+    if (!isDragging()) {
+      if (_hudEl) _hudEl.style.display = 'none';
+      return;
+    }
+    const hud = _getHud();
+    const deg = (/** @type {number} */ r) => (r * 180) / Math.PI;
+    // Bisector azimuth, wrapped to (-180°, 180°] for readability.
+    let phiDeg = deg(slicerPhi + slicerThetaLength / 2) % 360;
+    if (phiDeg > 180) phiDeg -= 360;
+    if (phiDeg <= -180) phiDeg += 360;
+    const parts = [
+      `φ ${phiDeg.toFixed(1)}°`,
+      `∠ ${deg(slicerThetaLength).toFixed(1)}°`,
+      `z ±${(slicerHalfHeight / 1000).toFixed(2)} m`,
+    ];
+    if (Math.abs(slicerZOffset) > 1) parts.push(`Δz ${(slicerZOffset / 1000).toFixed(2)} m`);
+    hud.textContent = parts.join('   ');
+    hud.style.display = 'block';
   }
 
   // Camera to project default (renderer.js initial state).

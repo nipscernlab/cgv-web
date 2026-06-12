@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { scene } from '../renderer.js';
 import { getTrackGroup, setTrackGroup } from '../visibility.js';
 import { TRACK_MAT } from '../trackMaterials.js';
+import { makeFatLine } from '../fatLines.js';
 import { updateTrackAtlasIntersections } from '../trackAtlasIntersections.js';
 import { _disposeGroup } from './_internal.js';
 
@@ -43,8 +44,11 @@ export function drawTracks(tracks) {
   const idxByKey = new Map();
   for (const { pts, ptGev, hitIds, storeGateKey } of tracks) {
     if (!_PRIMARY_TRACK_COLLECTIONS.has(storeGateKey)) continue;
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    const line = new THREE.Line(geo, TRACK_MAT);
+    // Fat line (Line2) — real pixel width. The polyline points live on
+    // userData.polyAttr (set by makeFatLine); consumers that walk the track
+    // (label anchors, TRT interpolation, chamber raycast) read them via
+    // fatLines.polylineAttr.
+    const line = makeFatLine(pts, TRACK_MAT);
     line.userData.ptGev = ptGev;
     line.userData.hitIds = hitIds;
     line.userData.storeGateKey = storeGateKey;

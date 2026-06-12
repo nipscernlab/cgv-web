@@ -22,6 +22,16 @@
 //   • scroll wheel over minimap → zoom in/out centred on scroll position
 //   • +/=/- keys while minimap hovered → zoom in/out
 //   • 0 key → reset zoom
+//
+// Event-radar overlays (docs/VISUAL_PLAN.md, item B4):
+//   • MET chevron on the right edge at the MET φ (MET has no η — an edge
+//     marker on the φ axis is the honest representation)
+//   • camera crosshair at the η/φ the 3-D view axis points at (live)
+//   • double-click on empty plot → aim the 3-D camera at that (η, φ)
+//   (jet circles were tried and removed — they crowded the heatmap)
+
+import { camera, controls, scene, markDirty } from './renderer.js';
+import { getMetGroup } from './visibility.js';
 
 const ETA_MIN = -4.9;
 const ETA_MAX = 4.9;
@@ -464,7 +474,112 @@ function _redraw() {
   _drawHeatmap();
   _drawAxes();
   _drawLegend();
+  _drawMetMarker();
+  _drawCameraMarker();
   _drawRects();
+}
+
+// ── B4 overlays: jets, MET, camera ──────────────────────────────────────────
+// Pixels-per-unit for the CURRENT zoom viewport; wrapPx is a full 2π in
+// display pixels, used to draw seam-wrapped copies of φ-periodic markers.
+function _overlayScales(area) {
+  const [elo, ehi] = _viewEtaFrac();
+  const [plo, phi] = _viewPhiFrac();
+  const pxPerEta = (area.x1 - area.x0) / ((ETA_MAX - ETA_MIN) * (ehi - elo));
+  const pxPerPhi = (area.y1 - area.y0) / (TWO_PI * (phi - plo));
+  return { pxPerEta, pxPerPhi, wrapPx: TWO_PI * pxPerPhi };
+}
+
+function _clipToPlot(area) {
+  _ctx.save();
+  _ctx.beginPath();
+  _ctx.rect(area.x0, area.y0, area.x1 - area.x0, area.y1 - area.y0);
+  _ctx.clip();
+}
+
+// MET as a chevron on the right edge at its φ. MET carries no η, so an edge
+// marker on the φ axis (plus seam-wrapped copies) is the faithful drawing.
+function _drawMetMarker() {
+  const grp = /** @type {any} */ (getMetGroup());
+  if (!grp || !grp.visible) return;
+  let phiAtlas = null;
+  for (const child of grp.children ?? []) {
+    if (child.userData?.phiAtlas != null) {
+      phiAtlas = child.userData.phiAtlas;
+      break;
+    }
+  }
+  if (phiAtlas == null) return;
+  const area = _plotArea();
+  const { wrapPx } = _overlayScales(area);
+  const y = _phiToY(phiAtlas, area);
+  _clipToPlot(area);
+  _ctx.fillStyle = 'rgba(255, 0, 102, 0.95)';
+  _ctx.font = '600 7px monospace';
+  _ctx.textAlign = 'right';
+  _ctx.textBaseline = 'middle';
+  for (const dy of [0, -wrapPx, wrapPx]) {
+    const yy = y + dy;
+    if (yy < area.y0 - 6 || yy > area.y1 + 6) continue;
+    _ctx.beginPath();
+    _ctx.moveTo(area.x1 - 7, yy);
+    _ctx.lineTo(area.x1 - 1, yy - 4);
+    _ctx.lineTo(area.x1 - 1, yy + 4);
+    _ctx.closePath();
+    _ctx.fill();
+    _ctx.fillText('MET', area.x1 - 9, yy);
+  }
+  _ctx.restore();
+}
+
+// Crosshair where the 3-D view axis points. The orbit direction is taken in
+// world space, counter-rotated by the slicer's scene.rotation.z, then mapped
+// scene → ATLAS (x and y negated) before the η/φ projection — the same
+// convention chain used by the cells the heatmap bins.
+function _drawCameraMarker() {
+  const dx = controls.target.x - camera.position.x;
+  const dy = controls.target.y - camera.position.y;
+  const dz = controls.target.z - camera.position.z;
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 1e-6) return;
+  const rz = -scene.rotation.z;
+  const c = Math.cos(rz);
+  const s = Math.sin(rz);
+  const sx = (dx * c - dy * s) / len;
+  const sy = (dx * s + dy * c) / len;
+  const sz = dz / len;
+  const ax = -sx;
+  const ay = -sy;
+  const rT = Math.hypot(ax, ay);
+  if (rT < 1e-9) return; // looking straight down the beam axis: η → ±∞
+  const eta = Math.asinh(sz / rT);
+  if (eta < ETA_MIN || eta > ETA_MAX) return;
+  const phi = Math.atan2(ay, ax);
+  const area = _plotArea();
+  const { wrapPx } = _overlayScales(area);
+  const x = _etaToX(eta, area);
+  const y = _phiToY(phi, area);
+  _clipToPlot(area);
+  _ctx.strokeStyle = 'rgba(140, 210, 255, 0.95)';
+  _ctx.lineWidth = 1.2;
+  for (const dyw of [0, -wrapPx, wrapPx]) {
+    const yy = y + dyw;
+    if (yy < area.y0 - 8 || yy > area.y1 + 8) continue;
+    _ctx.beginPath();
+    _ctx.arc(x, yy, 4.5, 0, TWO_PI);
+    _ctx.stroke();
+    _ctx.beginPath();
+    _ctx.moveTo(x - 7.5, yy);
+    _ctx.lineTo(x - 2.5, yy);
+    _ctx.moveTo(x + 2.5, yy);
+    _ctx.lineTo(x + 7.5, yy);
+    _ctx.moveTo(x, yy - 7.5);
+    _ctx.lineTo(x, yy - 2.5);
+    _ctx.moveTo(x, yy + 2.5);
+    _ctx.lineTo(x, yy + 7.5);
+    _ctx.stroke();
+  }
+  _ctx.restore();
 }
 
 // ── Region API ──────────────────────────────────────────────────────────────
@@ -735,6 +850,7 @@ function _onMouseUp(ev) {
 
   if (_mouseState === 'maybe-pan') {
     _rects.splice(_activeRectIdx, 1);
+    _lastRectDeleteTs = performance.now();
     _notifyRegion();
     _redraw();
   } else if (_mouseState === 'drawing') {
@@ -750,6 +866,43 @@ function _onMouseUp(ev) {
   _dragAnchor = null;
   _activeRectIdx = -1;
   if (_canvas) _canvas.style.cursor = '';
+}
+
+// Timestamp of the last click-delete of a rect — a double-click whose first
+// click deleted a rect should NOT also fly the camera (the second click lands
+// on now-empty space and would otherwise navigate).
+let _lastRectDeleteTs = -Infinity;
+
+// B4: double-click on empty plot → aim the 3-D camera at that (η, φ). The
+// direction is built in ATLAS convention, mapped to scene coords (x, y
+// negated) and rotated by the slicer's scene.rotation.z; the camera keeps its
+// current orbit distance and looks back at the target from that side.
+function _onDblClick(ev) {
+  const { x, y } = _clientToCanvas(ev);
+  const area = _plotArea();
+  if (x < area.x0 || x > area.x1 || y < area.y0 || y > area.y1) return;
+  const eta = _xToEta(x, area);
+  const phi = _yToPhi(y, area);
+  if (_hitRectAt(eta, phi) >= 0) return; // rect clicks mean delete, not fly
+  if (performance.now() - _lastRectDeleteTs < 450) return;
+  const theta = 2 * Math.atan(Math.exp(-eta));
+  const sinT = Math.sin(theta);
+  const sx = -sinT * Math.cos(phi);
+  const sy = -sinT * Math.sin(phi);
+  const sz = Math.cos(theta);
+  const rz = scene.rotation.z;
+  const c = Math.cos(rz);
+  const s = Math.sin(rz);
+  const wx = sx * c - sy * s;
+  const wy = sx * s + sy * c;
+  const dist = camera.position.distanceTo(controls.target);
+  camera.position.set(
+    controls.target.x + wx * dist,
+    controls.target.y + wy * dist,
+    controls.target.z + sz * dist,
+  );
+  controls.update();
+  markDirty();
 }
 
 function _onMouseMoveHover(ev) {
@@ -817,7 +970,19 @@ export function initMinimap() {
   _canvas.addEventListener('pointerleave', () => {
     if (_mouseState === 'idle') _canvas.style.cursor = '';
   });
+  _canvas.addEventListener('dblclick', _onDblClick);
   _wrapEl.appendChild(_canvas);
+
+  // Live camera crosshair: orbit changes redraw the minimap (rAF-coalesced,
+  // only while the widget is visible).
+  let _camRaf = 0;
+  controls.addEventListener('change', () => {
+    if (!_enabled || _camRaf) return;
+    _camRaf = requestAnimationFrame(() => {
+      _camRaf = 0;
+      _redraw();
+    });
+  });
 
   // ── Slider events ─────────────────────────────────────────────────────────
   _seamPaneEl.addEventListener('pointerdown', _onSeamPointerDown);

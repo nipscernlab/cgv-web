@@ -225,7 +225,6 @@ cp -r public/vendor      "$PKG/public/"
 cp -r public/default_xml "$PKG/public/"
 cp -r public/live_atlas  "$PKG/public/"
 cp -r public/twiki       "$PKG/public/"   # Technical TWiki bundle (2.3.0+)
-cp -r public/twiki       "$PKG/public/"
 
 # Parser: only runtime files
 cp public/parser/pkg/atlas_id_parser.js      "$PKG/public/parser/pkg/"

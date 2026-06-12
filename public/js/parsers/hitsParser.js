@@ -65,7 +65,10 @@ export function parseHits(xmlText) {
   const positionsById = new Map();
   const trtParams = new Map();
   const chamberPos = new Map();
-  if (!xmlText) return { positions: positionsById, trtParams, chamberPos };
+  // SCT strips keep their real endpoints too (docs/VISUAL_PLAN.md, B7): the
+  // overlay draws the ~6 cm strip as a segment instead of a midpoint dot.
+  const sctEnds = new Map();
+  if (!xmlText) return { positions: positionsById, trtParams, chamberPos, sctEnds };
 
   // Pixel clusters — one position per hit (cluster centroid stored as x0/y0/z0).
   const pix = xmlText.match(/<PixCluster\s+count="\d+"[^>]*>([\s\S]*?)<\/PixCluster>/);
@@ -107,9 +110,10 @@ export function parseHits(xmlText) {
   }
 
   // SCT — each hit is a strip with two endpoints (x0/y0/z0) and (x1/y1/z1).
-  // We render the strip as a single point at its midpoint; the strip is only
-  // ~6 cm long, the marker is just a few pixels, so showing it as a segment
-  // wouldn't add visual information at this scale.
+  // The midpoint goes into `positions` (fallback + ordering), and the real
+  // endpoints into `sctEnds` so the overlay can draw the actual strip — the
+  // measurement IS a line segment, and zoomed into the inner detector the
+  // strip orientation is visible, real information.
   const sct = xmlText.match(/<SCTRDO\s+count="\d+"[^>]*>([\s\S]*?)<\/SCTRDO>/);
   if (sct) {
     const body = sct[1];
@@ -140,6 +144,7 @@ export function parseHits(xmlText) {
         if (!Number.isFinite(ax) || !Number.isFinite(ay) || !Number.isFinite(az)) continue;
         if (!Number.isFinite(bx) || !Number.isFinite(by) || !Number.isFinite(bz)) continue;
         positionsById.set(ids[i], _toScene((ax + bx) * 0.5, (ay + by) * 0.5, (az + bz) * 0.5));
+        sctEnds.set(ids[i], { a: _toScene(ax, ay, az), b: _toScene(bx, by, bz) });
       }
     }
   }
@@ -161,5 +166,5 @@ export function parseHits(xmlText) {
     }
   }
 
-  return { positions: positionsById, trtParams, chamberPos };
+  return { positions: positionsById, trtParams, chamberPos, sctEnds };
 }

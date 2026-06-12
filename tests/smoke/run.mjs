@@ -153,14 +153,25 @@ const ctx = await browser.newContext({
   viewport: { width: 1600, height: 900 },
   acceptDownloads: true,
 });
-await ctx.addInitScript(() => {
-  try {
-    localStorage.setItem('cgv-tab', 'sample');
-    localStorage.setItem('cgv-minimap', '0');
-  } catch (_) {
-    /* best-effort */
-  }
-});
+// CGV_QUALITY=low|standard|beauty pins the quality preset for the whole run
+// (default: whatever the app defaults to — standard). Lets the same suite
+// validate the Beauty path (post-fx composer, cell shading, fat-line scale).
+const QUALITY = ['low', 'standard', 'beauty'].includes(process.env.CGV_QUALITY)
+  ? process.env.CGV_QUALITY
+  : null;
+await ctx.addInitScript(
+  ([quality]) => {
+    try {
+      localStorage.setItem('cgv-tab', 'sample');
+      localStorage.setItem('cgv-minimap', '0');
+      if (quality) localStorage.setItem('cgv-quality', quality);
+    } catch (_) {
+      /* best-effort */
+    }
+  },
+  [QUALITY],
+);
+if (QUALITY) console.log(`[smoke] quality preset pinned: ${QUALITY}`);
 page = await ctx.newPage();
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => {
