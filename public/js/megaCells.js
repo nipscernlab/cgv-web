@@ -28,6 +28,7 @@
 
 import * as THREE from 'three';
 import { WEDGE_GLSL, WEDGE_UNIFORMS, getWedgeMask, insideWedge } from './wedgeClip.js';
+import { getQualityPreset, onQualityChange } from './quality.js';
 
 const TEX_W = 2048; // texels per DataTexture row (cells per row)
 
@@ -60,6 +61,17 @@ export const getMegaRecords = () => _megas;
 // MeshLambertMaterial(flatShading) lit by the existing ambient+headlight rig.
 // The injected chunk fetches per-cell colour/visibility/centre by slot and
 // collapses culled cells in the vertex stage (zero fragment cost).
+//
+// uCgvShade (docs/VISUAL_PLAN.md, item A3): Fresnel rim + headlight specular,
+// scaled by a single uniform driven by the quality preset. At 0 (low /
+// standard) the math still runs but contributes exactly nothing — pixel
+// output identical to pre-A3 — so toggling presets never recompiles the
+// program (customProgramCacheKey stays 'cgv-mega-cell').
+const _CGV_SHADE_UNIFORM = { value: getQualityPreset().cellShading ? 1 : 0 };
+onQualityChange(() => {
+  _CGV_SHADE_UNIFORM.value = getQualityPreset().cellShading ? 1 : 0;
+});
+
 /**
  * @param {THREE.DataTexture} tex
  * @param {THREE.DataTexture} centersTex
@@ -75,6 +87,7 @@ function _makeCellMaterial(tex, centersTex) {
     Object.assign(shader.uniforms, WEDGE_UNIFORMS);
     shader.uniforms.uCellTex = { value: tex };
     shader.uniforms.uCenterTex = { value: centersTex };
+    shader.uniforms.uCgvShade = _CGV_SHADE_UNIFORM;
     shader.vertexShader =
       `attribute float aSlot;
 uniform sampler2D uCellTex;
@@ -98,12 +111,30 @@ varying vec3 vCgvColor;
   if (cgvCV.a < 0.5 || cgvInsideWedge(cgvCentre)) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);`,
         );
     shader.fragmentShader =
-      'varying vec3 vCgvColor;\n' +
-      shader.fragmentShader.replace(
-        '#include <color_fragment>',
-        `#include <color_fragment>
+      'varying vec3 vCgvColor;\nuniform float uCgvShade;\n' +
+      shader.fragmentShader
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
   diffuseColor.rgb *= vCgvColor;`,
-      );
+        )
+        .replace(
+          '#include <opaque_fragment>',
+          // A3 — rim + specular, added to outgoingLight just before output.
+          //   rim : Fresnel-ish silhouette lift, tinted toward the cell's own
+          //         colour so the energy reading isn't washed out by white.
+          //   spec: Blinn-Phong against the headlight (dirLight tracks the
+          //         camera, so H ≈ V and N·V doubles as N·H) — a tight, dim
+          //         highlight that makes the flat-shaded facets read as solid.
+          `{
+    vec3 cgvV = normalize( vViewPosition );
+    float cgvNdV = clamp( dot( normal, cgvV ), 0.0, 1.0 );
+    float cgvRim = pow( 1.0 - cgvNdV, 3.0 );
+    float cgvSpec = pow( cgvNdV, 48.0 ) * 0.18;
+    outgoingLight += uCgvShade * ( cgvRim * 0.30 * ( 0.4 + 0.6 * vCgvColor ) + cgvSpec );
+  }
+  #include <opaque_fragment>`,
+        );
   };
   mat.customProgramCacheKey = () => 'cgv-mega-cell';
   return mat;

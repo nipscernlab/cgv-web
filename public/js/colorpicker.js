@@ -1,7 +1,6 @@
 // @ts-check
-import * as THREE from 'three';
-import { scene, markDirty } from './renderer.js';
 import { setAllOutlineColor, setHoverOutlineColor } from './outlines.js';
+import { setBackdropBaseColor } from './sceneBackdrop.js';
 import { t } from './i18n/index.js';
 
 // ── Tabbed colour picker (2D SV rectangle + vertical hue strip) ───────────────
@@ -32,10 +31,9 @@ const CHANNELS = [
     def: DEFAULT_BG_HEX,
     key: 'cgv-bg-color',
     presets: ['#0e1014', '#000000', '#1a1a1a', '#0b1f3a', '#020d1c', '#1f2a44', '#ffffff'],
-    apply: (hex) => {
-      scene.background = new THREE.Color(hex);
-      markDirty();
-    },
+    // sceneBackdrop owns scene.background/fog: the active quality preset
+    // decides whether this base colour renders flat or as a radial gradient.
+    apply: (hex) => setBackdropBaseColor(hex),
   },
   {
     id: 'outline',

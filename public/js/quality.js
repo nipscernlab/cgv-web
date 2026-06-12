@@ -25,6 +25,8 @@ const STORAGE_KEY = 'cgv-quality';
  * @typedef {{
  *   dprCap: number,
  *   lineWidthScale: number,
+ *   cellShading: boolean,
+ *   atmosphere: boolean,
  *   toneMapping: boolean,
  *   bloom: boolean,
  *   ao: boolean,
@@ -36,9 +38,37 @@ export const QUALITY_PRESETS = {
   // lineWidthScale multiplies the base pixel width of every fat line
   // (fatLines.js): low ≈ the historical 1 px look, standard = the width each
   // call site declares, beauty slightly heavier for presentation.
-  low: { dprCap: 1.0, lineWidthScale: 0.5, toneMapping: false, bloom: false, ao: false },
-  standard: { dprCap: 2.0, lineWidthScale: 1.0, toneMapping: false, bloom: false, ao: false },
-  beauty: { dprCap: 2.0, lineWidthScale: 1.25, toneMapping: true, bloom: true, ao: false },
+  // cellShading: Fresnel rim + headlight specular on the mega-cell shader
+  // (megaCells.js) — volume perception without paying for PBR.
+  // atmosphere: exponential fog + radial-gradient backdrop (sceneBackdrop.js)
+  // — depth cueing for a 50 m detector.
+  low: {
+    dprCap: 1.0,
+    lineWidthScale: 0.5,
+    cellShading: false,
+    atmosphere: false,
+    toneMapping: false,
+    bloom: false,
+    ao: false,
+  },
+  standard: {
+    dprCap: 2.0,
+    lineWidthScale: 1.0,
+    cellShading: false,
+    atmosphere: false,
+    toneMapping: false,
+    bloom: false,
+    ao: false,
+  },
+  beauty: {
+    dprCap: 2.0,
+    lineWidthScale: 1.25,
+    cellShading: true,
+    atmosphere: true,
+    toneMapping: true,
+    bloom: true,
+    ao: false,
+  },
 };
 
 /** @type {QualityName} */
