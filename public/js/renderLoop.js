@@ -62,6 +62,12 @@ let _loopRunning = false;
 let _loopRafId = 0;
 let _resumeWarmFrames = 0;
 let _onFrameStart = () => {};
+// Hard pause from outside the loop (the video recorder owns the canvas/clock
+// while capturing a cinema loop offline). The RAF stays scheduled so the loop
+// resumes instantly, but onFrameStart (cinema.tick) and rendering are skipped —
+// otherwise a live tick would advance the tour with wall-clock time and clobber
+// the capture driver's synthetic-clock state.
+let _externalPaused = false;
 
 function _scheduleWarmFrames(count = 12) {
   _resumeWarmFrames = Math.max(_resumeWarmFrames, count | 0);
@@ -93,6 +99,7 @@ function _loopTick() {
     return;
   }
   _loopRafId = requestAnimationFrame(_loopTick);
+  if (_externalPaused) return;
   const now = performance.now();
   if (now - _fpsLast >= 500) {
     // UNCAPPED FPS: 1000 / mean wall-time of the frames actually rendered in
@@ -178,6 +185,16 @@ function _stopLoop() {
     cancelAnimationFrame(_loopRafId);
     _loopRafId = 0;
   }
+}
+
+// Pause/resume the live render loop from outside (video recorder). Resuming
+// warms a few frames so the canvas repaints from the restored camera pose.
+export function pauseRenderLoop() {
+  _externalPaused = true;
+}
+export function resumeRenderLoop() {
+  _externalPaused = false;
+  _scheduleWarmFrames(4);
 }
 
 /** @param {{ onFrameStart?: () => void }} [opts] */

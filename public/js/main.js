@@ -13,6 +13,7 @@ import './toneMapping.js';
 import { setupCinemaControls } from './cinema.js';
 import { getViewLevel, onViewLevelChange } from './viewLevel.js';
 import { setupScreenshotControls } from './screenshot.js';
+import { setupVideoRecorder } from './videoRecorder.js';
 import { setupDetectorPanels } from './detectorPanels.js';
 import {
   initVisibility,
@@ -135,9 +136,13 @@ controls.addEventListener('change', () => {
   }
 });
 
+// Assigned once the recorder is wired below; the render loop is hard-paused
+// during a capture, but the guard is belt-and-suspenders against any in-flight
+// frame advancing the tour with wall-clock time mid-capture.
+let videoRecorder = null;
 initRenderLoop({
   onFrameStart: () => {
-    if (cinema.isAnimating()) cinema.tick();
+    if (!videoRecorder?.isCapturing() && cinema.isAnimating()) cinema.tick();
     // Reproject pinned tooltips and drop any whose object has disappeared.
     updatePins();
   },
@@ -446,6 +451,16 @@ setupScreenshotControls({
   slicer,
   t,
   getLastEventInfo,
+});
+
+videoRecorder = setupVideoRecorder({
+  renderer,
+  scene,
+  camera,
+  cinema,
+  slicer,
+  getLastEventInfo,
+  t,
 });
 
 registerViewerShortcuts({

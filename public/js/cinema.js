@@ -277,8 +277,11 @@ export function setupCinemaControls({
     }
   }
 
-  function tick() {
-    const now = performance.now();
+  // `nowOverride` (ms) injects a synthetic clock for offline video capture so
+  // the follower advances by a fixed dt per frame regardless of how long the
+  // render takes — live ticks pass nothing and read the wall clock.
+  function tick(nowOverride) {
+    const now = nowOverride ?? performance.now();
     const dt = Math.min(MAX_DT, Math.max(1e-4, (now - _lastTickT) / 1000));
     _lastTickT = now;
 
@@ -575,6 +578,86 @@ export function setupCinemaControls({
     if (cinemaMode) startTour();
   }
 
+  // ── Offline video-capture driver ───────────────────────────────────────────
+  // Drives the tour deterministically for the video recorder: a synthetic clock
+  // advances the follower by a fixed dt per step (no wall-clock), so the render
+  // can take as long as it needs while the output stays a perfect fixed-fps
+  // loop. The follower is a critically-damped chaser with its own velocity
+  // state, so the camera pose is NOT a pure function of phase — the recorder
+  // warms it up for one full loop (stepping without rendering) to reach periodic
+  // steady state before capturing exactly one loop, so first and last frames
+  // match and the video loops seamlessly. The bake folds in the active slicer
+  // cut / view level, so whatever the user configured is what gets recorded.
+  function createCaptureDriver(fps) {
+    const saved = {
+      cinemaMode,
+      tourMode,
+      exitRecentering,
+      phase: _phase,
+      ofsActive: _ofsActive,
+      autoRotate: controls.autoRotate,
+      controlsEnabled: controls.enabled,
+      camPos: camera.position.clone(),
+      target: controls.target.clone(),
+      up: camera.up.clone(),
+      fov: camera.fov,
+      camVel: _camVel.clone(),
+      tgtVel: _tgtVel.clone(),
+      upCur: _upCur.clone(),
+    };
+
+    cinemaMode = true;
+    tourMode = true;
+    exitRecentering = false;
+    controls.autoRotate = false;
+    controls.enabled = false;
+    _rebuildSyncForEntry(); // bake the path for the currently-configured scene
+    _resetDivePresentation();
+    samplePathPoint(tourPath, 0, _tmpPos, _tmpTgt);
+    camera.position.copy(_tmpPos);
+    controls.target.copy(_tmpTgt);
+    _seedFollower(); // zeroes follower velocities, sets _phase ≈ 0, seeds _upCur
+    _ofsActive = false;
+
+    const dtMs = 1000 / fps;
+    let vnow = 0;
+    _lastTickT = 0;
+
+    return {
+      framesPerLoop: Math.max(1, Math.round((TOUR_LOOP_MS * fps) / 1000)),
+      loopMs: TOUR_LOOP_MS,
+      // Advance one fixed-dt step, writing camera.position / controls.target /
+      // camera.up / camera.fov for this frame.
+      step() {
+        vnow += dtMs;
+        tick(vnow);
+      },
+      // Restore the live state captured at construction.
+      finish() {
+        cinemaMode = saved.cinemaMode;
+        tourMode = saved.tourMode;
+        exitRecentering = saved.exitRecentering;
+        controls.autoRotate = saved.autoRotate;
+        controls.enabled = saved.controlsEnabled;
+        _phase = saved.phase;
+        _ofsActive = saved.ofsActive;
+        _camVel.copy(saved.camVel);
+        _tgtVel.copy(saved.tgtVel);
+        _upCur.copy(saved.upCur);
+        camera.position.copy(saved.camPos);
+        controls.target.copy(saved.target);
+        camera.up.copy(saved.up);
+        camera.fov = saved.fov;
+        camera.updateProjectionMatrix();
+        // Next live tick must compute a sane dt, not a jump across the whole
+        // capture's wall-time.
+        _lastTickT = performance.now();
+        controls.update();
+        markDirty();
+      },
+    };
+  }
+
   document.getElementById('btn-cinema').addEventListener('click', () => {
     if (cinemaMode) exitCinema();
     else enterCinema();
@@ -603,6 +686,7 @@ export function setupCinemaControls({
     isAnimating: () => cinemaMode || exitRecentering,
     isCinemaMode: () => cinemaMode,
     isTourMode: () => tourMode,
+    createCaptureDriver,
     disableTourMode,
     enableTourMode,
     updateTourFromEvent,
