@@ -60,12 +60,17 @@ export const QUALITY_PRESETS = {
     bloom: false,
     ao: false,
   },
+  // Beauty after the 2026-06-12 review (Chrysthofer): AgX tone mapping and
+  // the gradient/fog atmosphere are OFF — AgX lifted the near-invisible
+  // ghost/ATLAS structure lines into prominence and the combo read as "too
+  // much glow". Beauty is now: wider lines + subtle cell shading + gentle
+  // selective bloom, nothing that retints the scene.
   beauty: {
     dprCap: 2.0,
     lineWidthScale: 1.25,
     cellShading: true,
-    atmosphere: true,
-    toneMapping: true,
+    atmosphere: false,
+    toneMapping: false,
     bloom: true,
     ao: false,
   },

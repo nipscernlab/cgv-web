@@ -106,8 +106,9 @@ function _attachJetCone(line, rJet) {
   // the origin (vertex) and the base ring on the outer cylinder at t1·dir.
   cone.quaternion.setFromUnitVectors(_Y_AXIS, new THREE.Vector3(-dx, -dy, -dz));
   cone.position.set(dx * t1 * 0.5, dy * t1 * 0.5, dz * t1 * 0.5);
-  // ET → intensity: 0.05 (soft veil) up to 0.18 at ≥150 GeV.
-  const a = 0.05 + 0.13 * Math.min(1, Math.max(0, (etGev ?? 30) / 150));
+  // ET → intensity: 0.03 (soft veil) up to 0.115 at ≥150 GeV. Toned down
+  // after the 2026-06-12 review — the cones must whisper, not dominate.
+  const a = 0.03 + 0.085 * Math.min(1, Math.max(0, (etGev ?? 30) / 150));
   cone.userData.coneAlpha = a;
   cone.onBeforeRender = () => {
     _CONE_MAT.uniforms.uAlpha.value = cone.userData.coneAlpha;

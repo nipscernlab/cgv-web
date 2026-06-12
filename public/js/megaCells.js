@@ -144,8 +144,8 @@ varying float vCgvWave;
     vec3 cgvV = normalize( vViewPosition );
     float cgvNdV = clamp( dot( normal, cgvV ), 0.0, 1.0 );
     float cgvRim = pow( 1.0 - cgvNdV, 3.0 );
-    float cgvSpec = pow( cgvNdV, 48.0 ) * 0.18;
-    outgoingLight += uCgvShade * ( cgvRim * 0.30 * ( 0.4 + 0.6 * vCgvColor ) + cgvSpec );
+    float cgvSpec = pow( cgvNdV, 48.0 ) * 0.10;
+    outgoingLight += uCgvShade * ( cgvRim * 0.16 * ( 0.4 + 0.6 * vCgvColor ) + cgvSpec );
   }
   #include <opaque_fragment>`,
         );

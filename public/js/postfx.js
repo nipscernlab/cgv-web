@@ -21,9 +21,11 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { renderer, scene, camera, markDirty } from './renderer.js';
 import { getQualityPreset, onQualityChange } from './quality.js';
 
-const BLOOM_STRENGTH = 0.45;
-const BLOOM_RADIUS = 0.35;
-const BLOOM_THRESHOLD = 0.82;
+// Tuned down after the 2026-06-12 review — only the genuinely hottest
+// pixels may overflow, and gently.
+const BLOOM_STRENGTH = 0.22;
+const BLOOM_RADIUS = 0.3;
+const BLOOM_THRESHOLD = 0.9;
 
 /** @type {EffectComposer | null} */
 let _composer = null;
