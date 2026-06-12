@@ -159,6 +159,9 @@ export function drawClusters(clusters) {
       eta: c.eta,
       phi: c.phi,
       storeGateKey: c.storeGateKey ?? '',
+      // Constituent-cell count for the tooltip (B10); the cells array itself
+      // stays with the membership filter (clusterFilter.js).
+      numCells: Array.isArray(c.cells) ? c.cells.length : 0,
     }),
     setter: setClusterGroup,
     // Cluster events routinely carry thousands of lines (most then hidden

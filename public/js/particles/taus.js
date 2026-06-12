@@ -76,6 +76,8 @@ export function drawTaus(taus) {
       phi: t.phi,
       isTau: t.isTau,
       numTracks: t.numTracks,
+      logLhRatio: t.logLhRatio,
+      isolFrac: t.isolFrac,
       // Daughter-charge sum from <TauJet><charge>; ±1 = physically possible
       // τ, anything else = "unmatched" candidate that the K-popover gate can
       // strip from the view (see applyTauPtThreshold's unmatched filter).

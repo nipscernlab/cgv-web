@@ -677,7 +677,13 @@ function doRaycast(clientX, clientY) {
           coord: line.userData.storeGateKey ?? '',
           valueText: `${etGev.toFixed(3)} GeV`,
           keyHtml: 'E<sub>T</sub>',
-          extras: [[_ETA_LABEL, _fmtEta(line.userData.eta)]],
+          extras: (() => {
+            const ex = [[_ETA_LABEL, _fmtEta(line.userData.eta)]];
+            // Constituent count (B10) — the cluster's cell list was already
+            // parsed for the membership filter; surface its size here.
+            if (line.userData.numCells > 0) ex.push(['cells', `${line.userData.numCells}`]);
+            return ex;
+          })(),
         },
       });
       return;
@@ -702,10 +708,22 @@ function doRaycast(clientX, clientY) {
           coord: line.userData.storeGateKey ?? '',
           valueText: `${ptGev.toFixed(3)} GeV`,
           keyHtml: 'p<sub>T</sub>',
-          extras: [
-            [_ETA_LABEL, _fmtEta(line.userData.eta)],
-            ['tracks', `${line.userData.numTracks ?? 0}`],
-          ],
+          extras: (() => {
+            const ex = [
+              [_ETA_LABEL, _fmtEta(line.userData.eta)],
+              ['tracks', `${line.userData.numTracks ?? 0}`],
+            ];
+            // ID quality metrics (B10) — parsed by tauParser but never shown
+            // before. The "withoutQuality" token is the algorithm's input
+            // list, not a real ID verdict; skip it to avoid noise.
+            const q = line.userData.isTau;
+            if (q && !/withoutQuality/i.test(q)) ex.push(['ID', q]);
+            if (line.userData.logLhRatio != null)
+              ex.push(['LLH', line.userData.logLhRatio.toFixed(2)]);
+            if (line.userData.isolFrac != null)
+              ex.push(['isol', line.userData.isolFrac.toFixed(3)]);
+            return ex;
+          })(),
         },
       });
       return;

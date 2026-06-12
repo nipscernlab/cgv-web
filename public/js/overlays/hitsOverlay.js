@@ -19,18 +19,36 @@
 
 import * as THREE from 'three';
 import { scene, markDirty } from '../renderer.js';
-import { polylineAttr } from '../fatLines.js';
+import { polylineAttr, makeFatLineMaterial, makeFatLine } from '../fatLines.js';
 
-// Solid white sphere — bright enough to read against any palette colour the
-// underlying track might be painted with (yellow / orange / red / green).
-// Per-frame onBeforeRender rescales the geometry so each hit has a constant
+// One colour per sub-detector (docs/VISUAL_PLAN.md, B7) so the hit pattern
+// reads as physics — pixel layers, then SCT strips, then the TRT cloud,
+// then chambers — instead of an undifferentiated string of white dots:
+//   Pixel  amber   ·  SCT  cyan (drawn as the real strip segment)
+//   TRT    coral   ·  muon chambers  periwinkle
+// Per-frame onBeforeRender rescales the spheres so each hit has a constant
 // HIT_TARGET_PX radius on screen regardless of camera distance — no growing
 // blobs up close, no vanishing dots in long shots.
 const HIT_BASE_RADIUS_MM = 8;
 const HIT_TARGET_PX = 2;
 const _HIT_GEO = new THREE.SphereGeometry(HIT_BASE_RADIUS_MM, 8, 6);
-const _HIT_MAT = new THREE.MeshBasicMaterial({
-  color: 0xffffff,
+/** @param {number} color */
+function _hitMat(color) {
+  return new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: false,
+    depthWrite: false,
+  });
+}
+const _MAT_PIXEL = _hitMat(0xffd54a);
+const _MAT_TRT = _hitMat(0xff8a6b);
+const _MAT_CHAMBER = _hitMat(0x8fa6ff);
+// SCT strips: real ~6 cm segments, cyan, depth-test-free like the spheres.
+const _SCT_LINE_MAT = makeFatLineMaterial({
+  color: 0x4ad9ff,
+  widthPx: 1.5,
   transparent: true,
   opacity: 0.95,
   depthTest: false,
@@ -73,6 +91,7 @@ function _hitOnBeforeRender(renderer, _scene, camera) {
 let _positionsById = new Map();
 let _trtById = new Map();
 let _chamberById = new Map();
+let _sctEndsById = new Map();
 /** @type {any} */
 let _hitsGroup = null;
 /** @type {any} */
@@ -91,11 +110,12 @@ export function setHitsEnabled(v) {
 }
 
 // Called once per event by processXml after parseHits().
-/** @param {any} parsed  { positions, trtParams, chamberPos } maps from hitsParser. */
+/** @param {any} parsed  { positions, trtParams, chamberPos, sctEnds } maps from hitsParser. */
 export function setHitPositions(parsed) {
   _positionsById = parsed && parsed.positions instanceof Map ? parsed.positions : new Map();
   _trtById = parsed && parsed.trtParams instanceof Map ? parsed.trtParams : new Map();
   _chamberById = parsed && parsed.chamberPos instanceof Map ? parsed.chamberPos : new Map();
+  _sctEndsById = parsed && parsed.sctEnds instanceof Map ? parsed.sctEnds : new Map();
 }
 
 // Drops any rendered markers AND the cached positions maps. Used by resetScene
@@ -105,6 +125,7 @@ export function clearHitsState() {
   _positionsById = new Map();
   _trtById = new Map();
   _chamberById = new Map();
+  _sctEndsById = new Map();
 }
 
 // Smallest distance from `target` to the polyline (in scene mm). Used to
@@ -220,13 +241,28 @@ export function showTrackHits(trackLine) {
   g.renderOrder = 30;
   let added = 0;
   for (const id of ids) {
+    // SCT first: the measurement is a strip — draw the real segment.
+    const strip = _sctEndsById.get(id);
+    if (strip) {
+      const fl = makeFatLine(
+        [strip.a.x, strip.a.y, strip.a.z, strip.b.x, strip.b.y, strip.b.z],
+        _SCT_LINE_MAT,
+      );
+      fl.raycast = () => {};
+      fl.renderOrder = 30;
+      g.add(fl);
+      added++;
+      continue;
+    }
     let p = _positionsById.get(id);
+    let mat = _MAT_PIXEL; // anything left in `positions` is a pixel cluster
     if (!p) {
       const trt = _trtById.get(id);
       if (trt && posAttr) {
         // sub 1, 2 → barrel (rhoz is r); sub 0, 3 → endcap (rhoz is z).
         const kind = trt.sub === 1 || trt.sub === 2 ? 'r' : 'z';
         p = _interpolatePolyline(posAttr, kind, trt.rhoz_mm);
+        mat = _MAT_TRT;
       }
     }
     if (!p) {
@@ -236,11 +272,14 @@ export function showTrackHits(trackLine) {
         // the track — that gives the realistic small-scatter look of physical
         // hits. Drop it when it's a centre of a long wire / chamber that
         // landed metres off the trajectory.
-        if (_distanceToPolyline(posAttr, cham) <= _CHAMBER_KEEP_MM) p = cham;
+        if (_distanceToPolyline(posAttr, cham) <= _CHAMBER_KEEP_MM) {
+          p = cham;
+          mat = _MAT_CHAMBER;
+        }
       }
     }
     if (!p) continue;
-    const m = new THREE.Mesh(_HIT_GEO, _HIT_MAT);
+    const m = new THREE.Mesh(_HIT_GEO, mat);
     m.position.copy(p);
     m.onBeforeRender = _hitOnBeforeRender;
     g.add(m);
