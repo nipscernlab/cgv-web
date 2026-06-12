@@ -1,30 +1,1150 @@
+ Updated by Fabio Pigozzi about 2 months ago
+
+    Assignee set to Fabio Pigozzi
+
+Hi Luciano,
+I'll have a look as soon as possible.
+
+Cheers,
+Fabio
+#2
+Updated by Fabio Pigozzi about 2 months ago · Edited
+
+    Status changed from New to Feedback
+    % Done changed from 0 to 80
+
+Hi Luciano,
+Access from P1 to outside CERN domain is forbidden as you can read at https://atlasop.cern.ch/twiki/bin/view/SysAdmins/FAQ#General
+Therefore is not possible to test your development website in control room.
+Please let us know if you wold like to drop this request, otherwise a dedicated node has to be installed and configured (Eg. VM) and you'll have to provide an RPM for installing your application as described at the following FAQ page:
+https://atlasop.cern.ch/twiki/bin/view/SysAdmins/FAQ#Operating_System_and_packages
+
+Let me know if you need any additional clarification.
+
+Cheers,
+Fabio
+#3
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+Hello Fabio,
+
+We would like to follow your suggestion of installing a dedicated node.
+I will take a look on the instructions you sent to me.
+BUt I have one question about it: you said that a RPM has to be provided by us, but, since the tool run in a Browser (it is just a web site), we dont need to install anything. It is just a matter of accessing the link. Is it still possible to follow you VM suggestion in this case?
+
+cheers,
+Luciano
+#4
+Updated by Diana Scannicchio about 2 months ago
+
+Hi Luciano,
+how do you think that a web site is made available?
+The related software is installed on a server and made available via http(s) on a web server.
+You need to know the details about your own web application, so to be able to deploy properly.
+Cheers,
+
+Diana
+#5
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+Hello Diana,
+
+Following your instructions regarding the network restrictions in P1, I have developed a dedicated RPM package to host my application on the dedicated node/VM.
+
+NAME: cgv-web (1.0)
+It uses a built-in Python 3 static server (I think you have Python 3 already)
+
+What you need to do:
+1. Install the RPM (google drive link below): sudo dnf install cgv-web-1.0-1.el9.noarch.rpm
+2. Access: Once installed, the service starts automatically on port 8080. You can access it via browser at: http://&lt;VM_IP&gt;:8080
+3. Logs: If you need to check the services status, you can use: systemctl status cgv-web and tail -f /var/log/cgv-web.log
+
+Please let me know if the port 8080 is open for the control room network or if you would like me to change it to another port in a new build.
+
+Best regards,
+
+Luciano
+
+link: https://drive.google.com/file/d/1sdBCXZbdWmcgTdE5iBYHQM_8LKYzMrzg/view?usp=sharinghttps://drive.google.com/file/d/1sdBCXZbdWmcgTdE5iBYHQM_8LKYzMrzg/view?usp=sharing
+#6
+Updated by Fabio Pigozzi about 2 months ago · Edited
+
+    Status changed from Feedback to In Progress
+    % Done changed from 80 to 30
+
+Hi Luciano,
+
+I’ve added the CAL RCs as watchers to keep them in the loop.
+Thanks for the prompt response. Could you please provide the .spec file for the RPM as well?
+Also, do you have any specific deadline for this request, so we can align it with our team’s workflow and planning?
+
+Cheers,
+Fabio
+#7
+Updated by Fabio Pigozzi about 2 months ago
+
+    Subject changed from How to test a new 3D Visualization Tool from the Mozzila Browser to CAL: 3D Visualization web Tool
+
+#8
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+    File cgv-web.spec
+    added
+
+Hello Fabio,
+
+See the file attached.
+I am at CERN this week.
+So it would be good to go in CR to check the tool before leaving.
+
+cheers,
+Luciano
+#9
+Updated by Diana Scannicchio about 2 months ago
+
+    % Done changed from 30 to 20
+
+Hi Luciano,
+any new application should be discussed in advance, possibly before starting the development, so to address it properly without rushing.
+It will be unlikely to be able to deploy that this week and I do not see any reason to rush.
+Please also clarify
+
+    what exactly the application does? what's the usage for the shifter?
+    which information are used and from where
+        e.g. from where the data comes from?
+
+Thank you and cheers,
+
+Diana
+#10
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+Hi Diana,
+
+I understand.
+
+You can see the twiki for the shifters here:
+
+https://www.nipscern.com/library/cgvweb/twiki/
+
+And you can run the tool clicking on this link (please take a look in your computer or in your phone)
+
+https://www.nipscern.com/projects/cgvweb/
+
+It is a web based calorimeter detailed event display.
+It is supposed to replace others displays for run4.
+So we need to test it before shutdown in order to get the first real-time results to discussion and tunning.
+We use JiveXML files (the same one from Atlantis)
+We get the lattest live events (as Atlantis does) from the server and show fresh collisions in a 3d view using Three JS.
+Let me know when is ok for you to test in P1.
+
+If you need further information, please, let me know.
+best regards,
+Luciano
+#11
+Updated by Fabio Pigozzi about 2 months ago
+
+Hi Luciano,
+thanks for the additional details.
+
+Before we proceed, we need to better understand how the application retrieves its data. In particular, it would be important to clarify from which server the JiveXML files are obtained, where this server is located (whether inside P1 or within the CERN network), and which endpoints or protocols are used to access the data.
+
+It would also help if you could provide a concrete example of the data path or URL used to retrieve the data, so we can clearly understand how the data flow is implemented in practice.
+
+Cheers,
+Fabio
+#12
+Updated by Nikiforos Nikiforou about 2 months ago
+
+Hi all,
+
+this looks like a great tool, if not for the shifters, for the experts. Looks to me the request is only to allow access to that host through the technical network, not installing anything at P1?
+
+Nikiforos
+#13
+Updated by Oleg Solovyanov about 2 months ago · Edited
+
+Hi,
+
+I would think that eventually the tool (the web-server) should be running also inside P1 as a container and looking for the events directly from P1, so there should be no need for it to query the atlas-live page...
+
+Best regards,
+Oleg.
+#14
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+Hi Fabio and everyone,
+
+Thanks for the follow-up.
+
+Here is the current data flow in more detail.
+
+The application retrieves event data from the ATLAS Live service hosted at:
+
+https://atlas-live.cern.ch
+
+The frontend first requests:
+
+https://atlas-live.cern.ch/latest
+
+This endpoint returns the reference to the most recent JiveXML event file.
+The application then extracts the corresponding XML path and requests the actual event file from atlas-live.cern.ch.
+
+A typical flow looks like this:
+
+Client application → https://atlas-live.cern.ch/latest → JiveXML_<event>.xml on atlas-live.cern.ch
+
+Example:
+
+https://atlas-live.cern.ch/latest
+
+→ returns reference to something like:
+
+https://atlas-live.cern.ch/event-files/.../JiveXML_XXXXXXXX.xml
+
+At the moment, there is an additional Cloudflare Worker proxy in front of these requests:
+
+https://atlas-cors-prox.nipscernlab.workers.dev/
+
+This proxy was introduced only to solve browser CORS restrictions during external development/testing. It does not store or modify any data.
+
+Its behavior is very restricted:
+
+    it only accepts GET requests
+    it only forwards requests to atlas-live.cern.ch
+    any other destination is rejected
+    no data is persisted
+    caching is disabled
+
+So the current implementation is:
+
+Client → Cloudflare Worker → atlas-live.cern.ch → JiveXML file
+
+However, if deployment inside ATLAS/P1 requires avoiding external services, this proxy can be removed and replaced with an internal CERN-hosted proxy or direct access, depending on your network/security requirements.
+
+The actual event source remains entirely within ATLAS infrastructure (atlas-live.cern.ch).
+
+Best regards,
+Luciano
+#15
+Updated by Diana Scannicchio about 2 months ago · Edited
+
+Hi all,
+thank you Nikiforos and Oleg for your comments.
+I get that you were not aware of that development, so I wonder if that it is really urgent or nice to have.
+And yes, that could be a candidate for the future to run into a container.
+
+That said and following the details provided by Luciano, I understand that developing the application outside CERN you used the atlas-live.cern.ch web server as source for the data, but as the application is meant to be used inside P1 it does not make sense to get the data from there.
+As a reminder atlas-live.cern.ch gets the data from atlasop that in turn gets them from P1.
+
+In P1 the data are available from a dedicated area on the FileServer NetApp storage.
+In particular that area is mounted on /atlas/EventDisplayEvents and writable only from a dedicated subset of pc-tdq-mon-* nodes. It should be accessible
+
+The same area could be mounted read-only on the VM that will host this new web application, without the needs to retrieve the data from GPN with the advantage that would be available also in case of a GPN disconnection.
+
+We did not yet check the content of the RPM, but if the https://atlas-live.cern.ch/latest is hardcoded, it would need to be changed.
+For a first test we would use the one provided so to see if it works and if there is anything else needed to be adjusted.
+
+If it is fine with you (Niforos, Oleg and CAL RC) we would go on in starting creating and configuring the VM. So please let us know as soon as possible if you have any objections.
+
+Cheers,
+
+Fabio and Diana
+#16
+Updated by Nikiforos Nikiforou about 2 months ago
+
+Dear Diana and Fabio,
+
+I believe it should be OK from the CALO/FWD Desk performance point of view as we are not relying on the tool yet. Once it is live, even in test mode, we can review its utility (as I mentioned, this is definitely a great debugging tool) and integration with the shifter workflow in view of Run 4.
+
+Regards,
+Nikiforos
+
+PS: @lucianom et al. : it would be great if you could show the cell time (and cluster time?) when one clicks on an energy deposit. We should probably discuss this on a dedicated email; we can definitely think of more stuff to include (onlineID, SuperCells, ...).
+#17
+Updated by Oleg Solovyanov about 2 months ago
+
+Dear Diana,
+
+Yes, thanks for the details concerning the feed from Atlantis at P1. That was exactly my suggestion to get them locally. Later on one has to be able to change the stream as well.
+I hope Luciano and his colleague can easily add this feed.
+
+From my point of view it would be great to start immediately, in order to catch live both low and high mu events.
+
+Best regards,
+Oleg.
+
+-------- Message d'origine --------
+De : "atlas-tdaq-sysadmin-userticket (Ticketing system of ATLAS TDAQ SYSADMINS)" <atlas-tdaq-sysadmin-userticket@cern.ch>
+Date : 23/04/2026 19:19 (GMT+01:00)
+À : Oleg Solovyanov <oleg.solovyanov@cern.ch>
+Objet : [User Ticket - Support #14110] CAL: 3D Visualization web Tool
+#18
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+Hi everyone,
+
+Thanks for the feedback.
+
+Diana, the program already includes a mode to visualize XML files from local folders. As I understand it, the folder containing the events will appear to the VM as a standard directory path, so you can simply use the "view files in folder" option.
+
+I’m going to modify the code to implement a polling mechanism that checks for new events in that folder every 5 seconds. In the meantime, you can test it statically by refreshing the folder to see new events. Also, I’d be happy to join you when you run the tests at P1—let me know if that works for you.
+
+Nikiforos/Oleg, it will be a pleasure to discuss how we can further improve the tool for both shifters and experts. Please feel free to email me with any suggestions, and we can take it from there. I’ll also work on adding the cell and cluster timing information as soon as possible.
+
+Best regards,
+#19
+Updated by Fabio Pigozzi about 2 months ago
+
+Hi Luciano,
+
+I’m currently working on setting up and configuring the VM that will host the web service.
+I’ll get back to you as soon as the initial setup is ready so we can proceed with testing in P1.
+
+Cheers,
+Fabio
+#20
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
 Hi Fabio,
 
-2.3.0 is tested locally and ready whenever you have a window.
+Thanks!
+#21
+Updated by Fabio Pigozzi about 2 months ago
 
-What is new:
-* The Technical TWiki bundle now ships inside the package at
-  /var/www/cgv-web/public/twiki/, so the sidebar "Technical TWiki" link
-  resolves locally (https://pc-atlas-www.cern.ch/cgv-web/twiki/) and
-  works inside P1 with no external network. The existing Alias /cgv-web/
-  already covers it.
-* Same systemd unit, sysconfig and /api/xml/* shape as 2.2.0. Drop-in
-  upgrade.
+Hi Luciano,
 
-Files:
-  /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.3.0/cgv-web-2.3.0-1.el9.noarch.rpm
-  /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.3.0/cgv-web.spec
-SHA-256:
-  943f1440b9949fff925ce8eb1812e4f73e753ebc5c50f9876b19d553dac4874b
+Could you please provide the RPM package?
 
-Going forward, we will keep dropping new builds straight into
-/afs/cern.ch/user/c/camaroaf/public/cgv-web/<version>/ as the project
-evolves. The folder stays world-readable from AFS. We will also try
-to mirror each build to /atlas-home/0/lucianom/ whenever Luciano can
-sync it.
+The Google Drive link you shared previously (#note-5) contained only the source RPM, which now seems to have been removed. If you can provide the correct binary RPM, I can proceed with the installation and testing.
 
-Thank you very much, Fabio, Diana, Nikiforos and Oleg, for all the
-work and patience on this deployment. Luciano and I really appreciate it.
+Cheers,
+Fabio
+#22
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+Hello Fabio
+
+Try this:
+
+https://drive.google.com/file/d/1jkKzabqA8jCjaigiaCvCmU_pvXjMuRzB/view?usp=sharing
+#23
+Updated by Fabio Pigozzi about 2 months ago · Edited
+
+Hi Luciano,
+
+I installed the RPM and I’m now adjusting our local configuration to properly use the application.
+
+To speed things up, if you already have a configuration for Apache, Nginx, or the setup you used, could you please share it with us?
+
+Cheers,
+Fabio
+#24
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+Hello Fabio,
+
+In this RPM version, we still dont have the polling by file, so we will not be able to run online.
+At least we can see some events on the screen.
+We are preparing other rmp where we implemented a python server itself, so it would not need Apache.
+If you think that the python server is not good, we can implement as you suggest.
+Let me know what you think.
+In any case, the version you have is ok as a first test to check if we can get files from the server offline, at least.
+
+cheers,
+Luciano
+#25
+Updated by Luciano Manhaes De Andrade Filho about 2 months ago
+
+Hello Fabio,
+
+THis is the new version, after the discussion about the way to retrieve the files
+
+RPM https://drive.google.com/file/d/1JsqolidyLgC6ZrekCJw8t-DD_7_mudOt/view?usp=sharing
+
+NOVO SPEC https://drive.google.com/file/d/182iPMGIWvaye1-SI8-_fIwrtFiX5g6gG/view?usp=sharing
+
+cheers,
+Luciano
+#26
+Updated by Fabio Pigozzi about 2 months ago
+
+Hi Luciano,
+Thanks for the new RPM you provided.
+For future updates, please place the RPM in a shared area (for example, your home directory at /atlas-home/0/lucianom/) and share the path with us.
+I’ll install the new RPM soon and continue with our setup.
+
+Cheers,
+Fabio
+#27
+Updated by Fabio Pigozzi about 1 month ago · Edited
+
+    % Done changed from 20 to 50
+
+Hi Luciano,
+I installed the new RPM you provided and configured apache alongside a reverse proxy in order to make the application available from the test internal P1 instance pc-atlas-www-lb-1 which is reachable from ATCN and GPN (setting up a Proxy PAC as explained at https://atlasop.cern.ch/twiki/bin/view/SysAdmins/GatewayProxySetup) and is currently intsalled on the node vm-calo-web-01.
+We configured the node in order to accept the login from users with the role CAL:www.
+Please have a look at: https://atlasop.cern.ch/twiki/bin/view/SysAdmins/WebServers for additional details.
+
+Please try to access the application at https://pc-atlas-www-lb-1.cern.ch/cgv-web/ and let us know if everything is working as expected so we can proceed on the production P1 internal webserver pc-atlas-www (alias of pc-atlas-www-lb-2)
+Let us know if the URL (/cgv-web/) mentioned above is fine for you, otherwise we can change it accordingly.
+
+Also, please provide the e-group to contact in the future in case of problems or unavailability of the service.
+Lastly, please let us know if you would like the application to be available outside the CERN domain via the P1 external webserver (atlasop).
+
+Cheers,
+Fabio
+#28
+Updated by Luciano Manhaes De Andrade Filho about 1 month ago
+
+    File WhatsApp Image 2026-04-28 at 19.09.47.jpeg
+    added
+
+Hello Fabio,
+
+It is working fine in Control Room! (see picture)
+Thank you.
+The URL is ok as well.
+
+The version you deployed is before our discussion about how to retrieve the events, so I was able to run the tool but can not check for new xml files.
+Please, when possible, install the latest version from this path:
+
+/afs/cern.ch/user/l/lucianom/public/CGV-Web/
+
+By now, we dont need the application outside.
+I will prepare the e-group and discuss about this possibilty.
+
+cheers,
+Luciano
+#29
+Updated by Luciano Manhaes De Andrade Filho about 1 month ago
+
+Hello Fabio/Diana,
+
+I just came from the Control Room.
+Now the Tool version is the correct one.
+But it seems that the Calo Desk computers there are no permission to access to the XML folder.
+Can you confirm it?
+
+best regards,
+Luciano
+#30
+Updated by Diana Scannicchio about 1 month ago
+
+    % Done changed from 50 to 60
+
+Hi Luciano,
+it would be better to mention from which node and what you exactly tried to do.
+I guess you like tried to access /atlas/EventDisplayEvents
+Anyhow at the Calo desk the nodes are the following and /atlas/EventDisplayEvents is available on all of them via auto mount
+
+    pc-atlas-cr-03 (alias pc-atlas-cr-lar2)
+    pc-atlas-cr-15 (alias pc-atlas-cr-lar1)
+    pc-atlas-cr-18 (alias pc-atlas-cr-lumi)
+
+For example
+
+[root@pc-atlas-cr-15 ~]# ls /atlas/EventDisplayEvents
+calibration_AFPCalib  EventProcessorConfig  monitoring_IDMonitoring  physics_CC           physics_EF-Physics-Tag-0  physics_HardProbes    physics_L1Calo                physics_Main            physics_Mistimed  physics_TLA  physics_VBFDelayed
+calibration_VdM       express_express       physics_Background       physics_CosmicCalo   physics_EnhancedBias      physics_HLT_IDCosmic  physics_L2-CaloPhysics-Tag-0  physics_MinBias         physics_PC        physics_UCC  physics_ZeroBias
+debug_HltError        Images                physics_BphysDelayed     physics_CosmicMuons  physics_FTK               physics_IDCosmic      physics_Late                  physics_MinBiasOverlay  physics_Standby   physics_UPC  Public
+
+the files in there should be readable.
+I would suggest to let us know when you like to test, so to possibly meet as apparently you are on site.
+In the meantime:
+Fabio has
+
+    added the rpm in our package repository, it would be good if you could provide another version using a better naming convention, instead of a date (cgv-web-04.28.26-1.el9.noarch.rpm) a version numbering.
+    As good practice please ensure that it is possible to upgrade to a newer version without having to remove and install the rpm (that is a kind of obvious but better to remind it).
+
+    deployed the application on the production P1 web server pc-atlas-www
+    https://pc-atlas-www.cern.ch/cgv-web/
+    that is the one meant to be used
+
+    the VM vm-calo-web-01 is managed via Puppet ensuring the rpm is installed and the corresponding service is running
+
+Cheers,
+
+Diana
+#31
+Updated by Fabio Pigozzi about 1 month ago · Edited
+
+Hi Luciano,
+
+I’ll pass by Control Room around 15:00 to check whether it’s possible to visualize the content of /atlas/EventDisplayEvents on the Calo Desk machines via the application and investigate further.
+
+If you’re available, feel free to join so we can look at it together.
+
+Cheers,
+Fabio
+#32
+Updated by Luciano Manhaes De Andrade Filho about 1 month ago
+
+Hello Fabio,
+
+I am just leaving CERN right now.
+I will ask some guys from my group to continue the process.
+Let me know if you have any news.
+
+cheers,
+Luciano
+#33
+Updated by Fabio Pigozzi about 1 month ago · Edited
+
+Hi Luciano,
+
+I went to ACR and verified that the files are accessible and can be visualized from the CGV application.
+
+To browse them via Dolphin (the default KDE file manager), after clicking “Select folder” in the CGV application, navigate as follows:
+Other Locations → Computer → atlas → EventDisplayEvents
+
+I also noticed that on the CALO desk nodes the application was being accessed via:
+https://pc-atlas-www-lb-1.cern.ch/cgv-web/
+
+As mentioned earlier by Diana, please use instead:
+https://pc-atlas-www.cern.ch/cgv-web/
+
+I’ve already done this on pc-atlas-cr-lar2, where I also left the file explorer open on the relevant directory. Please do the same on the other machines as well.
+
+Also, for the future, please let us know if you would like us to grant sudo permissions to selected users (e.g. those with the CAL:www role enabled) to manage the systemd service (e.g. systemctl start/stop/restart/status, journalctl, etc.).
+
+Cheers,
+Fabio
+#34
+Updated by Luciano Manhaes De Andrade Filho about 1 month ago
+
+Hi Fabio,
+
+That is great!
+I will ask my collegues to there and use the correct URL
+
+best regards,
+Luciano
+#35
+Updated by Fabio Pigozzi about 1 month ago
+
+Hi Luciano,
+Just a quick reminder to please:
+
+    Let us know if you’d like us to grant sudo permissions to selected users (e.g. those with the CAL:www role enabled) to manage the systemd service (e.g. systemctl start/stop/restart/status, journalctl, etc.).
+    Provide the e-group to contact in the future in case of issues or service unavailability.
+
+Cheers,
+Fabio
+#36
+Updated by Luciano Manhaes De Andrade Filho about 1 month ago
+
+Hi Fabio,
+
+Thanks for the follow-up and for the command suggestions.
+
+Regarding the 404 error we encountered at http://pc-atlas-www.cern.ch/api/xml/folder, we identified the issue. It was a routing conflict caused by the absolute path in our frontend. I’ve updated the code, changing the constant to const REMOTE_API = './api/xml'; to make the application proxy-agnostic. We are generated a new .rpm version (1.0.3) with this fix.
+
+The path is: /afs/cern.ch/user/l/lucianom/public/CGV-Web/1.0.3
+
+About the system permissions:
+We would like to accept the sudo permissions you offered for systemctl and journalctl. Additionally, to help us monitor the service and disk usage (as we handle many XML files), it would be very useful if our role (CAL:www) also had access to:
+
+htop / top (to monitor CPU/RAM usage of the Python process).
+
+df -h (to check disk space).
+
+ss -tulpn (to verify port binding on 8080).
+
+About the E-group: please use the following emails for communication and permissions:
+
+Luciano: lucianom@cern.ch
+
+Chrysthofer: chrysthofer.afonso@estudante.ufjf.br
+
+Nipscern: contact@nipscern.com
+
+One more thing. Could you please read the .spec file again? We changed it to fix our HTTP server connection with ./api/xml folder. Now we think it's working properly.
+
+Best regards,
+
+Luciano
+#37
+Updated by Fabio Pigozzi about 1 month ago · Edited
+
+Hi Luciano,
+
+I’ve installed and tested the new RPM version you provided.
+
+[root@vm-calo-web-01 ~]# rpm -qa cgv-web
+cgv-web-1.0.3-1.el9.noarch
+
+After the update, the application is unfortunately no longer reachable via the web interface, even though the systemd service status looks fine:
+
+[root@vm-calo-web-01 fpigozzi]# systemctl status cgv-web.service
+● cgv-web.service - CGV Web ATLAS Service
+     Loaded: loaded (/usr/lib/systemd/system/cgv-web.service; enabled; preset: disabled)
+     Active: active (running) since Tue 2026-05-05 15:38:36 CEST; 8s ago
+   Main PID: 2408254 (python3)
+      Tasks: 1 (limit: 23127)
+     Memory: 9.1M (peak: 9.2M)
+        CPU: 65ms
+     CGroup: /system.slice/cgv-web.service
+             └─2408254 /usr/bin/python3 /var/www/cgv-web/server.py
+
+
+I couldn't find nothing relevant in the journal or logs that would explain the issue; given this, I reverted to the previous working version:
+
+[root@vm-calo-web-01 fpigozzi]# rpm -qa cgv-web
+cgv-web-04.28.26-1.el9.noarch
+
+
+Could you please investigate further on your side and provide an updated version?
+For future updates, please place the RPM in your Point1 home directory at: /atlas-home/0/lucianom/ and share the path with us.
+
+Regarding the 404 error you mentioned earlier, could you please clarify exactly in which conditions it was happening and which URL was being accessed?
+
+I have granted sudo permissions to users with the CAL:www role enabled to manage the systemd service and execute systemctl start/stop/restart/status and journalctl -u
+
+The additional commands you mentioned (htop, top, df -h, ss -tulpn) are already available and can be executed, also as a reminder the node is also monitored by us. More information at https://atlasop.cern.ch/twiki/bin/view/SysAdmins/MonitoringTools
+
+Finally, please create and provide the e-group so we can use it for future communications and service-related notifications, instead of the emails you provided above.
+
+Cheers,
+Fabio
+
+P.S. for ATLAS TDAQ SySadmins:
+Sudo permissions to execute the commands above have been granted to cn=LOGIN-RE-CAL:www,ou=SUDOers,ou=atlas,o=cern,c=ch
+#38
+Updated by Luciano Manhaes De Andrade Filho about 1 month ago
+
+Hi Fabio,
+
+Thank you again for your patience with this deployment. I'd like to give you full context on how the application is structured so you have everything you need to align it with the P1 infrastructure, and so we can resolve both the v1.0.3 regression and the live-folder feature in one go.
+
+Architecture
+The application has two completely independent components:
+
+Static frontend (plain HTML/JS/CSS plus the calorimeter geometry binary and the WASM event-ID parser). These are pure files on disk under /var/www/cgv-web/public/ (entry point: index.html). Nothing dynamic. Apache can serve them directly, no backend required.
+
+Python backend (/var/www/cgv-web/server.py) — a small http.server-based service running on 127.0.0.1:8080. Its only purpose is to expose four read-only endpoints under /api/xml/* that list and stream JiveXML files from a configured directory on disk. It is not involved in serving the static site.
+
+The frontend calls /cgv-web/api/xml/list and /cgv-web/api/xml/file/<name> to populate the "SERVER" sub-mode of the sidebar (the live-folder feature). Apache is expected to reverse-proxy that single prefix to the local backend; everything else under /cgv-web/ is served as static files.
+
+A minimal Apache configuration that matches this layout is:
+
+Alias /cgv-web/ /var/www/cgv-web/public/
+<Directory /var/www/cgv-web/public/>
+Require all granted
+</Directory>
+ProxyPass /cgv-web/api/xml/ http://127.0.0.1:8080/api/xml/
+ProxyPassReverse /cgv-web/api/xml/ http://127.0.0.1:8080/api/xml/
+
+What went wrong in v1.0.3
+That version was the first to ship /etc/httpd/conf.d/cgv-web.conf and to call systemctl reload httpd in the post-install script. Looking at it again, the snippet only contains the ProxyPass directives, that is, it has no Alias for the static files. If the working configuration you had in place for v04.28.26/v1.0.2 was the one providing the Alias, the new file would not have removed it on its own, but the automatic reload combined with whatever ordering Apache picked may well have left the static side without a route.
+
+In short, v1.0.3 made assumptions about your Apache setup that I should not have baked into the RPM. I will fix this in v1.0.4 by:
+
+removing /etc/httpd/conf.d/cgv-web.conf from the package
+shipping the same snippet as /var/www/cgv-web/examples/apache-cgv-web.conf.example (documentation only, never loaded)
+removing the automatic systemctl reload httpd
+keeping the rest of v1.0.3's improvements (auto-start of the systemd unit, /etc/sysconfig/cgv-web for runtime overrides, backend bound to 127.0.0.1)
+
+This way the RPM only delivers files and the systemd unit. Apache configuration stays entirely under your (and Puppet's) control.
+
+What is needed to make the live-folder feature work:
+The Python backend reads from the path given by the XML_FOLDER environment variable in /etc/sysconfig/cgv-web. For P1 the natural target is /atlas/EventDisplayEvents, which you mentioned is auto-mounted on the pc-atlas-cr-* nodes but not on vm-calo-web-01.
+
+The single missing piece on the infrastructure side is therefore: could /atlas/EventDisplayEvents be mounted read-only on vm-calo-web-01 (via the same automount/NFS mechanism used on the CR nodes, or any equivalent)? Once that path is reachable from the VM, the backend can serve the files transparently and the SERVER mode in the UI will work end-to-end without any CERN-external traffic.
+
+Summary
+
+To unblock everything, what would help most from your side is:
+
+The current Apache configuration for cgv-web on vm-calo-web-01 (so v1.0.4's example matches it exactly).
+Confirmation that /atlas/EventDisplayEvents can be mounted read-only on vm-calo-web-01.
+As soon as I have those, I will provide v1.0.4 in /atlas-home/0/lucianom/ and share the path. The new RPM will be a clean drop-in that does not touch Apache and supports rolling upgrades.
+
+Please let me know if any part of the architecture above is unclear or if you would prefer a different layout — I am happy to adapt to whatever fits the P1 conventions best.
+
+Best regards,
+Luciano
+#39
+Updated by Fabio Pigozzi about 1 month ago · Edited
+
+Hi Luciano,
+
+Thanks for the further explanation.
+
+/atlas/EventDisplayEvents is already mounted on vm-calo-web-01 via NFS and the files are accessible from the VM.
+
+As you mentioned, please provide the new RPM version without shipping or enforcing any Apache configuration, as the Apache setup and reverse proxy configuration are managed entirely on our side.
+
+Cheers,
+Fabio
+#40
+Updated by Chrysthofer Arthur Amaro Afonso about 1 month ago · Edited
+
+Hi Fabio,
+
+My name is Chrysthofer Arthur, I work with Luciano on the CGV Web project. I will be following up on this ticket together with him from now on.
+
+I prepared cgv-web-1.0.4-1.el9.noarch.rpm, which addresses the regression you reported in note #37 and follows the plan we outlined in note #38.
+
+Changes in 1.0.4:
+
+    /etc/httpd/conf.d/cgv-web.conf is no longer shipped, and %post no
+    longer reloads httpd. Apache configuration is now left entirely to the
+    host (Puppet at P1). This was the cause of the regression after the
+    upgrade to 1.0.3.
+    httpd was dropped from Requires.
+    The Apache directives are still available as a reference example at
+    /var/www/cgv-web/examples/apache-cgv-web.conf.example, in case it
+    helps when comparing against the Puppet-managed configuration.
+    No changes to the Python backend, the static site, or the systemd
+    unit. The backend still binds to 127.0.0.1:8080 via
+    /etc/sysconfig/cgv-web.
+    The package supports rolling upgrades, so there is no need to remove
+    the previous version first.
+
+The RPM is available at:
+/afs/cern.ch/user/c/camaroaf/public/cgv-web/1.0.4/cgv-web-1.0.4-1.el9.noarch.rpm
+
+Please let us know how the installation goes. Happy to debug or follow up on anything that regresses.
 
 Best regards,
 Chrysthofer
+#41
+Updated by Diana Scannicchio about 1 month ago
+
+Hi all,
+please provide the rpm in P1 and not on AFS.
+From a first look the example provided in /var/www/cgv-web/examples/apache-cgv-web.conf.example
+does not seem correct for our implementation in P1 where multiple reverse proxy are configured, any how we will have a deeper look. In my understanding you did not have any Apache configuration to suggest, when we asked to speed up.
+Note also that
+
+    Luciano did not request the AM role and therefore did not login yet on the node provided
+    you Chrysthofer do not have a P1 account, so you will not be able to access the node and the web page
+    up to now we assume that is fine to have the application accessible and public without login restriction as it seems to be a view only application. If that is not the case authentication/authorization will need to be managed too
+
+Cheers,
+
+Diana
+#42
+Updated by Fabio Pigozzi about 1 month ago
+
+    % Done changed from 60 to 70
+
+Hi Chrysthofer, Luciano,
+
+I installed the new RPM version and the application is now working as expected:
+
+[root@vm-calo-web-01 ~]# rpm -qa cgv-web
+cgv-web-1.0.4-1.el9.noarch
+
+During the update, the previous Apache configuration we put in place (and manage via Puppet) was disrupted because the application layout changed compared to the older package, as the static frontend is now served from /var/www/cgv-web/public/ instead of /var/www/cgv-web/.
+
+The Apache configuration has now been updated accordingly:
+
+Alias /cgv-web/ /var/www/cgv-web/public/
+<Location /var/www/cgv-web/public/>
+    RewriteEngine On
+    ProxyPass        http://vm-calo-web-01.cern.ch:8080/
+    ProxyPassReverse http://vm-calo-web-01.cern.ch:8080/
+    Require all granted
+</Location>
+
+Could you please clarify the purpose of /etc/sysconfig/cgv-web? In particular, do you plan to use it for the XML_FOLDER variable in future versions?
+Finally, please create and provide the e-group so we can use it for future communications.
+
+Cheers,
+Fabio
+#43
+Updated by Chrysthofer Arthur Amaro Afonso 30 days ago
+
+Hi Diana, Fabio,
+
+Thanks for the feedback. Replying to note #41 point by point.
+
+RPM location: understood, it should be inside P1, not on AFS. Luciano will
+put the build under /atlas-home/0/lucianom/ and post the exact path here.
+In the meantime the .rpm and .spec are available in my AFS folder:
+/afs/cern.ch/user/c/camaroaf/public/cgv-web/2.0.1/
+
+    /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.0.1/cgv-web-2.0.1-1.el9.noarch.rpm
+    /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.0.1/cgv-web.spec
+
+We are arranging the P1 account so next time the files can be placed there
+directly.
+
+Versioning: good catch. The package versioned by date (cgv-web-04.28.26)
+counts as newer than 1.0.x in RPM, so a plain dnf update / Puppet run won't
+move off it. The new build is cgv-web-1.0.5-1.el9 with Epoch: 1, so 1:1.0.5
+supersedes 0:04.28.26 cleanly. From now on the version only increases
+(1.0.5, 1.0.6, ...), no more dates, and upgrades are in-place (no
+remove/reinstall). 1.0.5 also supersedes the 1.0.4 from note #40: same fixes
+(no httpd conf shipped, no httpd reload in %post, httpd dropped from
+Requires) plus the epoch fix and a small frontend fix mentioned below.
+
+The example Apache snippet: just to be clear, examples/apache-cgv-web.conf.example
+is reference-only and is not loaded by anything. It's a minimal illustration,
+not a description of your setup, and the package makes no assumptions about
+how pc-atlas-www and vm-calo-web-01 are wired together. All the application
+needs from the front-end host is: (1) the static files under public/ served
+at some prefix, and (2) <that prefix>/api/xml/ reverse-proxied to the backend
+on 127.0.0.1:8080 keeping the /api/xml/ sub-path. The backend only listens on
+localhost. Everything else (Apache / Puppet) is yours. If at some point it
+helps to see the actual cgv-web vhost so we can match the example to it, just
+say so.
+
+Related fix in 2.0.1: the frontend now resolves the /api/xml endpoint from
+the module's own URL rather than the page URL, so the LIVE > SERVER
+(live-folder) feature works regardless of the mount prefix and even if the
+page is opened without the trailing slash. That was behind the 404 on
+/api/xml/folder in note #36. The "pick the folder" action in the UI uses the
+same endpoint, so this fixes that too.
+
+XML folder: nothing to change on the package side. The watched folder is
+picked at runtime from the UI (pencil icon next to the folder path), so the
+operator points it at /atlas/EventDisplayEvents (or wherever) without editing
+config. /etc/sysconfig/cgv-web has an optional XML_FOLDER for a boot-time
+default, commented out by design.
+
+Authentication: the app is view-only. It reads and renders JiveXML, writes
+nothing, has no destructive action, so from our side it's fine for it to be
+reachable inside P1 without a login.
+
+e-group: the group is now available at https://groups-portal.web.cern.ch/group/cgv-support/
+
+Testing: once 2.0.1 is in place we're glad to check the
+live-folder mode against /atlas/EventDisplayEvents in the Control Room.
+
+Thanks again for the patience with this.
+
+Best regards,
+Chrysthofer
+#44
+Updated by Fabio Pigozzi 30 days ago
+
+Hi Chrysthofer,
+
+Thank you for addressing the points raised above.
+
+I installed the new RPM version you provided (and added to our repository), and the application seems to be working as expected:
+
+[root@vm-calo-web-01 ~]# rpm -qa cgv-web
+cgv-web-2.0.1-1.el9.noarch
+
+Could you please check from your side as well and let us know if everything looks fine?
+Cheers,
+Fabio
+#45
+Updated by Fabio Pigozzi 24 days ago
+
+Hi Chrysthofer,
+
+Regarding the e-group you provided in #note-43 (https://groups-portal.web.cern.ch/group/cgv-support/), it currently only accepts messages from users included in its allowed senders list.
+
+Could you please adjust the email properties to allow people outside the e-group to contact it as well?
+
+Cheers,
+Fabio
+#46
+Updated by Chrysthofer Arthur Amaro Afonso 21 days ago
+
+Hi Fabio, Diana,
+
+Thanks for installing 2.0.1. The static site is served correctly, but LIVE > SERVER (the live-folder feature) is still not working, and we have now pinned down why.
+
+That mode is enabled by a single request from the frontend, GET /cgv-web/api/xml/folder, which has to reach the Python backend and return JSON. We checked it from outside, through the AtlasGW proxy, and it comes back as:
+
+HTTP/1.1 404 Not Found
+    Server: Apache/2.4.62 (AlmaLinux)
+    Content-Type: text/html; charset=iso-8859-1
+
+So Apache itself is answering the API path with its own 404, which means the request never reaches the backend.
+
+Looking at the config from note #42:
+
+Alias /cgv-web/ /var/www/cgv-web/public/
+    &lt;Location /var/www/cgv-web/public/&gt;
+        ProxyPass        http://vm-calo-web-01.cern.ch:8080/
+        ProxyPassReverse http://vm-calo-web-01.cern.ch:8080/
+    &lt;/Location&gt;
+
+the argument of <Location> is a filesystem path, but <Location> matches a URL path. Requests arrive as /cgv-web/..., never as /var/www/cgv-web/public/, so the ProxyPass inside that block never matches. The Alias still serves the static files (that is why the site loads), but /cgv-web/api/xml/ falls through to a static lookup and 404s.
+
+The backend serves both the static site and /api/xml/ from the same root, so the simplest fix is one proxy for the whole prefix, no Alias:
+
+&lt;Location /cgv-web/&gt;
+        ProxyPass        http://127.0.0.1:8080/
+        ProxyPassReverse http://127.0.0.1:8080/
+        Require all granted
+    &lt;/Location&gt;
+
+If you prefer Apache to keep serving the static files, the alternative is to
+proxy only the API, declared before the Alias so it takes precedence:
+
+ProxyPass        /cgv-web/api/xml/ http://127.0.0.1:8080/api/xml/
+    ProxyPassReverse /cgv-web/api/xml/ http://127.0.0.1:8080/api/xml/
+    Alias /cgv-web /var/www/cgv-web/public
+    &lt;Directory /var/www/cgv-web/public&gt;
+        Require all granted
+    &lt;/Directory&gt;
+
+One detail on the target: the backend listens on 127.0.0.1:8080 (BIND in /etc/sysconfig/cgv-web). The 127.0.0.1 targets above assume the Apache that exposes cgv-web runs on vm-calo-web-01. If it runs on a different host, set BIND=0.0.0.0 in /etc/sysconfig/cgv-web, run systemctl restart cgv-web, and point the ProxyPass at vm-calo-web-01.cern.ch:8080 instead.
+
+A 30-second check from the VM:
+
+curl -s -i http://127.0.0.1:8080/api/xml/folder
+    curl -s -i https://pc-atlas-www.cern.ch/cgv-web/api/xml/folder
+
+The first is the backend (expect 200 + application/json + {"path": ...}); the second is through Apache and should match. Once the second returns JSON, the folder control appears in the UI and we can point it at /atlas/EventDisplayEvents.
+
+Separately, we built cgv-web-2.1.0 (frontend only, in-place upgrade, no change to the backend, the systemd unit or the packaging). It does not change the fix above. It just stops the failure from being silent: when /api/xml is unreachable on a cern.ch host, the SERVER panel now shows a short notice instead of hiding the control, and it re-checks /api/xml when the SERVER tab is opened, so the control shows up as soon as the proxy is in place.
+
+RPM: /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.1.0/cgv-web-2.1.0-1.el9.noarch.rpm
+
+On the e-group (note #45): cgv-support is now set to accept messages from anyone, so people outside the e-group can reach cgv-support@cern.ch.
+
+Best regards,
+Chrysthofer
+#47
+Updated by Fabio Pigozzi 16 days ago
+
+Hi Chrysthofer,
+Thank you for the additional feedback and investigations.
+The Apache/reverse proxy configuration is managed on our side, and we will review and adjust it taking into account the full configuration and setup we have in place.
+
+To help us validate the configuration properly, could you please describe exactly how you are connecting to the https://pc-atlas-www.cern.ch/cgv-web/ page and specifically how you are testing the LIVE > SERVER feature?
+
+Cheers,
+Fabio
+#48
+Updated by Fabio Pigozzi 16 days ago
+Hi Chrysthofer,
+Regarding the tests you suggested using curl:
+
+    From the node vm-calo-web-01:
+
+    [root@vm-calo-web-01 public]# curl -s -i http://127.0.0.1:8080/api/xml/folder
+    HTTP/1.0 200 OK
+    Server: SimpleHTTP/0.6 Python/3.9.25
+    Date: Wed, 27 May 2026 15:36:57 GMT
+    Content-Type: application/json; charset=utf-8
+    Content-Length: 14
+    Cache-Control: no-store
+    Access-Control-Allow-Origin: *
+
+    {"path": null}[root@vm-calo-web-01 public]#
+
+    From a pub node in ATCN:
+
+    [fpigozzi@pc-atlas-pub-08 ~]$ curl -s -i https://pc-atlas-www.cern.ch/cgv-web/api/xml/folder
+    HTTP/1.1 200 OK
+    Date: Wed, 27 May 2026 15:37:10 GMT
+    Server: SimpleHTTP/0.6 Python/3.9.25
+    Connection: close
+    Content-Type: application/json; charset=utf-8
+    Content-Length: 14
+    Cache-Control: no-store
+    Access-Control-Allow-Origin: *
+
+    {"path": null}[fpigozzi@pc-atlas-pub-08 ~]$
+
+Please clarify the goal of the checks mentioned above and clarify the usage of BIND in /etc/sysconfig/cgv-web
+
+In any case, the first step would be to have everything working on the VM inside P1. Please check and let us know.
+Second, I would like to remind you that atlas-live is not reachable from the VM inside P1, please clarify how you tried to access it.
+As agreed in #note-27 and #note-28, the application will not be available online and the only way to browse the JiveXML files should be accessing locally the content of /atlas/EventDisplayEvents
+
+We remain available for a meeting in person or via zoom in case you would like to have a look together.
+
+Cheers,
+Fabio
+#49
+Updated by Chrysthofer Arthur Amaro Afonso 15 days ago
+
+Hi Fabio,
+
+Status: the proxy is now correct. Both curls return 200 with "Server: SimpleHTTP/0.6 Python/3.9.25", i.e. the CGV backend answering through your Apache. The remaining {"path": null} is not an error; it only means no folder is selected yet. Thanks for getting us here.
+
+To be precise, here is what each CGV mode does and how to confirm it, keeping the CGV side and your infra side separate. CGV is one viewer with three data sources:
+
+1) SAMPLE: example events bundled inside the CGV package. No backend, no network, no folder. Test: open the page, click SAMPLE, an event renders. This only proves your Apache is serving the static CGV site correctly. It is the first smoke test.
+
+2) LIVE -> WEB: fetches events over HTTP from atlas-live.cern.ch. This is the external development path and is expected to fail at P1, since the VM has no route to atlas-live. Please ignore this tab at P1; we are not using it. This is the only place CGV would ever touch atlas-live. The SERVER mode below never does.
+
+3) LIVE -> SERVER: the P1 path. The CGV backend (127.0.0.1:8080) reads JiveXML from a folder on the VM, and the page polls it every 5 s via /api/xml. Fully local: Firefox -> your Apache (pc-atlas-www) -> CGV backend -> files on the mounted disk. No external traffic.
+
+The one remaining step is on the infra side: point the CGV backend at the
+right folder. Two conditions for it to show anything:
+
+a) It must be a folder that directly contains .xml files. /atlas/EventDisplayEvents holds per-stream sub-directories (physics_Main, express_express, ...), 
+    and the CGV backend lists a single directory non-recursively, so the path must be a stream, e.g. /atlas/EventDisplayEvents/physics_Main, not the parent.
+
+b) That stream must be receiving live JiveXML, i.e. there must be an ATLAS run actually taking data and writing into it. With no run the folder is empty 
+    or static and the 5 s polling has nothing new to show. That is expected, not a failure.
+
+Recommended config (automatic, survives reboot and Puppet), in /etc/sysconfig/cgv-web on the VM:
+
+XML_FOLDER=/atlas/EventDisplayEvents/physics_Main
+
+then: systemctl restart cgv-web
+Confirm, in order:
+
+    backend sees the folder (with or without a run): curl -s https://pc-atlas-www.cern.ch/cgv-web/api/xml/folder -> {"path": "/atlas/EventDisplayEvents/physics_Main"}
+    files present (needs a run writing there): curl -s https://pc-atlas-www.cern.ch/cgv-web/api/xml/list -> JSON array of the newest .xml
+
+Then in Firefox: /cgv-web/ -> LIVE -> SERVER. With a run active, the newest event loads and refreshes every 5 s.
+On your note #48:
+
+    BIND is just the address the CGV backend listens on. 127.0.0.1 means
+    localhost only, which is correct because the Apache proxying to :8080
+    runs on the same VM (your working curl confirms it). Leave it; set
+    0.0.0.0 only if that proxy ever moves off the VM.
+    We are not trying to reach atlas-live from the VM. That belongs only to
+    LIVE -> WEB, which we do not use at P1. The P1 feature (LIVE -> SERVER)
+    is entirely local.
+
+Thanks again for your patience on this one; we are very close now, just
+the folder pointing at a live stream and it should work end to end.
+
+Best regards,
+Chrysthofer
+#50
+Updated by Fabio Pigozzi 15 days ago · Edited
+
+Hi Chrysthofer,
+
+Since the default folder variable (XML_FOLDER), located in /etc/sysconfig/cgv-web and used by the backend comes from the RPM configuration, could you please update the package so that it points by default to a proper live stream folder?
+
+Once done, I’ll proceed with updating it.
+
+Cheers,
+Fabio
+#51
+Updated by Chrysthofer Arthur Amaro Afonso 15 days ago
+
+Hi Fabio,
+
+Done, but with one extra change worth flagging before you install. While preparing the package we noticed that the previous backend kept a single process-wide watched folder, mutated by POST /api/xml/set folder. That meant two operators on different PCs would step on each other's view: last writer wins, for everyone. Wrong shape for a desk tool.
+
+2.2.0 fixes that. The backend is now stateless: each request carries the folder it wants. The XML_FOLDER default is still honoured, but only as the prefill returned by GET /api/xml/default, which the UI uses on a first visit. Every browser/tab keeps its own choice in localStorage and can switch streams from the pencil, independently of every other client.
+
+So, to your question: yes, /etc/sysconfig/cgv-web now ships
+
+XML_FOLDER=/atlas/EventDisplayEvents/physics_Main
+
+active by default. The file remains %config(noreplace), so on upgrade an existing file is kept; if it was not modified locally, the new default takes effect, otherwise you will see cgv-web.rpmnew next to it.
+
+RPM: /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.2.0/cgv-web-2.2.0-1.el9.noarch.rpm
+Spec: /afs/cern.ch/user/c/camaroaf/public/cgv-web/2.2.0/cgv-web.spec
+SHA-256 of the RPM: 5e1704207aaddc3af825c68328936514ca1821f90e1be0e6d12cf9fb34ce884e
+(Luciano will mirror the RPM to /atlas-home/0/lucianom/ as agreed.)
+
+API change to be aware of for your reverse proxy:
+- GET /api/xml/default (always 200, JSON)
+- GET /api/xml/list?path=<dir> (200 or 4xx)
+- GET /api/xml/file?path=<dir>&name=<basename> (200 or 4xx)
+- POST /api/xml/set-folder is gone. The proxy no longer needs to forward
+POST for the SERVER feature; GET-only is enough.
+
+Verify after install:
+curl -s https://pc-atlas-www.cern.ch/cgv-web/api/xml/default
+-> {"path": "/atlas/EventDisplayEvents/physics_Main"}
+curl -s "https://pc-atlas-www.cern.ch/cgv-web/api/xml/list?path=/atlas/EventDisplayEvents/physics_Main"
+-> JSON array of the newest .xml (during a run)
+
+Thanks again for the patience on this one; this version finally has the right shape both for P1 and for concurrent operators.
+
+Best regards,
+Chrysthofer
+#52
+Updated by Fabio Pigozzi 14 days ago
+
+    Status changed from In Progress to Feedback
+    % Done changed from 70 to 90
+
+Hi Chrysthofer,
+I've installed the new RPM you provided and added it to our repos:
+
+[root@vm-calo-web-01 fpigozzi]# rpm -qa cgv-web
+cgv-web-2.2.0-1.el9.noarch
+
+I also checked the default API endpoint from a pub node:
+
+[fpigozzi@pc-atlas-pub-01 ~]$  curl -s https://pc-atlas-www.cern.ch/cgv-web/api/xml/default
+{"path": "/atlas/EventDisplayEvents/physics_Main"}[fpigozzi@pc-atlas-pub-01 ~]$
+
+
+Everything looks fine from our side. Please check and let me know if there is anything else I can help you with .
+Cheers,
+Fabio
+
+#53
+Updated by Fabio Pigozzi 10 days ago
+
+Hi Chrysthofer,
+Please let me know if you had a chance to test and see if everything is fine.
+
+Cheers,
+Fabio
+#54
+Updated by Fabio Pigozzi 7 days ago
+
+Hi Chrysthofer,
+
+Please let me know if anything else is needed from our side. Otherwise, I’ll close the ticket in the coming days.
+
+Cheers,
+Fabio
+#55
+Updated by Chrysthofer Arthur Amaro Afonso 7 days ago
+
+Hi Fabio,
+
+2.3.0 is tested locally and ready whenever you have a window.
+What is new:
+
+    The Technical TWiki bundle now ships inside the package at
+    /var/www/cgv-web/public/twiki/, so the sidebar "Technical TWiki" link
+    resolves locally (https://pc-atlas-www.cern.ch/cgv-web/twiki/) and
+    works inside P1 with no external network. The existing Alias /cgv-web/
+    already covers it.
+    Same systemd unit, sysconfig and /api/xml/* shape as 2.2.0. Drop-in
+    upgrade.
+
+Files:
+/afs/cern.ch/user/c/camaroaf/public/cgv-web/2.3.0/cgv-web-2.3.0-1.el9.noarch.rpm
+/afs/cern.ch/user/c/camaroaf/public/cgv-web/2.3.0/cgv-web.spec
+SHA-256:
+943f1440b9949fff925ce8eb1812e4f73e753ebc5c50f9876b19d553dac4874b
+
+Going forward, we will keep dropping new builds straight into /afs/cern.ch/user/c/camaroaf/public/cgv-web/<version>/ as the project evolves. The folder stays world-readable from AFS. We will also try to mirror each build to /atlas-home/0/lucianom/ whenever Luciano can sync it.
+
+Thank you very much, Fabio, Diana, Nikiforos and Oleg, for all the work and patience on this deployment. Luciano and I really appreciate it.
+
+Best regards,
+Chrysthofer
+#56
+Updated by Fabio Pigozzi 4 days ago
+
+Hi Chrysthofer,
+I've installed the new RPM you provided and added it to our repos:
+
+[root@vm-calo-web-01 ~]# rpm -qa cgv-web
+cgv-web-2.3.0-1.el9.noarch
+
+
+Everything looks fine from our side. Please check and let me know if there is anything else I can help you with .
+Cheers,
+Fabio
+
+#57
+Updated by Fabio Pigozzi about 2 hours ago
+
+Hi Chrysthofer,
+Please let me know if you had a chance to test and see if everything is fine.
+
+Cheers,
+Fabio
+Edit
+Watch
+
+Also available in: Atom PDF 

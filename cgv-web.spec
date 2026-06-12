@@ -1,6 +1,6 @@
 Name:           cgv-web
 Epoch:          1
-Version:        2.3.0
+Version:        2.4.0
 Release:        1%{?dist}
 Summary:        CGV Web -- 3D Calorimeter Event Display for ATLAS
 License:        NIPSCERN License
@@ -112,6 +112,28 @@ echo "------------------------------------------------------"
 %systemd_postun_with_restart cgv-web.service
 
 %changelog
+* Fri Jun 12 2026 Chrysthofer - 1:2.4.0-1
+- Stability release: all known bugs fixed; from here on releases only add
+  features. Frontend only -- no change to the Python backend, the /api/xml/*
+  API, the systemd unit, sysconfig or packaging. Drop-in upgrade from 2.3.0,
+  no Apache change required on the host.
+- Rendering pipeline rewritten: ~13.7k draw calls merged into 3; the slicer
+  now runs as GPU uniforms, so slicing no longer rebuilds geometry.
+- Slicer sliders are responsive while dragging (heavy work only when the
+  visible cell set actually changes).
+- Cinema mode rewritten: event-driven orbit, continuous beam-axis dive with
+  arc-length-compensated speed, parallel-transport camera up (no roll), and
+  live slicer route recalculation without jumps.
+- Cluster collection selector at view level 2.
+- Tabbed color controls for scene styling; tooltip color applied to pinned
+  cards; pinned cards included in screenshots; persistent cell outlines.
+- Real download-progress ring on the LIVE/SERVER fetch buttons.
+- Large type-safety pass (@ts-check) across parsers, overlays, particles and
+  UI modules.
+- License unified as NIPSCERN License 1.0.
+- Packaging fix: the Technical TWiki bundle was staged twice in 2.3.0,
+  shipping a redundant nested copy under public/twiki/twiki/; now staged
+  once.
 * Thu May 28 2026 Chrysthofer - 1:2.3.0-1
 - Ship the Technical TWiki bundle under /var/www/cgv-web/public/twiki/, so
   the "Technical TWiki" link in the sidebar resolves to a local URL
