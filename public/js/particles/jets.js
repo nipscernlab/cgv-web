@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { getJetGroup, setJetGroup, applyJetThreshold } from '../visibility.js';
 import { makeFatLineMaterial } from '../fatLines.js';
+import { CGV_WAVE_UNIFORM, CGV_WAVE_FADE } from '../collisionReplay.js';
 import {
   _disposeGroup,
   _buildEtaPhiLineGroup,
@@ -41,23 +42,47 @@ const _CONE_MAT = new THREE.ShaderMaterial({
   uniforms: {
     uColor: { value: new THREE.Color(0xff8800) },
     uAlpha: { value: 0.12 },
+    // B2 collision replay, shared by reference with the cells (megaCells.js):
+    // the same expanding front lights the cones in lockstep. < 0 → off.
+    uCgvWaveR: CGV_WAVE_UNIFORM,
+    uCgvWaveFade: CGV_WAVE_FADE,
   },
   vertexShader: `varying vec3 vN;
 varying vec3 vV;
+varying vec3 vWorld;
 void main() {
   vN = normalMatrix * normal;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   vV = -mv.xyz;
+  vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
   gl_Position = projectionMatrix * mv;
 }`,
   fragmentShader: `uniform vec3 uColor;
 uniform float uAlpha;
+uniform float uCgvWaveR;
+uniform float uCgvWaveFade;
 varying vec3 vN;
 varying vec3 vV;
+varying vec3 vWorld;
 void main() {
   float ndv = abs(dot(normalize(vN), normalize(vV)));
   float fres = pow(1.0 - ndv, 2.0);
-  gl_FragColor = vec4(uColor, uAlpha * (0.2 + 0.8 * fres));
+  float a = uAlpha * (0.2 + 0.8 * fres);
+  vec3 col = uColor;
+  // B2 collision replay: the light front that ignites the cells washes along
+  // the cone too — apex (the vertex) first, base (the calo face) last. Ahead
+  // of the front the cone dims to a hush, a warm crest rides the front itself,
+  // and behind it the cone settles back to its normal whisper. The fade lerps
+  // the modulation back to 1.0 so it dissolves at shutoff. uCgvWaveR < 0 → off.
+  if (uCgvWaveR >= 0.0) {
+    float wd = length(vWorld) - uCgvWaveR;
+    float lit = 1.0 - smoothstep(0.0, 300.0, wd);
+    float band = exp(-abs(wd) / 300.0);
+    float wa = a * mix(0.05, 1.0, lit) + band * (0.06 + 0.22 * fres);
+    a = mix(a, wa, uCgvWaveFade);
+    col = mix(uColor, vec3(1.0, 0.96, 0.88), band * 0.7 * uCgvWaveFade);
+  }
+  gl_FragColor = vec4(col, a);
 }`,
   transparent: true,
   depthWrite: false,
