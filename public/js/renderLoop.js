@@ -9,6 +9,8 @@ import {
   isDirty,
   clearDirty,
 } from './renderer.js';
+import { getDprCap, onQualityChange } from './quality.js';
+import { getPostFxComposer, resizePostFx } from './postfx.js';
 
 // ── FPS counter / perf HUD ───────────────────────────────────────────────────
 // Default: the historical FPS readout. With `?perf=1`: draw calls, triangles,
@@ -50,12 +52,22 @@ function _perfPercentile(p) {
 // Paused while the tab is hidden: browsers already throttle RAF on hidden tabs,
 // but stopping the loop entirely frees the main thread for other tabs. Resumed
 // on visibilitychange.
-let _fpsFrames = 0,
-  _fpsLast = performance.now();
+let _fpsLast = performance.now();
+// Generation-capacity FPS state: wall-time + count of frames rendered in the
+// current 500 ms window, and the last computed value (held through idle).
+let _fpsRenderMs = 0;
+let _fpsRenderCount = 0;
+let _fpsValue = 0;
 let _loopRunning = false;
 let _loopRafId = 0;
 let _resumeWarmFrames = 0;
 let _onFrameStart = () => {};
+// Hard pause from outside the loop (the video recorder owns the canvas/clock
+// while capturing a cinema loop offline). The RAF stays scheduled so the loop
+// resumes instantly, but onFrameStart (cinema.tick) and rendering are skipped —
+// otherwise a live tick would advance the tour with wall-clock time and clobber
+// the capture driver's synthetic-clock state.
+let _externalPaused = false;
 
 function _scheduleWarmFrames(count = 12) {
   _resumeWarmFrames = Math.max(_resumeWarmFrames, count | 0);
@@ -63,9 +75,10 @@ function _scheduleWarmFrames(count = 12) {
 }
 
 function _restoreRendererAfterFocus() {
-  const pr = Math.min(window.devicePixelRatio || 1, 2);
+  const pr = Math.min(window.devicePixelRatio || 1, getDprCap());
   renderer.setPixelRatio(pr);
   renderer.setSize(window.innerWidth, window.innerHeight, false);
+  resizePostFx();
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   dirLight.position.copy(camera.position);
@@ -86,10 +99,24 @@ function _loopTick() {
     return;
   }
   _loopRafId = requestAnimationFrame(_loopTick);
-  _fpsFrames++;
+  if (_externalPaused) return;
   const now = performance.now();
   if (now - _fpsLast >= 500) {
-    const fps = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0);
+    // UNCAPPED FPS: 1000 / mean wall-time of the frames actually rendered in
+    // this window — i.e. how many frames per second this machine could
+    // generate, independent of the monitor's refresh rate. rAF still vsyncs
+    // PRESENTATION (the screen can't show more than its refresh), and the
+    // demand-driven loop renders only dirty frames, so counting rAF ticks
+    // (the old readout) would clamp at the panel Hz and count idle ticks.
+    // Measured CPU-side around renderer.render — a capability estimate; a
+    // fully GPU-bound scene would need EXT_disjoint_timer_query to refine.
+    // When the window had no rendered frames (idle), keep the last estimate.
+    if (_fpsRenderCount > 0) {
+      _fpsValue = Math.min(9999, (1000 * _fpsRenderCount) / _fpsRenderMs);
+      _fpsRenderCount = 0;
+      _fpsRenderMs = 0;
+    }
+    const fps = _fpsValue.toFixed(0);
     if (_PERF_HUD) {
       const r = /** @type {any} */ (renderer);
       const tris = _lastTris >= 1e6 ? (_lastTris / 1e6).toFixed(2) + 'M' : String(_lastTris);
@@ -100,7 +127,6 @@ function _loopTick() {
     } else {
       fpsEl.textContent = fps + ' FPS';
     }
-    _fpsFrames = 0;
     _fpsLast = now;
   }
   _onFrameStart();
@@ -111,10 +137,28 @@ function _loopTick() {
   }
   if (controls.autoRotate) markDirty();
   if (!isDirty()) return;
-  const t0 = _PERF_HUD ? performance.now() : 0;
-  renderer.render(scene, camera);
+  const t0 = performance.now();
+  // Beauty preset routes through the post-fx composer (bloom + OutputPass);
+  // every other preset keeps the direct-to-canvas path bit-for-bit.
+  // renderer.info auto-resets on every internal render() call, which would
+  // leave only the composer's final fullscreen quad in the counters — switch
+  // to manual reset around the composer so draws/tris stay meaningful.
+  const composer = getPostFxComposer();
+  if (composer) {
+    renderer.info.autoReset = false;
+    renderer.info.reset();
+    composer.render();
+  } else {
+    renderer.info.autoReset = true;
+    renderer.render(scene, camera);
+  }
+  // Clamp to the timer's coarsened resolution so a sub-resolution frame
+  // doesn't read as 0 ms (→ infinite FPS).
+  const dt = Math.max(0.05, performance.now() - t0);
+  _fpsRenderMs += dt;
+  _fpsRenderCount++;
   if (_PERF_HUD) {
-    _frameMs[_frameMsN % _frameMs.length] = performance.now() - t0;
+    _frameMs[_frameMsN % _frameMs.length] = dt;
     _frameMsN++;
     const info = /** @type {any} */ (renderer).info;
     if (info?.render) {
@@ -129,7 +173,8 @@ function _startLoop() {
   if (_loopRunning) return;
   _loopRunning = true;
   _fpsLast = performance.now();
-  _fpsFrames = 0;
+  _fpsRenderMs = 0;
+  _fpsRenderCount = 0;
   markDirty();
   if (!_loopRafId) _loopRafId = requestAnimationFrame(_loopTick);
 }
@@ -142,9 +187,28 @@ function _stopLoop() {
   }
 }
 
+// Pause/resume the live render loop from outside (video recorder). Resuming
+// warms a few frames so the canvas repaints from the restored camera pose.
+export function pauseRenderLoop() {
+  _externalPaused = true;
+}
+export function resumeRenderLoop() {
+  _externalPaused = false;
+  _scheduleWarmFrames(4);
+}
+
 /** @param {{ onFrameStart?: () => void }} [opts] */
 export function initRenderLoop({ onFrameStart } = {}) {
   if (onFrameStart) _onFrameStart = onFrameStart;
+
+  // Quality preset switch: re-apply the DPR cap and warm a few frames so the
+  // resize settles. Effect modules (tone mapping, bloom, ...) subscribe on
+  // their own; this is just the renderer-level knob.
+  onQualityChange(() => {
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, getDprCap()));
+    renderer.setSize(window.innerWidth, window.innerHeight, false);
+    _scheduleWarmFrames(4);
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) _stopLoop();
@@ -165,6 +229,7 @@ export function initRenderLoop({ onFrameStart } = {}) {
     renderer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
+    resizePostFx();
     markDirty();
   });
 

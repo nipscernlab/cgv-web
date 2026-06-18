@@ -237,13 +237,17 @@ raycast.firstHitOnly = true; // stop after first intersection (much faster)
 // individual meshes on a camera-invisible layer — opt the hover ray in.
 raycast.layers.enable(CHAMBER_RAYCAST_LAYER);
 const _fcalPickMat = new THREE.Matrix4(); // scratch for FCAL wedge-carve check
-raycast.params.Line = { threshold: 40 }; // 40 mm hit zone for ID tracks / photons
+raycast.params.Line = { threshold: 40 }; // 40 mm hit zone for legacy THREE.Line objects
+// Particle lines are fat Line2 objects (fatLines.js) and raycast in SCREEN
+// pixels: hit zone = material.linewidth + params.Line2.threshold. 6 px extra
+// keeps hover forgiving without bleeding into neighbouring tracks.
+raycast.params.Line2 = { threshold: 6 };
 // Muon tracks live at much larger radii (~10 m) and are typically watched
 // from further away, so they want a wider raycast threshold to be easy to
-// hover over. Used by toggling raycast.params.Line.threshold around the
+// hover over. Used by toggling raycast.params.Line2.threshold around the
 // muon-only intersect call below.
-const _MUON_TRACK_THRESHOLD_MM = 80;
-const _DEFAULT_TRACK_THRESHOLD_MM = 40;
+const _MUON_TRACK_THRESHOLD_PX = 12;
+const _DEFAULT_TRACK_THRESHOLD_PX = 6;
 const mxy = new THREE.Vector2();
 
 let lastRay = 0;
@@ -573,9 +577,9 @@ function doRaycast(clientX, clientY) {
   // ── Track / Photon hit (pick closest) ────────────────────────────────────
   // Electron group now contains only sprites (the "e±" labels), which aren't
   // raycasted — the electron identity comes from the matched track instead.
-  // Two raycasts with different Line thresholds: ID tracks / photons get the
-  // narrow 40 mm hit zone (so neighbouring tracks don't bleed into each
-  // other), muon tracks get the wider 80 mm zone since they're typically
+  // Two raycasts with different Line2 thresholds: ID tracks / photons get the
+  // narrow 6 px hit zone (so neighbouring tracks don't bleed into each
+  // other), muon tracks get the wider 12 px zone since they're typically
   // viewed from far away.
   if (hasTrackLines || hasPhotonLines) {
     const idCandidates = [];
@@ -590,11 +594,11 @@ function doRaycast(clientX, clientY) {
     if (hasPhotonLines) {
       for (const c of photonGroup.children) if (c.visible) idCandidates.push(c);
     }
-    raycast.params.Line.threshold = _DEFAULT_TRACK_THRESHOLD_MM;
+    raycast.params.Line2.threshold = _DEFAULT_TRACK_THRESHOLD_PX;
     const idHits = idCandidates.length ? raycast.intersectObjects(idCandidates, false) : [];
-    raycast.params.Line.threshold = _MUON_TRACK_THRESHOLD_MM;
+    raycast.params.Line2.threshold = _MUON_TRACK_THRESHOLD_PX;
     const muonHits = muonCandidates.length ? raycast.intersectObjects(muonCandidates, false) : [];
-    raycast.params.Line.threshold = _DEFAULT_TRACK_THRESHOLD_MM; // restore
+    raycast.params.Line2.threshold = _DEFAULT_TRACK_THRESHOLD_PX; // restore
     // Closest of the two passes wins.
     const bestId = idHits.length ? idHits[0] : null;
     const bestMu = muonHits.length ? muonHits[0] : null;
@@ -673,7 +677,13 @@ function doRaycast(clientX, clientY) {
           coord: line.userData.storeGateKey ?? '',
           valueText: `${etGev.toFixed(3)} GeV`,
           keyHtml: 'E<sub>T</sub>',
-          extras: [[_ETA_LABEL, _fmtEta(line.userData.eta)]],
+          extras: (() => {
+            const ex = [[_ETA_LABEL, _fmtEta(line.userData.eta)]];
+            // Constituent count (B10) — the cluster's cell list was already
+            // parsed for the membership filter; surface its size here.
+            if (line.userData.numCells > 0) ex.push(['cells', `${line.userData.numCells}`]);
+            return ex;
+          })(),
         },
       });
       return;
@@ -698,10 +708,22 @@ function doRaycast(clientX, clientY) {
           coord: line.userData.storeGateKey ?? '',
           valueText: `${ptGev.toFixed(3)} GeV`,
           keyHtml: 'p<sub>T</sub>',
-          extras: [
-            [_ETA_LABEL, _fmtEta(line.userData.eta)],
-            ['tracks', `${line.userData.numTracks ?? 0}`],
-          ],
+          extras: (() => {
+            const ex = [
+              [_ETA_LABEL, _fmtEta(line.userData.eta)],
+              ['tracks', `${line.userData.numTracks ?? 0}`],
+            ];
+            // ID quality metrics (B10) — parsed by tauParser but never shown
+            // before. The "withoutQuality" token is the algorithm's input
+            // list, not a real ID verdict; skip it to avoid noise.
+            const q = line.userData.isTau;
+            if (q && !/withoutQuality/i.test(q)) ex.push(['ID', q]);
+            if (line.userData.logLhRatio != null)
+              ex.push(['LLH', line.userData.logLhRatio.toFixed(2)]);
+            if (line.userData.isolFrac != null)
+              ex.push(['isol', line.userData.isolFrac.toFixed(3)]);
+            return ex;
+          })(),
         },
       });
       return;

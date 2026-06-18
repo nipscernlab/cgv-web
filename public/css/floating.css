@@ -216,6 +216,37 @@
   accent-color: #ffa040;
 }
 
+/* Helpers › quality preset segmented control (low / standard / beauty).
+   Horizontal cousin of the toolbar's .tseg (toolbar.css). */
+.hseg {
+  display: flex;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--surface-1);
+}
+.hseg-btn {
+  padding: 5px 8px;
+  font: 600 10px/1 var(--mono);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  transition:
+    color var(--motion-fast),
+    background var(--motion-fast);
+}
+.hseg-btn:hover {
+  color: var(--bright);
+  background: var(--surface-hover);
+}
+.hseg-btn.on {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.hseg-btn + .hseg-btn {
+  border-left: 1px solid var(--border);
+}
+
 /* ─────────────────────────────────────────────────────────
    Background-color picker — small SV / Hue picker popover.
    ───────────────────────────────────────────────────────── */

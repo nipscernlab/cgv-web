@@ -1,15 +1,20 @@
 // @ts-check
 // Missing-transverse-energy arrow.
 //
-// Drawn as an ArrowHelper in the (x, y) plane (z = 0), pointing in the
-// direction of the MET vector. Coordinates negated to match the scene's
-// convention (Three.js x = -ATLAS x, y = -ATLAS y) so it's visually consistent
-// with the rendered tracks. Length scales linearly with magnitude, clamped to
-// stay readable for both very low and very high MET events.
+// Drawn in the (x, y) plane (z = 0), pointing in the direction of the MET
+// vector. Coordinates negated to match the scene's convention (Three.js
+// x = -ATLAS x, y = -ATLAS y) so it's visually consistent with the rendered
+// tracks. Length scales linearly with magnitude, clamped to stay readable for
+// both very low and very high MET events.
+//
+// The shaft is DASHED on purpose (docs/VISUAL_PLAN.md, item B6): dashed is
+// the universal event-display convention for invisible/undetected objects,
+// and MET is precisely the momentum nothing in the detector saw.
 
 import * as THREE from 'three';
 import { scene, markDirty } from '../renderer.js';
 import { getMetGroup, setMetGroup, getParticleLabelsVisible } from '../visibility.js';
+import { makeFatLineMaterial, makeFatLine } from '../fatLines.js';
 import { makeLabelSprite } from '../labelSprite.js';
 
 // Hot pink — distinct from every other rendered colour (track yellow, jet
@@ -26,18 +31,24 @@ const MET_MAX_LEN_MM = 6000;
 // height); 0.5 reads as a chunky arrowhead, smaller values are sharper.
 const MET_HEAD_PX = 10;
 const MET_HEAD_W_RATIO = 0.5;
-// ν label sits past the cone, along the arrow direction. MET arrows in
-// JiveXML mark where the missing momentum points — physically interpreted
-// as the direction the (undetected) neutrino(s) escaped, hence the ν.
+// The label sits past the cone, along the arrow direction. It reads "MET" —
+// the measurement (missing transverse energy), not an interpretation. The
+// previous "ν" implied a neutrino, which is only one of the possible reasons
+// momentum goes missing; the tooltip carries magnitude and SumET for detail.
 // Offset is in mm world units, picked so the label clears the cone at any
 // reasonable zoom without drifting too far from the arrow visually.
 const MET_LABEL_OFFSET_MM = 250;
 const MET_LABEL_COLOR = MET_COLOR;
 // Material singletons — one shaft material, one cone material per arrow is
 // wasteful, but materials with depthTest:false need to be shared cleanly.
-const _SHAFT_MAT = new THREE.LineBasicMaterial({
+// Fat dashed line: 3 px wide regardless of platform, dashes in world mm
+// (120/80 reads clearly across the 0.4–6 m arrow length range).
+const _SHAFT_MAT = makeFatLineMaterial({
   color: MET_COLOR,
-  linewidth: 3,
+  widthPx: 3,
+  dashed: true,
+  dashSize: 120,
+  gapSize: 80,
   depthTest: false,
   toneMapped: false,
 });
@@ -87,13 +98,10 @@ export function drawMet(metInfo) {
   const dy = sy / dirLen;
   const len = Math.max(MET_MIN_LEN_MM, Math.min(MET_MAX_LEN_MM, MET_SCALE_MM_PER_GEV * magnitude));
 
-  // Shaft: real-length Line geometry from origin to tip. No scale → raycast
-  // threshold lands as the user expects.
-  const shaftGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(dx * len, dy * len, 0),
-  ]);
-  const shaft = new THREE.Line(shaftGeo, _SHAFT_MAT);
+  // Shaft: real-length fat line from origin to tip. No scale → raycast
+  // threshold lands as the user expects (Line2 raycasts in screen px via
+  // raycaster.params.Line2.threshold).
+  const shaft = makeFatLine([0, 0, 0, dx * len, dy * len, 0], _SHAFT_MAT);
   shaft.renderOrder = 9;
 
   // Cone at the tip, oriented along the arrow direction. Per-frame
@@ -135,16 +143,18 @@ export function drawMet(metInfo) {
   shaft.userData.metKey = metInfo.key;
   shaft.userData.magnitude = magnitude;
   shaft.userData.sumEt = metInfo.sumEt;
+  // ATLAS-convention φ of the MET vector — consumed by the minimap's edge
+  // chevron (B4), which works in the same frame as the binned cells.
+  shaft.userData.phiAtlas = Math.atan2(ety, etx);
   cone.userData.metKey = metInfo.key;
   cone.userData.magnitude = magnitude;
   cone.userData.sumEt = metInfo.sumEt;
 
-  // ν label past the cone, along the arrow direction. Sprite handles its
+  // "MET" label past the cone, along the arrow direction. Sprite handles its
   // own per-frame screen-size sizing (labelSprite.js); we just pin its
-  // position once. MET physically tags the inferred neutrino direction
-  // (undetected, escapes the apparatus) — a single ν reads cleanly even
-  // when the actual escape is several neutrinos summed vectorially.
-  const nuLabel = makeLabelSprite('ν', MET_LABEL_COLOR);
+  // position once. See the MET_LABEL_OFFSET_MM comment for why it says MET
+  // and not ν.
+  const nuLabel = makeLabelSprite('MET', MET_LABEL_COLOR);
   nuLabel.position.set(dx * (len + MET_LABEL_OFFSET_MM), dy * (len + MET_LABEL_OFFSET_MM), 0);
   nuLabel.renderOrder = 9;
   // Same tag every other lepton/MET label sprite carries — picked up by the

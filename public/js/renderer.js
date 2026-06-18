@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { getDprCap } from './quality.js';
 
 // ── Dirty flag ────────────────────────────────────────────────────────────────
 // Demand-driven rendering: only render when something changed. Modules call
@@ -61,7 +62,7 @@ if (!_renderer) {
   });
 }
 export const renderer = _renderer;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, getDprCap()));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 if (renderer.isWebGLRenderer) {

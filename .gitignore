@@ -49,3 +49,5 @@ yarn-error.log*
 # If you want to exclude it, uncomment the next line:
 # package-lock.json
 .smoke/
+# Per-preset screenshot sets copied from .smoke/ for A/B comparison.
+.smoke-*/
