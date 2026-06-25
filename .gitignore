@@ -11,6 +11,9 @@ public/geometry_data/*.root
 public/default_xml/*.xml
 public/default_xml/index.json
 
+# ── Bench outputs (FPS stress test) — só o tooling é versionado, não os resultados
+bench/cgv-bench__*.json
+
 # ── Temporary / scratch data dumps ─────────────────────────────────────────────
 # Ad-hoc ATLAS XML scratch folders produced during local experimentation.
 tmp_atlas_*/
