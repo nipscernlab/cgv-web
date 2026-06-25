@@ -2,6 +2,8 @@ import * as THREE        from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
 import { initLanguage, setupLanguagePicker, t } from './i18n/index.js';
+import { setupCinemaControls } from './cinema.js';
+import { setDirtyCallback } from './renderer.js';
 
 // ── WASM parser: off-main-thread worker with synchronous fallback ────────────
 // The WASM ATLAS-ID parser runs in a dedicated Web Worker so that the per-event
@@ -255,6 +257,7 @@ let curEvtId   = null;
 let isLive     = true;
 let showInfo   = true;
 let cinemaMode = false;
+let cinema = null;  // ported cinema controller (assigned in the Cinema section below)
 
 // Ghost visibility is tracked per-mesh in `ghostVisible` (see GHOST_MESH_NAMES).
 let beamGroup  = null;
@@ -993,7 +996,7 @@ function _startLoop() {
       fpsEl.textContent = ((_fpsFrames / (now - _fpsLast)) * 1000).toFixed(0) + ' FPS';
       _fpsFrames = 0; _fpsLast = now;
     }
-    if (cinemaMode || _tourExiting) _tourTick();
+    if (cinema) { if (cinema.isAnimating()) cinema.tick(); cinemaMode = cinema.isCinemaMode(); }
     controls.update();
     if (controls.autoRotate) dirty = true;
     if (!dirty) return;
@@ -2251,7 +2254,7 @@ async function processXml(xmlText) {
     const tEta = physTileEta(section, side, tower, sampling);
     const tPhi = physTilePhi(module);
     const tilePrefix = `${section === 1 ? 'LB' : 'EB'}${side >= 0 ? 'A' : 'C'}${module + 1}`;
-    active.set(h, { energyGev: energy, energyMev: eMev, cellName: `${tilePrefix} ${cellLabel(x, k)}`, coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, det: 'TILE', cellId: id });
+    active.set(h, { energyGev: energy, energyMev: eMev, cellName: `${tilePrefix} ${cellLabel(x, k)}`, coords: `η = ${tEta.toFixed(3)}   φ = ${tPhi.toFixed(3)} rad`, eta: tEta, phi: tPhi, det: 'TILE', cellId: id });
     nTile++;
   }
 
@@ -2279,7 +2282,7 @@ async function processXml(xmlText) {
     const bec   = abs_be * (z_pos ? 1 : -1);
     const lEta  = physLarEmEta(bec, sampling, region, eta);
     const lPhi  = physLarEmPhi(bec, sampling, region, phi);
-    active.set(h, { energyGev: energy, energyMev: eMev, cellName: rName, coords: `η = ${lEta.toFixed(3)}   φ = ${lPhi.toFixed(3)} rad`, det: 'LAR', cellId: id });
+    active.set(h, { energyGev: energy, energyMev: eMev, cellName: rName, coords: `η = ${lEta.toFixed(3)}   φ = ${lPhi.toFixed(3)} rad`, eta: lEta, phi: lPhi, det: 'LAR', cellId: id });
     nLAr++;
   }
 
@@ -2306,7 +2309,7 @@ async function processXml(xmlText) {
     const hLabel  = `HEC${group + 1}`;
     const hEta    = physLarHecEta(be, group, region, eta_idx);
     const hPhi    = physLarHecPhi(region, phi);
-    active.set(h, { energyGev: energy, energyMev: eMev, cellName: hLabel, coords: `η = ${hEta.toFixed(3)}   φ = ${hPhi.toFixed(3)} rad`, det: 'HEC', cellId: id });
+    active.set(h, { energyGev: energy, energyMev: eMev, cellName: hLabel, coords: `η = ${hEta.toFixed(3)}   φ = ${hPhi.toFixed(3)} rad`, eta: hEta, phi: hPhi, det: 'HEC', cellId: id });
     nHec++;
   }
 
@@ -2346,6 +2349,19 @@ async function processXml(xmlText) {
       const samples = _missLog[kind];
       if (samples.length) console.warn(`[${kind}] ${samples.length} sample miss(es):\n  ` + samples.join('\n  '));
     }
+  }
+  // Feed the ported event-driven cinema tour the visible calorimeter cells
+  // (same {eta,phi,energyMev} shape main feeds via setHeatmapListener) so its
+  // baked path is identical to main's for the same event — the tour algorithm
+  // (js/cinema/tourPath.js) is deterministic.
+  {
+    const _cinemaCells = [];
+    for (const v of active.values()) {
+      if (v && Number.isFinite(v.eta) && Number.isFinite(v.phi)) {
+        _cinemaCells.push({ eta: v.eta, phi: v.phi, energyMev: v.energyMev });
+      }
+    }
+    if (cinema) cinema.updateTourFromEvent({ cells: _cinemaCells, fcal: [] });
   }
   showEventInfo(currentEventInfo);
 }
@@ -2935,234 +2951,24 @@ document.addEventListener('mousemove', e => {
 canvas.addEventListener('mouseleave', () => { clearOutline(); tooltip.hidden = true; });
 controls.addEventListener('end', () => { lastRay = 0; setTimeout(() => doRaycast(mousePos.x, mousePos.y), 50); });
 
-// ── Cinema ────────────────────────────────────────────────────────────────────
-let tourMode = localStorage.getItem('cgv-tour-mode') === '1';
-// Tour path — a single continuous Catmull-Rom spline, no segment-based ease so
-// the camera glides at near-uniform speed with no pauses at waypoints.
-// Scene units = mm. Beam axis is the z-axis (x=y=0). Inside the FCAL z-range
-// (|z| ~4700-6200 mm) the cells have a beam-pipe bore at r < ~70 mm, so we
-// keep the camera at r ≈ 10 mm throughout — always on the axis, never inside
-// any cell volume.
-// Narrative: wide establishing → swing down to the beam axis at +z → approach
-// face-on toward the +z FCAL → glide along the bore while panning the camera
-// to look at each inner wall then back to center → exit face-on through the
-// -z FCAL → arc around outside, see the detector from far → return to start.
-const _tourCamWaypoints = [
-  // Phase 1: wide establishing, swing onto beam axis
-  new THREE.Vector3(  8500,  3500,  12500),  // 1  wide oblique
-  new THREE.Vector3(  3000,  1200,  13000),  // 2  banking toward axis
-
-  // Phase 2: face-on approach to +z FCAL, zoom in
-  new THREE.Vector3(     0,    12,  11500),  // 3  on beam axis, distant
-  new THREE.Vector3(     0,    10,   8500),  // 4  zooming in on +z face
-  new THREE.Vector3(     0,    10,   7000),  // 5  close-up on +z FCAL face
-
-  // Phase 3: pass through FCAL bore, look at inner walls, return to center
-  new THREE.Vector3(     0,    10,   4500),  // 6  inside bore, swinging gaze to interior
-  new THREE.Vector3(     0,    10,   2500),  // 7  pan to +x wall
-  new THREE.Vector3(     0,    10,   1000),  // 8  pan upward diagonal
-  new THREE.Vector3(     0,    10,   -500),  // 9  pan to opposite wall
-  new THREE.Vector3(     0,    10,  -2000),  // 10 pan to -x wall
-  new THREE.Vector3(     0,    10,  -4000),  // 11 return gaze to center
-
-  // Phase 4: exit face-on through -z FCAL, zoom out
-  new THREE.Vector3(     0,    10,  -7000),  // 12 just past -z face, look back at it
-  new THREE.Vector3(     0,    12,  -8500),  // 13 pulling back, -z face still in view
-  new THREE.Vector3(     0,    15, -11500),  // 14 wide on -z axis
-
-  // Phase 5: arc around outside, pass near -x, climb back up and loop
-  new THREE.Vector3( -5500,  2500,  -9500),  // 15 banking out to -x side
-  new THREE.Vector3( -9000,  2000,      0),  // 16 wide pass along -x side
-  new THREE.Vector3( -5500,  3200,   8500),  // 17 arcing back toward +z
-  new THREE.Vector3(  1000,  4500,  12000),  // 18 closing the loop
-];
-const _tourTgtWaypoints = [
-  new THREE.Vector3(     0,     0,     0),  // 1
-  new THREE.Vector3(     0,     0,  3000),  // 2
-  new THREE.Vector3(     0,     0,  5800),  // 3  look at +z FCAL face
-  new THREE.Vector3(     0,     0,  5800),  // 4  hold on the face
-  new THREE.Vector3(     0,     0,  5500),  // 5  zoomed on the face
-  new THREE.Vector3(     0,     0,  1500),  // 6  swinging gaze into the barrel
-  new THREE.Vector3(  2800,   800,  1800),  // 7  +x wall slightly up
-  new THREE.Vector3(  1200,  2400,    400),  // 8  up-right diagonal (safe, 32° off +y)
-  new THREE.Vector3( -1200,  2400,   -400),  // 9  up-left diagonal
-  new THREE.Vector3( -2800,   800, -1800),  // 10 -x wall slightly up
-  new THREE.Vector3(     0,     0, -1500),  // 11 back to center of calorimeter
-  new THREE.Vector3(     0,     0, -5500),  // 12 look back at -z FCAL face
-  new THREE.Vector3(     0,     0, -5500),  // 13 hold on -z face
-  new THREE.Vector3(     0,     0,     0),  // 14 look back at ATLAS (whole thing)
-  new THREE.Vector3(     0,     0,     0),  // 15
-  new THREE.Vector3(     0,     0,     0),  // 16
-  new THREE.Vector3(     0,     0,     0),  // 17
-  new THREE.Vector3(     0,     0,     0),  // 18
-];
-const _tourPosCurve = new THREE.CatmullRomCurve3(_tourCamWaypoints, true, 'centripetal', 0.5);
-const _tourTgtCurve = new THREE.CatmullRomCurve3(_tourTgtWaypoints, true, 'centripetal', 0.5);
-const TOUR_TOTAL_DURATION = 105_000;  // full loop in ms
-const TOUR_BLEND_MS       = 2200;      // smooth entry from current pose
-
-// Exit inertia: track per-frame velocity of camera+target during the active
-// tour so we can keep drifting (with quadratic decay) after user leaves cinema.
-// `var` (not `let`) so the render-loop guard up-file can read it via hoisting.
-var _tourExiting = false;
-let _tourExitT0 = 0;
-const TOUR_EXIT_DURATION = 1400;
-const _tourPrevPos = new THREE.Vector3();
-const _tourPrevTgt = new THREE.Vector3();
-const _tourVelPos  = new THREE.Vector3();
-const _tourVelTgt  = new THREE.Vector3();
-let _tourPrevT = 0;
-
-// Continuous-motion state: `_tourU0` is the spline u-coordinate at time _tourT0
-// so the tour can resume mid-spline when re-entered.
-let _tourT0   = 0;
-let _tourU0   = 0;
-let _tourBlending   = false;
-let _tourBlendT0    = 0;
-const _tourBlendFromPos = new THREE.Vector3();
-const _tourBlendFromTgt = new THREE.Vector3();
-const _tourTmpPos = new THREE.Vector3();
-const _tourTmpTgt = new THREE.Vector3();
-
-function _tourEase(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }  // easeInOutQuad
-
-// Find the spline u-coordinate (0..1) whose point is closest to `v`.
-// Coarse sample then local refine — good enough for smooth resume.
-function _tourNearestU(v) {
-  const N = 240;
-  let bestU = 0, bestD = Infinity;
-  for (let i = 0; i < N; i++) {
-    const u = i / N;
-    _tourPosCurve.getPoint(u, _tourTmpPos);
-    const d = _tourTmpPos.distanceToSquared(v);
-    if (d < bestD) { bestD = d; bestU = u; }
-  }
-  return bestU;
-}
-
-function _tourSampleU(u) {
-  u = ((u % 1) + 1) % 1;
-  _tourPosCurve.getPoint(u, _tourTmpPos);
-  _tourTgtCurve.getPoint(u, _tourTmpTgt);
-}
-
-function _tourTick() {
-  const now = performance.now();
-
-  // Exit-inertia phase: cinema already off, but tour drift continues.
-  if (_tourExiting) {
-    const et = now - _tourExitT0;
-    if (et >= TOUR_EXIT_DURATION) { _tourExiting = false; return; }
-    const decay = Math.pow(1 - et / TOUR_EXIT_DURATION, 2);
-    const dtSec = Math.max(0.001, (now - _tourPrevT) / 1000);
-    camera.position.addScaledVector(_tourVelPos, decay * dtSec);
-    controls.target.addScaledVector(_tourVelTgt, decay * dtSec);
-    controls.update();
-    dirty = true;
-    _tourPrevT = now;
-    return;
-  }
-
-  if (!cinemaMode || !tourMode) return;
-
-  // Blend-in: 2.2 s easeInOut from whatever pose the camera had to the start
-  // of the spline, so entering the tour from anywhere is smooth.
-  if (_tourBlending) {
-    const bt = now - _tourBlendT0;
-    const k  = Math.min(1, bt / TOUR_BLEND_MS);
-    const e  = _tourEase(k);
-    _tourSampleU(_tourU0);
-    camera.position.lerpVectors(_tourBlendFromPos, _tourTmpPos, e);
-    controls.target.lerpVectors(_tourBlendFromTgt, _tourTmpTgt, e);
-    controls.update();
-    dirty = true;
-
-    const dtSec = Math.max(0.001, (now - _tourPrevT) / 1000);
-    _tourVelPos.subVectors(camera.position,  _tourPrevPos).divideScalar(dtSec);
-    _tourVelTgt.subVectors(controls.target, _tourPrevTgt).divideScalar(dtSec);
-    _tourPrevPos.copy(camera.position);
-    _tourPrevTgt.copy(controls.target);
-    _tourPrevT = now;
-
-    if (k >= 1) {
-      _tourBlending = false;
-      _tourT0 = now;  // spline-time clock starts now from u = _tourU0
-    }
-    return;
-  }
-
-  // Continuous spline traversal — no per-segment pauses.
-  const u = (_tourU0 + (now - _tourT0) / TOUR_TOTAL_DURATION) % 1;
-  _tourSampleU(u);
-  camera.position.copy(_tourTmpPos);
-  controls.target.copy(_tourTmpTgt);
-  controls.update();
-  dirty = true;
-
-  // Record per-frame velocity (scene-units / second) for exit inertia.
-  const dtSec = Math.max(0.001, (now - _tourPrevT) / 1000);
-  _tourVelPos.subVectors(camera.position,  _tourPrevPos).divideScalar(dtSec);
-  _tourVelTgt.subVectors(controls.target, _tourPrevTgt).divideScalar(dtSec);
-  _tourPrevPos.copy(camera.position);
-  _tourPrevTgt.copy(controls.target);
-  _tourPrevT = now;
-}
-
-function _startTour() {
-  // Resume from wherever the camera is: find the nearest u on the spline and
-  // blend in over TOUR_BLEND_MS. From u=_tourU0 the spline-time clock advances.
-  const now = performance.now();
-  _tourU0 = _tourNearestU(camera.position);
-  _tourBlending = true;
-  _tourBlendT0  = now;
-  _tourT0       = now;  // will be rebased when blend completes
-  _tourBlendFromPos.copy(camera.position);
-  _tourBlendFromTgt.copy(controls.target);
-  _tourPrevPos.copy(camera.position);
-  _tourPrevTgt.copy(controls.target);
-  _tourVelPos.set(0, 0, 0);
-  _tourVelTgt.set(0, 0, 0);
-  _tourPrevT = now;
-  _tourExiting = false;
-  controls.autoRotate = false;
-}
-
-function enterCinema() {
-  cinemaMode = true; document.body.classList.add('cinema');
-  document.getElementById('btn-cinema').classList.add('on');
-  clearOutline(); tooltip.hidden = true;
-  _tourExiting = false;
-  updateCollisionHud();
-  if (tourMode) {
-    _startTour();
-  } else {
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.55;
-  }
-}
-function exitCinema() {
-  const wasTour = cinemaMode && tourMode;
-  cinemaMode = false; document.body.classList.remove('cinema');
-  controls.autoRotate = false; document.getElementById('btn-cinema').classList.remove('on');
-  updateCollisionHud();
-  if (wasTour) {
-    _tourExiting = true;
-    _tourExitT0  = performance.now();
-    _tourPrevT   = _tourExitT0;
-  }
-}
-function resetCamera() {
-  camera.position.set(0, 0, 12_000);
-  controls.target.set(0, 0, 0);
-  controls.update();
-  dirty = true;
-}
-document.getElementById('btn-cinema').addEventListener('click', () => cinemaMode ? exitCinema() : enterCinema());
-document.getElementById('cinema-exit').addEventListener('click', exitCinema);
-let cDragged = false;
-canvas.addEventListener('mousedown', () => { cDragged = false; });
-canvas.addEventListener('mousemove', () => { cDragged = true; });
-canvas.addEventListener('mouseup',   () => { if (cinemaMode && !cDragged) exitCinema(); });
+// ── Cinema (ported from main: event-driven adaptive tour — js/cinema.js + js/cinema/tourPath.js) ──
+let tourMode = localStorage.getItem('cgv-tour-mode') !== '0';
+setDirtyCallback(() => { dirty = true; });
+cinema = setupCinemaControls({
+  camera,
+  canvas,
+  controls,
+  markDirty: () => { dirty = true; },
+  clearOutline,
+  hideTooltip: () => { tooltip.hidden = true; },
+  updateCollisionHud,
+  getSceneRotationZ: () => 0,
+});
+// Wrappers so existing call sites (keyboard shortcuts, panel, tour toggle) keep working.
+function enterCinema() { cinema.enterCinema(); }
+function exitCinema() { cinema.exitCinema(); }
+function _startTour() { cinema.enableTourMode(); }
+function resetCamera() { cinema.resetCamera(); }
 
 // ── Tooltip toggle ────────────────────────────────────────────────────────────
 document.getElementById('btn-info').addEventListener('click', () => {
@@ -4242,11 +4048,7 @@ document.getElementById('stog-autopen').addEventListener('click', function() {
       // Swap mode live: turning on → smooth entry from current pose;
       // off → fall back to auto-rotate with the cinema ramp restarted.
       if (tourMode) { _startTour(); }
-      else {
-        _tourExiting = false; _tourBlending = false;
-        controls.autoRotate = true;
-        controls.autoRotateSpeed = 0.55;
-      }
+      else { if (cinema) cinema.disableTourMode(); }
     }
   });
 })();
