@@ -95,11 +95,6 @@
     if (x && x.offsetParent !== null) x.click();
     else if (cinemaOn()) $('btn-cinema')?.click();
   };
-  const resetCamera = () => {
-    document.activeElement?.blur?.();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }));
-  };
-
   // -- Sonda: loop rAF próprio que carimba o timestamp de cada frame ---------
   const probe = {
     on: false,
@@ -253,8 +248,10 @@
     const cfg = readCfg();
     const label = ($('cgv-bench-label').value || currentXml() || 'run').trim();
     try {
-      resetCamera();
-      await sleep(1300);
+      // NÃO resetamos a câmera ('r'): com o slicer ativo, 'r' dispara
+      // slicer.resetCamera(), que REVERTE o corte ao padrão (resetState +
+      // realinha aos jatos). O tour converge sozinho no aquecimento, então o
+      // reset é desnecessário — e assim o seu corte/enquadramento ficam intactos.
       enterCinema();
       if (!(await waitFor(cinemaOn, 3000)))
         throw new Error('não entrei no cinema (#btn-cinema não ficou ON)');
