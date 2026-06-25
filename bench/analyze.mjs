@@ -127,6 +127,10 @@ for (const file of listFiles()) {
     `   label=${rec.label}  modo=${rec.mode}  versão=${rec.versionHint}  dpr=${rec.dpr}  viewport=${rec.viewport?.join('×')}`,
   );
   console.log(`   células do evento (TILE+LAr+HEC+FCAL) = ${cells ?? '? (sem cell-counts.json)'}`);
+  if (rec.hud && (rec.hud.draws != null || rec.hud.tris != null || rec.hud.fps != null))
+    console.log(
+      `   HUD do app: ${rec.hud.draws ?? '?'} draws · ${rec.hud.tris ?? '?'} tris · fps(app)=${rec.hud.fps ?? '?'}`,
+    );
   console.log(`   gpu=${rec.gpu}`);
   console.log(`   note=${rec.note || '—'}  ts=${rec.ts}`);
   console.log('─'.repeat(78));

@@ -1,172 +1,122 @@
 # Stress test de FPS — Cinema mode (CGV-Web)
 
-Mede o FPS do Cinema mode em vários XMLs e no Slicer, comparando a **versão atual**
-(`HEAD`) com a **versão anterior às melhorias de performance** (`2cbaaa1`, 10/jun).
+Mede o FPS do Cinema mode em vários XMLs (e no Slicer), comparando a **versão atual**
+(`bench-current` = HEAD) com a **versão anterior às melhorias de performance**
+(`bench-baseline` = `2cbaaa1`, 10/jun).
 
-A medição é feita por um **script externo** (`cgv-bench.js`) que você cola no Console
-do navegador. Ele **não modifica o código do CGV-Web** em nenhuma das versões — só roda
-um loop `requestAnimationFrame` próprio e carimba o tempo de cada frame. É o **mesmo
-método** nas duas versões → comparação justa (o HUD interno do app **não** é comparável
-entre versões: a antiga conta rAF, a nova mede CPU descapada).
+A medição é feita por um **script externo** (`cgv-bench.js`) que você cola no Console do
+navegador. Ele **não modifica o código do CGV-Web** — só roda um loop `requestAnimationFrame`
+próprio e carimba o tempo de cada frame. É o **mesmo método** nas duas versões → comparação
+justa (o HUD interno do app **não** é comparável entre versões: a antiga conta rAF, a nova
+mede CPU descapada).
 
 ---
 
 ## Decisões (e o porquê)
 
-### Medir FPS real, acima do teto do monitor
-O launcher abre o Chrome com `--disable-gpu-vsync --disable-frame-rate-limit`. Sem isso,
-num monitor de 60Hz o `requestAnimationFrame` dispara só 60×/s, o app **renderiza só 60
-frames** e o número trava em 60 — mesmo que a GPU consiga 120/200. As flags removem o teto
-para a gente medir a velocidade **real**.
-
-> Estas flags **não deixam o app mais rápido** e **não favorecem a versão nova**: só deixam
-> a gente *contar* acima de 60. São aplicadas **igual nas duas versões** e **não mexem** nas
-> flags de GPU do app (`powerPreference`/`alpha`/`precision`, que ficam no `renderer.js` de
-> cada versão — flags de linha de comando não sobrescrevem opções de `getContext`).
-
-### Baseline = `2cbaaa1` (verificado)
-Último commit **antes** da reescrita de performance (`1f3b7c9`, 11/jun), mantido intacto.
-Confirmado que tem **a mesma base** que o HEAD:
-
-| Item | HEAD | `2cbaaa1` |
-|---|---|---|
-| Geometria (release) | `geometry-v4` | `geometry-v4` ✅ mesmo GLB |
-| Samples (release) | `samples-v1` | `samples-v1` ✅ mesmos 7 XMLs (manifesto idêntico) |
-| Elementos físicos | fótons, elétrons, múons, taus, jatos, tracks, clusters, hits, MET, vértices | **os mesmos** (introduzidos em 04/mai) ✅ |
-
-Ir para um commit mais antigo **não** melhora isso (a física e a geometria já são as mesmas
-desde maio) — só adicionaria diferenças não relacionadas. `2cbaaa1` isola "todas as
-melhorias" com o mínimo de ruído.
-
-### Ciclos completos e contínuos
-Cada rep é um **ciclo completo** do cinema. O tester entra no cinema **uma vez**, aquece, e
-mede os N ciclos **em sequência** (sem resetar a câmera entre eles) — nada de "voltar do
-zero" no meio. Por isso `ciclo(s)` deve ser **≥ a duração do loop** (atual ~75 s, baseline
-~60 s); o padrão 78 s cobre os dois.
-
-### Segurança
-Se a aba perde o foco / fica oculta (o render loop do app **pausa**) ou se os frames param,
-o run é **abortado e nada é salvo** (medição inválida). Há botão **■ Parar**. Mantenha a
-janela em primeiro plano.
-
-### Dados brutos primeiro
-O JSON guarda o timestamp de **cada frame**. A análise estatística é feita depois com
-`node bench/analyze.mjs`.
-
-### Sobre "o mesmo caminho de câmera"
-No **modo Tour** o caminho difere entre versões (cinema reescrito: 60 s na antiga, 75 s na
-atual) — não dá pra igualar sem mexer no código antigo. Mitigação: (1) dentro de uma versão,
-reseto a câmera antes de cada rep → 3 reps reproduzíveis; (2) o **modo Órbita** (`autoRotate`)
-avança o mesmo ângulo por frame nas duas → varredura uniforme idêntica (comparação mais
-controlada). Recomendado medir **nos dois modos**.
+- **FPS real, sem teto:** o `launch-chrome.bat` abre o Chrome com `--disable-gpu-vsync
+  --disable-frame-rate-limit`. Sem isso, num monitor de 60 Hz o número trava em 60 mesmo que
+  a GPU consiga 120/200. As flags só deixam *contar* acima de 60 — **não** alteram o app, e
+  são aplicadas igual nas duas versões.
+- **Baseline = `2cbaaa1` (verificado):** pai imediato da reescrita de performance, com a
+  **mesma geometria** (`geometry-v4`), os **mesmos 7 XMLs** (`samples-v1`) e os **mesmos
+  elementos físicos**. Mantido intacto.
+- **Ciclos completos e contínuos:** o tester entra no cinema **uma vez**, aquece, e mede N
+  ciclos **em sequência** (sem reset no meio). `ciclo(s)` deve ser **≥ o loop** (atual ~75 s,
+  baseline ~60 s); o padrão 78 s cobre os dois.
+- **Sem reset de câmera:** o tester **não** dispara `r` — com o slicer ativo isso reverteria
+  seu corte. Seu corte/enquadramento ficam intactos.
+- **Segurança:** se a aba perde o foco ou os frames param, o run é **abortado e nada é salvo**.
+  Há botão **■ Parar**. Mantenha a janela em primeiro plano.
+- **Dados brutos primeiro:** o JSON guarda o timestamp de **cada frame** + `cells` (contagem
+  de células do evento) + `hud` (draws/tris/fps do app). Análise depois, com `analyze.mjs`.
 
 ---
 
-## Pré-requisitos (uma vez por máquina)
+## Setup numa máquina nova (ex.: Alienware)
+
+Pré-requisitos no PATH: **git**, **node**, **python**.
 
 ```bash
-# Duas versões coexistindo via worktree (a partir da pasta do repo):
-git worktree add ../cgv-current  HEAD        # versão atual   -> porta 8080
-git worktree add ../cgv-baseline 2cbaaa1     # antes da perf  -> porta 8081
-
-# Em CADA worktree (IMPORTANTE — sem isto o app não carrega: assets ficam em public/):
-npm ci
-npm run fetch:geometry        # baixa CaloGeometry.glb.gz -> public/geometry_data/
-npm run fetch:samples         # baixa os 7 XMLs           -> public/default_xml/
+git clone https://github.com/nipscernlab/cgv-web.git
+cd cgv-web
+git checkout bench-current          # traz o app atual + a pasta bench/
+bench\switch.bat current            # baixa geometria + 7 XMLs (assets ~216 MB, não vêm no git)
+python serve.py 8080                # deixe rodando num terminal dedicado
 ```
 
-Suba os dois servidores (terminais separados):
-
-```bash
-# em ../cgv-current
-python serve.py 8080
-# em ../cgv-baseline
-python serve.py 8081
-```
+> Os XMLs e a geometria **não** estão no git (gitignored); o `switch.bat` os baixa via fetch
+> (mesmos releases nas duas versões). Eles ficam fora do git e **persistem** ao trocar de versão.
 
 ---
 
 ## Padronização da máquina (ANTES de medir)
 
-- **GPU dedicada:** `chrome://gpu` deve mostrar *Hardware accelerated* e a GPU certa
-  (no Aurora R15, a RTX — não a iGPU). Painel NVIDIA → energia = *Máximo desempenho*;
-  Vsync = *Usar configuração do aplicativo*; Windows → Configurações gráficas → Chrome =
-  *Alto desempenho*.
-- **Energia:** plano *Alto desempenho*; Alienware Command Center em *Performance*; desligar
-  economia de bateria / efficiency mode do Chrome.
-- **Janela em primeiro plano, sem cobrir** (o render loop pausa se a aba some). Sem protetor
-  de tela; display não pode desligar.
-- **Mesmo Chrome nas duas versões**; travar auto-update na sessão; anotar a versão.
-- **Fechar** apps de fundo; pausar Windows Update / indexação / OneDrive.
-- **Térmico:** 1 run de descarte para aquecer; deixar o cooldown entre runs.
+- **GPU dedicada:** `chrome://gpu` → *Hardware accelerated* e a GPU certa (no Aurora R15, a
+  RTX — não a iGPU). Painel NVIDIA → energia = *Máximo desempenho*; Vsync = *usar config. do
+  aplicativo*; Windows → Configurações gráficas → Chrome = *Alto desempenho*.
+- **Energia:** plano *Alto desempenho*; Alienware Command Center em *Performance*.
+- **Janela em primeiro plano, sem cobrir** (o render loop do app pausa se a aba some).
+- **Mesmo Chrome** nas duas versões; anote a versão. Feche apps de fundo; pause Windows Update.
+- **Térmico:** 1 run de descarte p/ aquecer; deixe o cooldown entre runs.
 
-> **Safeguard de GPU:** o `gpu` gravado em cada JSON (via WebGL) tem que ser **o mesmo** nas
-> duas versões. Se a antiga cair na iGPU e a nova na dGPU, a comparação está contaminada.
+> O `gpu` gravado em cada JSON tem que ser **o mesmo** nas duas versões. Se a antiga cair na
+> iGPU e a nova na dGPU, a comparação está contaminada.
 
 ---
 
-## Protocolo de medição (por versão)
+## Medir (por versão)
 
-Faça TODA a versão atual primeiro, depois TODA a baseline. Em cada uma:
+1. `bench\launch-chrome.bat 8080` (Chrome com o teto destravado).
+2. **Carregue um XML** pela lista (assista carregar).
+3. (só no caso do Slicer) `Shift+S` p/ ligar o slicer; para **todas as células** abra a cunha
+   até o HUD mostrar `∠ ≈ 360°` (cuidado: passar de 360° volta a 0° = esconde tudo), ou deixe
+   o corte padrão de 90°. **Use o mesmo estado nas duas versões** e anote-o na nota.
+4. Abra o Console (F12), **cole todo o `cgv-bench.js`** → painel no canto.
+5. Ajuste **label** (ex.: `xml1_516761`), **modo** (`tour` ou `tour+slicer`), **nota**
+   (máquina/GPU; e o ângulo do corte se for slicer).
+6. Clique **"▶ Rodar"** e **assista** (não troque de aba). O `~fps` ao vivo deve passar de 60
+   na versão nova. Ao fim, baixa um JSON com os dados brutos.
+7. **Carregue o próximo XML** e repita do passo 4.
 
-1. Abra o navegador pelo launcher (teto destravado):
-   `bench\launch-chrome.bat 8080` (atual) | `bench\launch-chrome.bat 8081` (baseline)
-2. Confira `chrome://gpu` (1ª vez) e volte para a aba do app.
-3. **Carregue o XML #1** pela lista (você assiste carregar).
-4. (só no XML escolhido p/ o Slicer) ligue o **Slicer** com `Shift+S` e espere a geometria
-   inteira aparecer.
-5. Abra o Console (F12), **cole todo o `cgv-bench.js`** e Enter → painel no canto.
-6. Ajuste o **label** (ex.: `xml1_516761`), escolha o **modo** (`tour`/`orbit`; `*+slicer`
-   se o Slicer estiver ligado), preencha a **nota** (máquina/GPU).
-7. Clique **"▶ Rodar"** e **assista** — a câmera faz N ciclos seguidos, sem reset no meio
-   (não troque de aba). O `~fps` ao vivo deve passar de 60 na versão nova; se travar em 60,
-   o vsync não foi destravado (ver Troubleshooting).
-8. Ao fim baixa um JSON com os dados brutos. **Carregue o próximo XML** e repita do passo 5.
-9. (Opcional) clique **"↻ modo Órbita"** no painel e repita no modo controlado.
+**Plano:** 7 XMLs em `tour` + 1 em `tour+slicer`.
 
-Repita TUDO na outra versão (porta diferente). O script é o **mesmo arquivo**, sem mudanças.
-
----
-
-## Matriz de coleta
-
-| Versão | XMLs | Modo(s) | Reps | Loops |
-|---|---|---|---|---|
-| atual (HEAD) | 7 + 1 slicer | tour (+ orbit opcional) | 3 | 24 (48 c/ orbit) |
-| baseline (2cbaaa1) | 7 + 1 slicer | tour (+ orbit opcional) | 3 | 24 (48 c/ orbit) |
-
-Ciclo padrão = 78 s (≥ o loop: atual ~75 s, baseline ~60 s). Os N reps rodam em sequência
-contínua (~`warmup + reps×ciclo` por XML; ex.: 8 + 3×78 ≈ 4 min).
+### Trocar de versão
+```bash
+bench\switch.bat baseline     # ou: current
+```
+Depois **F5 no Chrome** e **re-cole o `cgv-bench.js`** (ele some no reload). O `serve.py` serve
+do disco (sem cache), então o F5 já carrega a versão trocada — mesmo servidor, mesma porta.
 
 ---
 
 ## Formato dos dados (bruto)
 
-Um JSON por run: `{ label, mode, versionHint, url, ua, gpu, dpr, viewport, note, config,
-ts, reps:[{ rep, frames:[ms relativos ao 1º frame], summary }] }` (config = {reps, warmupS,
-cycleS}). O `summary` é só conveniência; a verdade são os arrays `frames`.
+Um JSON por run: `{ label, mode, versionHint, gpu, dpr, viewport, note, cells:{tile,lar,hec,
+fcal,total}, hud:{fps,draws,tris,cpuP50,cpuP95}, config:{reps,warmupS,cycleS}, ts,
+reps:[{ rep, frames:[ms rel. ao 1º frame], summary }] }`. A verdade são os arrays `frames`.
 
-**Análise:** `node bench/analyze.mjs` (todos os JSONs de `bench/`) ou `node bench/analyze.mjs
-arquivo.json`. Reporta, por rep e agregado: FPS médio/mediana/desvio, percentis, 1% e 0.1%
-low, frame-time (p50/p95/p99/max), travadas (<30 fps, >2× mediana), CV de suavidade e um
-perfil FPS×trajetória. A comparação final old×new (speedup por XML) sai cruzando os JSONs
-das duas versões.
+**Análise:** `node bench/analyze.mjs` (todos os JSONs de `bench/`) ou `... arquivo.json`.
+Reporta por rep e agregado: FPS médio/mediana/desvio, percentis, 1% e 0.1% low, frame-time
+(p50/p95/p99/max), travadas (<30 fps), CV de suavidade, células e draws/tris do HUD, e um
+perfil FPS×trajetória. A comparação final atual×baseline (speedup por evento) sai cruzando os
+JSONs das duas versões.
+
+> Para slicer, o `cells` registrado é o do **evento**; a geometria renderizada é a **inteira**
+> (~184k células) — use isso como eixo X nesse caso.
 
 ---
 
 ## Troubleshooting
 
-- **`ERR_CONNECTION_REFUSED`** → o servidor não está rodando nessa porta. Rode `python
-  serve.py 8080` (ou 8081) no worktree certo.
-- **App abre mas fica em "Initializing…" / sem geometria / lista vazia** → faltou o fetch.
-  Rode `npm run fetch:geometry` e `npm run fetch:samples` (assets vão para `public/`).
-- **`~fps` preso em 60** → vsync não destravado: use o `launch-chrome.bat` (não o Chrome
-  normal), painel NVIDIA com Vsync = *config. do aplicativo*, e confira `chrome://gpu`.
-- **GPU diferente entre versões** (campo `gpu` no JSON) → force a mesma dGPU para o Chrome
-  nas duas (Configurações gráficas do Windows / painel NVIDIA).
-- **Run "ABORTADO"** → a aba perdeu o foco ou os frames pararam durante a medição. Mantenha
-  a janela em primeiro plano e refaça (nada inválido é salvo).
-- **"Baixar tudo (0)"** mesmo após rodar → recolou o script depois? O contador agora
-  atualiza a cada run; os JSONs por-run já estão baixados de qualquer forma.
+- **`ERR_CONNECTION_REFUSED`** → `python serve.py 8080` não está rodando.
+- **App em "Initializing…" / lista vazia** → faltou o fetch: `bench\switch.bat current` (ou
+  `node tools\scripts\fetch-geometry.mjs` + `fetch-samples.mjs`).
+- **`~fps` preso em 60** → use o `launch-chrome.bat` (não o Chrome normal); painel NVIDIA com
+  Vsync = *config. do aplicativo*; confira `chrome://gpu`.
+- **Run "ABORTADO"** → a aba perdeu o foco ou os frames pararam. Mantenha em primeiro plano.
+- **GPU diferente entre versões** (campo `gpu`) → force a mesma dGPU pro Chrome nas duas.
+- **`git checkout` falha ao trocar de versão** → há edição não commitada em arquivo versionado;
+  rode `git status` (os outputs `cgv-bench__*.json` são gitignored, não atrapalham).
 
-Cruzo os dados das duas versões no relatório final quando você terminar a coleta.
+Quando tiver os JSONs das duas versões, me avise que cruzo tudo num relatório comparativo.

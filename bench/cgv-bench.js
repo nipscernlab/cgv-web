@@ -78,11 +78,67 @@
   const currentXml = () =>
     document.querySelector('.sample-item.cur .sample-item-name')?.textContent.trim() || '';
 
-  function versionHint() {
-    const hud = [...document.querySelectorAll('body > div')].find((d) =>
-      /draws|FPS/.test(d.textContent || ''),
+  // Acha o HUD de FPS DO APP (exclui o painel do bench, que também contém "FPS").
+  const appHudEl = () =>
+    [...document.querySelectorAll('body > div')].find(
+      (d) => d.id !== 'cgv-bench-panel' && /draws|FPS/.test(d.textContent || ''),
     );
-    return hud && /draws/.test(hud.textContent) ? 'current(perf-hud)' : 'baseline-or-no-perf';
+
+  function versionHint() {
+    const el = appHudEl();
+    return el && /draws/.test(el.textContent) ? 'current(perf-hud)' : 'baseline-or-no-perf';
+  }
+
+  // Lê o HUD do app (cross-check). Atual (?perf=1): fps, draws, tris, cpu p50/p95.
+  // Antiga: só fps (rAF, capado). Guardamos cru + parseado.
+  function readHud() {
+    const el = appHudEl();
+    const raw = el ? (el.textContent || '').replace(/\s+/g, ' ').trim() : null;
+    const out = { raw };
+    let m;
+    if (raw) {
+      if ((m = raw.match(/([\d.]+)\s*FPS/i))) out.fps = +m[1];
+      if ((m = raw.match(/(\d+)\s*draws/))) out.draws = +m[1];
+      if ((m = raw.match(/([\d.]+\s*[MK]?)\s*tris/))) out.tris = m[1].replace(/\s+/g, '');
+      if ((m = raw.match(/cpu\s*([\d.]+)\s*\/\s*([\d.]+)/))) {
+        out.cpuP50 = +m[1];
+        out.cpuP95 = +m[2];
+      }
+    }
+    return out;
+  }
+
+  // Conta células do evento (TILE+LAr+HEC+FCAL) baixando o XML atual 1× (cacheado
+  // por nome). Deixa cada JSON auto-contido. null se não der (ex.: XML do usuário).
+  async function cellCount() {
+    const disp = currentXml();
+    if (!disp) return null;
+    const name = disp.replace(/^test_/, '');
+    const ck = 'cgv-bench-cells:' + name;
+    try {
+      const c = localStorage.getItem(ck);
+      if (c) return JSON.parse(c);
+    } catch (e) {
+      /* ignore */
+    }
+    try {
+      const res = await fetch('./default_xml/' + encodeURIComponent(name));
+      if (!res.ok) return null;
+      const txt = await res.text();
+      const counts = { tile: 0, lar: 0, hec: 0, fcal: 0 };
+      const re = /<(TILE|LAr|HEC|FCAL)\b[^>]*count="(\d+)"/g;
+      let m;
+      while ((m = re.exec(txt))) counts[m[1].toLowerCase()] = +m[2];
+      counts.total = counts.tile + counts.lar + counts.hec + counts.fcal;
+      try {
+        localStorage.setItem(ck, JSON.stringify(counts));
+      } catch (e) {
+        /* ignore */
+      }
+      return counts;
+    } catch (e) {
+      return null;
+    }
   }
 
   // -- Controles de cinema via DOM (ids estáveis nas duas versões) -----------
@@ -248,6 +304,7 @@
     const cfg = readCfg();
     const label = ($('cgv-bench-label').value || currentXml() || 'run').trim();
     try {
+      const cells = await cellCount(); // células do evento (best-effort, cacheado)
       // NÃO resetamos a câmera ('r'): com o slicer ativo, 'r' dispara
       // slicer.resetCamera(), que REVERTE o corte ao padrão (resetState +
       // realinha aos jatos). O tour converge sozinho no aquecimento, então o
@@ -264,6 +321,7 @@
         await measureCycle(i, cfg);
         bounds.push(probe.ts.length);
       }
+      const hud = readHud(); // HUD do app em regime (cross-check: fps/draws/tris)
       const all = probe.stop();
       exitCinema();
       await sleep(800);
@@ -289,6 +347,8 @@
         dpr: window.devicePixelRatio,
         viewport: [window.innerWidth, window.innerHeight],
         note: $('cgv-bench-note').value || '',
+        cells, // {tile,lar,hec,fcal,total} do evento, ou null
+        hud, // HUD do app (fps/draws/tris/cpu) — cross-check
         config: cfg,
         ts: new Date().toISOString(),
         reps,
