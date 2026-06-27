@@ -290,7 +290,10 @@
 }
 
 .bgcp-tabs {
-  display: flex;
+  /* Grid (not flex) so the channel tabs wrap into tidy rows instead of
+     overflowing the 300px popover once there are more than four of them. */
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   margin-bottom: 12px;
   padding: 3px;
@@ -299,13 +302,13 @@
   border: 1px solid var(--border);
 }
 .bgcp-tab {
-  flex: 1;
   padding: 6px 4px;
   border-radius: var(--r-sm);
   color: var(--muted);
   font: 600 9.5px/1 var(--font);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-align: center;
   cursor: pointer;
   transition:
     color var(--motion-fast),
@@ -470,4 +473,56 @@
   background: rgba(99, 152, 255, 0.18);
   color: var(--bright);
   border-color: var(--accent);
+}
+
+/* Cone-opacity slider (Cones tab) */
+.bgcp-slider-row {
+  margin-bottom: 12px;
+}
+.bgcp-slider-label {
+  display: block;
+  margin-bottom: 8px;
+  font: 600 9.5px/1 var(--font);
+  color: var(--muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.bgcp-slider-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bgcp-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  cursor: pointer;
+}
+.bgcp-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--surface-2);
+  cursor: pointer;
+}
+.bgcp-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--surface-2);
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+.bgcp-slider-val {
+  min-width: 34px;
+  text-align: right;
+  font: 600 11px var(--font);
+  color: var(--bright);
+  font-variant-numeric: tabular-nums;
 }

@@ -1459,6 +1459,8 @@
         <button class="bgcp-tab" data-tab="outline" data-i18n="bgcp-tab-outline">Outline</button>
         <button class="bgcp-tab" data-tab="hover" data-i18n="bgcp-tab-hover">Hover</button>
         <button class="bgcp-tab" data-tab="tooltip" data-i18n="bgcp-tab-tooltip">Tooltip</button>
+        <button class="bgcp-tab" data-tab="cone" data-i18n="bgcp-tab-cone">Cones</button>
+        <button class="bgcp-tab" data-tab="hud" data-i18n="bgcp-tab-hud">Info</button>
       </div>
       <div class="bgcp-canvas-row">
         <div class="bgcp-sv" id="bgcp-sv">
@@ -1482,6 +1484,26 @@
       <div class="bgcp-presets-hdr" data-i18n="bgcp-presets">Presets</div>
       <!-- Presets are rendered per active tab by colorpicker.js -->
       <div class="bgcp-presets" id="bgcp-presets"></div>
+      <!-- Cone-opacity slider — shown only on the "Cones" tab -->
+      <div class="bgcp-slider-row" id="bgcp-cone-opacity-row" hidden>
+        <label
+          class="bgcp-slider-label"
+          for="bgcp-cone-opacity"
+          data-i18n="bgcp-cone-opacity"
+        >Cone opacity</label>
+        <div class="bgcp-slider-line">
+          <input
+            type="range"
+            id="bgcp-cone-opacity"
+            class="bgcp-slider"
+            min="0"
+            max="4"
+            step="0.05"
+            value="1"
+          />
+          <span class="bgcp-slider-val" id="bgcp-cone-opacity-val">1.0×</span>
+        </div>
+      </div>
       <button id="bgcp-reset" class="bgcp-reset" data-i18n="bgcp-reset">Reset to Default</button>
     </div>
 

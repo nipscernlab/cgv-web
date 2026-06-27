@@ -1,6 +1,14 @@
 // @ts-check
 import { setAllOutlineColor, setHoverOutlineColor } from './outlines.js';
 import { setBackdropBaseColor } from './sceneBackdrop.js';
+import {
+  setJetConeColor,
+  setJetConeBackdrop,
+  setJetConeOpacity,
+  getJetConeOpacity,
+  CONE_COLOR_DEFAULT,
+  CONE_OPACITY_DEFAULT,
+} from './particles/jets.js';
 import { t } from './i18n/index.js';
 
 // ── Tabbed colour picker (2D SV rectangle + vertical hue strip) ───────────────
@@ -11,6 +19,9 @@ import { t } from './i18n/index.js';
 // to a different channel and reloads that channel's saved colour.
 
 const DEFAULT_BG_HEX = '#020d1c';
+// Matches --bright in base.css: the HUD's stock value colour. Selecting it on
+// the "Info" tab clears the override and restores the two-tone default.
+const HUD_TEXT_DEFAULT = '#f4f6fa';
 const TAB_KEY = 'cgv-color-tab';
 
 /**
@@ -33,7 +44,12 @@ const CHANNELS = [
     presets: ['#0e1014', '#000000', '#1a1a1a', '#0b1f3a', '#020d1c', '#1f2a44', '#ffffff'],
     // sceneBackdrop owns scene.background/fog: the active quality preset
     // decides whether this base colour renders flat or as a radial gradient.
-    apply: (hex) => setBackdropBaseColor(hex),
+    // The cones also watch the backdrop luminance to pick a blend mode that
+    // keeps them visible (additive on dark, normal alpha on light).
+    apply: (hex) => {
+      setBackdropBaseColor(hex);
+      setJetConeBackdrop(hex);
+    },
   },
   {
     id: 'outline',
@@ -61,6 +77,32 @@ const CHANNELS = [
     // hover tooltip and any already-open pinned cards recolour together.
     apply: (hex) => document.documentElement.style.setProperty('--tip-bg', hex),
   },
+  {
+    id: 'cone',
+    titleI18n: 'bgcp-title-cone',
+    def: CONE_COLOR_DEFAULT,
+    key: 'cgv-cone-color',
+    presets: ['#ff8800', '#ffd000', '#ff4d4d', '#6398ff', '#7cff00', '#ffffff', '#000000'],
+    // Cluster-jet ΔR cones. This tab also carries the opacity slider, wired
+    // separately below (the SV/hue picker only edits colour).
+    apply: (hex) => setJetConeColor(hex),
+  },
+  {
+    id: 'hud',
+    titleI18n: 'bgcp-title-hud',
+    def: HUD_TEXT_DEFAULT,
+    key: 'cgv-hud-color',
+    presets: ['#f4f6fa', '#ffffff', '#000000', '#0b1f3a', '#ffd000', '#6398ff'],
+    // The top-left event HUD (date/run/event/lumi/version). Picking the default
+    // clears the override so the keys stay muted and the values bright; any
+    // other colour recolours the whole HUD uniformly — handy on light or
+    // transparent backdrops where the stock light text would wash out.
+    apply: (hex) => {
+      const root = document.documentElement.style;
+      if (hex.toLowerCase() === HUD_TEXT_DEFAULT) root.removeProperty('--hud-color');
+      else root.setProperty('--hud-color', hex);
+    },
+  },
 ];
 
 export function setupColorPicker() {
@@ -77,7 +119,21 @@ export function setupColorPicker() {
   const resetBtn = /** @type {HTMLElement} */ (document.getElementById('bgcp-reset'));
   const presetsWrap = /** @type {HTMLElement} */ (document.getElementById('bgcp-presets'));
   const tabEls = /** @type {HTMLElement[]} */ (Array.from(document.querySelectorAll('.bgcp-tab')));
+  // Cone-only opacity controls (shown when the 'cone' tab is active).
+  const opacityRow = document.getElementById('bgcp-cone-opacity-row');
+  const opacitySlider = /** @type {HTMLInputElement | null} */ (
+    document.getElementById('bgcp-cone-opacity')
+  );
+  const opacityVal = document.getElementById('bgcp-cone-opacity-val');
   if (!btn || !pop) return;
+
+  /** @param {number} v */
+  const fmtOpacity = (v) => v.toFixed(1) + '×';
+  function syncOpacitySlider() {
+    const v = getJetConeOpacity();
+    if (opacitySlider) opacitySlider.value = String(v);
+    if (opacityVal) opacityVal.textContent = fmtOpacity(v);
+  }
 
   // ── Color math helpers ─────────────────────────────────────────────
   /** @param {number} n @param {number} a @param {number} b */
@@ -257,6 +313,9 @@ export function setupColorPicker() {
     renderPresets(ch);
     // Load this channel's current colour into the shared picker UI.
     applyColor(state[id].hex, { save: false, syncCursors: true });
+    // The opacity slider belongs to the cone tab only.
+    if (opacityRow) opacityRow.hidden = id !== 'cone';
+    if (id === 'cone') syncOpacitySlider();
     try {
       localStorage.setItem(TAB_KEY, id);
     } catch (_) {}
@@ -323,9 +382,23 @@ export function setupColorPicker() {
     if (/^#[0-9a-f]{6}$/i.test(v)) applyColor(v, { save: true, syncCursors: true });
   });
 
-  resetBtn.addEventListener('click', () =>
-    applyColor(active().def, { save: true, syncCursors: true }),
-  );
+  if (opacitySlider) {
+    opacitySlider.addEventListener('input', () => {
+      const v = parseFloat(opacitySlider.value);
+      setJetConeOpacity(v);
+      if (opacityVal) opacityVal.textContent = fmtOpacity(v);
+    });
+  }
+
+  resetBtn.addEventListener('click', () => {
+    applyColor(active().def, { save: true, syncCursors: true });
+    // Reset returns the whole active channel to its default — for cones that
+    // includes the opacity, not just the colour.
+    if (active().id === 'cone') {
+      setJetConeOpacity(CONE_OPACITY_DEFAULT);
+      syncOpacitySlider();
+    }
+  });
 
   // ── Popover open/close/position ────────────────────────────────────
   function position() {

@@ -165,14 +165,17 @@ body.panel-unpinned #collision-hud {
 #collision-hud[hidden] {
   display: none !important;
 }
+/* --hud-color (set by the colorpicker "Info" tab) recolours the whole HUD when
+   the user picks a custom colour; left unset it falls back to the default
+   two-tone (muted keys, bright values) so the stock look is unchanged. */
 #collision-hud .ch-key {
-  color: var(--muted);
+  color: var(--hud-color, var(--muted));
   font-size: 9.5px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 #collision-hud .ch-val {
-  color: var(--bright);
+  color: var(--hud-color, var(--bright));
   font-size: 12px;
   letter-spacing: 0.01em;
 }

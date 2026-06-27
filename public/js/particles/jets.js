@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import { getJetGroup, setJetGroup, applyJetThreshold } from '../visibility.js';
 import { makeFatLineMaterial } from '../fatLines.js';
 import { CGV_WAVE_UNIFORM, CGV_WAVE_FADE } from '../collisionReplay.js';
+import { markDirty } from '../renderer.js';
 import {
   _disposeGroup,
   _buildEtaPhiLineGroup,
@@ -89,6 +90,82 @@ void main() {
   side: THREE.DoubleSide,
   blending: THREE.AdditiveBlending,
 });
+
+// ── User controls for the cone colour / opacity / blending ───────────────────
+// Surfaced as the colorpicker.js "Cones" tab. Three knobs keep the cones legible
+// on any backdrop:
+//   • colour   — uColor, so the cone can contrast a dark OR a light scene;
+//   • opacity  — a global multiplier on the per-cone ET alpha (default 1×), so
+//                the user can crank the whisper up to a clearly visible veil;
+//   • blending — additive on dark backdrops (overlapping jets reinforce, the
+//                intended glow) but normal alpha on light ones, where "add onto
+//                white" is a no-op and the cone would vanish. A transparent PNG
+//                export forces normal too: additive writes almost no alpha, so
+//                the cone would be missing from the saved file.
+export const CONE_COLOR_DEFAULT = '#ff8800';
+export const CONE_OPACITY_DEFAULT = 1;
+export const CONE_OPACITY_MAX = 4;
+const CONE_OPACITY_KEY = 'cgv-cone-opacity';
+
+let _coneOpacityScale = (() => {
+  try {
+    const v = parseFloat(localStorage.getItem(CONE_OPACITY_KEY) ?? '');
+    return Number.isFinite(v) ? Math.max(0, Math.min(CONE_OPACITY_MAX, v)) : CONE_OPACITY_DEFAULT;
+  } catch (_) {
+    return CONE_OPACITY_DEFAULT;
+  }
+})();
+let _bgIsLight = false; // backdrop luminance says "use normal blending"
+let _forceNormalBlend = false; // transparent PNG capture in progress
+
+function _applyConeBlending() {
+  const mode = _bgIsLight || _forceNormalBlend ? THREE.NormalBlending : THREE.AdditiveBlending;
+  if (_CONE_MAT.blending !== mode) {
+    _CONE_MAT.blending = mode;
+    _CONE_MAT.needsUpdate = true;
+  }
+  markDirty();
+}
+
+export function getJetConeOpacity() {
+  return _coneOpacityScale;
+}
+
+/** @param {number} scale  global cone-alpha multiplier, 0..CONE_OPACITY_MAX. */
+export function setJetConeOpacity(scale) {
+  _coneOpacityScale = Math.max(0, Math.min(CONE_OPACITY_MAX, Number(scale) || 0));
+  try {
+    localStorage.setItem(CONE_OPACITY_KEY, String(_coneOpacityScale));
+  } catch (_) {
+    /* ignore */
+  }
+  markDirty();
+}
+
+/** @param {string} hex  cone fill colour. */
+export function setJetConeColor(hex) {
+  _CONE_MAT.uniforms.uColor.value.set(hex);
+  _CONE_MAT.uniformsNeedUpdate = true;
+  markDirty();
+}
+
+// Perceptual luminance of the backdrop → pick a blend mode the cone survives.
+/** @param {string} hex  current scene background colour. */
+export function setJetConeBackdrop(hex) {
+  const c = new THREE.Color(hex);
+  const lum = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; // 0..1
+  _bgIsLight = lum > 0.45;
+  _applyConeBlending();
+}
+
+// Transparent PNG export (screenshot.js) blanks the scene background; force
+// normal alpha for the capture so the cone writes real alpha into the file,
+// then restore the backdrop-driven mode.
+/** @param {boolean} on */
+export function setJetConeTransparentCapture(on) {
+  _forceNormalBlend = !!on;
+  _applyConeBlending();
+}
 
 // User toggle for the ΔR cones (Helpers panel) — some users prefer the axis
 // lines alone. Persisted per browser; default on.
@@ -168,7 +245,7 @@ function _attachJetCone(line, rJet) {
   const a = 0.03 + 0.085 * Math.min(1, Math.max(0, (etGev ?? 30) / 150));
   cone.userData.coneAlpha = a;
   cone.onBeforeRender = () => {
-    _CONE_MAT.uniforms.uAlpha.value = cone.userData.coneAlpha;
+    _CONE_MAT.uniforms.uAlpha.value = cone.userData.coneAlpha * _coneOpacityScale;
     _CONE_MAT.uniformsNeedUpdate = true;
   };
   cone.raycast = () => {}; // the axis line stays the hover target

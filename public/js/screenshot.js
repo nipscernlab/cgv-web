@@ -1,4 +1,5 @@
 import { createFrameRenderer, drawPinnedCards, drawCollisionInfo } from './frameCompositor.js';
+import { setJetConeTransparentCapture } from './particles/jets.js';
 
 export function setupScreenshotControls({
   camera,
@@ -69,7 +70,12 @@ export function setupScreenshotControls({
 
     const transparentBg = !!document.getElementById('shot-transparent')?.checked;
     const savedBg = scene.background;
-    if (transparentBg) scene.background = null;
+    if (transparentBg) {
+      scene.background = null;
+      // Additive cones write almost no alpha and would vanish from the file;
+      // normal blending makes them survive a transparent export.
+      setJetConeTransparentCapture(true);
+    }
 
     // The slicer's editor gizmo is a screen-space helper — keep it out of shots.
     const slicerGroup = slicer.getGroup();
@@ -90,7 +96,10 @@ export function setupScreenshotControls({
     const showCollision = !!document.getElementById('shot-show-collision')?.checked;
     if (showCollision) drawCollisionInfo(ctx, getLastEventInfo(), scale);
 
-    if (transparentBg) scene.background = savedBg;
+    if (transparentBg) {
+      scene.background = savedBg;
+      setJetConeTransparentCapture(false);
+    }
     camera.aspect = origAspect;
     camera.fov = origFov;
     camera.updateProjectionMatrix();
