@@ -484,3 +484,147 @@ registerViewerShortcuts({
   toggleAllGhosts,
   toggleMinimap,
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BENCH INSTRUMENTATION HOOK — window.__cgvApp  (current branch)
+// ------------------------------------------------------------------------------
+// Same API the baseline branch exposes, so the external suite (js/bench.js) drives
+// both versions identically. Installed ONLY under ?bench=1 → normal load unaffected.
+//
+// FAIRNESS CONTRACT (identical to baseline): the hook adds NOTHING to the render
+// loop — no per-frame callback, no wrapping of renderer.render, no counter reset.
+// draws/tris are read on demand from the native renderer.info (three.js keeps them
+// every render regardless of ?perf). Here the render loop resets renderer.info per
+// frame (autoReset=true / manual reset around the composer), so the counters are
+// PER-FRAME (accumulates:false) — the runner samples them directly. The comparable
+// metric is the runner's external rAF frame-time. No CPU timer is injected.
+// ══════════════════════════════════════════════════════════════════════════════
+if (new URLSearchParams(location.search).has('bench')) {
+  const _benchCells = (xmlText) => {
+    const c = { tile: 0, lar: 0, hec: 0, fcal: 0 };
+    const re = /<(TILE|LAr|HEC|FCAL)\b[^>]*count="(\d+)"/g;
+    let m;
+    while ((m = re.exec(xmlText))) c[m[1].toLowerCase()] = +m[2];
+    c.total = c.tile + c.lar + c.hec + c.fcal;
+    return c;
+  };
+
+  window.__cgvApp = {
+    apiVersion: 1,
+    version: 'current', // authoritative — hard-coded per branch
+
+    isReady: () => !!(/** @type {any} */ (window).__cgvReady),
+    whenReady(timeoutMs = 60000) {
+      return new Promise((resolve, reject) => {
+        const t0 = performance.now();
+        const tick = () => {
+          if (/** @type {any} */ (window).__cgvReady) return resolve();
+          if (performance.now() - t0 > timeoutMs) return reject(new Error('app not ready'));
+          setTimeout(tick, 100);
+        };
+        tick();
+      });
+    },
+
+    // Native structural counters — read-only, ZERO per-frame cost. On this branch
+    // renderer.info resets each frame, so calls/triangles are PER-FRAME values.
+    counters() {
+      const info = /** @type {any} */ (renderer).info && /** @type {any} */ (renderer).info.render;
+      if (!info) return null;
+      const r = /** @type {any} */ (renderer);
+      return {
+        calls: info.calls,
+        triangles: info.triangles,
+        accumulates: false,
+        dpr: r.getPixelRatio ? r.getPixelRatio() : window.devicePixelRatio,
+      };
+    },
+
+    async samples() {
+      const r = await fetch('./default_xml/index.json');
+      return r.ok ? r.json() : [];
+    },
+    currentSample() {
+      return (
+        document
+          .querySelector('.sample-item.cur .sample-item-name')
+          ?.textContent.trim()
+          .replace(/^test_/, '') || null
+      );
+    },
+    // Mirror the sidebar loader, but awaitable. `name` is the raw filename from
+    // index.json (the sidebar shows it as "test_<name>").
+    async loadSample(name) {
+      await this.whenReady();
+      const res = await fetch('./default_xml/' + encodeURIComponent(name));
+      if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + name);
+      const txt = await res.text();
+      const t0 = performance.now();
+      await processXml(txt);
+      const parseMs = +(performance.now() - t0).toFixed(1);
+      document.querySelectorAll('.sample-item.cur').forEach((b) => b.classList.remove('cur'));
+      [...document.querySelectorAll('.sample-item .sample-item-name')]
+        .find((s) => s.textContent.trim().replace(/^test_/, '') === name)
+        ?.closest('.sample-item')
+        ?.classList.add('cur');
+      return { name, cells: _benchCells(txt), parseMs, bytes: txt.length };
+    },
+
+    cinema: {
+      isOn: () => cinema.isCinemaMode(),
+      enter() {
+        if (!cinema.isCinemaMode()) enterCinema();
+      },
+      exit() {
+        if (cinema.isCinemaMode()) exitCinema();
+      },
+    },
+
+    // Slicer is reimplemented on this branch (GPU wedge). The wedge angle is not
+    // publicly settable (enable() resets to 90° then auto-fits the leading jets),
+    // and show-all is intrinsic to the slicer here — so set() just enables/disables
+    // and get() records the ACTUAL cut so the JSON stays transparent.
+    slicer: {
+      set(on /* , opts */) {
+        if (on) {
+          if (!slicer.isActive()) slicer.enable();
+        } else if (slicer.isActive()) {
+          slicer.disable();
+        }
+      },
+      get() {
+        const m = slicer.getMaskState ? slicer.getMaskState() : {};
+        return {
+          active: slicer.isActive(),
+          wedgeDeg: m.thetaLen != null ? +((m.thetaLen * 180) / Math.PI).toFixed(1) : null,
+          showAll: slicer.isShowAllCells ? slicer.isShowAllCells() : slicer.isActive(),
+        };
+      },
+    },
+
+    event() {
+      try {
+        return getLastEventInfo() || null;
+      } catch {
+        return null;
+      }
+    },
+    geometry() {
+      try {
+        const e = performance
+          .getEntriesByType('resource')
+          .find((r) => /CaloGeometry\.glb\.gz(?:$|\?)/.test(r.name) && r.transferSize > 0);
+        if (!e) return { fromCache: true, loadMs: null, bytes: null };
+        return {
+          fromCache: e.transferSize === 0,
+          loadMs: +e.duration.toFixed(1),
+          bytes: e.encodedBodySize || null,
+        };
+      } catch {
+        return null;
+      }
+    },
+  };
+
+  console.log('[cgv] bench hook installed — version=current, render-neutral (?bench=1)');
+}

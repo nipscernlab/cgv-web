@@ -1820,6 +1820,17 @@
     </button>
 
     <script type="module" src="./js/main.js"></script>
+    <!-- Bench harness auto-loader: injects the external FPS benchmark panel only
+         when ?bench=1 is present. No effect on a normal load. Drives the app via
+         window.__cgvApp (installed by main.js under the same flag). -->
+    <script>
+      if (new URLSearchParams(location.search).has('bench')) {
+        const s = document.createElement('script');
+        s.src = './js/bench.js';
+        s.defer = true;
+        document.head.appendChild(s);
+      }
+    </script>
     <script src="../../assets/js/analytics.js" defer></script>
   </body>
 </html>
