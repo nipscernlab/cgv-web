@@ -642,6 +642,41 @@ export function createSlicerController({
     _frameWedgeView();
   }
 
+  // ── Bench drive (external FPS suite; only reachable via window.__cgvApp under
+  //    ?bench=1, never wired to input, so normal rendering is untouched) ───────
+  // Programmatic axis "drag" that replicates a real pointer drag faithfully: the
+  // suite calls benchDragBegin() (so _dragDepth>0 → isDragging() true → main.js's
+  // onMaskChange takes the same light GPU-uniform path a live drag uses), then
+  // benchSetAxis() per frame across the sweep, then benchDragEnd() which runs the
+  // one deferred heavy refresh exactly like a pointerup. This is what makes the
+  // measured per-step cost the version's REAL drag cost (GPU uniform here; the
+  // baseline branch recomputes the CPU mask each step).
+  function benchAxes() {
+    return {
+      theta: { min: 0, max: TWO_PI, start: slicerThetaLength, unit: 'rad' },
+      phi: { min: slicerPhi, max: slicerPhi + TWO_PI, start: slicerPhi, unit: 'rad' },
+      z: { min: -_maxHeight, max: _maxHeight, start: slicerZOffset, unit: 'mm' },
+      height: { min: SLICER_HEIGHT_MIN, max: _maxHeight, start: slicerHalfHeight * 2, unit: 'mm' },
+    };
+  }
+  function benchDragBegin() {
+    _dragDepth++;
+  }
+  function benchDragEnd() {
+    _dragDepth = Math.max(0, _dragDepth - 1);
+    updateBasis();
+  }
+  function benchSetAxis(axis, v) {
+    if (axis === 'theta') slicerThetaLength = ((v % TWO_PI) + TWO_PI) % TWO_PI;
+    else if (axis === 'phi') slicerPhi = v;
+    else if (axis === 'z') slicerZOffset = v;
+    else if (axis === 'height')
+      slicerHalfHeight = Math.max(SLICER_HEIGHT_MIN, Math.min(_maxHeight, v)) * 0.5;
+    else return;
+    updateBasis();
+    markDirty?.();
+  }
+
   return {
     disable,
     enable,
@@ -655,5 +690,9 @@ export function createSlicerController({
     refreshSize,
     resetCamera,
     toggle,
+    benchAxes,
+    benchDragBegin,
+    benchDragEnd,
+    benchSetAxis,
   };
 }

@@ -137,7 +137,7 @@ const cellsOf = (sc) => {
   const key = (sc.label || '').replace(/^test_/, '');
   return CELLTAB[key]?.total ?? null;
 };
-const scenKey = (sc) => `${sc.kind}::${sc.label}`;
+const scenKey = (sc) => `${sc.kind}::${sc.label}${sc.axis ? '::' + sc.axis : ''}`;
 
 // ── Detalhe por arquivo/versão ──────────────────────────────────────────────
 const loaded = [];
@@ -169,8 +169,8 @@ for (const file of listFiles()) {
     const dpf = avgOf(sc.reps, 'drawsPerFrame');
     const tpf = avgOf(sc.reps, 'trisPerFrame');
     console.log(
-      `▶ ${sc.kind}  ${sc.label}` +
-        `${sc.slicer ? `  (slicer ∠${sc.slicer.wedgeDeg}°, show-all)` : ''}`,
+      `▶ ${sc.kind}${sc.axis ? ' [' + sc.axis + ']' : ''}  ${sc.label}` +
+        `${sc.slicer && sc.slicer.wedgeDeg != null ? `  (∠${sc.slicer.wedgeDeg}°)` : ''}`,
     );
     console.log(
       `   células(evento)=${cells ?? '?'}   draws/frame=${dpf ?? '?'}   tris/frame=${tpf ?? '?'}` +
@@ -248,7 +248,13 @@ if (base && cur) {
     const cd = avgOf(cMap.get(k).reps, 'drawsPerFrame');
     const bt = avgOf(bMap.get(k).reps, 'trisPerFrame');
     const ct = avgOf(cMap.get(k).reps, 'trisPerFrame');
-    const lbl = k.replace('::', ' ').replace(/\.xml$/, '');
+    const scB = bMap.get(k);
+    const lbl =
+      (scB.kind === 'slicer-drag' ? 'drag:' + scB.axis : scB.kind) +
+      ' ' +
+      String(scB.label || '')
+        .replace(/^JiveXML_/, '')
+        .replace(/\.xml$/, '');
     console.log(
       row([
         lbl,

@@ -600,6 +600,24 @@ if (new URLSearchParams(location.search).has('bench')) {
           showAll: slicer.isShowAllCells ? slicer.isShowAllCells() : slicer.isActive(),
         };
       },
+      // Axis-drag surface (see slicer.js benchAxes/benchDrag*). Free axes here:
+      // theta (wedge opening), phi (azimuth), z (beam translation), height.
+      axes() {
+        try {
+          return slicer.benchAxes ? slicer.benchAxes() : null;
+        } catch {
+          return null;
+        }
+      },
+      dragBegin() {
+        slicer.benchDragBegin?.();
+      },
+      dragSet(axis, v) {
+        slicer.benchSetAxis?.(axis, v);
+      },
+      dragEnd() {
+        slicer.benchDragEnd?.();
+      },
     },
 
     event() {

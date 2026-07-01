@@ -26,7 +26,7 @@
   'use strict';
 
   const SCHEMA = 'cgv-bench/2';
-  const DEFAULTS = { reps: 3, warmupS: 8, cycleS: 78, slicerDeg: 180 };
+  const DEFAULTS = { reps: 3, warmupS: 8, cycleS: 78, slicerDeg: 180, dragS: 8 };
   const LS_KEY = 'cgv-bench-suite';
 
   // Limpeza de instância anterior (recarga segura).
@@ -139,6 +139,7 @@
     warmupS: Math.max(0, +$('cgv-bench-warmup').value || DEFAULTS.warmupS),
     cycleS: Math.max(10, +$('cgv-bench-cycle').value || DEFAULTS.cycleS),
     slicerDeg: Math.max(0, Math.min(360, +$('cgv-bench-slicer').value || DEFAULTS.slicerDeg)),
+    dragS: Math.max(0, +$('cgv-bench-drag').value || DEFAULTS.dragS),
   });
 
   const setStatus = (msg, color) => {
@@ -242,6 +243,91 @@
     return { reps, counters: { accumulates: !!meta.accumulates, dpr: meta.dpr } };
   }
 
+  // -- Mede UM eixo do slicer arrastado como um usuário faria -----------------
+  // Varre start -> max -> min -> start (faixa inteira + volta ao corte original),
+  // dirigindo e carimbando o tempo no MESMO rAF. A régua é o frame-time. A câmera
+  // fica PARADA (o cenário sai do cinema antes), então o que se mede é o custo do
+  // arraste: baseline recomputa a máscara na CPU a cada passo, current só atualiza
+  // um uniform na GPU. Um watchdog em setInterval (que dispara mesmo se o rAF
+  // parar) aborta se a aba ocultar ou os frames pararem.
+  async function measureDragAxis(app, axis, desc, cfg, tag) {
+    const { min, max, start } = desc;
+    const d1 = Math.abs(max - start),
+      d2 = Math.abs(max - min),
+      d3 = Math.abs(start - min);
+    const total = d1 + d2 + d3 || 1;
+    const at = (frac) => {
+      let x = frac * total;
+      if (x <= d1) return start + Math.sign(max - start || 1) * x;
+      x -= d1;
+      if (x <= d2) return max + Math.sign(min - max || -1) * x;
+      x -= d2;
+      return min + Math.sign(start - min || 1) * x;
+    };
+    const ts = [];
+    const c0 = app.counters();
+    app.slicer.dragBegin();
+    const durMs = cfg.dragS * 1000;
+    try {
+      await new Promise((resolve, reject) => {
+        const t0 = performance.now();
+        const wd = setInterval(() => {
+          const last = ts.length ? ts[ts.length - 1] : t0;
+          if (run.aborted) {
+            clearInterval(wd);
+            reject(new Error(run.reason));
+          } else if (document.hidden) {
+            clearInterval(wd);
+            reject(new Error('aba oculta — frames pausados'));
+          } else if (performance.now() - last > 2500) {
+            clearInterval(wd);
+            reject(new Error('frames pararam (app pausou? janela em foco?)'));
+          }
+        }, 400);
+        const tick = (now) => {
+          if (run.aborted) {
+            clearInterval(wd);
+            return reject(new Error(run.reason));
+          }
+          ts.push(now);
+          const el = now - t0;
+          const n = ts.length;
+          const inst = n > 11 ? Math.round(10000 / (ts[n - 1] - ts[n - 11])) : '…';
+          setStatus(`${tag} · ${((durMs - el) / 1000).toFixed(0)}s · ~${inst} fps · ${n} frames`, '#66ccff');
+          if (el >= durMs) {
+            clearInterval(wd);
+            return resolve();
+          }
+          app.slicer.dragSet(axis, at(el / durMs));
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+    } finally {
+      try {
+        app.slicer.dragSet(axis, start); // volta ao corte original
+        app.slicer.dragEnd();
+      } catch (_) {}
+    }
+    const c1 = app.counters();
+    if (ts.length < 20) throw new Error('frames insuficientes — eixo inválido');
+    const base = ts[0] || 0;
+    const pf = perFrameCounters(c0, c1, ts.length);
+    return {
+      counters: { accumulates: !!(c1 && c1.accumulates), dpr: c1 ? c1.dpr : null },
+      reps: [
+        {
+          rep: 1,
+          frames: ts.map((t) => +(t - base).toFixed(3)),
+          drawsPerFrame: pf.drawsPerFrame,
+          trisPerFrame: pf.trisPerFrame,
+          counters: { start: c0, end: c1 },
+          summary: summarize(ts),
+        },
+      ],
+    };
+  }
+
   // -- Execução da SUÍTE inteira ---------------------------------------------
   async function runSuite() {
     const app = window.__cgvApp;
@@ -321,6 +407,53 @@
         }
       }
 
+      // ── Cenários de DRAG do slicer, um por EIXO livre (câmera PARADA) ──────
+      // No último XML: liga o slicer, sai do cinema e arrasta cada eixo pela
+      // faixa inteira + volta ao corte original, medindo cada eixo em separado.
+      if (cfg.dragS > 0 && names.length && app.slicer.axes) {
+        const name = names[names.length - 1];
+        setPhase(`slicer-drag: ${name}`, '#f78c6b');
+        try {
+          const info = await app.loadSample(name);
+          app.cinema.exit(); // câmera PARADA durante o arraste
+          await sleep(300);
+          app.slicer.set(true, { showAll: true });
+          await sleep(600);
+          const axes = app.slicer.axes();
+          if (!axes) {
+            scenarios.push({ kind: 'slicer-drag', label: name, error: 'axes() indisponível' });
+          } else {
+            for (const axis of Object.keys(axes)) {
+              const tag = `drag ${axis} · ${name}`;
+              setPhase(`slicer-drag: ${axis} (${name})`, '#f78c6b');
+              try {
+                const res = await measureDragAxis(app, axis, axes[axis], cfg, tag);
+                scenarios.push({
+                  kind: 'slicer-drag',
+                  axis,
+                  label: name,
+                  cells: info.cells,
+                  slicer: app.slicer.get(),
+                  counters: res.counters,
+                  reps: res.reps,
+                });
+              } catch (e) {
+                if (run.aborted) throw e;
+                scenarios.push({ kind: 'slicer-drag', axis, label: name, error: e.message });
+                setStatus(`falhou drag ${axis}: ${e.message} — sigo`, '#ffd166');
+              }
+            }
+          }
+        } catch (e) {
+          if (run.aborted) throw e;
+          scenarios.push({ kind: 'slicer-drag', label: name, error: e.message });
+        } finally {
+          try {
+            app.slicer.set(false, { showAll: false });
+          } catch (_) {}
+        }
+      }
+
       const rec = {
         schema: SCHEMA,
         version: app.version,
@@ -393,7 +526,14 @@
   function toggleRunUI(busy) {
     $('cgv-bench-run').style.display = busy ? 'none' : 'block';
     $('cgv-bench-stop').style.display = busy ? 'block' : 'none';
-    for (const id of ['cgv-bench-reps', 'cgv-bench-warmup', 'cgv-bench-cycle', 'cgv-bench-slicer', 'cgv-bench-note'])
+    for (const id of [
+      'cgv-bench-reps',
+      'cgv-bench-warmup',
+      'cgv-bench-cycle',
+      'cgv-bench-slicer',
+      'cgv-bench-drag',
+      'cgv-bench-note',
+    ])
       $(id).disabled = busy;
   }
 
@@ -428,8 +568,11 @@
       <label style="flex:1">aquece(s) ${inp('cgv-bench-warmup', DEFAULTS.warmupS, 'number')}</label>
       <label style="flex:1.2">ciclo(s) ${inp('cgv-bench-cycle', DEFAULTS.cycleS, 'number')}</label>
     </div>
-    <label style="display:block;margin:4px 0;font-size:11px">slicer ∠° no último XML (0=pular) ${inp('cgv-bench-slicer', DEFAULTS.slicerDeg, 'number')}</label>
-    <div style="font-size:10px;color:#7c8aa0;margin:-2px 0 6px">ciclo ≥ loop do cinema (~75s). 1 clique roda TODOS os XMLs + slicer.</div>
+    <div style="display:flex;gap:6px;margin:4px 0;font-size:11px">
+      <label style="flex:1">slicer ∠° (0=pular) ${inp('cgv-bench-slicer', DEFAULTS.slicerDeg, 'number')}</label>
+      <label style="flex:1">drag s/eixo (0=pular) ${inp('cgv-bench-drag', DEFAULTS.dragS, 'number')}</label>
+    </div>
+    <div style="font-size:10px;color:#7c8aa0;margin:-2px 0 6px">ciclo ≥ loop do cinema (~75s). 1 clique: TODOS os XMLs + slicer + drag por eixo.</div>
     <button id="cgv-bench-run" style="width:100%;background:#1f6feb;color:#fff;border:0;border-radius:6px;padding:8px;font-weight:600;cursor:pointer">▶ Rodar suíte completa</button>
     <button id="cgv-bench-stop" style="display:none;width:100%;background:#ef476f;color:#fff;border:0;border-radius:6px;padding:8px;font-weight:600;cursor:pointer">■ Parar</button>
     <div id="cgv-bench-phase" style="margin-top:8px;min-height:15px;color:#8a97a8;font-size:11px;font-weight:600">ocioso</div>
