@@ -1,7 +1,56 @@
-# ── Build artifacts ────────────────────────────────────────────────────────────
+# ── Node / build artifacts ─────────────────────────────────────────────────────
 node_modules/
+parser/target/
 
-# ── Node.js project files (not needed for static site) ────────────────────────
-package-lock.json
+# ── Geometry assets (hosted on GitHub Releases, fetched by npm run fetch:geometry)
+public/geometry_data/*.glb
+public/geometry_data/*.glb.gz
+public/geometry_data/*.root
 
-parser/target
+# ── JiveXML samples (hosted on GitHub Releases, fetched by npm run fetch:samples)
+public/default_xml/*.xml
+public/default_xml/index.json
+
+# ── Bench outputs (FPS stress test) — só o tooling é versionado, não os resultados
+bench/cgv-bench__*.json
+
+# ── Temporary / scratch data dumps ─────────────────────────────────────────────
+# Ad-hoc ATLAS XML scratch folders produced during local experimentation.
+tmp_atlas_*/
+tmp/
+/atlantis
+
+# ── Browser profiles (created when testing via headless Chrome) ───────────────
+.chrome-headless/
+
+# ── OS cruft ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Environment / secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Committed npm lockfile is intentional (build reproducibility).
+# If you want to exclude it, uncomment the next line:
+# package-lock.json
+.smoke/
+# Per-preset screenshot sets copied from .smoke/ for A/B comparison.
+.smoke-*/
