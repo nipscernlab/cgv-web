@@ -173,7 +173,7 @@ for (const file of listFiles()) {
         `${sc.slicer && sc.slicer.wedgeDeg != null ? `  (∠${sc.slicer.wedgeDeg}°)` : ''}`,
     );
     console.log(
-      `   células(evento)=${cells ?? '?'}   draws/frame=${dpf ?? '?'}   tris/frame=${tpf ?? '?'}` +
+      `   células(evento)=${cells ?? '?'}   renderizadas=${sc.renderedCells ?? '?'}   draws/frame=${dpf ?? '?'}   tris/frame=${tpf ?? '?'}` +
         `${sc.parseMs != null ? '   parse=' + sc.parseMs + ' ms' : ''}`,
     );
     const pooled = statsOf(pooledFrames(sc.reps));
@@ -274,6 +274,25 @@ if (base && cur) {
       `  Speedup FPS mediana:  min ${Math.min(...speedups).toFixed(2)}×   ` +
         `média-geométrica ${gmean(speedups).toFixed(2)}×   max ${Math.max(...speedups).toFixed(2)}×   (${speedups.length} cenários)`,
     );
+  }
+  // Verificação de justiça: as células RENDERIZADAS têm que bater entre as versões
+  // (thresholds normalizados a 0 no loadSample). Se diferirem, o workload não é o
+  // mesmo e a comparação está contaminada.
+  const cellMismatch = keys.filter((k) => {
+    const b = bMap.get(k).renderedCells,
+      c = cMap.get(k).renderedCells;
+    return b != null && c != null && b !== c;
+  });
+  if (cellMismatch.length) {
+    console.log(
+      `  ⚠ células RENDERIZADAS diferem em ${cellMismatch.length} cenário(s) — workload não idêntico:`,
+    );
+    for (const k of cellMismatch)
+      console.log(
+        `      ${k.replace(/::/g, ' ')}: baseline=${bMap.get(k).renderedCells} vs current=${cMap.get(k).renderedCells}`,
+      );
+  } else if (keys.some((k) => bMap.get(k).renderedCells != null)) {
+    console.log('  ✓ células renderizadas conferem entre as versões (workload idêntico).');
   }
   console.log(`  baseline: ${path.basename(base.file)}   (gpu=${base.meta.gpu})`);
   console.log(`  current:  ${path.basename(cur.file)}   (gpu=${cur.meta.gpu})`);

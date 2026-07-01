@@ -4618,8 +4618,25 @@ if (new URLSearchParams(location.search).has('bench')) {
       const t0 = performance.now();
       await processXml(txt);
       const parseMs = +(performance.now() - t0).toFixed(1);
+      // FAIRNESS: normalize the energy thresholds to 0 so BOTH branches render the
+      // SAME cells. Defaults differ (baseline HEC=600 MeV vs current HEC=200 MeV);
+      // at 0 every event cell with energy ≥ 0 renders, on both.
+      try {
+        thrTileMev = 0;
+        thrLArMev = 0;
+        thrHecMev = 0;
+        thrFcalMev = 0;
+        applyThreshold();
+        applyFcalThreshold();
+      } catch (_) {}
       _markCur(name);
-      return { name, cells: _benchCells(txt), parseMs, bytes: txt.length };
+      return {
+        name,
+        cells: _benchCells(txt),
+        parseMs,
+        bytes: txt.length,
+        activeCells: typeof active !== 'undefined' && active ? active.size : null,
+      };
     },
 
     // ── cinema (drive via the same stable DOM the user clicks) ────────────────
