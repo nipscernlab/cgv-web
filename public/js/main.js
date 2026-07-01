@@ -4657,6 +4657,35 @@ if (new URLSearchParams(location.search).has('bench')) {
           showAll: showAllCells,
         };
       },
+      // Axis-drag surface. Free axes on baseline: theta (wedge opening), z (beam
+      // translation), height. Each dragSet recomputes the CPU mask via
+      // _applySlicerMask — exactly what a real pointer drag does here, so the
+      // measured per-step cost is the real (expensive) baseline drag cost. There
+      // is no azimuth (phi) axis on this branch.
+      axes() {
+        return {
+          theta: { min: 0, max: 2 * Math.PI, start: slicerThetaLength, unit: 'rad' },
+          z: { min: -SLICER_HEIGHT_MAX, max: SLICER_HEIGHT_MAX, start: slicerZOffset, unit: 'mm' },
+          height: {
+            min: SLICER_HEIGHT_MIN,
+            max: SLICER_HEIGHT_MAX,
+            start: slicerHalfHeight * 2,
+            unit: 'mm',
+          },
+        };
+      },
+      dragBegin() {},
+      dragSet(axis, v) {
+        if (axis === 'theta') slicerThetaLength = Math.max(0, Math.min(2 * Math.PI, v));
+        else if (axis === 'z') slicerZOffset = v;
+        else if (axis === 'height')
+          slicerHalfHeight = Math.max(SLICER_HEIGHT_MIN, Math.min(SLICER_HEIGHT_MAX, v)) * 0.5;
+        else return;
+        _applySlicerMask(); // full CPU recompute + sets dirty=true
+      },
+      dragEnd() {
+        _applySlicerMask();
+      },
     },
 
     // ── best-effort context (never on the render hot path) ────────────────────
