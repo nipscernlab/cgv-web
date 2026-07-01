@@ -165,8 +165,9 @@
     }
   }
 
-  // Mede UM ciclo: espera cycleS, vigiando frames (aborta se pararem).
-  async function measureCycle(idx, cfg, tag) {
+  // Mede UM ciclo: espera cycleS, vigiando frames (aborta se pararem). Coleta
+  // amostras dos contadores nativos a cada poll (para a média de draws/tris).
+  async function measureCycle(idx, cfg, tag, app, samples) {
     const end = performance.now() + cfg.cycleS * 1000;
     let lastLen = probe.ts.length;
     let lastGrow = performance.now();
@@ -180,26 +181,39 @@
       } else if (performance.now() - lastGrow > 2500) {
         throw new Error('frames pararam (app pausou? janela em foco?)');
       }
+      if (samples && app) {
+        const c = app.counters();
+        if (c) samples.push(c);
+      }
       const left = ((end - performance.now()) / 1000).toFixed(0);
       const inst = n > 21 ? Math.round(20000 / (probe.ts[n - 1] - probe.ts[n - 21])) : '…';
       setStatus(`${tag} · ciclo ${idx + 1}/${cfg.reps} · ${left}s · ~${inst} fps · ${n} frames`, '#66ccff');
     }
   }
 
-  // draws/tris por frame a partir de dois snapshots de contadores nativos.
-  // accumulates=true (autoReset false): contador soma a cada render -> usa
-  // delta/frames. accumulates=false (autoReset true): valor é por-frame -> usa
-  // o snapshot final como amostra representativa.
-  function perFrameCounters(c0, c1, framesInRep) {
-    if (!c0 || !c1) return { drawsPerFrame: null, trisPerFrame: null };
-    if (c1.accumulates) {
+  const _mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+  // draws/tris por frame a partir dos contadores nativos.
+  //  • accumulates=true  (baseline, autoReset false): o contador SOMA a cada render,
+  //    então Δcontador/Δframes já é a MÉDIA real do ciclo.
+  //  • accumulates=false (current, autoReset true): o contador é por-frame, então
+  //    tiramos a MÉDIA das AMOSTRAS coletadas ao longo do ciclo (antes era 1 amostra
+  //    na fronteira → ruidoso, pois o frustum culling muda draws com a câmera).
+  function perFrameCounters(c0, c1, framesInRep, samples) {
+    const meta = c1 || c0;
+    if (!meta) return { drawsPerFrame: null, trisPerFrame: null };
+    if (meta.accumulates && c0 && c1) {
       const df = Math.max(1, framesInRep - 1);
       return {
         drawsPerFrame: +((c1.calls - c0.calls) / df).toFixed(1),
         trisPerFrame: +((c1.triangles - c0.triangles) / df).toFixed(0),
       };
     }
-    return { drawsPerFrame: c1.calls, trisPerFrame: c1.triangles };
+    const s = (samples || []).filter(Boolean);
+    if (!s.length) return { drawsPerFrame: meta.calls, trisPerFrame: meta.triangles };
+    return {
+      drawsPerFrame: +_mean(s.map((x) => x.calls)).toFixed(1),
+      trisPerFrame: +_mean(s.map((x) => x.triangles)).toFixed(0),
+    };
   }
 
   // -- Mede um cenário: cinema contínuo, N ciclos, contadores nas fronteiras --
@@ -215,10 +229,13 @@
     probe.start();
     const bounds = [0];
     const snaps = [app.counters()]; // contador no início do 1º ciclo
+    const cycleSamples = [];
     for (let i = 0; i < cfg.reps; i++) {
-      await measureCycle(i, cfg, tag);
+      const samples = [];
+      await measureCycle(i, cfg, tag, app, samples);
       bounds.push(probe.ts.length);
       snaps.push(app.counters());
+      cycleSamples.push(samples);
     }
     const all = probe.stop();
     app.cinema.exit();
@@ -229,7 +246,7 @@
     for (let i = 0; i < cfg.reps; i++) {
       const seg = all.slice(bounds[i], bounds[i + 1]);
       const base = seg[0] || 0;
-      const pf = perFrameCounters(snaps[i], snaps[i + 1], seg.length);
+      const pf = perFrameCounters(snaps[i], snaps[i + 1], seg.length, cycleSamples[i]);
       reps.push({
         rep: i + 1,
         frames: seg.map((t) => +(t - base).toFixed(3)), // BRUTO, ms rel. 1º frame
@@ -265,6 +282,7 @@
       return min + Math.sign(start - min || 1) * x;
     };
     const ts = [];
+    const samples = [];
     const c0 = app.counters();
     app.slicer.dragBegin();
     const durMs = cfg.dragS * 1000;
@@ -292,6 +310,10 @@
           ts.push(now);
           const el = now - t0;
           const n = ts.length;
+          if (n % 10 === 0) {
+            const c = app.counters();
+            if (c) samples.push(c);
+          }
           const inst = n > 11 ? Math.round(10000 / (ts[n - 1] - ts[n - 11])) : '…';
           setStatus(`${tag} · ${((durMs - el) / 1000).toFixed(0)}s · ~${inst} fps · ${n} frames`, '#66ccff');
           if (el >= durMs) {
@@ -312,7 +334,7 @@
     const c1 = app.counters();
     if (ts.length < 20) throw new Error('frames insuficientes — eixo inválido');
     const base = ts[0] || 0;
-    const pf = perFrameCounters(c0, c1, ts.length);
+    const pf = perFrameCounters(c0, c1, ts.length, samples);
     return {
       counters: { accumulates: !!(c1 && c1.accumulates), dpr: c1 ? c1.dpr : null },
       reps: [
@@ -360,6 +382,7 @@
             kind: 'tour',
             label: name,
             cells: info.cells,
+            renderedCells: info.activeCells,
             parseMs: info.parseMs,
             bytes: info.bytes,
             slicer: null,
@@ -391,6 +414,7 @@
             kind: 'tour+slicer',
             label: name,
             cells: info.cells,
+            renderedCells: info.activeCells,
             parseMs: info.parseMs,
             bytes: info.bytes,
             slicer: { wedgeDeg: cfg.slicerDeg, showAll: true },
@@ -433,6 +457,7 @@
                   axis,
                   label: name,
                   cells: info.cells,
+                  renderedCells: info.activeCells,
                   slicer: app.slicer.get(),
                   counters: res.counters,
                   reps: res.reps,

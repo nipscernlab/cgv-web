@@ -87,6 +87,9 @@ import { setupHelpersPanel } from './bootstrap/helpersPanel.js';
 import { setupModeWiring } from './bootstrap/modeWiring.js';
 import { setupSceneInit } from './bootstrap/sceneInit.js';
 import { setupRowToggle } from './bootstrap/rowToggle.js';
+// Bench-only: read the active (decoded) event-cell map size so the suite can
+// verify both branches render the same cells. Plain reference, zero cost.
+import { active as _benchActive } from './state.js';
 
 let LivePoller = null;
 try {
@@ -562,12 +565,30 @@ if (new URLSearchParams(location.search).has('bench')) {
       const t0 = performance.now();
       await processXml(txt);
       const parseMs = +(performance.now() - t0).toFixed(1);
+      // FAIRNESS: normalize the energy thresholds to 0 so BOTH branches render the
+      // SAME cells. Defaults differ (baseline HEC=600 MeV vs current HEC=200 MeV),
+      // which would otherwise make the two versions draw different cell sets. At 0,
+      // every event cell with energy ≥ 0 renders, on both.
+      try {
+        setThrTileMev(0);
+        setThrLArMev(0);
+        setThrHecMev(0);
+        setThrFcalMev(0);
+        applyThreshold();
+        applyFcalThreshold();
+      } catch (_) {}
       document.querySelectorAll('.sample-item.cur').forEach((b) => b.classList.remove('cur'));
       [...document.querySelectorAll('.sample-item .sample-item-name')]
         .find((s) => s.textContent.trim().replace(/^test_/, '') === name)
         ?.closest('.sample-item')
         ?.classList.add('cur');
-      return { name, cells: _benchCells(txt), parseMs, bytes: txt.length };
+      return {
+        name,
+        cells: _benchCells(txt),
+        parseMs,
+        bytes: txt.length,
+        activeCells: _benchActive ? _benchActive.size : null,
+      };
     },
 
     cinema: {
