@@ -33,10 +33,12 @@ if not exist %CHROME% set CHROME="C:\Program Files (x86)\Google\Chrome\Applicati
 REM Perfil limpo e dedicado (extensoes/estado do Chrome do dia a dia nao interferem).
 set PROFILE=%TEMP%\cgv-bench-profile
 
+REM ?bench=1 => o index.html injeta o painel da suite (public/js/bench.js) e o
+REM main.js instala o hook neutro window.__cgvApp. Sem ?bench=1, o app e' identico.
 %CHROME% ^
   --user-data-dir="%PROFILE%" ^
   --disable-gpu-vsync ^
   --disable-frame-rate-limit ^
-  --new-window "http://localhost:%PORT%/?perf=1"
+  --new-window "http://localhost:%PORT%/?bench=1"
 
 endlocal

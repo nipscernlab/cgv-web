@@ -4526,3 +4526,159 @@ document.addEventListener('keydown', e => {
       break;
   }
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BENCH INSTRUMENTATION HOOK — window.__cgvApp
+// ------------------------------------------------------------------------------
+// Read-only, performance-NEUTRAL access surface consumed by the external FPS
+// benchmark (js/bench.js). Installed ONLY when the URL carries ?bench=1, so a
+// normal production load is byte-for-byte unaffected.
+//
+// FAIRNESS CONTRACT — this hook must never alter WHAT is being measured:
+//   • It adds NOTHING to the render loop: no per-frame callback, no wrapping of
+//     renderer.render, no counter reset, and it does NOT touch
+//     renderer.info.autoReset. The cinema workload runs the original code.
+//   • draws/tris come straight from Three.js's native renderer.info counters,
+//     which are maintained every render whether or not anyone reads them. The
+//     bench reads them on demand (once per cycle boundary), so the per-frame
+//     cost is exactly zero. autoReset stays false (see ~line 934), so the
+//     counters ACCUMULATE — the bench derives per-frame draws as Δcalls/Δframes.
+//   • loadSample / slicer / cinema only drive the app BETWEEN measurements.
+// The comparable performance metric is the bench's own external requestAnimation-
+// Frame frame-time, measured identically on both branches; this hook only
+// supplies structural counters + navigation so the run can be automated.
+// The `version` field is hard-coded per branch, so the bench never has to guess
+// the version from HUD text.
+// ══════════════════════════════════════════════════════════════════════════════
+if (new URLSearchParams(location.search).has('bench')) {
+  const _benchCells = (xmlText) => {
+    const c = { tile: 0, lar: 0, hec: 0, fcal: 0 };
+    const re = /<(TILE|LAr|HEC|FCAL)\b[^>]*count="(\d+)"/g;
+    let m;
+    while ((m = re.exec(xmlText))) c[m[1].toLowerCase()] = +m[2];
+    c.total = c.tile + c.lar + c.hec + c.fcal;
+    return c;
+  };
+
+  const _markCur = (name) => {
+    document.querySelectorAll('.sample-item.cur').forEach((b) => b.classList.remove('cur'));
+    [...document.querySelectorAll('.sample-item .sample-item-name')]
+      .find((s) => s.textContent.trim() === name)
+      ?.closest('.sample-item')
+      ?.classList.add('cur');
+  };
+
+  window.__cgvApp = {
+    apiVersion: 1,
+    version: 'baseline', // authoritative — hard-coded per branch
+
+    // ── readiness (poll module flags; used only between measurements) ──────────
+    isReady: () => sceneOk && wasmOk,
+    whenReady(timeoutMs = 60000) {
+      return new Promise((resolve, reject) => {
+        const t0 = performance.now();
+        const tick = () => {
+          if (sceneOk && wasmOk) return resolve();
+          if (performance.now() - t0 > timeoutMs) return reject(new Error('app not ready'));
+          setTimeout(tick, 100);
+        };
+        tick();
+      });
+    },
+
+    // ── native structural counters — read-only, ZERO per-frame cost ───────────
+    // On this branch autoReset is false, so calls/triangles ACCUMULATE across
+    // renders; the bench must use deltas (accumulates:true tells it so).
+    counters() {
+      const info = renderer && renderer.info && renderer.info.render;
+      if (!info) return null;
+      return {
+        calls: info.calls,
+        triangles: info.triangles,
+        accumulates: !(renderer.info.autoReset === true),
+        dpr: renderer.getPixelRatio ? renderer.getPixelRatio() : window.devicePixelRatio,
+      };
+    },
+
+    // ── sample navigation (between measurements only) ─────────────────────────
+    async samples() {
+      const r = await fetch('./default_xml/index.json');
+      return r.ok ? r.json() : [];
+    },
+    currentSample() {
+      return document.querySelector('.sample-item.cur .sample-item-name')?.textContent.trim() || null;
+    },
+    // Mirror the sidebar click handler, but awaitable: resolves once processXml
+    // has finished decoding + mutating the scene.
+    async loadSample(name) {
+      await this.whenReady();
+      const res = await fetch('./default_xml/' + encodeURIComponent(name));
+      if (!res.ok) throw new Error('HTTP ' + res.status + ' for ' + name);
+      const txt = await res.text();
+      const t0 = performance.now();
+      await processXml(txt);
+      const parseMs = +(performance.now() - t0).toFixed(1);
+      _markCur(name);
+      return { name, cells: _benchCells(txt), parseMs, bytes: txt.length };
+    },
+
+    // ── cinema (drive via the same stable DOM the user clicks) ────────────────
+    cinema: {
+      isOn: () => !!document.getElementById('btn-cinema')?.classList.contains('on'),
+      enter() {
+        if (!this.isOn()) document.getElementById('btn-cinema')?.click();
+      },
+      exit() {
+        const x = document.getElementById('cinema-exit');
+        if (x && x.offsetParent !== null) x.click();
+        else if (this.isOn()) document.getElementById('btn-cinema')?.click();
+      },
+    },
+
+    // ── slicer (deterministic wedge, for the geometry-heavy scenario) ─────────
+    slicer: {
+      set(on, opts = {}) {
+        if (on) {
+          if ('showAll' in opts && !!opts.showAll !== showAllCells) toggleShowAllCells();
+          if (!slicerActive) enableSlicer();
+          if (opts.wedgeDeg != null) {
+            slicerThetaLength = Math.max(0, Math.min(2 * Math.PI, (opts.wedgeDeg * Math.PI) / 180));
+            _applySlicerMask();
+          }
+        } else {
+          if (slicerActive) disableSlicer();
+          if (opts.showAll === false && showAllCells) toggleShowAllCells();
+        }
+      },
+      get() {
+        return {
+          active: slicerActive,
+          wedgeDeg: +((slicerThetaLength * 180) / Math.PI).toFixed(1),
+          showAll: showAllCells,
+        };
+      },
+    },
+
+    // ── best-effort context (never on the render hot path) ────────────────────
+    event() {
+      return currentEventInfo || _lastEventInfo || null;
+    },
+    geometry() {
+      try {
+        const e = performance
+          .getEntriesByType('resource')
+          .find((r) => /CaloGeometry\.glb\.gz(?:$|\?)/.test(r.name) && r.transferSize > 0);
+        if (!e) return { fromCache: true, loadMs: null, bytes: null };
+        return {
+          fromCache: e.transferSize === 0,
+          loadMs: +e.duration.toFixed(1),
+          bytes: e.encodedBodySize || null,
+        };
+      } catch {
+        return null;
+      }
+    },
+  };
+
+  console.log('[cgv] bench hook installed — version=baseline, render-neutral (?bench=1)');
+}
