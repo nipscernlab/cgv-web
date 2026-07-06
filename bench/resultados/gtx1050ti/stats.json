@@ -1,0 +1,685 @@
+{
+ "machine": {
+  "slug": "gtx1050ti",
+  "gpu": "ANGLE (NVIDIA, NVIDIA GeForce GTX 1050 Ti (0x00001C82) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "label": "GTX 1050 Ti",
+  "gpuEqual": true,
+  "viewport": [
+   1920,
+   1080
+  ],
+  "dpr": 1,
+  "fullRuns": {
+   "baseline": [
+    "cgv-bench__suite__baseline__2026-07-02T20-30-04-410Z.json"
+   ],
+   "current": [
+    "cgv-bench__suite__current__2026-07-02T21-34-36-178Z.json"
+   ]
+  },
+  "quickRuns": {
+   "baseline": [],
+   "current": []
+  },
+  "geometryLoadMs": {
+   "baseline": 35.2,
+   "current": 21
+  }
+ },
+ "gmeanSpeedup": {
+  "all": 37.409044505079926,
+  "tour": 39.778884876256825,
+  "slicer": 43.38235294118111,
+  "drag": 30.852271620866528,
+  "nScenarios": 11
+ },
+ "baselineMultiSubmit": {
+  "factor": 6.921621568971227,
+  "rendersPerSec": 24.05403194770367,
+  "perRenderDraws": 17111.0
+ },
+ "scenarios": [
+  {
+   "kind": "tour",
+   "label": "JiveXML_516761_840521342.xml",
+   "axis": null,
+   "cells": {
+    "baseline": 35423,
+    "current": 35551
+   },
+   "parseMs": {
+    "baseline": 7045.1,
+    "current": 1437.9
+   },
+   "wedgeDeg": {
+    "baseline": null,
+    "current": null
+   },
+   "speedupFpsMedian": 36.66666666667476,
+   "baseline": {
+    "fpsMean": 4.104633632677487,
+    "fpsMedian": 4.132231404958677,
+    "low1": 3.6182068167016426,
+    "low01": 3.224250490730911,
+    "ftP50": 242.0,
+    "ftP95": 262.0,
+    "ftP99": 276.38,
+    "ftCV": 0.04200776447109274,
+    "draws": 102558.0,
+    "tris": 16063816.333333334,
+    "ftMax": 319.00000000000045,
+    "nRuns": 1,
+    "runFpsMedian": [
+     4.132231404958677
+    ],
+    "fpsMedianMin": 4.132231404958677,
+    "fpsMedianMax": 4.132231404958677
+   },
+   "current": {
+    "fpsMean": 152.06348746466836,
+    "fpsMedian": 151.51515151518493,
+    "low1": 123.45679012345587,
+    "low01": 77.33294151308944,
+    "ftP50": 6.599999999998545,
+    "ftP95": 7.299999999995634,
+    "ftP99": 8.10000000000006,
+    "ftCV": 0.11546499735701474,
+    "draws": 129.1,
+    "tris": 2416163.3333333335,
+    "ftMax": 61.5,
+    "nRuns": 1,
+    "runFpsMedian": [
+     151.51515151518493
+    ],
+    "fpsMedianMin": 151.51515151518493,
+    "fpsMedianMax": 151.51515151518493
+   }
+  },
+  {
+   "kind": "tour",
+   "label": "JiveXML_517743_4019328363.xml",
+   "axis": null,
+   "cells": {
+    "baseline": 19729,
+    "current": 19857
+   },
+   "parseMs": {
+    "baseline": 3071.6,
+    "current": 454.5
+   },
+   "wedgeDeg": {
+    "baseline": null,
+    "current": null
+   },
+   "speedupFpsMedian": 40.35593220340575,
+   "baseline": {
+    "fpsMean": 4.19743430223752,
+    "fpsMedian": 4.199916001679863,
+    "low1": 3.773300128292203,
+    "low01": 3.591954022988481,
+    "ftP50": 238.10000000000582,
+    "ftP95": 257.90000000000146,
+    "ftP99": 265.0200000000001,
+    "ftCV": 0.04527560324906385,
+    "draws": 97110.90000000001,
+    "tris": 15990467.333333334,
+    "ftMax": 298.0,
+    "nRuns": 1,
+    "runFpsMedian": [
+     4.199916001679863
+    ],
+    "fpsMedianMin": 4.199916001679863,
+    "fpsMedianMax": 4.199916001679863
+   },
+   "current": {
+    "fpsMean": 168.0974939860017,
+    "fpsMedian": 169.49152542379153,
+    "low1": 131.38877939815447,
+    "low01": 72.14434640828826,
+    "ftP50": 5.899999999997817,
+    "ftP95": 6.600000000005821,
+    "ftP99": 7.6110000000049185,
+    "ftCV": 0.1343931776514739,
+    "draws": 49.1,
+    "tris": 2399888.6666666665,
+    "ftMax": 40.900000000001455,
+    "nRuns": 1,
+    "runFpsMedian": [
+     169.49152542379153
+    ],
+    "fpsMedianMin": 169.49152542379153,
+    "fpsMedianMax": 169.49152542379153
+   }
+  },
+  {
+   "kind": "tour",
+   "label": "JiveXML_518084_13988232891.xml",
+   "axis": null,
+   "cells": {
+    "baseline": 22205,
+    "current": 22333
+   },
+   "parseMs": {
+    "baseline": 6122.5,
+    "current": 586.3
+   },
+   "wedgeDeg": {
+    "baseline": null,
+    "current": null
+   },
+   "speedupFpsMedian": 39.98360655738683,
+   "baseline": {
+    "fpsMean": 4.067842381362786,
+    "fpsMedian": 4.10004100040998,
+    "low1": 3.676470588235294,
+    "low01": 3.2108305166322544,
+    "ftP50": 243.90000000000146,
+    "ftP95": 263.0,
+    "ftP99": 272.0,
+    "ftCV": 0.04223334811744812,
+    "draws": 98734.59999999999,
+    "tris": 15991541.0,
+    "ftMax": 320.09999999999854,
+    "nRuns": 1,
+    "runFpsMedian": [
+     4.10004100040998
+    ],
+    "fpsMedianMin": 4.10004100040998,
+    "fpsMedianMax": 4.10004100040998
+   },
+   "current": {
+    "fpsMean": 163.26534089360194,
+    "fpsMedian": 163.9344262295473,
+    "low1": 125.0,
+    "low01": 80.21111565640324,
+    "ftP50": 6.099999999998545,
+    "ftP95": 6.900000000001455,
+    "ftP99": 8.0,
+    "ftCV": 0.12025093267016827,
+    "draws": 72.0,
+    "tris": 2407841.0,
+    "ftMax": 28.5,
+    "nRuns": 1,
+    "runFpsMedian": [
+     163.9344262295473
+    ],
+    "fpsMedianMin": 163.9344262295473,
+    "fpsMedianMax": 163.9344262295473
+   }
+  },
+  {
+   "kind": "tour",
+   "label": "JiveXML_518084_14173642443.xml",
+   "axis": null,
+   "cells": {
+    "baseline": 19992,
+    "current": 20120
+   },
+   "parseMs": {
+    "baseline": 4198.5,
+    "current": 415.5
+   },
+   "wedgeDeg": {
+    "baseline": null,
+    "current": null
+   },
+   "speedupFpsMedian": 40.5,
+   "baseline": {
+    "fpsMean": 4.0828694098071034,
+    "fpsMedian": 4.11522633744856,
+    "low1": 3.665232339077953,
+    "low01": 3.558659339149844,
+    "ftP50": 243.0,
+    "ftP95": 261.0,
+    "ftP99": 272.8340000000016,
+    "ftCV": 0.03572163951898517,
+    "draws": 98062.66666666667,
+    "tris": 15993991.0,
+    "ftMax": 281.09999999999854,
+    "nRuns": 1,
+    "runFpsMedian": [
+     4.11522633744856
+    ],
+    "fpsMedianMin": 4.11522633744856,
+    "fpsMedianMax": 4.11522633744856
+   },
+   "current": {
+    "fpsMean": 166.2908260350327,
+    "fpsMedian": 166.66666666666666,
+    "low1": 135.13513513524143,
+    "low01": 81.30147399572607,
+    "ftP50": 6.0,
+    "ftP95": 6.700000000000728,
+    "ftP99": 7.399999999994179,
+    "ftCV": 0.1205371213060022,
+    "draws": 66.86666666666666,
+    "tris": 2404954.6666666665,
+    "ftMax": 40.0,
+    "nRuns": 1,
+    "runFpsMedian": [
+     166.66666666666666
+    ],
+    "fpsMedianMin": 166.66666666666666,
+    "fpsMedianMax": 166.66666666666666
+   }
+  },
+  {
+   "kind": "tour",
+   "label": "JiveXML_520249_347152978.xml",
+   "axis": null,
+   "cells": {
+    "baseline": 39747,
+    "current": 39875
+   },
+   "parseMs": {
+    "baseline": 14983.9,
+    "current": 1274.9
+   },
+   "wedgeDeg": {
+    "baseline": null,
+    "current": null
+   },
+   "speedupFpsMedian": 39.27536231883229,
+   "baseline": {
+    "fpsMean": 3.6936625717541993,
+    "fpsMedian": 3.690036900369004,
+    "low1": 3.339745644971689,
+    "low01": 3.1804430738855083,
+    "ftP50": 271.0,
+    "ftP95": 289.0,
+    "ftP99": 299.42399999999907,
+    "ftCV": 0.041087914837217555,
+    "draws": 106927.8,
+    "tris": 16075930.666666666,
+    "ftMax": 317.09999999999854,
+    "nRuns": 1,
+    "runFpsMedian": [
+     3.690036900369004
+    ],
+    "fpsMedianMin": 3.690036900369004,
+    "fpsMedianMax": 3.690036900369004
+   },
+   "current": {
+    "fpsMean": 143.58397557365262,
+    "fpsMedian": 144.92753623185348,
+    "low1": 119.04761904759843,
+    "low01": 74.07407407407408,
+    "ftP50": 6.900000000001455,
+    "ftP95": 7.69999999999709,
+    "ftP99": 8.400000000001455,
+    "ftCV": 0.10533360401198677,
+    "draws": 193.76666666666665,
+    "tris": 2433901.3333333335,
+    "ftMax": 42.100000000000364,
+    "nRuns": 1,
+    "runFpsMedian": [
+     144.92753623185348
+    ],
+    "fpsMedianMin": 144.92753623185348,
+    "fpsMedianMax": 144.92753623185348
+   }
+  },
+  {
+   "kind": "tour",
+   "label": "JiveXML_520526_399935948.xml",
+   "axis": null,
+   "cells": {
+    "baseline": 37356,
+    "current": 37484
+   },
+   "parseMs": {
+    "baseline": 11614,
+    "current": 1122
+   },
+   "wedgeDeg": {
+    "baseline": null,
+    "current": null
+   },
+   "speedupFpsMedian": 38.83823529414344,
+   "baseline": {
+    "fpsMean": 3.753367901283012,
+    "fpsMedian": 3.7864445285875727,
+    "low1": 3.3075236239874712,
+    "low01": 3.029485987112559,
+    "ftP50": 264.1000000000058,
+    "ftP95": 282.90000000000146,
+    "ftP99": 302.3410000000012,
+    "ftCV": 0.045009195237021925,
+    "draws": 107033.26666666666,
+    "tris": 16148144.333333334,
+    "ftMax": 338.0,
+    "nRuns": 1,
+    "runFpsMedian": [
+     3.7864445285875727
+    ],
+    "fpsMedianMin": 3.7864445285875727,
+    "fpsMedianMax": 3.7864445285875727
+   },
+   "current": {
+    "fpsMean": 146.7228475189133,
+    "fpsMedian": 147.05882352950618,
+    "low1": 121.95121951223841,
+    "low01": 78.39509560281137,
+    "ftP50": 6.799999999995634,
+    "ftP95": 7.5,
+    "ftP99": 8.19999999999709,
+    "ftCV": 0.1108535258387659,
+    "draws": 210.53333333333333,
+    "tris": 2443634.0,
+    "ftMax": 61.19999999999982,
+    "nRuns": 1,
+    "runFpsMedian": [
+     147.05882352950618
+    ],
+    "fpsMedianMin": 147.05882352950618,
+    "fpsMedianMax": 147.05882352950618
+   }
+  },
+  {
+   "kind": "tour",
+   "label": "JiveXML_520534_4444305398.xml",
+   "axis": null,
+   "cells": {
+    "baseline": 53739,
+    "current": 53867
+   },
+   "parseMs": {
+    "baseline": 12165.8,
+    "current": 1534.1
+   },
+   "wedgeDeg": {
+    "baseline": null,
+    "current": null
+   },
+   "speedupFpsMedian": 43.11940298499978,
+   "baseline": {
+    "fpsMean": 3.4752018306714314,
+    "fpsMedian": 3.4614053305642027,
+    "low1": 3.157034029669798,
+    "low01": 3.0143870665913988,
+    "ftP50": 288.90000000000055,
+    "ftP95": 307.9350000000009,
+    "ftP99": 316.7530000000008,
+    "ftCV": 0.04251051904317078,
+    "draws": 118435.86666666665,
+    "tris": 16269220.666666666,
+    "ftMax": 344.10000000000036,
+    "nRuns": 1,
+    "runFpsMedian": [
+     3.4614053305642027
+    ],
+    "fpsMedianMin": 3.4614053305642027,
+    "fpsMedianMax": 3.4614053305642027
+   },
+   "current": {
+    "fpsMean": 147.0488604789197,
+    "fpsMedian": 149.25373134302424,
+    "low1": 123.45679012347897,
+    "low01": 76.3358778626039,
+    "ftP50": 6.7000000000116415,
+    "ftP95": 7.5,
+    "ftP99": 8.099999999998545,
+    "ftCV": 0.10881897547820896,
+    "draws": 214.5,
+    "tris": 2457923.0,
+    "ftMax": 59.70000000000073,
+    "nRuns": 1,
+    "runFpsMedian": [
+     149.25373134302424
+    ],
+    "fpsMedianMin": 149.25373134302424,
+    "fpsMedianMax": 149.25373134302424
+   }
+  },
+  {
+   "kind": "tour+slicer",
+   "label": "JiveXML_520534_4444305398.xml",
+   "axis": null,
+   "cells": {
+    "baseline": 53739,
+    "current": 53867
+   },
+   "parseMs": {
+    "baseline": 12185.8,
+    "current": 1404.8
+   },
+   "wedgeDeg": {
+    "baseline": 180,
+    "current": 180
+   },
+   "speedupFpsMedian": 43.38235294118112,
+   "baseline": {
+    "fpsMean": 3.3868951896703963,
+    "fpsMedian": 3.389830508474576,
+    "low1": 3.0487154237562004,
+    "low01": 2.9444326667137477,
+    "ftP50": 295.0,
+    "ftP95": 313.90000000000146,
+    "ftP99": 328.007,
+    "ftCV": 0.04485618996630905,
+    "draws": 118472.39999999998,
+    "tris": 16799253.0,
+    "ftMax": 365.0,
+    "nRuns": 1,
+    "runFpsMedian": [
+     3.389830508474576
+    ],
+    "fpsMedianMin": 3.389830508474576,
+    "fpsMedianMax": 3.389830508474576
+   },
+   "current": {
+    "fpsMean": 136.57056145675267,
+    "fpsMedian": 147.0588235294275,
+    "low1": 68.96551724137932,
+    "low01": 12.699638314299394,
+    "ftP50": 6.799999999999272,
+    "ftP95": 9.300000000000114,
+    "ftP99": 14.5,
+    "ftCV": 0.5953751050459618,
+    "draws": 218.0,
+    "tris": 2514052.0,
+    "ftMax": 179.0,
+    "nRuns": 1,
+    "runFpsMedian": [
+     147.0588235294275
+    ],
+    "fpsMedianMin": 147.0588235294275,
+    "fpsMedianMax": 147.0588235294275
+   }
+  },
+  {
+   "kind": "slicer-drag",
+   "label": "JiveXML_520534_4444305398.xml",
+   "axis": "theta",
+   "cells": {
+    "baseline": 53739,
+    "current": 53867
+   },
+   "parseMs": {
+    "baseline": null,
+    "current": null
+   },
+   "wedgeDeg": {
+    "baseline": 180,
+    "current": 110.2
+   },
+   "speedupFpsMedian": 31.898734177214823,
+   "baseline": {
+    "fpsMean": 3.821357691406876,
+    "fpsMedian": 3.9682539682539684,
+    "low1": 2.759381898454749,
+    "low01": 2.749140893470793,
+    "ftP50": 252.0,
+    "ftP95": 357.9499999999998,
+    "ftP99": 362.39999999999964,
+    "ftCV": 0.1805828345290229,
+    "draws": 17111.0,
+    "tris": 2390885.0,
+    "ftMax": 363.89999999999964,
+    "nRuns": 1,
+    "runFpsMedian": [
+     3.9682539682539684
+    ],
+    "fpsMedianMin": 3.9682539682539684,
+    "fpsMedianMax": 3.9682539682539684
+   },
+   "current": {
+    "fpsMean": 124.00917293982751,
+    "fpsMedian": 126.5822784810112,
+    "low1": 71.94244604316486,
+    "low01": 59.11073805667459,
+    "ftP50": 7.900000000000091,
+    "ftP95": 8.830000000000014,
+    "ftP99": 13.900000000000118,
+    "ftCV": 0.15063579455588466,
+    "draws": 230.0,
+    "tris": 2517377.0,
+    "ftMax": 19.8,
+    "nRuns": 1,
+    "runFpsMedian": [
+     126.5822784810112
+    ],
+    "fpsMedianMin": 126.5822784810112,
+    "fpsMedianMax": 126.5822784810112
+   }
+  },
+  {
+   "kind": "slicer-drag",
+   "label": "JiveXML_520534_4444305398.xml",
+   "axis": "z",
+   "cells": {
+    "baseline": 53739,
+    "current": 53867
+   },
+   "parseMs": {
+    "baseline": null,
+    "current": null
+   },
+   "wedgeDeg": {
+    "baseline": 180,
+    "current": 110.2
+   },
+   "speedupFpsMedian": 33.784810126583814,
+   "baseline": {
+    "fpsMean": 3.428809345954617,
+    "fpsMedian": 3.746721618583742,
+    "low1": 1.980668673744256,
+    "low01": 1.9286849454567891,
+    "ftP50": 266.8999999999998,
+    "ftP95": 433.93499999999983,
+    "ftP99": 504.88,
+    "ftCV": 0.21819880562453842,
+    "draws": 17722.1,
+    "tris": 2472822.0,
+    "ftMax": 520.0,
+    "nRuns": 1,
+    "runFpsMedian": [
+     3.746721618583742
+    ],
+    "fpsMedianMin": 3.746721618583742,
+    "fpsMedianMax": 3.746721618583742
+   },
+   "current": {
+    "fpsMean": 124.64907355418305,
+    "fpsMedian": 126.58227848101849,
+    "low1": 72.46376811594195,
+    "low01": 70.91595041556715,
+    "ftP50": 7.899999999999636,
+    "ftP95": 8.699999999999818,
+    "ftP99": 13.800000000000015,
+    "ftCV": 0.13843438003004807,
+    "draws": 223.4,
+    "tris": 2516914.0,
+    "ftMax": 14.699999999999818,
+    "nRuns": 1,
+    "runFpsMedian": [
+     126.58227848101849
+    ],
+    "fpsMedianMin": 126.58227848101849,
+    "fpsMedianMax": 126.58227848101849
+   }
+  },
+  {
+   "kind": "slicer-drag",
+   "label": "JiveXML_520534_4444305398.xml",
+   "axis": "height",
+   "cells": {
+    "baseline": 53739,
+    "current": 53867
+   },
+   "parseMs": {
+    "baseline": null,
+    "current": null
+   },
+   "wedgeDeg": {
+    "baseline": 180,
+    "current": 110.2
+   },
+   "speedupFpsMedian": 27.25,
+   "baseline": {
+    "fpsMean": 4.607032572965435,
+    "fpsMedian": 4.587155963302752,
+    "low1": 3.168045822614779,
+    "low01": 3.0603014029645736,
+    "ftP50": 218.0,
+    "ftP95": 268.3399999999998,
+    "ftP99": 315.65199999999993,
+    "ftCV": 0.17405721439618538,
+    "draws": 17573.5,
+    "tris": 2426117.0,
+    "ftMax": 328.0,
+    "nRuns": 1,
+    "runFpsMedian": [
+     4.587155963302752
+    ],
+    "fpsMedianMin": 4.587155963302752,
+    "fpsMedianMax": 4.587155963302752
+   },
+   "current": {
+    "fpsMean": 123.59396262218948,
+    "fpsMedian": 125.0,
+    "low1": 71.94244604316735,
+    "low01": 70.42253521126851,
+    "ftP50": 8.0,
+    "ftP95": 8.754999999999718,
+    "ftP99": 13.899999999999636,
+    "ftCV": 0.13441648729950154,
+    "draws": 230.0,
+    "tris": 2517377.0,
+    "ftMax": 14.199999999999818,
+    "nRuns": 1,
+    "runFpsMedian": [
+     125.0
+    ],
+    "fpsMedianMin": 125.0,
+    "fpsMedianMax": 125.0
+   }
+  }
+ ],
+ "onlyCurrent": [
+  {
+   "kind": "slicer-drag",
+   "label": "JiveXML_520534_4444305398.xml",
+   "axis": "phi",
+   "current": {
+    "fpsMean": 124.35388418608136,
+    "fpsMedian": 126.5822784810112,
+    "low1": 72.96607077708967,
+    "low01": 67.56528495659255,
+    "ftP50": 7.900000000000091,
+    "ftP95": 8.800000000000182,
+    "ftP99": 13.704999999999808,
+    "ftCV": 0.13787229606221316,
+    "draws": 230.0,
+    "tris": 2517377.0,
+    "ftMax": 14.900000000000546,
+    "nRuns": 1,
+    "runFpsMedian": [
+     126.5822784810112
+    ],
+    "fpsMedianMin": 126.5822784810112,
+    "fpsMedianMax": 126.5822784810112
+   }
+  }
+ ]
+}

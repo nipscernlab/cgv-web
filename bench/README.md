@@ -112,18 +112,56 @@ A verdade são os arrays `frames` (timestamps brutos de cada frame).
 
 ---
 
+## Organização da pasta
+
+```
+bench/
+  README.md, analyze.mjs, make_charts.py     ferramentas de análise
+  cgv-bench.js, launch-chrome.bat, switch.bat, cell-counts.json
+  JiveXML_*.xml                              eventos de teste (rastreados no git)
+  dados/
+    rtx4070ti/                               JSONs brutos da suíte, POR MÁQUINA
+    gtx1050ti/                               (crie uma pasta por máquina medida)
+    descartados/                             runs legados, parciais abortados, zips
+  resultados/
+    rtx4070ti/                               stats.json + figuras 00..12 + resultados.tex/.pdf
+    gtx1050ti/                               idem
+    comparacao/                              figura comparando as máquinas
+```
+
+Ao terminar uma medição, mova o JSON baixado para `bench/dados/<maquina>/`.
+Execuções abortadas/parciais vão para `bench/dados/descartados/` (ou delete).
+
 ## Análise
 
 ```bash
-node bench/analyze.mjs           # todos os bench/cgv-bench__*.json
-node bench/analyze.mjs arquivo.json
+node bench/analyze.mjs                       # analisa cada máquina de bench/dados/
+node bench/analyze.mjs bench/dados/gtx1050ti # só uma máquina
+node bench/analyze.mjs arquivo.json          # um arquivo específico
 ```
 
 Reporta, por cenário: FPS média/mediana/desvio, percentis, **1% e 0.1% low**, frame-time
 (p50/p95/p99/max), travadas (<30 fps), CV de suavidade, **draws/tris por frame**, e um
-perfil FPS×trajetória. Com os **2 JSONs** (baseline + current) na mesma pasta, imprime a
-**tabela comparativa** `current × baseline`: speedup de FPS por evento, razão de draws/tris
-e frame-time — o resultado do paper.
+perfil FPS×trajetória. Com baseline + current no mesmo grupo, imprime a **tabela
+comparativa** `current × baseline` (speedup por evento, razão de draws/tris). A comparação
+usa o JSON mais recente de cada versão dentro do grupo.
+
+## Gráficos e relatório
+
+```bash
+python bench/make_charts.py                  # todas as máquinas de bench/dados/
+python bench/make_charts.py gtx1050ti        # só uma máquina
+```
+
+Gera em `bench/resultados/<maquina>/`: `stats.json` (estatísticas auditáveis, mescladas
+**por réplica** — cada execução completa pesa igual, e a dispersão entre execuções é
+mostrada) e as figuras 00–12, cada uma com caixa de interpretação; havendo 2+ máquinas,
+gera também `resultados/comparacao/`. Os relatórios `resultados.tex` (um por máquina)
+compilam com qualquer LaTeX (`pdflatex`/`tectonic resultados.tex`, de dentro da pasta).
+
+Execuções com ciclo curto (`cycleS < 70 s`, trajetória incompleta) não entram na mescla;
+servem só de conferência de reprodutibilidade. Parciais abortados e runs do esquema
+legado (`cgv-bench__run__*`) são ignorados pela análise.
 
 ---
 

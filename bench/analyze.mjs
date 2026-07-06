@@ -18,13 +18,28 @@ try {
 }
 
 const arg = process.argv[2];
-function listFiles() {
-  if (arg && fs.existsSync(arg) && fs.statSync(arg).isFile()) return [arg];
-  const dir = arg && fs.existsSync(arg) && fs.statSync(arg).isDirectory() ? arg : 'bench';
-  return fs
+const scanDir = (dir) =>
+  fs
     .readdirSync(dir)
     .filter((f) => /^cgv-bench__.*\.json$/.test(f) && !/__ALL__/.test(f))
     .map((f) => path.join(dir, f));
+// Grupos de análise: cada máquina em bench/dados/<maquina>/ é analisada em
+// separado (a comparação baseline×current só faz sentido dentro da máquina).
+function listGroups() {
+  if (arg && fs.existsSync(arg) && fs.statSync(arg).isFile()) return [{ label: '', files: [arg] }];
+  if (arg && fs.existsSync(arg) && fs.statSync(arg).isDirectory())
+    return [{ label: arg, files: scanDir(arg) }];
+  const dados = path.join('bench', 'dados');
+  if (fs.existsSync(dados)) {
+    return fs
+      .readdirSync(dados)
+      .filter((d) => d !== 'descartados' && fs.statSync(path.join(dados, d)).isDirectory())
+      .map((d) => ({ label: `máquina: ${d}`, files: scanDir(path.join(dados, d)) }));
+  }
+  return [{ label: '', files: scanDir('bench') }];
+}
+function listFiles() {
+  return listGroups().flatMap((g) => g.files);
 }
 
 const pct = (sorted, p) => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
@@ -139,9 +154,10 @@ const cellsOf = (sc) => {
 };
 const scenKey = (sc) => `${sc.kind}::${sc.label}${sc.axis ? '::' + sc.axis : ''}`;
 
-// ── Detalhe por arquivo/versão ──────────────────────────────────────────────
+// ── Detalhe por arquivo/versão (uma máquina por vez) ────────────────────────
+function analyzeGroup(files) {
 const loaded = [];
-for (const file of listFiles()) {
+for (const file of files) {
   let rec;
   try {
     rec = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -302,3 +318,9 @@ if (base && cur) {
   console.log('\n(Para a tabela comparativa, rode a suíte nas 2 versões — 1 JSON baseline + 1 current — na mesma pasta.)');
 }
 console.log('');
+}
+
+for (const g of listGroups()) {
+  if (g.label) console.log(`\n████ ${g.label} ${'█'.repeat(Math.max(1, 70 - g.label.length))}`);
+  analyzeGroup(g.files);
+}
