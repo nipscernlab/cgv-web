@@ -103,12 +103,54 @@ Um JSON por versão:
 { schema:"cgv-bench/2", version:"baseline"|"current", gpu, dpr, viewport, note,
   geometry:{fromCache,loadMs,bytes}, config:{reps,warmupS,cycleS,slicerDeg}, ts,
   scenarios:[ { kind:"tour"|"tour+slicer", label:<xml>, cells:{tile,lar,hec,fcal,total},
-               parseMs, slicer:null|{wedgeDeg,showAll}, counters:{accumulates,dpr},
+               parseMs, startedMs, endedMs, slicer:null|{wedgeDeg,showAll}, counters:{accumulates,dpr},
                reps:[ { rep, frames:[ms rel. ao 1º frame], drawsPerFrame, trisPerFrame,
                         counters:{start,end}, summary } ] } ] }
 ```
 
-A verdade são os arrays `frames` (timestamps brutos de cada frame).
+A verdade são os arrays `frames` (timestamps brutos de cada frame). Cada cenário
+também traz `startedMs`/`endedMs` (epoch UTC ms) — as janelas de horário usadas para
+casar a temperatura da GPU (abaixo).
+
+---
+
+## Temperatura da GPU (recomendado)
+
+O bench roda no navegador e JS **não lê sensor de GPU**. Para registrar a temperatura
+(e explicar a variação de FPS entre execuções — o CV sobe muito na versão nova, que
+esquenta a GPU), grave-a **por fora** com `nvidia-smi`, em paralelo, e case depois pelo
+horário.
+
+1. **Antes** de medir, num terminal separado, deixe rodando:
+   ```
+   powershell -ExecutionPolicy Bypass -File bench\log-gpu.ps1
+   ```
+   Grava `bench\dados\temps\gpu-<ts>.csv` (`epochMs,tempC,clockSMMHz,utilPct,powerW`,
+   1×/s). **Um CSV cobre a sessão inteira** — deixe rodando durante TODOS os testes
+   daquela máquina; `Ctrl-C` ao terminar.
+
+   > **Não importa quanto você espera** entre abrir o Chrome (`launch-chrome.bat`) e
+   > clicar em *Rodar suíte*: o `bench.js` carimba `startedMs`/`endedMs` (epoch) de CADA
+   > cenário no instante exato em que ele roda, e o merge só usa as amostras dentro
+   > dessas janelas. O tempo ocioso é ignorado. Basta o logger estar rodando durante a
+   > suíte. Como `bench.js` (`Date.now()`) e o logger (`epoch UTC ms`) usam o mesmo
+   > relógio, o casamento independe de fuso.
+
+2. Rode a suíte normalmente (baixa o JSON).
+
+3. Case a temperatura ao JSON medido:
+   ```
+   node bench\merge-temps.mjs <suite.json> bench\dados\temps\gpu-<ts>.csv
+   ```
+   Gera `<suite>__temp.json` com `thermal:{tGpuStart,tGpuEnd,tGpuMin,tGpuMax,tGpuMean,
+   clockMean,utilMean,powerMean}` por cenário + um `thermalSummary` no topo. Assim dá
+   para **descartar/rotular execuções quentes** objetivamente, em vez de esperar esfriar
+   entre testes.
+
+> **Dica de tempo:** com a temperatura registrada, não precisa de cooldown fixo entre
+> testes. Rode-os em sequência (intercalando baseline, que roda leve e resfria a GPU) e
+> deixe o log dizer quais execuções estavam frias. Use `reps=1` (uma órbita já dá
+> milhares de frames) para cortar cada teste de ~30 para ~13 min.
 
 ---
 

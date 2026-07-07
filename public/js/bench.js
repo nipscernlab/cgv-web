@@ -377,6 +377,7 @@
         try {
           const info = await app.loadSample(name);
           await sleep(400); // deixa a cena assentar antes de medir
+          const startedMs = Date.now(); // âncora epoch p/ casar com o log de temperatura da GPU
           const res = await measureScenario(app, cfg, tag);
           scenarios.push({
             kind: 'tour',
@@ -386,6 +387,8 @@
             parseMs: info.parseMs,
             bytes: info.bytes,
             slicer: null,
+            startedMs,
+            endedMs: Date.now(),
             counters: res.counters,
             reps: res.reps,
           });
@@ -409,6 +412,7 @@
           const info = await app.loadSample(name);
           app.slicer.set(true, { showAll: true, wedgeDeg: cfg.slicerDeg });
           await sleep(600);
+          const startedMs = Date.now(); // âncora epoch p/ casar com o log de temperatura da GPU
           const res = await measureScenario(app, cfg, tag);
           scenarios.push({
             kind: 'tour+slicer',
@@ -418,6 +422,8 @@
             parseMs: info.parseMs,
             bytes: info.bytes,
             slicer: { wedgeDeg: cfg.slicerDeg, showAll: true },
+            startedMs,
+            endedMs: Date.now(),
             counters: res.counters,
             reps: res.reps,
           });
@@ -451,6 +457,7 @@
               const tag = `drag ${axis} · ${name}`;
               setPhase(`slicer-drag: ${axis} (${name})`, '#f78c6b');
               try {
+                const startedMs = Date.now(); // âncora epoch p/ casar com o log de temperatura da GPU
                 const res = await measureDragAxis(app, axis, axes[axis], cfg, tag);
                 scenarios.push({
                   kind: 'slicer-drag',
@@ -459,6 +466,8 @@
                   cells: info.cells,
                   renderedCells: info.activeCells,
                   slicer: app.slicer.get(),
+                  startedMs,
+                  endedMs: Date.now(),
                   counters: res.counters,
                   reps: res.reps,
                 });
